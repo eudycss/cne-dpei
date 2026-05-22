@@ -27,6 +27,7 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/auth\/reset-password$/,  accion: 'PASSWORD_RESET' },
   { method: 'POST',  pathRegex: /^\/users$/,                 accion: 'USER_CREATE', entidad: 'usuario' },
   { method: 'PATCH', pathRegex: /^\/users\/[^/]+$/,          accion: 'USER_UPDATE', entidad: 'usuario' },
+  { method: 'POST',  pathRegex: /^\/users\/[^/]+\/reset-password$/, accion: 'USER_PASSWORD_RESET', entidad: 'usuario' },
   { method: 'POST',  pathRegex: /^\/users\/bulk$/,           accion: 'BULK_USER_UPLOAD', entidad: 'usuario' },
   { method: 'POST',  pathRegex: /^\/users\/assign-roles$/,   accion: 'ROLE_ASSIGN' },
 ];

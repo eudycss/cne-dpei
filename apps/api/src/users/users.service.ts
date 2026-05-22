@@ -112,6 +112,38 @@ export class UsersService {
     return toUserDto(user);
   }
 
+  /**
+   * Restablece la contraseña de un usuario (acción de administrador).
+   * Genera una contraseña temporal fuerte, fuerza el cambio en el próximo
+   * login (debeCambiarPwd) y revoca las sesiones activas. Devuelve la
+   * contraseña temporal para que el administrador la entregue al usuario.
+   */
+  async resetPassword(id: string): Promise<{ user: User; temporaryPassword: string }> {
+    const existing = await this.prisma.usuario.findUnique({
+      where: { id },
+      include: { roles: { include: { rol: true } } },
+    });
+    if (!existing) throw new NotFoundException('Usuario no encontrado');
+
+    const temporaryPassword = generateInitialPassword();
+    const passwordHash = await argon2.hash(temporaryPassword);
+
+    await this.prisma.$transaction([
+      this.prisma.usuario.update({
+        where: { id },
+        data: { passwordHash, debeCambiarPwd: true },
+      }),
+      // Revoca refresh tokens activos: las sesiones existentes quedan invalidadas
+      this.prisma.refreshToken.updateMany({
+        where: { usuarioId: id, revocadoEn: null },
+        data: { revocadoEn: new Date() },
+      }),
+    ]);
+
+    await this.notifier.sendInitialPassword(existing.email, temporaryPassword);
+    return { user: toUserDto(existing), temporaryPassword };
+  }
+
   async bulkUpload(file: Express.Multer.File): Promise<BulkUploadResult> {
     if (!file) throw new BadRequestException('Archivo requerido');
     const rows = await this.parseRows(file);

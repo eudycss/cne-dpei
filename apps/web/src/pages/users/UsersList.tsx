@@ -5,6 +5,7 @@ import type { Paginated, Role, User } from '@cne/shared-types';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
+import { ResetPasswordModal } from './ResetPasswordModal';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ export function UsersList() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAssign, setShowAssign] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
+  const [resetting, setResetting] = useState<User | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const qc = useQueryClient();
 
@@ -102,7 +104,7 @@ export function UsersList() {
                   <th>Teléfono</th>
                   <th>Roles</th>
                   <th>Estado</th>
-                  {isAdmin && <th style={{ width: 200 }}>Acciones</th>}
+                  {isAdmin && <th style={{ width: 320 }}>Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -132,6 +134,13 @@ export function UsersList() {
                             onClick={() => setEditing(u)}
                           >
                             Editar
+                          </button>
+                          <button
+                            className="btn secondary"
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                            onClick={() => setResetting(u)}
+                          >
+                            Restablecer clave
                           </button>
                           <button
                             className={u.activo ? 'btn danger' : 'btn'}
@@ -198,6 +207,17 @@ export function UsersList() {
           onClose={() => setEditing(null)}
           onDone={() => {
             setEditing(null);
+            qc.invalidateQueries({ queryKey: ['users'] });
+          }}
+        />
+      )}
+
+      {resetting && (
+        <ResetPasswordModal
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onDone={() => {
+            setResetting(null);
             qc.invalidateQueries({ queryKey: ['users'] });
           }}
         />

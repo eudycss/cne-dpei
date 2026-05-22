@@ -70,6 +70,13 @@ export class UsersController {
     return this.users.update(id, body);
   }
 
+  @Post(':id/reset-password')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Restablecer contraseña de un usuario (contraseña temporal)' })
+  resetPassword(@Param('id', ParseUUIDPipe) id: string) {
+    return this.users.resetPassword(id);
+  }
+
   @Post('bulk')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'HU7-CA1: Carga masiva desde Excel/CSV' })
