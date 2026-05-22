@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
 
 export function LoginScreen() {
@@ -56,11 +57,9 @@ export function LoginScreen() {
           onChangeText={setEmail}
         />
         <Text style={styles.label}>Contraseña</Text>
-        <TextInput
-          style={styles.input}
-          secureTextEntry
+        <PasswordField
           value={password}
-          onChangeText={setPassword}
+          onChange={setPassword}
         />
         <Pressable
           style={[styles.button, loading && { opacity: 0.6 }]}

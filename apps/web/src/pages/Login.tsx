@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { PasswordField } from '../components/PasswordField';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -47,16 +48,13 @@ export function Login() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        <div className="field">
-          <label>Contraseña</label>
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+        <PasswordField
+          label="Contraseña"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={setPassword}
+        />
         {error && <div className="banner error">{error}</div>}
         <button className="btn" type="submit" disabled={loading} style={{ width: '100%' }}>
           {loading ? 'Ingresando…' : 'Iniciar sesión'}

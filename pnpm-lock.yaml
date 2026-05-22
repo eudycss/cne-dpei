@@ -166,6 +166,9 @@ importers:
       '@expo-google-fonts/dm-sans':
         specifier: ^0.4.2
         version: 0.4.2
+      '@expo/vector-icons':
+        specifier: ^15.1.1
+        version: 15.1.1(expo-font@12.0.10(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
       '@react-navigation/native':
         specifier: 6.1.18
         version: 6.1.18(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
@@ -230,6 +233,9 @@ importers:
       axios:
         specifier: 1.7.7
         version: 1.7.7
+      lucide-react:
+        specifier: ^1.16.0
+        version: 1.16.0(react@18.3.1)
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -1449,6 +1455,13 @@ packages:
     resolution: {integrity: sha512-7T09UE9h8QDTsUeMGymB4i+iqvtEeaO5VvUjryFB4tugDTG/bkzViWA74hm5pfjjDEhYMXWaX112mcvhccmIwQ==}
     peerDependencies:
       expo-font: '*'
+      react: '*'
+      react-native: '*'
+
+  '@expo/vector-icons@15.1.1':
+    resolution: {integrity: sha512-Iu2VkcoI5vygbtYngm7jb4ifxElNVXQYdDrYkT7UCEIiKLeWnQY0wf2ZhHZ+Wro6Sc5TaumpKUOqDRpLi5rkvw==}
+    peerDependencies:
+      expo-font: '>=14.0.4'
       react: '*'
       react-native: '*'
 
@@ -4602,6 +4615,11 @@ packages:
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+
+  lucide-react@1.16.0:
+    resolution: {integrity: sha512-dYwyPzb4MEKpGUmNYk3WKWPnMrHs3FKM+q94kAnJrcDIqqn1hq2xY8scaS2ovsOCM5D51ey2gaRG3PBb1vgoYQ==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   magic-string@0.30.8:
     resolution: {integrity: sha512-ISQTe55T2ao7XtlAStud6qwYPZjE4GK1S/BeVPus4jrq6JuOnQ00YKQC581RWhR122W7msZV263KzVeLoqidyQ==}
@@ -8242,6 +8260,12 @@ snapshots:
   '@expo/sudo-prompt@9.3.2': {}
 
   '@expo/vector-icons@14.1.0(expo-font@12.0.10(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)':
+    dependencies:
+      expo-font: 12.0.10(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
+      react: 18.2.0
+      react-native: 0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0)
+
+  '@expo/vector-icons@15.1.1(expo-font@12.0.10(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)':
     dependencies:
       expo-font: 12.0.10(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
       react: 18.2.0
@@ -12228,6 +12252,10 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lucide-react@1.16.0(react@18.3.1):
+    dependencies:
+      react: 18.3.1
 
   magic-string@0.30.8:
     dependencies:

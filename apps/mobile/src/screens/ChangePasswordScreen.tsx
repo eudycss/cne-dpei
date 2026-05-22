@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
 
 export function ChangePasswordScreen() {
@@ -45,11 +46,11 @@ export function ChangePasswordScreen() {
           Mínimo 12 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
         </Text>
         <Text style={styles.label}>Contraseña actual</Text>
-        <TextInput style={styles.input} secureTextEntry value={current} onChangeText={setCurrent} />
+        <PasswordField value={current} onChange={setCurrent} />
         <Text style={styles.label}>Nueva contraseña</Text>
-        <TextInput style={styles.input} secureTextEntry value={next} onChangeText={setNext} />
+        <PasswordField value={next} onChange={setNext} />
         <Text style={styles.label}>Confirmar</Text>
-        <TextInput style={styles.input} secureTextEntry value={confirm} onChangeText={setConfirm} />
+        <PasswordField value={confirm} onChange={setConfirm} />
         <Pressable style={[styles.button, loading && { opacity: 0.6 }]} onPress={onSubmit} disabled={loading}>
           <Text style={styles.buttonText}>{loading ? 'Guardando…' : 'Cambiar contraseña'}</Text>
         </Pressable>
@@ -65,7 +66,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: fontFamily.bold, color: '#1f2937' },
   subtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', marginVertical: 8 },
   label: { fontSize: 13, fontFamily: fontFamily.medium, color: '#374151', marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', padding: 10, borderRadius: 6, marginBottom: 12, fontFamily: fontFamily.regular },
   button: { backgroundColor: '#2563eb', padding: 12, borderRadius: 6, marginTop: 4 },
   buttonText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold },
 });

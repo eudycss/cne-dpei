@@ -4,6 +4,7 @@ import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { PasswordField } from '../components/PasswordField';
 
 export function ChangePassword() {
   const { markPasswordChanged } = useAuth();
@@ -47,33 +48,24 @@ export function ChangePassword() {
           Por seguridad, debes cambiar la contraseña inicial. Mínimo 12 caracteres con
           mayúsculas, minúsculas, dígitos y símbolos.
         </p>
-        <div className="field">
-          <label>Contraseña actual</label>
-          <input
-            type="password"
-            required
-            value={currentPassword}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Nueva contraseña</label>
-          <input
-            type="password"
-            required
-            value={newPassword}
-            onChange={(e) => setNew(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Confirmar nueva contraseña</label>
-          <input
-            type="password"
-            required
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </div>
+        <PasswordField
+          label="Contraseña actual"
+          required
+          value={currentPassword}
+          onChange={setCurrent}
+        />
+        <PasswordField
+          label="Nueva contraseña"
+          required
+          value={newPassword}
+          onChange={setNew}
+        />
+        <PasswordField
+          label="Confirmar nueva contraseña"
+          required
+          value={confirm}
+          onChange={setConfirm}
+        />
         {error && <div className="banner error">{error}</div>}
         {ok && <div className="banner success">Contraseña actualizada</div>}
         <button className="btn" type="submit" style={{ width: '100%' }}>
