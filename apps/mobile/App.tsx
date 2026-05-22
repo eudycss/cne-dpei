@@ -1,6 +1,17 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import {
+  DMSans_400Regular,
+  DMSans_400Regular_Italic,
+  DMSans_500Medium,
+  DMSans_500Medium_Italic,
+  DMSans_600SemiBold,
+  DMSans_600SemiBold_Italic,
+  DMSans_700Bold,
+  DMSans_700Bold_Italic,
+} from '@expo-google-fonts/dm-sans';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
@@ -41,6 +52,25 @@ function Navigator() {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    DMSans_400Regular,
+    DMSans_400Regular_Italic,
+    DMSans_500Medium,
+    DMSans_500Medium_Italic,
+    DMSans_600SemiBold,
+    DMSans_600SemiBold_Italic,
+    DMSans_700Bold,
+    DMSans_700Bold_Italic,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b' }}>
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <StatusBar style="auto" />

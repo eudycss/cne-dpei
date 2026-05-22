@@ -163,6 +163,9 @@ importers:
       '@cne/shared-validation':
         specifier: workspace:*
         version: link:../../packages/shared-validation
+      '@expo-google-fonts/dm-sans':
+        specifier: ^0.4.2
+        version: 0.4.2
       '@react-navigation/native':
         specifier: 6.1.18
         version: 6.1.18(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
@@ -178,6 +181,9 @@ importers:
       expo-constants:
         specifier: ~16.0.2
         version: 16.0.2(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
+      expo-font:
+        specifier: ^56.0.5
+        version: 56.0.5(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
       expo-secure-store:
         specifier: ~13.0.2
         version: 13.0.2(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
@@ -1368,6 +1374,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@expo-google-fonts/dm-sans@0.4.2':
+    resolution: {integrity: sha512-e/fLH5aCJzkEenz7axvEn8N7IJAKhUwNjIxS75h9j+Ip1M9S7d22M19gJN3A7QW4egVkBJRyQh1hQFhngQn9yA==}
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
@@ -3394,6 +3403,13 @@ packages:
     resolution: {integrity: sha512-Q1i2NuYri3jy32zdnBaHHCya1wH1yMAsI+3CCmj9zlQzlhsS9Bdwcj2W3c5eU5FvH2hsNQy4O+O1NnM6o/pDaQ==}
     peerDependencies:
       expo: '*'
+
+  expo-font@56.0.5:
+    resolution: {integrity: sha512-WLoDu9hlEgPRKXJRR01HFLJ6Z2tFcORX/WFPRYBndmYc5kjQrFGH/j4BRaF3aBRPyYEAUXiUJybNLXkKCwEXQw==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
+      react-native: '*'
 
   expo-keep-awake@13.0.2:
     resolution: {integrity: sha512-kKiwkVg/bY0AJ5q1Pxnm/GvpeB6hbNJhcFsoOWDh2NlpibhCLaHL826KHUM+WsnJRbVRxJ+K9vbPRHEMvFpVyw==}
@@ -7974,6 +7990,8 @@ snapshots:
   '@esbuild/win32-x64@0.23.1':
     optional: true
 
+  '@expo-google-fonts/dm-sans@0.4.2': {}
+
   '@expo/bunyan@4.0.1':
     dependencies:
       uuid: 8.3.2
@@ -10732,6 +10750,13 @@ snapshots:
     dependencies:
       expo: 51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
       fontfaceobserver: 2.3.0
+
+  expo-font@56.0.5(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0):
+    dependencies:
+      expo: 51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
+      fontfaceobserver: 2.3.0
+      react: 18.2.0
+      react-native: 0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0)
 
   expo-keep-awake@13.0.2(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)):
     dependencies:

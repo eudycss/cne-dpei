@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-body, html, #root { margin: 0; padding: 0; height: 100%; font-family: system-ui, -apple-system, sans-serif; background: #f5f6fa; color: #1f2937; }
+body, html, #root { margin: 0; padding: 0; height: 100%; font-family: 'DM Sans', system-ui, -apple-system, sans-serif; background: #f5f6fa; color: #1f2937; }
 a { color: #2563eb; text-decoration: none; }
 a:hover { text-decoration: underline; }
 

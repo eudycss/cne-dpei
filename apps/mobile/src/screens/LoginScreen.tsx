@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { fontFamily } from '../theme/typography';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -77,10 +78,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 20 },
   card: { width: '100%', maxWidth: 380, backgroundColor: '#fff', padding: 24, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   logoWrap: { alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: '700', textAlign: 'center', color: '#1f2937' },
-  subtitle: { fontSize: 13, textAlign: 'center', marginTop: 4, color: '#6b7280', marginBottom: 20 },
-  label: { fontSize: 13, color: '#374151', marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 14 },
+  title: { fontSize: 22, fontFamily: fontFamily.bold, textAlign: 'center', color: '#1f2937' },
+  subtitle: { fontSize: 13, fontFamily: fontFamily.regular, textAlign: 'center', marginTop: 4, color: '#6b7280', marginBottom: 20 },
+  label: { fontSize: 13, fontFamily: fontFamily.medium, color: '#374151', marginBottom: 4 },
+  input: { borderWidth: 1, borderColor: '#d1d5db', padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 14, fontFamily: fontFamily.regular },
   button: { backgroundColor: '#2563eb', padding: 12, borderRadius: 6, marginTop: 4 },
-  buttonText: { color: '#fff', textAlign: 'center', fontWeight: '600' },
+  buttonText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold },
 });

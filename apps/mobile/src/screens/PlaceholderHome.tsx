@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { fontFamily } from '../theme/typography';
 
 export function PlaceholderHome() {
   const { user, logout } = useAuth();
@@ -25,9 +26,9 @@ export function PlaceholderHome() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  hello: { fontSize: 24, fontWeight: '700', color: '#1f2937' },
-  role: { fontSize: 15, color: '#2563eb', marginTop: 8, fontWeight: '600' },
-  note: { fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 16, lineHeight: 20 },
+  hello: { fontSize: 24, fontFamily: fontFamily.bold, color: '#1f2937' },
+  role: { fontSize: 15, fontFamily: fontFamily.semiBold, color: '#2563eb', marginTop: 8 },
+  note: { fontSize: 14, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 16, lineHeight: 20 },
   button: { backgroundColor: '#e5e7eb', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 6, marginTop: 28 },
-  buttonText: { color: '#111827', fontWeight: '600' },
+  buttonText: { color: '#111827', fontFamily: fontFamily.semiBold },
 });
