@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated, Role, User } from '@cne/shared-types';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import { EditUserModal } from './EditUserModal';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -13,6 +14,8 @@ export function UsersList() {
   const [debounced, setDebounced] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAssign, setShowAssign] = useState(false);
+  const [editing, setEditing] = useState<User | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -41,6 +44,22 @@ export function UsersList() {
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
+  }
+
+  async function toggleActivo(u: User) {
+    const accion = u.activo ? 'desactivar' : 'activar';
+    if (!window.confirm(`¿Seguro que deseas ${accion} a ${u.nombres} ${u.apellidos}?`)) {
+      return;
+    }
+    setTogglingId(u.id);
+    try {
+      await api.patch(`/users/${u.id}`, { activo: !u.activo });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    } catch (e: any) {
+      window.alert(e?.response?.data?.message ?? 'No se pudo cambiar el estado');
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   return (
@@ -83,6 +102,7 @@ export function UsersList() {
                   <th>Teléfono</th>
                   <th>Roles</th>
                   <th>Estado</th>
+                  {isAdmin && <th style={{ width: 200 }}>Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -103,11 +123,32 @@ export function UsersList() {
                     <td>{u.telefono ?? '—'}</td>
                     <td>{u.roles.map((r) => <span key={r} className="badge">{r}</span>)}</td>
                     <td>{u.activo ? '✓ Activo' : '✗ Inactivo'}</td>
+                    {isAdmin && (
+                      <td>
+                        <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
+                          <button
+                            className="btn secondary"
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                            onClick={() => setEditing(u)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className={u.activo ? 'btn danger' : 'btn'}
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                            disabled={togglingId === u.id}
+                            onClick={() => toggleActivo(u)}
+                          >
+                            {u.activo ? 'Desactivar' : 'Activar'}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {data?.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                    <td colSpan={isAdmin ? 8 : 6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                       No hay usuarios
                     </td>
                   </tr>
@@ -146,6 +187,17 @@ export function UsersList() {
           onDone={() => {
             setShowAssign(false);
             setSelected(new Set());
+            qc.invalidateQueries({ queryKey: ['users'] });
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditUserModal
+          user={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
             qc.invalidateQueries({ queryKey: ['users'] });
           }}
         />
