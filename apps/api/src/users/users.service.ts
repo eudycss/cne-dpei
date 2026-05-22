@@ -37,10 +37,11 @@ export class UsersService {
     page?: number;
     pageSize?: number;
     search?: string;
+    role?: string;
   }): Promise<Paginated<User>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
-    const where = opts.search
+    const where: any = opts.search
       ? {
           OR: [
             { email: { contains: opts.search, mode: 'insensitive' as const } },
@@ -50,6 +51,9 @@ export class UsersService {
           ],
         }
       : {};
+    if (opts.role) {
+      where.roles = { some: { rol: { nombre: opts.role } } };
+    }
     const [total, items] = await this.prisma.$transaction([
       this.prisma.usuario.count({ where }),
       this.prisma.usuario.findMany({

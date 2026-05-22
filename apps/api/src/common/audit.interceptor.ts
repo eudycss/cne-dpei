@@ -41,6 +41,9 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/activate$/, accion: 'EVENTO_ACTIVATE', entidad: 'evento' },
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/close$/, accion: 'EVENTO_CLOSE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+\/config-alertas$/, accion: 'CONFIG_ALERTAS_UPDATE', entidad: 'evento' },
+  // Fase 2 — asignaciones operador ↔ supervisor
+  { method: 'PUT',    pathRegex: /^\/asignaciones$/,         accion: 'ASIGNACION_UPSERT', entidad: 'asignacion' },
+  { method: 'DELETE', pathRegex: /^\/asignaciones\/[^/]+$/, accion: 'ASIGNACION_DELETE', entidad: 'asignacion' },
 ];
 
 @Injectable()

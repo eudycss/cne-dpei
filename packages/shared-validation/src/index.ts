@@ -159,7 +159,15 @@ export const closeEventoSchema = z.object({
   justificacion: z.string().max(1000).optional(),
 });
 
+// --- Asignaciones operador ↔ supervisor (HU10) ---
+export const upsertAsignacionSchema = z.object({
+  eventoId: z.string().uuid('Evento inválido'),
+  operadorId: z.string().uuid('Operador inválido'),
+  supervisorId: z.string().uuid('Supervisor inválido'),
+});
+
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;
 export type ConfigAlertasInput = z.infer<typeof configAlertasSchema>;
+export type UpsertAsignacionInput = z.infer<typeof upsertAsignacionSchema>;

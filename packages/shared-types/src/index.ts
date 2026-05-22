@@ -196,3 +196,24 @@ export interface CloseEventoRequest {
   confirmar: boolean;
   justificacion?: string;
 }
+
+// ===================================================================
+// FASE 2 — Asignaciones operador ↔ supervisor (HU10)
+// ===================================================================
+
+export interface Asignacion {
+  id: string;
+  eventoId: string;
+  operadorId: string;
+  operadorNombre: string;
+  operadorCedula: string;
+  supervisorId: string;
+  supervisorNombre: string;
+  creadoEn: string;
+}
+
+export interface UpsertAsignacionRequest {
+  eventoId: string;
+  operadorId: string;
+  supervisorId: string;
+}

@@ -12,6 +12,7 @@ import { RolesModule } from './roles/roles.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { MilitaresModule } from './militares/militares.module';
 import { EventosModule } from './eventos/eventos.module';
+import { AsignacionesModule } from './asignaciones/asignaciones.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { EventosModule } from './eventos/eventos.module';
     CatalogModule,
     MilitaresModule,
     EventosModule,
+    AsignacionesModule,
   ],
   providers: [
     {
