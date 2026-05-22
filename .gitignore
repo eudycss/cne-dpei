@@ -47,3 +47,6 @@ coverage/
 
 # Uploads (Fase 1: storage local)
 apps/api/storage/
+
+# Claude Code (ajustes locales)
+.claude/settings.local.json
