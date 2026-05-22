@@ -5,6 +5,9 @@ import { Layout } from './pages/Layout';
 import { UsersList } from './pages/users/UsersList';
 import { NewUser } from './pages/users/NewUser';
 import { BulkUpload } from './pages/users/BulkUpload';
+import { MilitaresPage } from './pages/militares/MilitaresPage';
+import { BulkMilitares } from './pages/militares/BulkMilitares';
+import { EventosPage } from './pages/eventos/EventosPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -27,6 +30,8 @@ export default function App() {
         }
       >
         <Route path="/" element={<Navigate to="/users" replace />} />
+
+        {/* Usuarios */}
         <Route path="/users" element={<UsersList />} />
         <Route
           path="/users/new"
@@ -44,6 +49,20 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Militares */}
+        <Route path="/militares" element={<MilitaresPage />} />
+        <Route
+          path="/militares/upload"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR']}>
+              <BulkMilitares />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Eventos electorales */}
+        <Route path="/eventos" element={<EventosPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
