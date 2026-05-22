@@ -1,0 +1,25 @@
+{
+  "name": "cne-imbabura",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sistema de Gestión de Trazabilidad y Logística Electoral — CNE Imbabura",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres",
+    "db:migrate": "pnpm --filter @cne/api db:migrate",
+    "db:seed": "pnpm --filter @cne/api db:seed",
+    "dev:api": "pnpm --filter @cne/api dev",
+    "dev:web": "pnpm --filter @cne/web dev",
+    "dev:mobile": "pnpm --filter @cne/mobile start",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4"
+  }
+}
