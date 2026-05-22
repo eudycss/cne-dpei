@@ -8,13 +8,13 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
+// Vigila todo el monorepo (assets compartidos, packages)
 config.watchFolders = [workspaceRoot];
 
+// Resuelve dependencias tanto en el proyecto como en la raíz del monorepo
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
-
-config.resolver.disableHierarchicalLookup = true;
 
 module.exports = config;

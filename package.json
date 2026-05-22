@@ -21,5 +21,8 @@
   },
   "devDependencies": {
     "typescript": "5.5.4"
+  },
+  "dependencies": {
+    "@react-native/assets-registry": "0.74.87"
   }
 }
