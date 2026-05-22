@@ -7,6 +7,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { SearchInput } from '../../components/SearchInput';
+import { ExcelUploadButton } from '../../components/ExcelUploadButton';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -79,7 +80,7 @@ export function UsersList() {
           {isAdmin && (
             <>
               <Link to="/users/new" className="btn">+ Nuevo</Link>
-              <Link to="/users/upload" className="btn secondary">Cargar Excel/CSV</Link>
+              <ExcelUploadButton to="/users/upload" />
               <button
                 className="btn secondary"
                 disabled={selected.size === 0}

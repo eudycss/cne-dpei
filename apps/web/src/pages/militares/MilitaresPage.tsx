@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Militar, Paginated, Recinto } from '@cne/shared-types';
 import { createMilitarSchema, updateMilitarSchema } from '@cne/shared-validation';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
+import { ExcelUploadButton } from '../../components/ExcelUploadButton';
 
 export function MilitaresPage() {
   const { user } = useAuth();
@@ -65,7 +65,7 @@ export function MilitaresPage() {
           {isAdmin && (
             <>
               <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo</button>
-              <Link to="/militares/upload" className="btn secondary">Cargar Excel/CSV</Link>
+              <ExcelUploadButton to="/militares/upload" />
             </>
           )}
         </div>
