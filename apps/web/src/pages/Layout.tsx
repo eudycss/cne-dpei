@@ -1,12 +1,16 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function Layout() {
   const { user, logout } = useAuth();
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1>CNE Imbabura</h1>
+        <div className="brand">
+          <Logo height={44} />
+          <h1>CNE Imbabura</h1>
+        </div>
         <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
           Usuarios
         </NavLink>

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -29,6 +30,9 @@ export function Login() {
   return (
     <div className="center">
       <form className="login-card" onSubmit={onSubmit}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+          <Logo height={72} />
+        </div>
         <h1>CNE Imbabura</h1>
         <p className="muted" style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
           Sistema de Trazabilidad y Logística Electoral

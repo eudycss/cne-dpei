@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function ChangePasswordScreen() {
   const { markPasswordChanged } = useAuth();
@@ -35,6 +36,9 @@ export function ChangePasswordScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
+        <View style={styles.logoWrap}>
+          <Logo height={56} />
+        </View>
         <Text style={styles.title}>Cambia tu contraseña</Text>
         <Text style={styles.subtitle}>
           Mínimo 12 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
@@ -56,6 +60,7 @@ export function ChangePasswordScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 20 },
   card: { width: '100%', maxWidth: 380, backgroundColor: '#fff', padding: 24, borderRadius: 12 },
+  logoWrap: { alignItems: 'center', marginBottom: 12 },
   title: { fontSize: 20, fontWeight: '700', color: '#1f2937' },
   subtitle: { fontSize: 13, color: '#6b7280', marginVertical: 8 },
   label: { fontSize: 13, color: '#374151', marginBottom: 4 },

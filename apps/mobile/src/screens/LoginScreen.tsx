@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -38,6 +39,9 @@ export function LoginScreen() {
       style={styles.container}
     >
       <View style={styles.card}>
+        <View style={styles.logoWrap}>
+          <Logo height={72} />
+        </View>
         <Text style={styles.title}>CNE Imbabura</Text>
         <Text style={styles.subtitle}>Trazabilidad y Logística Electoral</Text>
 
@@ -72,6 +76,7 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 20 },
   card: { width: '100%', maxWidth: 380, backgroundColor: '#fff', padding: 24, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
+  logoWrap: { alignItems: 'center', marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700', textAlign: 'center', color: '#1f2937' },
   subtitle: { fontSize: 13, textAlign: 'center', marginTop: 4, color: '#6b7280', marginBottom: 20 },
   label: { fontSize: 13, color: '#374151', marginBottom: 4 },

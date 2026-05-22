@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function ChangePassword() {
   const { markPasswordChanged } = useAuth();
@@ -38,6 +39,9 @@ export function ChangePassword() {
   return (
     <div className="center">
       <form className="login-card" onSubmit={onSubmit}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+          <Logo height={60} />
+        </div>
         <h1>Cambia tu contraseña</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
           Por seguridad, debes cambiar la contraseña inicial. Mínimo 12 caracteres con
