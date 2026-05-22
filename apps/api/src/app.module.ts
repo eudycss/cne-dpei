@@ -13,6 +13,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { MilitaresModule } from './militares/militares.module';
 import { EventosModule } from './eventos/eventos.module';
 import { AsignacionesModule } from './asignaciones/asignaciones.module';
+import { KitsModule } from './kits/kits.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AsignacionesModule } from './asignaciones/asignaciones.module';
     MilitaresModule,
     EventosModule,
     AsignacionesModule,
+    KitsModule,
   ],
   providers: [
     {

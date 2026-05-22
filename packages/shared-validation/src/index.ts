@@ -166,6 +166,19 @@ export const upsertAsignacionSchema = z.object({
   supervisorId: z.string().uuid('Supervisor inválido'),
 });
 
+// --- Kits electorales (HU11) ---
+export const createKitSchema = z.object({
+  eventoId: z.string().uuid('Evento inválido'),
+  nombre: z.string().min(1, 'Requerido').max(160),
+  contenidos: z.string().max(1000).nullable().optional(),
+});
+
+export const pdfQrSchema = z.object({
+  kitIds: z.array(z.string().uuid()).min(1, 'Selecciona al menos un kit').max(200),
+});
+
+export type CreateKitInput = z.infer<typeof createKitSchema>;
+
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;

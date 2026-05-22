@@ -44,6 +44,9 @@ const AUDIT_TABLE: Array<{
   // Fase 2 — asignaciones operador ↔ supervisor
   { method: 'PUT',    pathRegex: /^\/asignaciones$/,         accion: 'ASIGNACION_UPSERT', entidad: 'asignacion' },
   { method: 'DELETE', pathRegex: /^\/asignaciones\/[^/]+$/, accion: 'ASIGNACION_DELETE', entidad: 'asignacion' },
+  // Fase 3 — kits electorales (HU11)
+  { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
+  { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },
 ];
 
 @Injectable()

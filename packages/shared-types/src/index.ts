@@ -217,3 +217,38 @@ export interface UpsertAsignacionRequest {
   operadorId: string;
   supervisorId: string;
 }
+
+// ===================================================================
+// FASE 3 — Kits electorales (HU11)
+// ===================================================================
+
+export type EstadoKit =
+  | 'EN_BODEGA'
+  | 'ASIGNADO'
+  | 'ENTREGADO'
+  | 'EN_RECINTO'
+  | 'EN_RETORNO'
+  | 'RETORNADO';
+
+export interface Kit {
+  id: string;
+  eventoId: string;
+  codigoUnico: string;
+  qrPayload: string;
+  nombre: string;
+  contenidos: string | null;
+  recintoId: string | null;
+  operadorId: string | null;
+  estado: EstadoKit;
+  creadoEn: string;
+}
+
+export interface CreateKitRequest {
+  eventoId: string;
+  nombre: string;
+  contenidos?: string | null;
+}
+
+export interface PdfQrRequest {
+  kitIds: string[];
+}
