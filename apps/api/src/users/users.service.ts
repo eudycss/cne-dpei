@@ -125,7 +125,8 @@ export class UsersService {
     });
     if (!existing) throw new NotFoundException('Usuario no encontrado');
 
-    const temporaryPassword = generateInitialPassword();
+    // Contraseña por defecto fija (configurable por entorno).
+    const temporaryPassword = process.env.DEFAULT_RESET_PASSWORD ?? 'CneImbabura2026*';
     const passwordHash = await argon2.hash(temporaryPassword);
 
     await this.prisma.$transaction([

@@ -52,7 +52,7 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
         {!tempPassword ? (
           <>
             <p className="muted">
-              Se generará una contraseña temporal para{' '}
+              Se asignará la contraseña por defecto a{' '}
               <strong>{user.nombres} {user.apellidos}</strong> ({user.email}).
               El usuario deberá cambiarla en su próximo inicio de sesión y sus
               sesiones activas se cerrarán.
@@ -70,8 +70,8 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
         ) : (
           <>
             <div className="banner success">
-              Contraseña temporal generada. Entrégala al usuario; deberá
-              cambiarla al ingresar.
+              Contraseña restablecida. Entrégale al usuario la contraseña por
+              defecto; deberá cambiarla al ingresar.
             </div>
             <div
               className="row"
