@@ -9,6 +9,7 @@ import { MilitaresPage } from './pages/militares/MilitaresPage';
 import { BulkMilitares } from './pages/militares/BulkMilitares';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
+import { KitsPage } from './pages/kits/KitsPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -67,6 +68,9 @@ export default function App() {
 
         {/* Asignaciones operador ↔ supervisor */}
         <Route path="/asignaciones" element={<AsignacionesPage />} />
+
+        {/* Kits electorales */}
+        <Route path="/kits" element={<KitsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
