@@ -1,0 +1,81 @@
+import { FormEvent, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { strongPasswordSchema } from '@cne/shared-validation';
+import { api } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
+
+export function ChangePassword() {
+  const { markPasswordChanged } = useAuth();
+  const [currentPassword, setCurrent] = useState('');
+  const [newPassword, setNew] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+  const navigate = useNavigate();
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (newPassword !== confirm) {
+      setError('La confirmación no coincide');
+      return;
+    }
+    const parse = strongPasswordSchema.safeParse(newPassword);
+    if (!parse.success) {
+      setError(parse.error.issues[0]?.message ?? 'Contraseña inválida');
+      return;
+    }
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword });
+      markPasswordChanged();
+      setOk(true);
+      setTimeout(() => navigate('/users', { replace: true }), 800);
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'No se pudo cambiar la contraseña');
+    }
+  }
+
+  return (
+    <div className="center">
+      <form className="login-card" onSubmit={onSubmit}>
+        <h1>Cambia tu contraseña</h1>
+        <p className="muted" style={{ marginBottom: '1rem' }}>
+          Por seguridad, debes cambiar la contraseña inicial. Mínimo 12 caracteres con
+          mayúsculas, minúsculas, dígitos y símbolos.
+        </p>
+        <div className="field">
+          <label>Contraseña actual</label>
+          <input
+            type="password"
+            required
+            value={currentPassword}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Nueva contraseña</label>
+          <input
+            type="password"
+            required
+            value={newPassword}
+            onChange={(e) => setNew(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Confirmar nueva contraseña</label>
+          <input
+            type="password"
+            required
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </div>
+        {error && <div className="banner error">{error}</div>}
+        {ok && <div className="banner success">Contraseña actualizada</div>}
+        <button className="btn" type="submit" style={{ width: '100%' }}>
+          Cambiar contraseña
+        </button>
+      </form>
+    </div>
+  );
+}

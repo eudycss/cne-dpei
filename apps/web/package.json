@@ -1,0 +1,29 @@
+{
+  "name": "@cne/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@cne/shared-types": "workspace:*",
+    "@cne/shared-validation": "workspace:*",
+    "@tanstack/react-query": "5.59.0",
+    "@tanstack/react-table": "8.20.5",
+    "axios": "1.7.7",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.27.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.2",
+    "typescript": "5.5.4",
+    "vite": "5.4.8"
+  }
+}
