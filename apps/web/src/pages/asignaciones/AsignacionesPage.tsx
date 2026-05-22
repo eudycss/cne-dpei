@@ -1,33 +1,47 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-types';
 import { api } from '../../lib/api';
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
-
 const SIN_ASIGNAR = '';
-
-// ─── Página ──────────────────────────────────────────────────────────────────
 
 export function AsignacionesPage() {
   const [eventoId, setEventoId] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
   const qc = useQueryClient();
 
-  // Todos los eventos (para el selector)
+  // Debounce de búsqueda
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Resetear página al cambiar búsqueda o evento
+  useEffect(() => { setPage(1); }, [debounced, eventoId]);
+
+  // Todos los eventos (selector superior)
   const { data: eventos } = useQuery({
     queryKey: ['eventos'],
     queryFn: async () => (await api.get<EventoElectoral[]>('/eventos')).data,
   });
 
-  // Operadores CDA (rol OPERADOR_CDA)
-  const { data: operadoresData } = useQuery({
-    queryKey: ['users-operadores'],
-    queryFn: async () =>
-      (await api.get<Paginated<User>>('/users?role=OPERADOR_CDA&pageSize=500')).data,
-    staleTime: 60_000,
+  // Operadores CDA paginados + búsqueda (server-side)
+  const { data: operadoresData, isLoading: loadingOp } = useQuery({
+    queryKey: ['users-operadores', { page, search: debounced }],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        role: 'OPERADOR_CDA',
+        pageSize: '20',
+        page: String(page),
+      });
+      if (debounced) params.set('search', debounced);
+      return (await api.get<Paginated<User>>(`/users?${params}`)).data;
+    },
   });
 
-  // Técnicos supervisores (rol TECNICO_SUPERVISOR)
+  // Técnicos supervisores: pocos, cargamos todos de una vez
   const { data: supervisoresData } = useQuery({
     queryKey: ['users-supervisores'],
     queryFn: async () =>
@@ -35,22 +49,28 @@ export function AsignacionesPage() {
     staleTime: 60_000,
   });
 
-  // Asignaciones actuales del evento seleccionado
+  // Asignaciones del evento: todas a la vez para el mapa operadorId→asignación
   const { data: asignaciones, isLoading: loadingAsig } = useQuery({
     queryKey: ['asignaciones', eventoId],
-    queryFn: async () => (await api.get<Asignacion[]>(`/asignaciones?eventoId=${eventoId}`)).data,
+    queryFn: async () =>
+      (await api.get<Asignacion[]>(`/asignaciones?eventoId=${eventoId}`)).data,
     enabled: !!eventoId,
   });
 
   const operadores = operadoresData?.items ?? [];
   const supervisores = supervisoresData?.items ?? [];
-
-  // Mapeo operadorId → asignación actual
-  const asigByOperador = new Map<string, Asignacion>(
-    (asignaciones ?? []).map((a) => [a.operadorId, a]),
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil((operadoresData?.total ?? 0) / (operadoresData?.pageSize ?? 20))),
+    [operadoresData],
   );
 
-  // Seleccionar automáticamente el evento activo al cargar
+  // Mapa operadorId → asignación (funciona sobre todos los del evento, no solo la página)
+  const asigByOperador = useMemo(
+    () => new Map<string, Asignacion>((asignaciones ?? []).map((a) => [a.operadorId, a])),
+    [asignaciones],
+  );
+
+  // Pre-seleccionar el evento ACTIVO al cargar
   if (!eventoId && eventos) {
     const activo = eventos.find((e) => e.estado === 'ACTIVO');
     if (activo) setEventoId(activo.id);
@@ -59,9 +79,7 @@ export function AsignacionesPage() {
 
   async function handleChange(operadorId: string, supervisorId: string) {
     if (!eventoId) return;
-
     if (supervisorId === SIN_ASIGNAR) {
-      // Eliminar asignación existente si la hay
       const existente = asigByOperador.get(operadorId);
       if (existente) {
         try {
@@ -73,7 +91,6 @@ export function AsignacionesPage() {
       }
       return;
     }
-
     try {
       await api.put('/asignaciones', { eventoId, operadorId, supervisorId });
       qc.invalidateQueries({ queryKey: ['asignaciones', eventoId] });
@@ -83,15 +100,16 @@ export function AsignacionesPage() {
   }
 
   const eventoSeleccionado = eventos?.find((e) => e.id === eventoId);
+  const isLoading = loadingOp || loadingAsig;
 
   return (
     <>
       <h2>Asignación operador ↔ supervisor</h2>
 
-      {/* Selector de evento */}
+      {/* ── Selector de evento ── */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="row" style={{ alignItems: 'center', margin: 0 }}>
-          <label style={{ fontWeight: 600, minWidth: 120 }}>Evento electoral</label>
+          <label style={{ fontWeight: 600, minWidth: 130 }}>Evento electoral</label>
           <select
             value={eventoId}
             onChange={(e) => setEventoId(e.target.value)}
@@ -107,14 +125,16 @@ export function AsignacionesPage() {
             <option value="">— Selecciona un evento —</option>
             {eventos?.map((e) => (
               <option key={e.id} value={e.id}>
-                {e.nombre} ({e.estado === 'ACTIVO' ? '✓ Activo' : e.estado === 'BORRADOR' ? 'Borrador' : 'Cerrado'})
+                {e.nombre} (
+                {e.estado === 'ACTIVO' ? '✓ Activo' : e.estado === 'BORRADOR' ? 'Borrador' : 'Cerrado'}
+                )
               </option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Tabla de asignaciones */}
+      {/* ── Tabla de asignaciones ── */}
       {eventoId && (
         <div className="card">
           {eventoSeleccionado && (
@@ -124,61 +144,103 @@ export function AsignacionesPage() {
             </p>
           )}
 
-          {operadores.length === 0 ? (
-            <div className="banner" style={{ marginBottom: 0 }}>
-              No hay usuarios con rol <strong>OPERADOR_CDA</strong> en el sistema. Asigna
-              ese rol a los usuarios en la sección{' '}
-              <a href="/users">Usuarios</a>.
-            </div>
-          ) : supervisores.length === 0 ? (
+          {supervisores.length === 0 && !loadingOp ? (
             <div className="banner" style={{ marginBottom: 0 }}>
               No hay usuarios con rol <strong>TECNICO_SUPERVISOR</strong>. Asigna ese rol
-              a al menos un usuario en{' '}
-              <a href="/users">Usuarios</a>.
+              a al menos un usuario en <a href="/users">Usuarios</a>.
             </div>
-          ) : loadingAsig ? (
-            <p className="muted">Cargando asignaciones…</p>
           ) : (
             <>
-              <p className="muted" style={{ marginTop: 0 }}>
-                Selecciona el técnico supervisor para cada operador CDA. Los cambios se
-                guardan automáticamente.
+              {/* Barra de búsqueda */}
+              <div className="row" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  placeholder="Buscar operador por nombre, apellido o cédula…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    fontSize: '0.9rem',
+                  }}
+                />
+              </div>
+
+              <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+                Selecciona el técnico supervisor para cada operador CDA. Los cambios se guardan
+                automáticamente.
               </p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Operador CDA</th>
-                    <th>Cédula</th>
-                    <th>Técnico supervisor asignado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {operadores.map((op) => {
-                    const asig = asigByOperador.get(op.id);
-                    return (
+
+              {isLoading ? (
+                <p className="muted">Cargando…</p>
+              ) : operadores.length === 0 ? (
+                <p className="muted" style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                  {debounced
+                    ? 'No hay operadores que coincidan con la búsqueda.'
+                    : 'No hay usuarios con rol OPERADOR_CDA en el sistema.'}
+                  {!debounced && (
+                    <>
+                      {' '}Asigna ese rol en <a href="/users">Usuarios</a>.
+                    </>
+                  )}
+                </p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Operador CDA</th>
+                      <th>Cédula</th>
+                      <th>Técnico supervisor asignado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operadores.map((op) => (
                       <OperadorRow
                         key={op.id}
                         operador={op}
                         supervisores={supervisores}
-                        supervisorId={asig?.supervisorId ?? SIN_ASIGNAR}
+                        supervisorId={asigByOperador.get(op.id)?.supervisorId ?? SIN_ASIGNAR}
                         onChange={(svId) => handleChange(op.id, svId)}
                       />
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="muted" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
-                {asignaciones?.length ?? 0} de {operadores.length} operador(es) asignado(s)
-              </p>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* Paginación y resumen */}
+              <div className="row" style={{ marginTop: '1rem', justifyContent: 'space-between' }}>
+                <span className="muted">
+                  {operadoresData
+                    ? `${operadoresData.total} operador(es) · página ${page} de ${totalPages} · ${asignaciones?.length ?? 0} asignado(s)`
+                    : ''}
+                </span>
+                <div className="row">
+                  <button
+                    className="btn secondary"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    ← Anterior
+                  </button>
+                  <button
+                    className="btn secondary"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </div>
       )}
 
-      {!eventoId && eventos && eventos.length === 0 && (
+      {!eventoId && eventos?.length === 0 && (
         <div className="card">
           <div className="banner" style={{ marginBottom: 0 }}>
-            No hay eventos electorales creados. Crea uno en la sección{' '}
+            No hay eventos electorales creados. Crea uno en{' '}
             <a href="/eventos">Eventos Electorales</a>.
           </div>
         </div>
@@ -187,7 +249,7 @@ export function AsignacionesPage() {
   );
 }
 
-// ─── Fila de operador con select de supervisor ────────────────────────────────
+// ─── Fila de operador ────────────────────────────────────────────────────────
 
 function OperadorRow({
   operador,
@@ -218,32 +280,34 @@ function OperadorRow({
       </td>
       <td>{operador.cedula}</td>
       <td>
-        <select
-          value={supervisorId}
-          onChange={handleChange}
-          disabled={saving}
-          style={{
-            padding: '0.35rem 0.5rem',
-            border: '1px solid #d1d5db',
-            borderRadius: 6,
-            fontSize: '0.85rem',
-            minWidth: 240,
-            background: supervisorId ? '#f0fdf4' : '#fff',
-            color: supervisorId ? '#15803d' : '#6b7280',
-          }}
-        >
-          <option value="">— Sin asignar —</option>
-          {supervisores.map((sv) => (
-            <option key={sv.id} value={sv.id}>
-              {sv.nombres} {sv.apellidos} ({sv.cedula})
-            </option>
-          ))}
-        </select>
-        {saving && (
-          <span className="muted" style={{ marginLeft: '0.5rem', fontSize: '0.78rem' }}>
-            Guardando…
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <select
+            value={supervisorId}
+            onChange={handleChange}
+            disabled={saving}
+            style={{
+              padding: '0.35rem 0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.85rem',
+              minWidth: 260,
+              background: supervisorId ? '#f0fdf4' : '#fff',
+              color: supervisorId ? '#15803d' : '#6b7280',
+            }}
+          >
+            <option value="">— Sin asignar —</option>
+            {supervisores.map((sv) => (
+              <option key={sv.id} value={sv.id}>
+                {sv.nombres} {sv.apellidos} ({sv.cedula})
+              </option>
+            ))}
+          </select>
+          {saving && (
+            <span className="muted" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+              Guardando…
+            </span>
+          )}
+        </div>
       </td>
     </tr>
   );
