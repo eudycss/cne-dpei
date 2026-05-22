@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "CNE Imbabura",
+    "slug": "cne-imbabura-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1e293b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ec.gob.cne.imbabura"
+    },
+    "android": {
+      "package": "ec.gob.cne.imbabura"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:3000"
+    }
+  }
+}
