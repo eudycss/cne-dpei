@@ -20,6 +20,9 @@ export function Layout() {
         <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
           Eventos Electorales
         </NavLink>
+        <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
+          Asignaciones
+        </NavLink>
         <div className="me">
           <div>
             <strong>{user?.nombres} {user?.apellidos}</strong>
