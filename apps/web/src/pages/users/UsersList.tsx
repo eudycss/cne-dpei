@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
+import { SearchInput } from '../../components/SearchInput';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -69,11 +70,11 @@ export function UsersList() {
       <h2>Usuarios</h2>
       <div className="card">
         <div className="row">
-          <input
+          <SearchInput
             placeholder="Buscar por nombre, email o cédula"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            style={{ flex: 1, padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: 6 }}
+            onChange={(v) => { setSearch(v); setPage(1); }}
+            style={{ flex: 1 }}
           />
           {isAdmin && (
             <>

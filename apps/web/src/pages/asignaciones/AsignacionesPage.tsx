@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-types';
 import { api } from '../../lib/api';
+import { SearchInput } from '../../components/SearchInput';
 
 const SIN_ASIGNAR = '';
 
@@ -153,17 +154,11 @@ export function AsignacionesPage() {
             <>
               {/* Barra de búsqueda */}
               <div className="row" style={{ marginBottom: '0.75rem' }}>
-                <input
+                <SearchInput
                   placeholder="Buscar operador por nombre, apellido o cédula…"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    fontSize: '0.9rem',
-                  }}
+                  onChange={(v) => setSearch(v)}
+                  style={{ flex: 1 }}
                 />
               </div>
 
