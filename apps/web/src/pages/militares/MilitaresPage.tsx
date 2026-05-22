@@ -310,22 +310,48 @@ function MilitarModal({
         {/* Selector de recinto con búsqueda */}
         <div className="field" style={{ position: 'relative' }}>
           <label>Recinto</label>
-          <input
-            placeholder="Escribe el nombre o código del recinto…"
-            value={recintoSearch}
-            onChange={(e) => {
-              setRecintoSearch(e.target.value);
-              setForm((f) => ({ ...f, recintoId: '' }));
-              setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
-            autoComplete="off"
-          />
-          {form.recintoId && (
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#16a34a' }}>
-              ✓ Recinto seleccionado
-            </p>
-          )}
+          <div style={{ position: 'relative' }}>
+            <input
+              placeholder="Escribe el nombre o código del recinto…"
+              value={recintoSearch}
+              onChange={(e) => {
+                setRecintoSearch(e.target.value);
+                setForm((f) => ({ ...f, recintoId: '' }));
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              autoComplete="off"
+              style={{ paddingRight: form.recintoId ? '2.2rem' : undefined }}
+            />
+            {form.recintoId && (
+              <button
+                type="button"
+                title="Limpiar recinto"
+                onClick={() => {
+                  setForm((f) => ({ ...f, recintoId: '' }));
+                  setRecintoSearch('');
+                  setShowDropdown(false);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0.1rem 0.2rem',
+                  color: '#6b7280',
+                  fontSize: '1rem',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           {showDropdown && filteredRecintos.length > 0 && (
             <div
               style={{
