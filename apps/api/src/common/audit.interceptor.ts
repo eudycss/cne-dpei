@@ -30,6 +30,17 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/users\/[^/]+\/reset-password$/, accion: 'USER_PASSWORD_RESET', entidad: 'usuario' },
   { method: 'POST',  pathRegex: /^\/users\/bulk$/,           accion: 'BULK_USER_UPLOAD', entidad: 'usuario' },
   { method: 'POST',  pathRegex: /^\/users\/assign-roles$/,   accion: 'ROLE_ASSIGN' },
+  // Fase 2 — militares
+  { method: 'POST',  pathRegex: /^\/militares$/,             accion: 'MILITAR_CREATE', entidad: 'militar' },
+  { method: 'PATCH', pathRegex: /^\/militares\/[^/]+$/,      accion: 'MILITAR_UPDATE', entidad: 'militar' },
+  { method: 'DELETE',pathRegex: /^\/militares\/[^/]+$/,      accion: 'MILITAR_DELETE', entidad: 'militar' },
+  { method: 'POST',  pathRegex: /^\/militares\/bulk$/,       accion: 'BULK_MILITAR_UPLOAD', entidad: 'militar' },
+  // Fase 2 — eventos electorales
+  { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
+  { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento' },
+  { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/activate$/, accion: 'EVENTO_ACTIVATE', entidad: 'evento' },
+  { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/close$/, accion: 'EVENTO_CLOSE', entidad: 'evento' },
+  { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+\/config-alertas$/, accion: 'CONFIG_ALERTAS_UPDATE', entidad: 'evento' },
 ];
 
 @Injectable()

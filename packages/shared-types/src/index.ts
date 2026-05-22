@@ -98,3 +98,101 @@ export interface Paginated<T> {
   page: number;
   pageSize: number;
 }
+
+// ===================================================================
+// FASE 2 — Catálogos y eventos
+// ===================================================================
+
+export type TipoRecinto = 'CDA' | 'NO_CDA';
+
+export interface Canton {
+  id: number;
+  codigo: string;
+  nombre: string;
+}
+
+export interface Recinto {
+  id: string;
+  codigoRecinto: string;
+  nombre: string;
+  direccion: string | null;
+  cantonId: number;
+  cantonNombre?: string;
+  parroquia: string | null;
+  zona: string | null;
+  tipo: TipoRecinto;
+  tieneInternet: boolean;
+  coberturaMovil: boolean;
+  numeroElectores: number | null;
+}
+
+export interface Militar {
+  id: string;
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  recintoId: string;
+  recintoNombre?: string;
+  recintoCodigo?: string;
+  creadoEn: string;
+}
+
+export interface CreateMilitarRequest {
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  recintoId: string;
+}
+
+export interface UpdateMilitarRequest {
+  cedula?: string;
+  nombres?: string;
+  apellidos?: string;
+  recintoId?: string;
+}
+
+export type TipoEventoElectoral =
+  | 'ELECCION_GENERAL'
+  | 'SEGUNDA_VUELTA'
+  | 'CONSULTA_POPULAR'
+  | 'REFERENDUM'
+  | 'OTRO';
+
+export type EstadoEvento = 'BORRADOR' | 'ACTIVO' | 'CERRADO';
+
+export interface ConfigAlertas {
+  umbralLlegadaRecintoMin: number;
+  umbralLlegadaDpiMin: number;
+  umbralSinSyncMin: number;
+}
+
+export interface EventoElectoral {
+  id: string;
+  nombre: string;
+  tipo: TipoEventoElectoral;
+  fechaJornada: string;
+  descripcion: string | null;
+  estado: EstadoEvento;
+  creadoEn: string;
+  cerradoEn: string | null;
+  configAlertas?: ConfigAlertas;
+}
+
+export interface CreateEventoRequest {
+  nombre: string;
+  tipo: TipoEventoElectoral;
+  fechaJornada: string;
+  descripcion?: string | null;
+}
+
+export interface UpdateEventoRequest {
+  nombre?: string;
+  tipo?: TipoEventoElectoral;
+  fechaJornada?: string;
+  descripcion?: string | null;
+}
+
+export interface CloseEventoRequest {
+  confirmar: boolean;
+  justificacion?: string;
+}
