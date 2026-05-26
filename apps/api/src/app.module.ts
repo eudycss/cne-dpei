@@ -9,6 +9,11 @@ import { AuditInterceptor } from './common/audit.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { MilitaresModule } from './militares/militares.module';
+import { EventosModule } from './eventos/eventos.module';
+import { AsignacionesModule } from './asignaciones/asignaciones.module';
+import { KitsModule } from './kits/kits.module';
 
 @Module({
   imports: [
@@ -32,6 +37,11 @@ import { RolesModule } from './roles/roles.module';
     AuthModule,
     UsersModule,
     RolesModule,
+    CatalogModule,
+    MilitaresModule,
+    EventosModule,
+    AsignacionesModule,
+    KitsModule,
   ],
   providers: [
     {

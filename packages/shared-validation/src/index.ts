@@ -93,3 +93,94 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type BulkUserRow = z.infer<typeof bulkUserRowSchema>;
+
+// ===================================================================
+// FASE 2 — Catálogos y eventos
+// ===================================================================
+
+// --- Militares (HU8) ---
+export const createMilitarSchema = z.object({
+  cedula: cedulaSchema,
+  nombres: nombreSchema,
+  apellidos: nombreSchema,
+  recintoId: z.string().uuid('Recinto inválido'),
+});
+
+export const updateMilitarSchema = z.object({
+  cedula: cedulaSchema.optional(),
+  nombres: nombreSchema.optional(),
+  apellidos: nombreSchema.optional(),
+  recintoId: z.string().uuid().optional(),
+});
+
+// Fila de Excel/CSV: el recinto se referencia por su código único
+export const bulkMilitarRowSchema = z.object({
+  cedula: cedulaSchema,
+  nombres: nombreSchema,
+  apellidos: nombreSchema,
+  codigo_recinto: z.string().min(1, 'Código de recinto requerido'),
+});
+
+// --- Eventos electorales (HU20) ---
+export const tipoEventoEnum = z.enum([
+  'ELECCION_GENERAL',
+  'SEGUNDA_VUELTA',
+  'CONSULTA_POPULAR',
+  'REFERENDUM',
+  'OTRO',
+]);
+
+export const createEventoSchema = z.object({
+  nombre: z.string().min(1, 'Requerido').max(160),
+  tipo: tipoEventoEnum,
+  fechaJornada: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
+  descripcion: z.string().max(2000).nullable().optional(),
+});
+
+export const updateEventoSchema = z.object({
+  nombre: z.string().min(1).max(160).optional(),
+  tipo: tipoEventoEnum.optional(),
+  fechaJornada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  descripcion: z.string().max(2000).nullable().optional(),
+});
+
+export const configAlertasSchema = z.object({
+  umbralLlegadaRecintoMin: z.number().int().min(1).max(1440),
+  umbralLlegadaDpiMin: z.number().int().min(1).max(1440),
+  umbralSinSyncMin: z.number().int().min(1).max(1440),
+});
+
+export const closeEventoSchema = z.object({
+  confirmar: z.literal(true, {
+    errorMap: () => ({ message: 'Debes confirmar el cierre del evento' }),
+  }),
+  justificacion: z.string().max(1000).optional(),
+});
+
+// --- Asignaciones operador ↔ supervisor (HU10) ---
+export const upsertAsignacionSchema = z.object({
+  eventoId: z.string().uuid('Evento inválido'),
+  operadorId: z.string().uuid('Operador inválido'),
+  supervisorId: z.string().uuid('Supervisor inválido'),
+});
+
+// --- Kits electorales (HU11) ---
+export const createKitSchema = z.object({
+  eventoId: z.string().uuid('Evento inválido'),
+  nombre: z.string().min(1, 'Requerido').max(160),
+  contenidos: z.string().max(1000).nullable().optional(),
+});
+
+export const pdfQrSchema = z.object({
+  kitIds: z.array(z.string().uuid()).min(1, 'Selecciona al menos un kit').max(200),
+});
+
+export type CreateKitInput = z.infer<typeof createKitSchema>;
+
+export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
+export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
+export type CreateEventoInput = z.infer<typeof createEventoSchema>;
+export type ConfigAlertasInput = z.infer<typeof configAlertasSchema>;
+export type UpsertAsignacionInput = z.infer<typeof upsertAsignacionSchema>;

@@ -38,11 +38,13 @@ export class UsersController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('role') role?: string,
   ) {
     return this.users.list({
       page: page ? Number(page) : 1,
       pageSize: pageSize ? Number(pageSize) : 20,
       search,
+      role,
     });
   }
 

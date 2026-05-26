@@ -6,6 +6,8 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
+import { SearchInput } from '../../components/SearchInput';
+import { ExcelUploadButton } from '../../components/ExcelUploadButton';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -69,16 +71,16 @@ export function UsersList() {
       <h2>Usuarios</h2>
       <div className="card">
         <div className="row">
-          <input
+          <SearchInput
             placeholder="Buscar por nombre, email o cédula"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            style={{ flex: 1, padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: 6 }}
+            onChange={(v) => { setSearch(v); setPage(1); }}
+            style={{ flex: 1 }}
           />
           {isAdmin && (
             <>
               <Link to="/users/new" className="btn">+ Nuevo</Link>
-              <Link to="/users/upload" className="btn secondary">Cargar Excel/CSV</Link>
+              <ExcelUploadButton to="/users/upload" />
               <button
                 className="btn secondary"
                 disabled={selected.size === 0}

@@ -1,0 +1,70 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import type { CreateKitRequest, PdfQrRequest } from '@cne/shared-types';
+import { createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+
+import { KitsService } from './kits.service';
+import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
+import { ZodValidationPipe } from '../common/zod-body.pipe';
+
+@ApiTags('kits')
+@ApiBearerAuth()
+@Controller('kits')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class KitsController {
+  constructor(private readonly kits: KitsService) {}
+
+  @Get()
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @ApiOperation({ summary: 'HU11: listar kits electorales de un evento' })
+  list(
+    @Query('eventoId') eventoId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    if (!eventoId) return { items: [], total: 0, page: 1, pageSize: 20 };
+    return this.kits.list({
+      eventoId,
+      page: page ? Number(page) : 1,
+      pageSize: pageSize ? Number(pageSize) : 20,
+      search,
+    });
+  }
+
+  @Post()
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'HU11-CA1: crear kit electoral con código QR único' })
+  create(
+    @Body(new ZodValidationPipe(createKitSchema)) body: CreateKitRequest,
+  ) {
+    return this.kits.create(body);
+  }
+
+  @Post('pdf-qr')
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'HU11-CA3: exportar PDF con etiquetas QR de kits seleccionados' })
+  async pdfQr(
+    @Body(new ZodValidationPipe(pdfQrSchema)) body: PdfQrRequest,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.kits.generatePdfQr(body);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=kits-qr.pdf');
+    res.send(buffer);
+  }
+}
