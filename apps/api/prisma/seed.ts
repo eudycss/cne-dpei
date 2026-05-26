@@ -133,7 +133,7 @@ async function main() {
   console.log('→ Iniciando seed...');
   await ensureRoles();
   await ensureCantones();
-  await ensureRecintos();
+  //await ensureRecintos();
   await ensureAdminInicial();
   console.log('✓ Seed completo');
 }
