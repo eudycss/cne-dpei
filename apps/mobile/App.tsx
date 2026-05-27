@@ -13,7 +13,7 @@ import {
   DMSans_700Bold,
   DMSans_700Bold_Italic,
 } from '@expo-google-fonts/dm-sans';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -21,26 +21,55 @@ import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
 import { PlaceholderHome } from './src/screens/PlaceholderHome';
 import { SalidaDpiScreen } from './src/screens/SalidaDpiScreen';
 import { EnTransitoScreen } from './src/screens/EnTransitoScreen';
+import { LlegadaRecintoScreen } from './src/screens/LlegadaRecintoScreen';
+import { EnRecintoScreen } from './src/screens/EnRecintoScreen';
+import { getMiAsignacion } from './src/lib/queries/tracking';
 
 export type RootStackParamList = {
   Login: undefined;
   ChangePassword: undefined;
   Home: undefined;
-  SalidaDpi: undefined;
-  EnTransito: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+type OperadorEtapa = 'SALIDA' | 'EN_TRANSITO' | 'LLEGADA' | 'EN_RECINTO';
+
 function OperadorFlow() {
-  // HU2: el operador empieza en SalidaDpi; al registrar (o si ya registró antes)
-  // pasa a EnTransito. Las pantallas posteriores de HU3+ se agregarán en su fase.
-  const [salidaRegistrada, setSalidaRegistrada] = useState(false);
-  return salidaRegistrada ? (
-    <EnTransitoScreen />
-  ) : (
-    <SalidaDpiScreen onSalidaRegistrada={() => setSalidaRegistrada(true)} />
-  );
+  // HU2 → HU3: el operador transita por estados durante la jornada electoral.
+  // Al iniciar consultamos mi-asignacion para arrancar en la etapa correcta;
+  // si el operador cerró la app y la vuelve a abrir no retrocede.
+  const [etapa, setEtapa] = useState<OperadorEtapa | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getMiAsignacion();
+        if (data.yaRegistroLlegada) setEtapa('EN_RECINTO');
+        else if (data.yaRegistroSalida) setEtapa('EN_TRANSITO');
+        else setEtapa('SALIDA');
+      } catch {
+        // Si falla la carga inicial, SalidaDpiScreen mostrará el error con reintento
+        setEtapa('SALIDA');
+      }
+    })();
+  }, []);
+
+  if (etapa === null) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f6fa' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+  if (etapa === 'EN_RECINTO') return <EnRecintoScreen />;
+  if (etapa === 'LLEGADA') {
+    return <LlegadaRecintoScreen onLlegadaRegistrada={() => setEtapa('EN_RECINTO')} />;
+  }
+  if (etapa === 'EN_TRANSITO') {
+    return <EnTransitoScreen onMarcarLlegada={() => setEtapa('LLEGADA')} />;
+  }
+  return <SalidaDpiScreen onSalidaRegistrada={() => setEtapa('EN_TRANSITO')} />;
 }
 
 function Navigator() {

@@ -14,14 +14,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "ec.gob.cne.imbabura",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral."
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral.",
+        "NSCameraUsageDescription": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales."
       }
     },
     "android": {
       "package": "ec.gob.cne.imbabura",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
       ]
     },
     "plugins": [
@@ -29,6 +31,12 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales."
         }
       ]
     ],
