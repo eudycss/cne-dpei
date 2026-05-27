@@ -31,11 +31,15 @@ export async function marcarNotificacionLeida(id: string): Promise<void> {
  */
 export function describirNotificacion(n: NotificacionItem): string {
   const p = n.payload ?? {};
+  const operador = (p.operadorNombre as string) ?? 'Un operador';
+  const recinto = (p.recintoNombre as string) ?? 'su recinto';
   switch (n.tipoEvento) {
-    case 'SALIDA_DPI': {
-      const operador = (p.operadorNombre as string) ?? 'Un operador';
-      const recinto = (p.recintoNombre as string) ?? 'su recinto';
+    case 'SALIDA_DPI':
       return `${operador} salió del DPI hacia ${recinto}`;
+    case 'LLEGADA_RECINTO': {
+      const kits = p.kitsRecibidos as number | undefined;
+      const sufijo = kits != null ? ` y recibió ${kits} kit${kits === 1 ? '' : 's'}` : '';
+      return `${operador} llegó a ${recinto}${sufijo}`;
     }
     default:
       return n.tipoEvento;
