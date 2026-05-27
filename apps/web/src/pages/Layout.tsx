@@ -1,9 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { NotificationsBell } from '../components/NotificationsBell';
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const puedeVerNotificaciones =
+    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -46,6 +50,11 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">
+        {puedeVerNotificaciones ? (
+          <div className="topbar">
+            <NotificationsBell />
+          </div>
+        ) : null}
         <Outlet />
       </main>
     </div>
