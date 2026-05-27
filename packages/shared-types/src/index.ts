@@ -267,6 +267,7 @@ export interface MiAsignacionRecinto {
 }
 
 export interface MiAsignacionMilitar {
+  id: string;
   nombres: string;
   apellidos: string;
   cedula: string;
@@ -277,6 +278,7 @@ export interface MiAsignacionKit {
   codigoUnico: string;
   nombre: string;
   contenidos: string | null;
+  recibido: boolean;
 }
 
 export interface MiAsignacionResponse {
@@ -286,6 +288,51 @@ export interface MiAsignacionResponse {
   militar: MiAsignacionMilitar | null;
   kits: MiAsignacionKit[];
   yaRegistroSalida: boolean;
+  yaRegistroLlegada: boolean;
+  fotoMilitarUrl: string | null;
+}
+
+// HU3 — Llegada al recinto y recepción de kits
+
+export interface FotoMilitarResponse {
+  fotoUrl: string;
+}
+
+export interface ValidarKitRequest {
+  codigo: string;
+}
+
+export interface ValidarKitResponse {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+  contenidos: string | null;
+  yaRecibido: boolean;
+}
+
+export interface RecepcionKitRequest {
+  kitId: string;
+  fotoMilitarUrl: string;
+  militarId: string | null;
+  latitud: number;
+  longitud: number;
+}
+
+export interface RecepcionKitResponse {
+  id: string;
+  kitId: string;
+  confirmadoEn: string;
+}
+
+export interface LlegadaRecintoRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface LlegadaRecintoResponse {
+  id: string;
+  ocurridoEn: string;
 }
 
 export interface SalidaDpiRequest {

@@ -192,6 +192,29 @@ export const salidaDpiSchema = z.object({
 
 export type SalidaDpiInput = z.infer<typeof salidaDpiSchema>;
 
+// HU3 — Llegada al recinto y recepción de kits
+export const validarKitSchema = z.object({
+  codigo: z.string().min(1, 'Código requerido').max(40),
+});
+
+export const recepcionKitSchema = z.object({
+  kitId: z.string().uuid('Kit inválido'),
+  fotoMilitarUrl: z.string().min(1, 'Foto del militar requerida'),
+  militarId: z.string().uuid().nullable().optional(),
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+});
+
+export const llegadaRecintoSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export type ValidarKitInput = z.infer<typeof validarKitSchema>;
+export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
+export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
+
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;
