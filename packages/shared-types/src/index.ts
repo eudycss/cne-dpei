@@ -252,3 +252,64 @@ export interface CreateKitRequest {
 export interface PdfQrRequest {
   kitIds: string[];
 }
+
+// ===================================================================
+// FASE 4 — Tracking del operador (HU2)
+// ===================================================================
+
+export interface MiAsignacionRecinto {
+  id: string;
+  codigoRecinto: string;
+  nombre: string;
+  direccion: string | null;
+  cantonNombre: string | null;
+  parroquia: string | null;
+}
+
+export interface MiAsignacionMilitar {
+  nombres: string;
+  apellidos: string;
+  cedula: string;
+}
+
+export interface MiAsignacionKit {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+  contenidos: string | null;
+}
+
+export interface MiAsignacionResponse {
+  eventoId: string;
+  eventoNombre: string;
+  recinto: MiAsignacionRecinto;
+  militar: MiAsignacionMilitar | null;
+  kits: MiAsignacionKit[];
+  yaRegistroSalida: boolean;
+}
+
+export interface SalidaDpiRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface SalidaDpiResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+// ===================================================================
+// FASE 4 — Notificaciones in-app (HU2-CA3, base para HU19)
+// ===================================================================
+
+export type CanalNotificacion = 'PUSH' | 'EMAIL';
+
+export interface NotificacionItem {
+  id: string;
+  tipoEvento: string;
+  canal: CanalNotificacion;
+  payload: Record<string, unknown> | null;
+  creadoEn: string;
+  leidaEn: string | null;
+}

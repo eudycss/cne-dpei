@@ -179,6 +179,19 @@ export const pdfQrSchema = z.object({
 
 export type CreateKitInput = z.infer<typeof createKitSchema>;
 
+// ===================================================================
+// FASE 4 — Tracking del operador (HU2)
+// ===================================================================
+export const salidaDpiSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z
+    .string()
+    .datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export type SalidaDpiInput = z.infer<typeof salidaDpiSchema>;
+
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;
