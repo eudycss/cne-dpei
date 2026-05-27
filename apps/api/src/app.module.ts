@@ -14,6 +14,7 @@ import { MilitaresModule } from './militares/militares.module';
 import { EventosModule } from './eventos/eventos.module';
 import { AsignacionesModule } from './asignaciones/asignaciones.module';
 import { KitsModule } from './kits/kits.module';
+import { StorageModule } from './storage/storage.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
@@ -44,6 +45,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     EventosModule,
     AsignacionesModule,
     KitsModule,
+    StorageModule,
     NotificationsModule,
     TrackingModule,
   ],

@@ -17,6 +17,37 @@ export class NotificationsService {
     eventoId: string;
     payload: Record<string, unknown>;
   }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'SALIDA_DPI',
+      payload: opts.payload,
+    });
+  }
+
+  /**
+   * HU3-CA7: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
+   * y los administradores cuando el operador registra su llegada al recinto.
+   */
+  async encolarLlegadaRecinto(opts: {
+    operadorId: string;
+    eventoId: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'LLEGADA_RECINTO',
+      payload: opts.payload,
+    });
+  }
+
+  private async encolarParaSupervisorYAdmins(opts: {
+    operadorId: string;
+    eventoId: string;
+    tipoEvento: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
     const destinatarios = new Set<string>();
 
     const asignacion = await this.prisma.asignacionSupervisor.findUnique({
@@ -39,13 +70,13 @@ export class NotificationsService {
     const filas = Array.from(destinatarios).flatMap((usuarioId) => [
       {
         usuarioId,
-        tipoEvento: 'SALIDA_DPI',
+        tipoEvento: opts.tipoEvento,
         canal: 'PUSH' as const,
         payload: opts.payload as any,
       },
       {
         usuarioId,
-        tipoEvento: 'SALIDA_DPI',
+        tipoEvento: opts.tipoEvento,
         canal: 'EMAIL' as const,
         payload: opts.payload as any,
       },
