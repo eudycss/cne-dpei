@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Login } from './pages/Login';
+import { Logout } from './pages/Logout';
 import { ChangePassword } from './pages/ChangePassword';
 import { Layout } from './pages/Layout';
 import { UsersList } from './pages/users/UsersList';
@@ -16,6 +17,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/logout" element={<Logout />} />
       <Route
         path="/change-password"
         element={
