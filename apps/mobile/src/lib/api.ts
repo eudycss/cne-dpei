@@ -1,9 +1,20 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-const BASE_URL =
-  (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:3000';
+// En el emulador Android, "localhost" apunta al propio emulador, no al host.
+// El alias estándar al host es 10.0.2.2. iOS simulator y web sí resuelven localhost.
+function resolveBaseUrl(): string {
+  const configured =
+    (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:3000';
+  if (Platform.OS === 'android') {
+    return configured.replace(/(\/\/)(localhost|127\.0\.0\.1)(?=[:/]|$)/, '$110.0.2.2');
+  }
+  return configured;
+}
+
+const BASE_URL = resolveBaseUrl();
 
 const ACCESS_KEY = 'cne.access';
 const REFRESH_KEY = 'cne.refresh';
