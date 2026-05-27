@@ -12,20 +12,35 @@ import {
   DMSans_700Bold,
   DMSans_700Bold_Italic,
 } from '@expo-google-fonts/dm-sans';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
 import { PlaceholderHome } from './src/screens/PlaceholderHome';
+import { SalidaDpiScreen } from './src/screens/SalidaDpiScreen';
+import { EnTransitoScreen } from './src/screens/EnTransitoScreen';
 
 export type RootStackParamList = {
   Login: undefined;
   ChangePassword: undefined;
   Home: undefined;
+  SalidaDpi: undefined;
+  EnTransito: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function OperadorFlow() {
+  // HU2: el operador empieza en SalidaDpi; al registrar (o si ya registró antes)
+  // pasa a EnTransito. Las pantallas posteriores de HU3+ se agregarán en su fase.
+  const [salidaRegistrada, setSalidaRegistrada] = useState(false);
+  return salidaRegistrada ? (
+    <EnTransitoScreen />
+  ) : (
+    <SalidaDpiScreen onSalidaRegistrada={() => setSalidaRegistrada(true)} />
+  );
+}
 
 function Navigator() {
   const { user, restoring } = useAuth();
@@ -38,12 +53,16 @@ function Navigator() {
     );
   }
 
+  const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
         <Stack.Screen name="Login" component={LoginScreen} />
       ) : user.debeCambiarPwd ? (
         <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      ) : esOperador ? (
+        <Stack.Screen name="Home" component={OperadorFlow} />
       ) : (
         <Stack.Screen name="Home" component={PlaceholderHome} />
       )}

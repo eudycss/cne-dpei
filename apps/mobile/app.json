@@ -12,11 +12,26 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ec.gob.cne.imbabura"
+      "bundleIdentifier": "ec.gob.cne.imbabura",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral."
+      }
     },
     "android": {
-      "package": "ec.gob.cne.imbabura"
+      "package": "ec.gob.cne.imbabura",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral."
+        }
+      ]
+    ],
     "extra": {
       "apiUrl": "http://localhost:3000"
     }
