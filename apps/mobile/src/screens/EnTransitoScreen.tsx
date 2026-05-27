@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { AppBar } from '../components/AppBar';
 import { fontFamily } from '../theme/typography';
 
 export function EnTransitoScreen() {
@@ -7,6 +8,8 @@ export function EnTransitoScreen() {
 
   return (
     <View style={styles.container}>
+      <AppBar subtitle="En tránsito al recinto" />
+      <View style={styles.body}>
       <View style={styles.iconCircle}>
         <Text style={styles.icon}>✓</Text>
       </View>
@@ -22,6 +25,7 @@ export function EnTransitoScreen() {
       <Pressable style={styles.button} onPress={() => logout()}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>
+      </View>
     </View>
   );
 }
@@ -30,6 +34,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f6fa',
+  },
+  body: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 28,

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { AppBar } from '../components/AppBar';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
 import {
   LocationPermissionDeniedError,
@@ -102,24 +103,30 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={styles.loadingText}>Cargando tu asignación…</Text>
+      <View style={styles.container}>
+        <AppBar subtitle="Registro de salida" />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Cargando tu asignación…</Text>
+        </View>
       </View>
     );
   }
 
   if (error || !asignacion) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>No se pudo cargar tu asignación</Text>
-        <Text style={styles.errorMsg}>{error}</Text>
-        <Pressable style={styles.retryButton} onPress={cargar}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </Pressable>
-        <Pressable style={styles.logoutButton} onPress={() => logout()}>
-          <Text style={styles.logoutText}>Cerrar sesión</Text>
-        </Pressable>
+      <View style={styles.container}>
+        <AppBar subtitle="Registro de salida" />
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>No se pudo cargar tu asignación</Text>
+          <Text style={styles.errorMsg}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={cargar}>
+            <Text style={styles.retryText}>Reintentar</Text>
+          </Pressable>
+          <Pressable style={styles.logoutButton} onPress={() => logout()}>
+            <Text style={styles.logoutText}>Cerrar sesión</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -128,6 +135,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
+      <AppBar subtitle="Registro de salida" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.greeting}>Hola {user?.nombres} 👋</Text>
         <Text style={styles.eventoLabel}>Evento: {eventoNombre}</Text>
@@ -197,7 +205,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f6fa' },
   scroll: { padding: 20, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#f5f6fa' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   loadingText: { marginTop: 12, fontFamily: fontFamily.regular, color: '#6b7280' },
   greeting: { fontSize: 20, fontFamily: fontFamily.bold, color: '#1f2937' },
   eventoLabel: { fontSize: 13, fontFamily: fontFamily.medium, color: '#2563eb', marginTop: 4, marginBottom: 16 },
