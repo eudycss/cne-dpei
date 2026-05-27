@@ -47,6 +47,8 @@ const AUDIT_TABLE: Array<{
   // Fase 3 — kits electorales (HU11)
   { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
   { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },
+  // Fase 4 — tracking del operador (HU2)
+  { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
 ];
 
 @Injectable()
