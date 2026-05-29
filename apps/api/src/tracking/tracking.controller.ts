@@ -19,15 +19,19 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type {
+  IngestaPosicionesRequest,
   LlegadaRecintoRequest,
   RecepcionKitRequest,
   SalidaDpiRequest,
+  SalidaRecintoRequest,
   ValidarKitRequest,
 } from '@cne/shared-types';
 import {
+  ingestaPosicionesSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
+  salidaRecintoSchema,
   validarKitSchema,
 } from '@cne/shared-validation';
 
@@ -126,5 +130,40 @@ export class TrackingController {
     @Body(new ZodValidationPipe(llegadaRecintoSchema)) body: LlegadaRecintoRequest,
   ) {
     return this.tracking.registrarLlegadaRecinto(user.sub, body);
+  }
+
+  @Post('salida-recinto')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'HU4-CA2/CA3: registra la salida del recinto e inicia el retorno al DPI',
+  })
+  salidaRecinto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(salidaRecintoSchema)) body: SalidaRecintoRequest,
+  ) {
+    return this.tracking.registrarSalidaRecinto(user.sub, body);
+  }
+
+  @Post('posiciones')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'HU4-CA3: ingesta de lotes de posiciones GPS durante el retorno',
+  })
+  posiciones(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(ingestaPosicionesSchema)) body: IngestaPosicionesRequest,
+  ) {
+    return this.tracking.ingestarPosiciones(user.sub, body);
+  }
+
+  @Get('operadores-en-retorno')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'HU4-CA4 / HU6: operadores en retorno con su última posición GPS',
+  })
+  operadoresEnRetorno(@CurrentUser() user: AuthenticatedUser) {
+    return this.tracking.operadoresEnRetorno(user.sub, user.roles);
   }
 }

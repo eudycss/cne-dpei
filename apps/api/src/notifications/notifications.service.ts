@@ -42,6 +42,24 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * HU4-CA4: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
+   * y los administradores cuando el operador registra su salida del recinto e
+   * inicia el retorno al DPI.
+   */
+  async encolarSalidaRecinto(opts: {
+    operadorId: string;
+    eventoId: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'SALIDA_RECINTO',
+      payload: opts.payload,
+    });
+  }
+
   private async encolarParaSupervisorYAdmins(opts: {
     operadorId: string;
     eventoId: string;
