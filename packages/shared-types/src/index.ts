@@ -290,6 +290,7 @@ export interface MiAsignacionResponse {
   yaRegistroSalida: boolean;
   yaRegistroLlegada: boolean;
   yaRegistroSalidaRecinto: boolean;
+  yaRegistroLlegadaDpi: boolean;
   fotoMilitarUrl: string | null;
 }
 
@@ -382,6 +383,19 @@ export interface OperadorEnRetorno {
   longitud: number;
   capturadoEn: string;
   kits: number;
+}
+
+// HU5 — Llegada al DPI
+
+export interface LlegadaDpiRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface LlegadaDpiResponse {
+  id: string;
+  ocurridoEn: string;
 }
 
 // ===================================================================

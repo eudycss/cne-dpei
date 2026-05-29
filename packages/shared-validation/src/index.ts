@@ -231,11 +231,19 @@ export const ingestaPosicionesSchema = z.object({
     .max(200, 'Máximo 200 posiciones por lote'),
 });
 
+// HU5 — Llegada al DPI
+export const llegadaDpiSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
 export type ValidarKitInput = z.infer<typeof validarKitSchema>;
 export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
 export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
 export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
 export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
+export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;
 
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
