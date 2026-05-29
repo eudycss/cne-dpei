@@ -27,7 +27,8 @@ export async function marcarNotificacionLeida(id: string): Promise<void> {
 
 /**
  * Formatea el payload de una notificación según su tipoEvento.
- * Conoce SALIDA_DPI (HU2), LLEGADA_RECINTO (HU3) y SALIDA_RECINTO (HU4).
+ * Conoce SALIDA_DPI (HU2), LLEGADA_RECINTO (HU3), SALIDA_RECINTO (HU4) y
+ * LLEGADA_DPI (HU5).
  */
 export function describirNotificacion(n: NotificacionItem): string {
   const p = n.payload ?? {};
@@ -43,6 +44,8 @@ export function describirNotificacion(n: NotificacionItem): string {
     }
     case 'SALIDA_RECINTO':
       return `${operador} salió de ${recinto} e inició el retorno al DPI`;
+    case 'LLEGADA_DPI':
+      return `${operador} llegó al DPI y completó su jornada`;
     default:
       return n.tipoEvento;
   }
