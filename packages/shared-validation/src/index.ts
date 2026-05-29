@@ -211,9 +211,31 @@ export const llegadaRecintoSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
 });
 
+// HU4 — Salida del recinto y rastreo continuo
+export const salidaRecintoSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export const ingestaPosicionesSchema = z.object({
+  posiciones: z
+    .array(
+      z.object({
+        latitud: z.number().min(-90).max(90),
+        longitud: z.number().min(-180).max(180),
+        capturadoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+      }),
+    )
+    .min(1, 'Se requiere al menos una posición')
+    .max(200, 'Máximo 200 posiciones por lote'),
+});
+
 export type ValidarKitInput = z.infer<typeof validarKitSchema>;
 export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
 export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
+export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
+export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
 
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;

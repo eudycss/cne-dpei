@@ -289,6 +289,7 @@ export interface MiAsignacionResponse {
   kits: MiAsignacionKit[];
   yaRegistroSalida: boolean;
   yaRegistroLlegada: boolean;
+  yaRegistroSalidaRecinto: boolean;
   fotoMilitarUrl: string | null;
 }
 
@@ -344,6 +345,43 @@ export interface SalidaDpiRequest {
 export interface SalidaDpiResponse {
   id: string;
   ocurridoEn: string;
+}
+
+// HU4 — Salida del recinto y rastreo continuo
+
+export interface SalidaRecintoRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface SalidaRecintoResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+export interface PosicionGpsPunto {
+  latitud: number;
+  longitud: number;
+  capturadoEn: string;
+}
+
+export interface IngestaPosicionesRequest {
+  posiciones: PosicionGpsPunto[];
+}
+
+export interface IngestaPosicionesResponse {
+  recibidas: number;
+}
+
+// Lectura para monitoreo en tiempo real (HU4-CA4, consumido por HU6)
+export interface OperadorEnRetorno {
+  operadorId: string;
+  operadorNombre: string;
+  latitud: number;
+  longitud: number;
+  capturadoEn: string;
+  kits: number;
 }
 
 // ===================================================================
