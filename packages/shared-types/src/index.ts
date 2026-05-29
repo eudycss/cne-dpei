@@ -375,14 +375,20 @@ export interface IngestaPosicionesResponse {
   recibidas: number;
 }
 
-// Lectura para monitoreo en tiempo real (HU4-CA4, consumido por HU6)
+// Lectura para monitoreo en tiempo real (HU4-CA4, HU6)
+export interface OperadorEnRetornoKit {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+}
+
 export interface OperadorEnRetorno {
   operadorId: string;
   operadorNombre: string;
   latitud: number;
   longitud: number;
   capturadoEn: string;
-  kits: number;
+  kits: OperadorEnRetornoKit[];
 }
 
 // HU5 — Llegada al DPI

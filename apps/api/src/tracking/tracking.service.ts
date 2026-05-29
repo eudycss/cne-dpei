@@ -13,6 +13,7 @@ import type {
   LlegadaRecintoResponse,
   MiAsignacionResponse,
   OperadorEnRetorno,
+  OperadorEnRetornoKit,
   RecepcionKitRequest,
   RecepcionKitResponse,
   RoleName,
@@ -616,14 +617,18 @@ export class TrackingService {
       operadores.map((o) => [o.id, `${o.nombres} ${o.apellidos}`]),
     );
 
-    const kitsPorOperador = await this.prisma.kitElectoral.groupBy({
-      by: ['operadorId'],
+    const kitsRows = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
-      _count: { _all: true },
+      select: { id: true, codigoUnico: true, nombre: true, operadorId: true },
+      orderBy: { codigoUnico: 'asc' },
     });
-    const kitsPorId = new Map(
-      kitsPorOperador.map((k) => [k.operadorId as string, k._count._all]),
-    );
+    const kitsPorId = new Map<string, OperadorEnRetornoKit[]>();
+    for (const k of kitsRows) {
+      if (!k.operadorId) continue;
+      const arr = kitsPorId.get(k.operadorId) ?? [];
+      arr.push({ id: k.id, codigoUnico: k.codigoUnico, nombre: k.nombre });
+      kitsPorId.set(k.operadorId, arr);
+    }
 
     const resultado: OperadorEnRetorno[] = [];
     for (const id of operadorIds) {
@@ -646,7 +651,7 @@ export class TrackingService {
         latitud: pos.lat,
         longitud: pos.lng,
         capturadoEn: pos.capturado_en.toISOString(),
-        kits: kitsPorId.get(id) ?? 0,
+        kits: kitsPorId.get(id) ?? [],
       });
     }
 
