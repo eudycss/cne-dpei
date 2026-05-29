@@ -24,6 +24,8 @@ import { EnTransitoScreen } from './src/screens/EnTransitoScreen';
 import { LlegadaRecintoScreen } from './src/screens/LlegadaRecintoScreen';
 import { SalidaRecintoScreen } from './src/screens/SalidaRecintoScreen';
 import { EnRetornoScreen } from './src/screens/EnRetornoScreen';
+import { LlegadaDpiScreen } from './src/screens/LlegadaDpiScreen';
+import { RetornadoScreen } from './src/screens/RetornadoScreen';
 import { getMiAsignacion } from './src/lib/queries/tracking';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
@@ -43,10 +45,12 @@ type OperadorEtapa =
   | 'EN_TRANSITO'
   | 'LLEGADA'
   | 'EN_RECINTO'
-  | 'EN_RETORNO';
+  | 'EN_RETORNO'
+  | 'LLEGADA_DPI'
+  | 'RETORNADO';
 
 function OperadorFlow() {
-  // HU2 → HU4: el operador transita por estados durante la jornada electoral.
+  // HU2 → HU5: el operador transita por estados durante la jornada electoral.
   // Al iniciar consultamos mi-asignacion para arrancar en la etapa correcta;
   // si el operador cerró la app y la vuelve a abrir no retrocede.
   const [etapa, setEtapa] = useState<OperadorEtapa | null>(null);
@@ -55,7 +59,8 @@ function OperadorFlow() {
     (async () => {
       try {
         const data = await getMiAsignacion();
-        if (data.yaRegistroSalidaRecinto) setEtapa('EN_RETORNO');
+        if (data.yaRegistroLlegadaDpi) setEtapa('RETORNADO');
+        else if (data.yaRegistroSalidaRecinto) setEtapa('EN_RETORNO');
         else if (data.yaRegistroLlegada) setEtapa('EN_RECINTO');
         else if (data.yaRegistroSalida) setEtapa('EN_TRANSITO');
         else setEtapa('SALIDA');
@@ -73,7 +78,13 @@ function OperadorFlow() {
       </View>
     );
   }
-  if (etapa === 'EN_RETORNO') return <EnRetornoScreen />;
+  if (etapa === 'RETORNADO') return <RetornadoScreen />;
+  if (etapa === 'LLEGADA_DPI') {
+    return <LlegadaDpiScreen onLlegadaRegistrada={() => setEtapa('RETORNADO')} />;
+  }
+  if (etapa === 'EN_RETORNO') {
+    return <EnRetornoScreen onMarcarLlegada={() => setEtapa('LLEGADA_DPI')} />;
+  }
   if (etapa === 'EN_RECINTO') {
     return <SalidaRecintoScreen onSalidaRegistrada={() => setEtapa('EN_RETORNO')} />;
   }

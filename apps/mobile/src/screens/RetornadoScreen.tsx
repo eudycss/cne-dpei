@@ -3,31 +3,23 @@ import { useAuth } from '../auth/AuthContext';
 import { AppBar } from '../components/AppBar';
 import { fontFamily } from '../theme/typography';
 
-interface Props {
-  onMarcarLlegada: () => void;
-}
-
-export function EnRetornoScreen({ onMarcarLlegada }: Props) {
+export function RetornadoScreen() {
   const { user, logout } = useAuth();
   return (
     <View style={styles.container}>
-      <AppBar subtitle="En retorno al DPI" />
+      <AppBar subtitle="Jornada completada" />
       <View style={styles.body}>
         <View style={styles.iconCircle}>
-          <Text style={styles.icon}>📍</Text>
+          <Text style={styles.icon}>✓</Text>
         </View>
-        <Text style={styles.title}>Rastreo activo</Text>
+        <Text style={styles.title}>Llegada al DPI registrada</Text>
         <Text style={styles.subtitle}>
-          Hola {user?.nombres}, tu salida del recinto está registrada y tu ubicación se está
-          compartiendo en tiempo real durante el retorno al DPI.
+          Hola {user?.nombres}, tu llegada a la Delegación Provincial de Imbabura está
+          registrada y el rastreo de tu ubicación ha finalizado.
         </Text>
         <Text style={styles.message}>
-          Mantén la aplicación instalada y la ubicación activada. Cuando llegues a la
-          Delegación, presiona el botón para registrar tu llegada.
+          Has completado tu jornada electoral. Gracias por tu trabajo.
         </Text>
-        <Pressable style={styles.btnPrimary} onPress={onMarcarLlegada}>
-          <Text style={styles.btnPrimaryText}>Ya llegué al DPI</Text>
-        </Pressable>
         <Pressable style={styles.btnSecondary} onPress={() => logout()}>
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
@@ -43,24 +35,15 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#10b981',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
   },
-  icon: { fontSize: 36 },
+  icon: { color: '#fff', fontSize: 40, fontFamily: fontFamily.bold },
   title: { fontSize: 24, fontFamily: fontFamily.bold, color: '#1f2937', textAlign: 'center' },
   subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: '#4b5563', textAlign: 'center', marginTop: 12, lineHeight: 20 },
   message: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 16, marginBottom: 32, lineHeight: 20 },
-  btnPrimary: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 8,
-    marginBottom: 12,
-    minWidth: 240,
-  },
-  btnPrimaryText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 15 },
   btnSecondary: { paddingVertical: 10, paddingHorizontal: 24 },
   btnSecondaryText: { color: '#6b7280', fontFamily: fontFamily.medium },
 });
