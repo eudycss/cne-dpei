@@ -11,6 +11,7 @@ import { BulkMilitares } from './pages/militares/BulkMilitares';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
+import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -73,6 +74,9 @@ export default function App() {
 
         {/* Kits electorales */}
         <Route path="/kits" element={<KitsPage />} />
+
+        {/* Monitoreo de operadores en retorno (HU6) */}
+        <Route path="/operadores" element={<MonitoreoPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
