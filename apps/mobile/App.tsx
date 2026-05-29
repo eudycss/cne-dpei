@@ -26,6 +26,7 @@ import { SalidaRecintoScreen } from './src/screens/SalidaRecintoScreen';
 import { EnRetornoScreen } from './src/screens/EnRetornoScreen';
 import { LlegadaDpiScreen } from './src/screens/LlegadaDpiScreen';
 import { RetornadoScreen } from './src/screens/RetornadoScreen';
+import { MonitoreoScreen } from './src/screens/MonitoreoScreen';
 import { getMiAsignacion } from './src/lib/queries/tracking';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
@@ -109,6 +110,7 @@ function Navigator() {
   }
 
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
+  const esSupervisor = user?.roles.includes('TECNICO_SUPERVISOR') ?? false;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -118,6 +120,8 @@ function Navigator() {
         <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       ) : esOperador ? (
         <Stack.Screen name="Home" component={OperadorFlow} />
+      ) : esSupervisor ? (
+        <Stack.Screen name="Home" component={MonitoreoScreen} />
       ) : (
         <Stack.Screen name="Home" component={PlaceholderHome} />
       )}
