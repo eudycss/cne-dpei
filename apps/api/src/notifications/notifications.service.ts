@@ -60,6 +60,24 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * HU5-CA3: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
+   * y los administradores cuando el operador registra su llegada al DPI y
+   * completa la jornada; con este evento finaliza el monitoreo en tiempo real.
+   */
+  async encolarLlegadaDpi(opts: {
+    operadorId: string;
+    eventoId: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'LLEGADA_DPI',
+      payload: opts.payload,
+    });
+  }
+
   private async encolarParaSupervisorYAdmins(opts: {
     operadorId: string;
     eventoId: string;

@@ -7,6 +7,8 @@ import {
 import type {
   IngestaPosicionesRequest,
   IngestaPosicionesResponse,
+  LlegadaDpiRequest,
+  LlegadaDpiResponse,
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
   MiAsignacionResponse,
@@ -22,6 +24,7 @@ import type {
 } from '@cne/shared-types';
 import {
   ingestaPosicionesSchema,
+  llegadaDpiSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -84,7 +87,7 @@ export class TrackingService {
       orderBy: { creadoEn: 'asc' },
     });
 
-    const [salidaPrevia, llegadaPrevia, salidaRecintoPrevia, recepciones] =
+    const [salidaPrevia, llegadaPrevia, salidaRecintoPrevia, llegadaDpiPrevia, recepciones] =
       await this.prisma.$transaction([
         this.prisma.eventoTracking.findFirst({
           where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_DPI' },
@@ -96,6 +99,10 @@ export class TrackingService {
         }),
         this.prisma.eventoTracking.findFirst({
           where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
+          select: { id: true },
+        }),
+        this.prisma.eventoTracking.findFirst({
+          where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
           select: { id: true },
         }),
         this.prisma.recepcionKit.findMany({
@@ -136,6 +143,7 @@ export class TrackingService {
       yaRegistroSalida: !!salidaPrevia,
       yaRegistroLlegada: !!llegadaPrevia,
       yaRegistroSalidaRecinto: !!salidaRecintoPrevia,
+      yaRegistroLlegadaDpi: !!llegadaDpiPrevia,
       fotoMilitarUrl,
     };
   }
@@ -643,5 +651,89 @@ export class TrackingService {
     }
 
     return resultado;
+  }
+
+  /**
+   * HU5-CA2/CA3: registra EventoTracking LLEGADA_DPI con GPS, valida que la
+   * salida del recinto se haya registrado antes, marca los kits como RETORNADO
+   * y notifica a supervisor y administradores. Con este evento finaliza el
+   * monitoreo en tiempo real (operadoresEnRetorno excluye a quienes ya llegaron).
+   * Rechaza segundo POST con 409.
+   */
+  async registrarLlegadaDpi(
+    operadorId: string,
+    input: LlegadaDpiRequest,
+  ): Promise<LlegadaDpiResponse> {
+    const parsed = llegadaDpiSchema.parse(input);
+
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const existente = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
+      select: { id: true },
+    });
+    if (existente) throw new ConflictException('Ya registraste tu llegada al DPI');
+
+    const salidaRecintoPrevia = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
+      select: { id: true },
+    });
+    if (!salidaRecintoPrevia) {
+      throw new BadRequestException(
+        'Debes registrar la salida del recinto antes de la llegada al DPI',
+      );
+    }
+
+    const kit = await this.prisma.kitElectoral.findFirst({
+      where: { eventoId: evento.id, operadorId },
+      select: { recintoId: true },
+    });
+    const recintoId = kit?.recintoId ?? null;
+    const ocurridoEn = new Date(parsed.ocurridoEn);
+
+    const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+      VALUES (
+        uuid_generate_v4(),
+        ${evento.id}::uuid,
+        ${operadorId}::uuid,
+        'LLEGADA_DPI'::tipo_tracking,
+        ${recintoId}::uuid,
+        ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
+        ${ocurridoEn}::timestamptz,
+        false,
+        now()
+      )
+      RETURNING id;
+    `)[0].id;
+
+    await this.prisma.kitElectoral.updateMany({
+      where: { eventoId: evento.id, operadorId, estado: 'EN_RETORNO' },
+      data: { estado: 'RETORNADO' },
+    });
+
+    const operador = await this.prisma.usuario.findUnique({
+      where: { id: operadorId },
+      select: { nombres: true, apellidos: true },
+    });
+    const recintoNombre = recintoId
+      ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
+      : null;
+
+    await this.notifications.encolarLlegadaDpi({
+      operadorId,
+      eventoId: evento.id,
+      payload: {
+        operadorId,
+        operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
+        recintoNombre,
+        ocurridoEn: ocurridoEn.toISOString(),
+      },
+    });
+
+    return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
 }

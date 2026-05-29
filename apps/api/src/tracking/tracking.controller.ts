@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import type {
   IngestaPosicionesRequest,
+  LlegadaDpiRequest,
   LlegadaRecintoRequest,
   RecepcionKitRequest,
   SalidaDpiRequest,
@@ -28,6 +29,7 @@ import type {
 } from '@cne/shared-types';
 import {
   ingestaPosicionesSchema,
+  llegadaDpiSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -165,5 +167,18 @@ export class TrackingController {
   })
   operadoresEnRetorno(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.operadoresEnRetorno(user.sub, user.roles);
+  }
+
+  @Post('llegada-dpi')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'HU5-CA2/CA3: registra la llegada al DPI y finaliza el monitoreo',
+  })
+  llegadaDpi(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(llegadaDpiSchema)) body: LlegadaDpiRequest,
+  ) {
+    return this.tracking.registrarLlegadaDpi(user.sub, body);
   }
 }
