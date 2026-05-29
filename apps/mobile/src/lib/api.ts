@@ -3,9 +3,16 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// En el emulador Android, "localhost" apunta al propio emulador, no al host.
-// El alias estándar al host es 10.0.2.2. iOS simulator y web sí resuelven localhost.
+// Orden de resolución del backend:
+// 1) EXPO_PUBLIC_API_URL (.env) — necesario en dispositivo físico: debe ser la
+//    IP LAN de la PC (p. ej. http://192.168.1.50:3000). Si está definida, gana.
+// 2) extra.apiUrl de app.json.
+// 3) En emulador Android, "localhost" apunta al propio emulador; se traduce al
+//    alias del host 10.0.2.2. iOS simulator y web sí resuelven localhost.
 function resolveBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+  if (fromEnv) return fromEnv;
+
   const configured =
     (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:3000';
   if (Platform.OS === 'android') {
