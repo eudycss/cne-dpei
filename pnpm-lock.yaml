@@ -211,6 +211,9 @@ importers:
       expo-status-bar:
         specifier: ~1.12.1
         version: 1.12.1
+      expo-task-manager:
+        specifier: ~11.8.2
+        version: 11.8.2(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
       react:
         specifier: 18.2.0
         version: 18.2.0
@@ -3494,6 +3497,11 @@ packages:
   expo-status-bar@1.12.1:
     resolution: {integrity: sha512-/t3xdbS8KB0prj5KG5w7z+wZPFlPtkgs95BsmrP/E7Q0xHXTcDcQ6Cu2FkFuRM+PKTb17cJDnLkawyS5vDLxMA==}
 
+  expo-task-manager@11.8.2:
+    resolution: {integrity: sha512-Uhy3ol5gYeZOyeRFddYjLI1B2DGRH1gjp/YC8Hpn5p5MVENviySoKNF+wd98rRvOAokzrzElyDBHSTfX+C3tpg==}
+    peerDependencies:
+      expo: '*'
+
   expo@51.0.39:
     resolution: {integrity: sha512-Cs/9xopyzJrpXWbyVUZnr37rprdFJorRgfSp6cdBfvbjxZeKnw2MEu7wJwV/s626i5lZTPGjZPHUF9uQvt51cg==}
     hasBin: true
@@ -6404,6 +6412,9 @@ packages:
 
   unicode-trie@2.0.0:
     resolution: {integrity: sha512-x7bc76x0bm4prf1VLg79uhAzKw8DVboClSN5VxJuQ+LKDOVEW9CdH+VY7SP+vX7xCYQqzzgQpFqz15zeLvAtZQ==}
+
+  unimodules-app-loader@4.6.0:
+    resolution: {integrity: sha512-FRNIlx7sLBDVPG117JnEBhnzZkTIgZTEwYW2rzrY9HdvLBTpRN+k0dxY50U/CAhFHW3zMD0OP5JAlnSQRhx5HA==}
 
   unique-filename@3.0.0:
     resolution: {integrity: sha512-afXhuC55wkAmZ0P18QsVE6kp8JaxrEokN2HGIoIVv2ijHQd419H0+6EigAFcIzXeMIkcIkNBpB3L/DXB3cTS/g==}
@@ -10925,6 +10936,11 @@ snapshots:
 
   expo-status-bar@1.12.1: {}
 
+  expo-task-manager@11.8.2(expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)):
+    dependencies:
+      expo: 51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
+      unimodules-app-loader: 4.6.0
+
   expo@51.0.39(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(react-native@0.74.5(@babel/core@7.25.7)(@babel/preset-env@7.29.5(@babel/core@7.25.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0):
     dependencies:
       '@babel/runtime': 7.29.2
@@ -14299,6 +14315,8 @@ snapshots:
     dependencies:
       pako: 0.2.9
       tiny-inflate: 1.0.3
+
+  unimodules-app-loader@4.6.0: {}
 
   unique-filename@3.0.0:
     dependencies:
