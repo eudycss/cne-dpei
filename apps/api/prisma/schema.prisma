@@ -448,6 +448,7 @@ model Notificacion {
   payload    Json?
   creadoEn   DateTime           @default(now()) @map("creado_en") @db.Timestamptz(6)
   enviadoEn  DateTime?          @map("enviado_en") @db.Timestamptz(6)
+  leidaEn    DateTime?          @map("leida_en") @db.Timestamptz(6)
 
   @@index([usuarioId], map: "idx_notificaciones_usuario")
   @@map("notificaciones")

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Login } from './pages/Login';
+import { Logout } from './pages/Logout';
 import { ChangePassword } from './pages/ChangePassword';
 import { Layout } from './pages/Layout';
 import { UsersList } from './pages/users/UsersList';
@@ -10,12 +11,14 @@ import { BulkMilitares } from './pages/militares/BulkMilitares';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
+import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/logout" element={<Logout />} />
       <Route
         path="/change-password"
         element={
@@ -71,6 +74,9 @@ export default function App() {
 
         {/* Kits electorales */}
         <Route path="/kits" element={<KitsPage />} />
+
+        {/* Monitoreo de operadores en retorno (HU6) */}
+        <Route path="/operadores" element={<MonitoreoPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -252,3 +252,169 @@ export interface CreateKitRequest {
 export interface PdfQrRequest {
   kitIds: string[];
 }
+
+// ===================================================================
+// FASE 4 — Tracking del operador (HU2)
+// ===================================================================
+
+export interface MiAsignacionRecinto {
+  id: string;
+  codigoRecinto: string;
+  nombre: string;
+  direccion: string | null;
+  cantonNombre: string | null;
+  parroquia: string | null;
+}
+
+export interface MiAsignacionMilitar {
+  id: string;
+  nombres: string;
+  apellidos: string;
+  cedula: string;
+}
+
+export interface MiAsignacionKit {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+  contenidos: string | null;
+  recibido: boolean;
+}
+
+export interface MiAsignacionResponse {
+  eventoId: string;
+  eventoNombre: string;
+  recinto: MiAsignacionRecinto;
+  militar: MiAsignacionMilitar | null;
+  kits: MiAsignacionKit[];
+  yaRegistroSalida: boolean;
+  yaRegistroLlegada: boolean;
+  yaRegistroSalidaRecinto: boolean;
+  yaRegistroLlegadaDpi: boolean;
+  fotoMilitarUrl: string | null;
+}
+
+// HU3 — Llegada al recinto y recepción de kits
+
+export interface FotoMilitarResponse {
+  fotoUrl: string;
+}
+
+export interface ValidarKitRequest {
+  codigo: string;
+}
+
+export interface ValidarKitResponse {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+  contenidos: string | null;
+  yaRecibido: boolean;
+}
+
+export interface RecepcionKitRequest {
+  kitId: string;
+  fotoMilitarUrl: string;
+  militarId: string | null;
+  latitud: number;
+  longitud: number;
+}
+
+export interface RecepcionKitResponse {
+  id: string;
+  kitId: string;
+  confirmadoEn: string;
+}
+
+export interface LlegadaRecintoRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface LlegadaRecintoResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+export interface SalidaDpiRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface SalidaDpiResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+// HU4 — Salida del recinto y rastreo continuo
+
+export interface SalidaRecintoRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface SalidaRecintoResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+export interface PosicionGpsPunto {
+  latitud: number;
+  longitud: number;
+  capturadoEn: string;
+}
+
+export interface IngestaPosicionesRequest {
+  posiciones: PosicionGpsPunto[];
+}
+
+export interface IngestaPosicionesResponse {
+  recibidas: number;
+}
+
+// Lectura para monitoreo en tiempo real (HU4-CA4, HU6)
+export interface OperadorEnRetornoKit {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+}
+
+export interface OperadorEnRetorno {
+  operadorId: string;
+  operadorNombre: string;
+  latitud: number;
+  longitud: number;
+  capturadoEn: string;
+  kits: OperadorEnRetornoKit[];
+}
+
+// HU5 — Llegada al DPI
+
+export interface LlegadaDpiRequest {
+  latitud: number;
+  longitud: number;
+  ocurridoEn: string;
+}
+
+export interface LlegadaDpiResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
+// ===================================================================
+// FASE 4 — Notificaciones in-app (HU2-CA3, base para HU19)
+// ===================================================================
+
+export type CanalNotificacion = 'PUSH' | 'EMAIL';
+
+export interface NotificacionItem {
+  id: string;
+  tipoEvento: string;
+  canal: CanalNotificacion;
+  payload: Record<string, unknown> | null;
+  creadoEn: string;
+  leidaEn: string | null;
+}

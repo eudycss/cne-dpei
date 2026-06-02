@@ -21,9 +21,12 @@ export function ProtectedRoute({ children, roles, allowChangePassword }: Props) 
   if (roles && roles.length > 0 && !roles.some((r) => user.roles.includes(r))) {
     return (
       <div className="center">
-        <div className="login-card">
+        <div className="login-card" style={{ textAlign: 'center' }}>
           <h1>Acceso denegado</h1>
           <p className="muted">Tu rol no tiene permisos para esta sección.</p>
+          <a className="btn secondary" href="/logout" style={{ marginTop: '1rem', display: 'inline-block' }}>
+            Cerrar sesión
+          </a>
         </div>
       </div>
     );

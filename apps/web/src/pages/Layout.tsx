@@ -1,9 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
+import { NotificationsBell } from '../components/NotificationsBell';
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const puedeVerNotificaciones =
+    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -26,6 +30,9 @@ export function Layout() {
         <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
           Kits Electorales
         </NavLink>
+        <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
+          Monitoreo
+        </NavLink>
         <div className="me">
           <div>
             <strong>{user?.nombres} {user?.apellidos}</strong>
@@ -46,6 +53,11 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">
+        {puedeVerNotificaciones ? (
+          <div className="topbar">
+            <NotificationsBell />
+          </div>
+        ) : null}
         <Outlet />
       </main>
     </div>

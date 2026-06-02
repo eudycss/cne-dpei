@@ -179,6 +179,72 @@ export const pdfQrSchema = z.object({
 
 export type CreateKitInput = z.infer<typeof createKitSchema>;
 
+// ===================================================================
+// FASE 4 — Tracking del operador (HU2)
+// ===================================================================
+export const salidaDpiSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z
+    .string()
+    .datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export type SalidaDpiInput = z.infer<typeof salidaDpiSchema>;
+
+// HU3 — Llegada al recinto y recepción de kits
+export const validarKitSchema = z.object({
+  codigo: z.string().min(1, 'Código requerido').max(40),
+});
+
+export const recepcionKitSchema = z.object({
+  kitId: z.string().uuid('Kit inválido'),
+  fotoMilitarUrl: z.string().min(1, 'Foto del militar requerida'),
+  militarId: z.string().uuid().nullable().optional(),
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+});
+
+export const llegadaRecintoSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+// HU4 — Salida del recinto y rastreo continuo
+export const salidaRecintoSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export const ingestaPosicionesSchema = z.object({
+  posiciones: z
+    .array(
+      z.object({
+        latitud: z.number().min(-90).max(90),
+        longitud: z.number().min(-180).max(180),
+        capturadoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+      }),
+    )
+    .min(1, 'Se requiere al menos una posición')
+    .max(200, 'Máximo 200 posiciones por lote'),
+});
+
+// HU5 — Llegada al DPI
+export const llegadaDpiSchema = z.object({
+  latitud: z.number().min(-90).max(90),
+  longitud: z.number().min(-180).max(180),
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+});
+
+export type ValidarKitInput = z.infer<typeof validarKitSchema>;
+export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
+export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
+export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
+export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
+export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;
+
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;

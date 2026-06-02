@@ -47,6 +47,12 @@ const AUDIT_TABLE: Array<{
   // Fase 3 — kits electorales (HU11)
   { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
   { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },
+  // Fase 4 — tracking del operador (HU2)
+  { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
+  // Fase 4 — llegada al recinto y recepción de kits (HU3)
+  { method: 'POST', pathRegex: /^\/tracking\/foto-militar$/, accion: 'FOTO_MILITAR_UPLOAD', entidad: 'recepciones_kit' },
+  { method: 'POST', pathRegex: /^\/tracking\/recepcion-kit$/, accion: 'RECEPCION_KIT', entidad: 'recepciones_kit' },
+  { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto$/, accion: 'REGISTRO_LLEGADA_RECINTO', entidad: 'eventos_tracking' },
 ];
 
 @Injectable()
