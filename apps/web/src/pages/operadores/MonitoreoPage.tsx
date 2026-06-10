@@ -1,11 +1,19 @@
 import 'leaflet/dist/leaflet.css';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import type { OperadorEnRetorno } from '@cne/shared-types';
-import { getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
+import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
+import { getEstadoCdas, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
+
+const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
+  EN_DPI: { label: 'En DPI', color: '#9ca3af' },
+  EN_TRANSITO: { label: 'En tránsito', color: '#2563eb' },
+  EN_RECINTO: { label: 'En el recinto', color: '#f59e0b' },
+  EN_RETORNO: { label: 'En retorno', color: '#2563eb' },
+  RETORNADO: { label: 'Retornado', color: '#16a34a' },
+};
 
 // Centro aproximado de la provincia de Imbabura (Ibarra) como vista por defecto.
 const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
@@ -31,6 +39,49 @@ function AjustarEncuadre({ operadores }: { operadores: OperadorEnRetorno[] }) {
   return null;
 }
 
+function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
+  if (!cda.ubicacion) return null;
+  const pos: [number, number] = [cda.ubicacion.latitud, cda.ubicacion.longitud];
+  const info = ESTADO_INFO[cda.estado];
+
+  return (
+    <div
+      className="center"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
+    >
+      <div className="login-card" style={{ maxWidth: 640, width: '100%', padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+          <h2 style={{ margin: 0 }}>{cda.nombreRecinto}</h2>
+          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+            {cda.operadorNombre} ·{' '}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span
+                style={{ width: 9, height: 9, borderRadius: '50%', background: info.color, display: 'inline-block' }}
+              />
+              {info.label}
+            </span>{' '}
+            · {formatearFechaHora(cda.ubicacion.capturadoEn)}
+          </p>
+        </div>
+        <MapContainer center={pos} zoom={14} style={{ height: 360, width: '100%' }} scrollWheelZoom>
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <Marker position={pos} icon={iconoOperador()}>
+            <Popup>{cda.operadorNombre}</Popup>
+          </Marker>
+        </MapContainer>
+        <div className="row" style={{ justifyContent: 'flex-end', padding: '1rem' }}>
+          <button className="btn secondary" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MonitoreoPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['operadores-en-retorno'],
@@ -40,6 +91,29 @@ export function MonitoreoPage() {
   });
 
   const operadores = data ?? [];
+
+  const { data: cdaData, isLoading: cdaLoading, isError: cdaError } = useQuery({
+    queryKey: ['estado-cdas'],
+    queryFn: getEstadoCdas,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const cdas = cdaData ?? [];
+  const [cantonFiltro, setCantonFiltro] = useState('');
+  const [verUbicacion, setVerUbicacion] = useState<CdaEstadoDto | null>(null);
+
+  const cantones = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of cdas) {
+      if (c.cantonNombre) map.set(c.cantonId, c.cantonNombre);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [cdas]);
+
+  const cdasFiltrados = cantonFiltro
+    ? cdas.filter((c) => String(c.cantonId) === cantonFiltro)
+    : cdas;
 
   return (
     <div>
@@ -114,6 +188,88 @@ export function MonitoreoPage() {
           )}
         </div>
       </div>
+
+      <h2 style={{ marginTop: '2rem' }}>Estado de CDAs</h2>
+      <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
+        Estado actual de cada CDA del evento activo. Se actualiza automáticamente cada 10 segundos.
+      </p>
+      <div className="card">
+        <div className="row">
+          <select value={cantonFiltro} onChange={(e) => setCantonFiltro(e.target.value)}>
+            <option value="">Todos los cantones</option>
+            {cantones.map(([id, nombre]) => (
+              <option key={id} value={id}>{nombre}</option>
+            ))}
+          </select>
+        </div>
+
+        {cdaLoading ? (
+          <p className="muted">Cargando…</p>
+        ) : cdaError ? (
+          <p style={{ color: '#dc2626' }}>No se pudo cargar el estado de los CDAs.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Recinto (CDA)</th>
+                <th>Cantón</th>
+                <th>Operador</th>
+                <th>Estado</th>
+                <th>Última actualización</th>
+                <th>Ubicación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cdasFiltrados.map((c) => {
+                const info = ESTADO_INFO[c.estado];
+                return (
+                  <tr key={c.recintoId}>
+                    <td>{c.codigoRecinto}</td>
+                    <td>{c.nombreRecinto}</td>
+                    <td>{c.cantonNombre ?? '—'}</td>
+                    <td>{c.operadorNombre}</td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: info.color,
+                            display: 'inline-block',
+                          }}
+                        />
+                        {info.label}
+                      </span>
+                    </td>
+                    <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
+                    <td>
+                      <button
+                        className="btn secondary"
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                        disabled={!c.ubicacion}
+                        onClick={() => setVerUbicacion(c)}
+                      >
+                        Ver ubicación
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {cdasFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                    No hay CDAs con operador asignado en el evento activo
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {verUbicacion && <UbicacionModal cda={verUbicacion} onClose={() => setVerUbicacion(null)} />}
     </div>
   );
 }

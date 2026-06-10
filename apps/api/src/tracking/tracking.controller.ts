@@ -169,6 +169,15 @@ export class TrackingController {
     return this.tracking.operadoresEnRetorno(user.sub, user.roles);
   }
 
+  @Get('estado-cdas')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'Estado en vivo de los CDAs del evento activo (operador, estado del flujo, última ubicación)',
+  })
+  estadoCdas(@CurrentUser() user: AuthenticatedUser) {
+    return this.tracking.estadoCdas(user.sub, user.roles);
+  }
+
   @Post('llegada-dpi')
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)

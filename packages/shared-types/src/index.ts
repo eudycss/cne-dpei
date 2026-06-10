@@ -424,6 +424,27 @@ export interface OperadorEnRetorno {
   kits: OperadorEnRetornoKit[];
 }
 
+// Estado en vivo de los CDAs (pantalla de monitoreo)
+export type EstadoOperadorCda = 'EN_DPI' | 'EN_TRANSITO' | 'EN_RECINTO' | 'EN_RETORNO' | 'RETORNADO';
+
+export interface CdaUbicacion {
+  latitud: number;
+  longitud: number;
+  capturadoEn: string;
+}
+
+export interface CdaEstadoDto {
+  recintoId: string;
+  codigoRecinto: string;
+  nombreRecinto: string;
+  cantonId: number;
+  cantonNombre: string | null;
+  operadorId: string;
+  operadorNombre: string;
+  estado: EstadoOperadorCda;
+  ubicacion: CdaUbicacion | null;
+}
+
 // HU5 — Llegada al DPI
 
 export interface LlegadaDpiRequest {

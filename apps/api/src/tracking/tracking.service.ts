@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  CdaEstadoDto,
+  EstadoOperadorCda,
   IngestaPosicionesRequest,
   IngestaPosicionesResponse,
   LlegadaDpiRequest,
@@ -656,6 +658,132 @@ export class TrackingService {
     }
 
     return resultado;
+  }
+
+  /**
+   * Estado en vivo de los CDAs del evento activo: para cada recinto tipo CDA
+   * con operador asignado (vía kits), deriva su estado a partir del último
+   * EventoTracking registrado y su última ubicación conocida (posiciones_gps
+   * durante el retorno, o el punto del último EventoTracking en otros tramos).
+   * Los supervisores solo ven sus operadores asignados; los administradores
+   * ven todos.
+   */
+  async estadoCdas(viewerId: string, roles: RoleName[]): Promise<CdaEstadoDto[]> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return [];
+
+    const esAdmin = roles.includes('ADMINISTRADOR');
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
+      select: { recintoId: true, operadorId: true },
+    });
+    const operadorPorRecinto = new Map<string, string>();
+    for (const k of kits) {
+      if (k.recintoId && k.operadorId) operadorPorRecinto.set(k.recintoId, k.operadorId);
+    }
+
+    let recintoIds = Array.from(operadorPorRecinto.keys());
+
+    if (!esAdmin) {
+      const asignados = await this.prisma.asignacionSupervisor.findMany({
+        where: { eventoId: evento.id, supervisorId: viewerId },
+        select: { operadorId: true },
+      });
+      const permitidos = new Set(asignados.map((a) => a.operadorId));
+      recintoIds = recintoIds.filter((rid) => permitidos.has(operadorPorRecinto.get(rid)!));
+    }
+
+    if (recintoIds.length === 0) return [];
+
+    const recintos = await this.prisma.recinto.findMany({
+      where: { id: { in: recintoIds }, tipo: 'CDA' },
+      include: { canton: true },
+      orderBy: { codigoRecinto: 'asc' },
+    });
+    if (recintos.length === 0) return [];
+
+    const operadorIds = Array.from(
+      new Set(recintos.map((r) => operadorPorRecinto.get(r.id)!)),
+    );
+
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { id: { in: operadorIds } },
+      select: { id: true, nombres: true, apellidos: true },
+    });
+    const nombrePorId = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+
+    const trackingRows = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id, operadorId: { in: operadorIds } },
+      select: { operadorId: true, tipo: true },
+    });
+    const tiposPorOperador = new Map<string, Set<string>>();
+    for (const t of trackingRows) {
+      const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
+      set.add(t.tipo);
+      tiposPorOperador.set(t.operadorId, set);
+    }
+
+    const ultimasGps = await this.prisma.$queryRaw<
+      { operador_id: string; lat: number; lng: number; capturado_en: Date }[]
+    >`
+      SELECT DISTINCT ON (operador_id) operador_id,
+             ST_Y(ubicacion::geometry) AS lat,
+             ST_X(ubicacion::geometry) AS lng,
+             capturado_en
+      FROM posiciones_gps
+      WHERE operador_id = ANY(${operadorIds}::uuid[]) AND evento_id = ${evento.id}::uuid
+      ORDER BY operador_id, capturado_en DESC;
+    `;
+    const ultimasTracking = await this.prisma.$queryRaw<
+      { operador_id: string; lat: number; lng: number; ocurrido_en: Date }[]
+    >`
+      SELECT DISTINCT ON (operador_id) operador_id,
+             ST_Y(ubicacion::geometry) AS lat,
+             ST_X(ubicacion::geometry) AS lng,
+             ocurrido_en
+      FROM eventos_tracking
+      WHERE operador_id = ANY(${operadorIds}::uuid[]) AND evento_id = ${evento.id}::uuid
+        AND ubicacion IS NOT NULL
+      ORDER BY operador_id, ocurrido_en DESC;
+    `;
+    const gpsPorOperador = new Map(ultimasGps.map((g) => [g.operador_id, g]));
+    const trackingPorOperador = new Map(ultimasTracking.map((t) => [t.operador_id, t]));
+
+    function deriveEstado(tipos: Set<string> | undefined): EstadoOperadorCda {
+      if (!tipos) return 'EN_DPI';
+      if (tipos.has('LLEGADA_DPI')) return 'RETORNADO';
+      if (tipos.has('SALIDA_RECINTO')) return 'EN_RETORNO';
+      if (tipos.has('LLEGADA_RECINTO')) return 'EN_RECINTO';
+      if (tipos.has('SALIDA_DPI')) return 'EN_TRANSITO';
+      return 'EN_DPI';
+    }
+
+    return recintos.map((recinto) => {
+      const operadorId = operadorPorRecinto.get(recinto.id)!;
+      const gps = gpsPorOperador.get(operadorId);
+      const trk = trackingPorOperador.get(operadorId);
+      const ubicacion = gps
+        ? { latitud: gps.lat, longitud: gps.lng, capturadoEn: gps.capturado_en.toISOString() }
+        : trk
+          ? { latitud: trk.lat, longitud: trk.lng, capturadoEn: trk.ocurrido_en.toISOString() }
+          : null;
+
+      return {
+        recintoId: recinto.id,
+        codigoRecinto: recinto.codigoRecinto,
+        nombreRecinto: recinto.nombre,
+        cantonId: recinto.cantonId,
+        cantonNombre: recinto.canton?.nombre ?? null,
+        operadorId,
+        operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
+        estado: deriveEstado(tiposPorOperador.get(operadorId)),
+        ubicacion,
+      };
+    });
   }
 
   /**
