@@ -95,3 +95,53 @@ Expo SDK 51 (React Native 0.74). Tokens stored in `expo-secure-store` (never `As
 `@cne/shared-validation`: Zod schemas that can be used for both API DTO validation and frontend form validation.
 
 Changes to either shared package require rebuilding them (`pnpm --filter @cne/<pkg> build`) before the consuming apps will pick them up.
+
+## Rules for Claude
+
+### Scope
+- Only modify files directly related to the requested task. Do not refactor, clean up, or "improve" surrounding code unless explicitly asked.
+- One task at a time. Do not combine multiple changes in a single response unless the user groups them explicitly.
+- For complex changes (new domain, schema change, multi-file feature), propose a plan and wait for approval before writing any code.
+
+### Mandatory steps after certain changes
+- **Modified `packages/shared-types` or `packages/shared-validation`** → always rebuild both:
+  ```bash
+  pnpm --filter @cne/shared-types build
+  pnpm --filter @cne/shared-validation build
+  ```
+- **Modified `apps/api/prisma/schema.prisma`** → always run `pnpm --filter @cne/api db:generate` after migrating.
+- **Modified `.env`** → always sync to `apps/api/.env`:
+  ```bash
+  cp .env apps/api/.env
+  ```
+
+### Environment notes
+- `WEB_ORIGIN` must match the exact port Vite is using (default 5173, but Vite increments if the port is taken).
+- `STORAGE_ENCRYPTION_KEY` must be a 64-character hex string. Generate with:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
+
+### Troubleshooting
+
+**CORS error on login (`No 'Access-Control-Allow-Origin'`)**
+`apps/api/.env` and the root `.env` can drift. NestJS reads `apps/api/.env`, so if Vite started on a different port, CORS will block the browser. Fix:
+1. Check which port Vite actually started on (it prints it in the terminal).
+2. Update `WEB_ORIGIN` in `apps/api/.env` to match.
+3. Restart the API (`pnpm dev:api`).
+Always keep both `.env` files in sync — run `cp .env apps/api/.env` after any change to the root `.env`.
+
+**Login returns 401 but the user exists in the database**
+If `debe_cambiar_pwd = false` in the `usuarios` table, the initial password was already changed in a prior session. To reset it back to the seed value, run from `apps/api`:
+```bash
+node -e "
+const argon2 = require('argon2');
+argon2.hash(process.env.ADMIN_INITIAL_PASSWORD ?? 'Admin*Inicial2026').then(h => console.log(h));
+"
+```
+Then update the hash directly in the DB:
+```sql
+UPDATE usuarios
+SET password_hash = '<hash>', debe_cambiar_pwd = true
+WHERE email = 'admin@cne-imbabura.gob.ec';
+```

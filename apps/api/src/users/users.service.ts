@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
@@ -28,6 +29,8 @@ import { INotifier, NOTIFIER } from '../auth/notifier';
 
 @Injectable()
 export class UsersService {
+  private readonly log = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(NOTIFIER) private readonly notifier: INotifier,
@@ -91,7 +94,9 @@ export class UsersService {
       },
       include: { roles: { include: { rol: true } } },
     });
-    await this.notifier.sendInitialPassword(user.email, initialPassword);
+    await this.notifier.sendInitialPassword(user.email, initialPassword).catch((e) =>
+      this.log.error(`No se pudo enviar correo a ${user.email}: ${e?.message}`),
+    );
     return { ...toUserDto(user), initialPassword };
   }
 
@@ -145,7 +150,9 @@ export class UsersService {
       }),
     ]);
 
-    await this.notifier.sendInitialPassword(existing.email, temporaryPassword);
+    await this.notifier.sendInitialPassword(existing.email, temporaryPassword).catch((e) =>
+      this.log.error(`No se pudo enviar correo a ${existing.email}: ${e?.message}`),
+    );
     return { user: toUserDto(existing), temporaryPassword };
   }
 

@@ -9,7 +9,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
-import { ConsoleNotifier, NOTIFIER } from './notifier';
+import { resolveNotifier, NOTIFIER } from './notifier';
 
 @Module({
   imports: [
@@ -26,7 +26,7 @@ import { ConsoleNotifier, NOTIFIER } from './notifier';
   providers: [
     AuthService,
     JwtStrategy,
-    { provide: NOTIFIER, useClass: ConsoleNotifier },
+    { provide: NOTIFIER, useFactory: resolveNotifier },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

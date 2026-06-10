@@ -39,6 +39,9 @@ usuarios, HU9 asignación de roles), construida por capas y verificada end-to-en
 ```bash
 # 1. Variables de entorno
 cp .env.example .env            # ajusta secretos/credenciales si quieres
+# Genera la clave de cifrado de archivos y agrégala al .env:
+# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# → copia el resultado como valor de STORAGE_ENCRYPTION_KEY en .env
 cp .env apps/api/.env           # Prisma CLI lee el .env junto al schema
 
 # 2. Dependencias
@@ -151,6 +154,42 @@ login en la app móvil con ese operador → ver pantalla de inicio por rol.
 | `pnpm dev:api` / `dev:web` / `dev:mobile` | Servidores de desarrollo |
 | `pnpm build` | Build de todos los paquetes |
 | `pnpm test` | Tests de todos los paquetes |
+
+---
+
+## Solución de problemas frecuentes
+
+### Error de CORS al hacer login (`No 'Access-Control-Allow-Origin'`)
+
+Vite incrementa el puerto automáticamente si el `5173` está ocupado (pasa a `5174`, `5175`, etc.). El backend NestJS lee `WEB_ORIGIN` de `apps/api/.env` para configurar CORS — si ese valor no coincide con el puerto real de Vite, el navegador bloquea la petición.
+
+**Solución:**
+1. Fíjate en qué puerto arrancó Vite (lo imprime en la terminal, ej. `➜  Local: http://localhost:5174`).
+2. Actualiza `WEB_ORIGIN` en `apps/api/.env` con ese puerto.
+3. Reinicia la API (`Ctrl+C` → `pnpm dev:api`).
+
+Para evitar la deriva entre archivos, sincroniza siempre ambos `.env` después de cualquier cambio:
+```bash
+cp .env apps/api/.env
+```
+
+---
+
+### Login devuelve 401 pero el usuario existe
+
+Si el admin ya inició sesión antes y completó el cambio de contraseña obligatorio, la contraseña del seed (`Admin*Inicial2026`) ya no es válida. Para restablecerla:
+
+```bash
+# Desde apps/api — genera un nuevo hash argon2id
+node -e "const a=require('argon2'); a.hash('Admin*Inicial2026').then(h=>console.log(h))"
+```
+
+Luego actualiza en la base de datos:
+```sql
+UPDATE usuarios
+SET password_hash = '<hash_generado>', debe_cambiar_pwd = true
+WHERE email = 'admin@cne-imbabura.gob.ec';
+```
 
 ---
 

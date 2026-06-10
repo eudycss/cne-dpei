@@ -59,14 +59,26 @@ async function ensureRecintos() {
     return;
   }
 
-  // Carga el SQL original sin alterarlo
   const seedSql = fs.readFileSync(
     path.resolve(__dirname, '../../../seed_recintos.sql'),
     'utf8',
   );
 
-  // El archivo contiene múltiples sentencias separadas por ";\n".
-  // Removemos comentarios de línea y filtramos las que quedan vacías.
+  // Procesa el SQL para agregar UUIDs a cada fila VALUES
+  let processed = seedSql;
+
+  // Reemplaza el INSERT para incluir la columna id
+  processed = processed.replace(
+    'INSERT INTO recintos (codigo_recinto,',
+    'INSERT INTO recintos (id, codigo_recinto,'
+  );
+
+  // Agrega uuid_generate_v4() al inicio de cada fila VALUES
+  processed = processed.replace(
+    /\('(\d+)',/g,
+    "(uuid_generate_v4(), '$1',"
+  );
+
   const stripComments = (s: string) =>
     s
       .split('\n')
@@ -74,7 +86,7 @@ async function ensureRecintos() {
       .join('\n')
       .trim();
 
-  const statements = seedSql
+  const statements = processed
     .split(/;\s*\n/)
     .map(stripComments)
     .filter((s) => s.length > 0);
@@ -133,7 +145,7 @@ async function main() {
   console.log('→ Iniciando seed...');
   await ensureRoles();
   await ensureCantones();
-  //await ensureRecintos();
+  await ensureRecintos();
   await ensureAdminInicial();
   console.log('✓ Seed completo');
 }

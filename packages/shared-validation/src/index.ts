@@ -127,6 +127,7 @@ export const tipoEventoEnum = z.enum([
   'SEGUNDA_VUELTA',
   'CONSULTA_POPULAR',
   'REFERENDUM',
+  'ELECCIONES_SECCIONALES',
   'OTRO',
 ]);
 

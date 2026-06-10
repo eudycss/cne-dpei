@@ -21,6 +21,7 @@ const TIPO_LABELS: Record<TipoEventoElectoral, string> = {
   SEGUNDA_VUELTA: 'Segunda Vuelta',
   CONSULTA_POPULAR: 'Consulta Popular',
   REFERENDUM: 'Referéndum',
+  ELECCIONES_SECCIONALES: 'Elecciones Seccionales',
   OTRO: 'Otro',
 };
 
@@ -29,6 +30,7 @@ const TIPOS: TipoEventoElectoral[] = [
   'SEGUNDA_VUELTA',
   'CONSULTA_POPULAR',
   'REFERENDUM',
+  'ELECCIONES_SECCIONALES',
   'OTRO',
 ];
 

@@ -156,6 +156,7 @@ export type TipoEventoElectoral =
   | 'SEGUNDA_VUELTA'
   | 'CONSULTA_POPULAR'
   | 'REFERENDUM'
+  | 'ELECCIONES_SECCIONALES'
   | 'OTRO';
 
 export type EstadoEvento = 'BORRADOR' | 'ACTIVO' | 'CERRADO';

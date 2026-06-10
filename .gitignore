@@ -51,3 +51,4 @@ apps/api/storage/
 # Claude Code
 .claude/
 !.claude/commands/
+CLAUDE.local.md
