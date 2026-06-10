@@ -1,5 +1,17 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { CreateRecintoRequest, UpdateRecintoRequest } from '@cne/shared-types';
 import { RecintosService } from './recintos.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -35,6 +47,25 @@ export class CatalogController {
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
   getRecinto(@Param('id', ParseUUIDPipe) id: string) {
     return this.recintos.getRecinto(id);
+  }
+
+  @Post('recintos')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Alta de recinto electoral' })
+  create(@Body() body: CreateRecintoRequest) {
+    return this.recintos.create(body);
+  }
+
+  @Patch('recintos/:id')
+  @Roles('ADMINISTRADOR')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateRecintoRequest) {
+    return this.recintos.update(id, body);
+  }
+
+  @Delete('recintos/:id')
+  @Roles('ADMINISTRADOR')
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.recintos.remove(id);
   }
 
   @Get('cantones')

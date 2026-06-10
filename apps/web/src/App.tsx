@@ -8,6 +8,7 @@ import { NewUser } from './pages/users/NewUser';
 import { BulkUpload } from './pages/users/BulkUpload';
 import { MilitaresPage } from './pages/militares/MilitaresPage';
 import { BulkMilitares } from './pages/militares/BulkMilitares';
+import { RecintosPage } from './pages/recintos/RecintosPage';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
@@ -65,6 +66,9 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Recintos electorales */}
+        <Route path="/recintos" element={<RecintosPage />} />
 
         {/* Eventos electorales */}
         <Route path="/eventos" element={<EventosPage />} />

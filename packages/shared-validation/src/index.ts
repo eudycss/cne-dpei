@@ -121,6 +121,24 @@ export const bulkMilitarRowSchema = z.object({
   codigo_recinto: z.string().min(1, 'Código de recinto requerido'),
 });
 
+// --- Recintos electorales (HU8) ---
+export const createRecintoSchema = z.object({
+  codigoRecinto: z.string().min(1, 'Requerido').max(20, 'Máximo 20 caracteres'),
+  nombre: z.string().min(1, 'Requerido').max(255, 'Máximo 255 caracteres'),
+  direccion: z.string().max(255).nullable().optional(),
+  cantonId: z.number().int('Selecciona un cantón').positive('Selecciona un cantón'),
+  parroquia: z.string().max(120).nullable().optional(),
+  zona: z.string().max(120).nullable().optional(),
+  tipo: z.enum(['CDA', 'NO_CDA']),
+  latitud: z.number().min(-90, 'Latitud inválida').max(90, 'Latitud inválida'),
+  longitud: z.number().min(-180, 'Longitud inválida').max(180, 'Longitud inválida'),
+  tieneInternet: z.boolean().optional(),
+  coberturaMovil: z.boolean().optional(),
+  numeroElectores: z.number().int().nonnegative().nullable().optional(),
+});
+
+export const updateRecintoSchema = createRecintoSchema.partial();
+
 // --- Eventos electorales (HU20) ---
 export const tipoEventoEnum = z.enum([
   'ELECCION_GENERAL',

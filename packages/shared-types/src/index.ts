@@ -121,9 +121,41 @@ export interface Recinto {
   parroquia: string | null;
   zona: string | null;
   tipo: TipoRecinto;
+  latitud: number;
+  longitud: number;
   tieneInternet: boolean;
   coberturaMovil: boolean;
   numeroElectores: number | null;
+}
+
+export interface CreateRecintoRequest {
+  codigoRecinto: string;
+  nombre: string;
+  direccion?: string | null;
+  cantonId: number;
+  parroquia?: string | null;
+  zona?: string | null;
+  tipo: TipoRecinto;
+  latitud: number;
+  longitud: number;
+  tieneInternet?: boolean;
+  coberturaMovil?: boolean;
+  numeroElectores?: number | null;
+}
+
+export interface UpdateRecintoRequest {
+  codigoRecinto?: string;
+  nombre?: string;
+  direccion?: string | null;
+  cantonId?: number;
+  parroquia?: string | null;
+  zona?: string | null;
+  tipo?: TipoRecinto;
+  latitud?: number;
+  longitud?: number;
+  tieneInternet?: boolean;
+  coberturaMovil?: boolean;
+  numeroElectores?: number | null;
 }
 
 export interface Militar {

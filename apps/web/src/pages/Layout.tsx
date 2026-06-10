@@ -21,6 +21,9 @@ export function Layout() {
         <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
           Militares
         </NavLink>
+        <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
+          Recintos Electorales
+        </NavLink>
         <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
           Eventos Electorales
         </NavLink>
