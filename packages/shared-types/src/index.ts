@@ -286,6 +286,11 @@ export interface PdfQrRequest {
   kitIds: string[];
 }
 
+export interface AsignarKitRequest {
+  operadorId: string;
+  recintoId: string;
+}
+
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)
 // ===================================================================

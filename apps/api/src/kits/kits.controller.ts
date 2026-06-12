@@ -4,6 +4,9 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Res,
@@ -11,8 +14,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import type { CreateKitRequest, PdfQrRequest } from '@cne/shared-types';
-import { createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+import type { AsignarKitRequest, CreateKitRequest, PdfQrRequest } from '@cne/shared-types';
+import { asignarKitSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
 
 import { KitsService } from './kits.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -52,6 +55,23 @@ export class KitsController {
     @Body(new ZodValidationPipe(createKitSchema)) body: CreateKitRequest,
   ) {
     return this.kits.create(body);
+  }
+
+  @Patch(':id/asignar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Asignar un kit a un operador y un recinto' })
+  asignar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(asignarKitSchema)) body: AsignarKitRequest,
+  ) {
+    return this.kits.asignar(id, body);
+  }
+
+  @Patch(':id/desasignar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Quitar la asignación de operador/recinto de un kit' })
+  desasignar(@Param('id', ParseUUIDPipe) id: string) {
+    return this.kits.desasignar(id);
   }
 
   @Post('pdf-qr')

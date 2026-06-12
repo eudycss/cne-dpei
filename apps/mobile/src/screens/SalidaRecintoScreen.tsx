@@ -89,9 +89,21 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
       });
-      // HU4-CA3: iniciar rastreo continuo en segundo plano.
-      await solicitarPermisoBackground();
-      await iniciarRastreo();
+
+      // HU4-CA3: iniciar rastreo continuo en segundo plano. Es "best-effort":
+      // la salida ya quedó registrada arriba, así que si esto falla (p.ej. Expo
+      // Go no soporta ubicación en background en Android) el operador igual
+      // debe poder continuar al siguiente paso.
+      try {
+        await solicitarPermisoBackground();
+        await iniciarRastreo();
+      } catch {
+        Alert.alert(
+          'Rastreo en segundo plano no disponible',
+          'Tu salida quedó registrada, pero no se pudo activar el rastreo de ubicación en segundo plano en este dispositivo.',
+        );
+      }
+
       onSalidaRegistrada();
     } catch (e: any) {
       if (e instanceof LocationServicesDisabledError) {
@@ -102,8 +114,11 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       } else if (e instanceof LocationPermissionDeniedError) {
         Alert.alert(
           'Permiso de ubicación requerido',
-          'Concede el permiso de ubicación (incluido el de segundo plano) para rastrear tu retorno al DPI.',
+          'Concede el permiso de ubicación para registrar la salida del recinto.',
         );
+      } else if (e?.response?.status === 409) {
+        Alert.alert('Salida ya registrada', 'Ya habías registrado tu salida del recinto.');
+        onSalidaRegistrada();
       } else {
         Alert.alert(
           'Error',

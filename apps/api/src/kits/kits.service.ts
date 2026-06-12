@@ -1,13 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import * as QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
-import { createKitSchema, pdfQrSchema } from '@cne/shared-validation';
-import type { CreateKitRequest, Kit, Paginated, PdfQrRequest } from '@cne/shared-types';
+import { asignarKitSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+import type { AsignarKitRequest, CreateKitRequest, Kit, Paginated, PdfQrRequest } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
@@ -67,6 +68,64 @@ export class KitsService {
       },
     });
     return toKitDto(kit);
+  }
+
+  async asignar(id: string, input: AsignarKitRequest): Promise<Kit> {
+    const parsed = asignarKitSchema.parse(input);
+
+    const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+
+    const operador = await this.prisma.usuario.findFirst({
+      where: {
+        id: parsed.operadorId,
+        roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } },
+      },
+    });
+    if (!operador) throw new BadRequestException('El usuario no tiene rol OPERADOR_CDA');
+
+    const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
+    if (!recinto) throw new NotFoundException('Recinto no encontrado');
+
+    const otrosKits = await this.prisma.kitElectoral.findMany({
+      where: {
+        eventoId: kit.eventoId,
+        operadorId: parsed.operadorId,
+        id: { not: id },
+        recintoId: { not: null },
+      },
+      select: { recintoId: true },
+    });
+    if (otrosKits.some((k) => k.recintoId !== parsed.recintoId)) {
+      throw new ConflictException(
+        'Este operador ya tiene kits asignados a otro recinto en este evento',
+      );
+    }
+
+    const updated = await this.prisma.kitElectoral.update({
+      where: { id },
+      data: {
+        operadorId: parsed.operadorId,
+        recintoId: parsed.recintoId,
+        estado: kit.estado === 'EN_BODEGA' ? 'ASIGNADO' : kit.estado,
+      },
+    });
+    return toKitDto(updated);
+  }
+
+  async desasignar(id: string): Promise<Kit> {
+    const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+
+    const updated = await this.prisma.kitElectoral.update({
+      where: { id },
+      data: {
+        operadorId: null,
+        recintoId: null,
+        estado: kit.estado === 'ASIGNADO' ? 'EN_BODEGA' : kit.estado,
+      },
+    });
+    return toKitDto(updated);
   }
 
   // CA3 + CA4: generar PDF con etiquetas QR

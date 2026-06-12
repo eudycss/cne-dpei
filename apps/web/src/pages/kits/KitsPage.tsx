@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EventoElectoral, Kit, Paginated } from '@cne/shared-types';
-import { createKitSchema } from '@cne/shared-validation';
+import type { EventoElectoral, Kit, Paginated, Recinto, User } from '@cne/shared-types';
+import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 
@@ -52,6 +52,7 @@ export function KitsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [assigning, setAssigning] = useState<Kit | null>(null);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -84,6 +85,26 @@ export function KitsPage() {
     },
     enabled: !!eventoId,
   });
+
+  // Operadores y recintos (para mostrar nombres y para el modal de asignación)
+  const { data: operadores } = useQuery({
+    queryKey: ['users', { role: 'OPERADOR_CDA' }],
+    queryFn: async () =>
+      (await api.get<Paginated<User>>('/users?role=OPERADOR_CDA&pageSize=100')).data.items,
+  });
+  const { data: recintos } = useQuery({
+    queryKey: ['recintos', { tipo: 'CDA' }],
+    queryFn: async () =>
+      (await api.get<Paginated<Recinto>>('/recintos?tipo=CDA&pageSize=200')).data.items,
+  });
+  const operadoresById = useMemo(
+    () => new Map((operadores ?? []).map((u) => [u.id, `${u.nombres} ${u.apellidos}`])),
+    [operadores],
+  );
+  const recintosById = useMemo(
+    () => new Map((recintos ?? []).map((r) => [r.id, r.nombre])),
+    [recintos],
+  );
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil((kitsData?.total ?? 0) / (kitsData?.pageSize ?? 20))),
@@ -214,7 +235,10 @@ export function KitsPage() {
                     <th>Código</th>
                     <th>Nombre</th>
                     <th>Contenidos</th>
+                    <th>Operador</th>
+                    <th>Recinto</th>
                     <th>Estado</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,14 +260,43 @@ export function KitsPage() {
                       <td className="muted" style={{ fontSize: '0.82rem' }}>
                         {kit.contenidos ?? '—'}
                       </td>
+                      <td className={kit.operadorId ? '' : 'muted'}>
+                        {kit.operadorId ? operadoresById.get(kit.operadorId) ?? kit.operadorId : '—'}
+                      </td>
+                      <td className={kit.recintoId ? '' : 'muted'}>
+                        {kit.recintoId ? recintosById.get(kit.recintoId) ?? kit.recintoId : '—'}
+                      </td>
                       <td>
                         <EstadoBadge estado={kit.estado} />
+                      </td>
+                      <td>
+                        {kit.operadorId || kit.recintoId ? (
+                          <button
+                            className="btn secondary"
+                            style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                            onClick={async () => {
+                              if (!window.confirm('¿Quitar la asignación de este kit?')) return;
+                              await api.patch(`/kits/${kit.id}/desasignar`);
+                              qc.invalidateQueries({ queryKey: ['kits'] });
+                            }}
+                          >
+                            Quitar
+                          </button>
+                        ) : (
+                          <button
+                            className="btn secondary"
+                            style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                            onClick={() => setAssigning(kit)}
+                          >
+                            Asignar
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
                   {kitsData?.items.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                         {debounced ? 'No hay kits que coincidan con la búsqueda.' : 'No hay kits creados para este evento.'}
                       </td>
                     </tr>
@@ -278,6 +331,19 @@ export function KitsPage() {
           onClose={() => setShowCreate(false)}
           onDone={() => {
             setShowCreate(false);
+            qc.invalidateQueries({ queryKey: ['kits'] });
+          }}
+        />
+      )}
+
+      {assigning && (
+        <AsignarKitModal
+          kit={assigning}
+          operadores={operadores ?? []}
+          recintos={recintos ?? []}
+          onClose={() => setAssigning(null)}
+          onDone={() => {
+            setAssigning(null);
             qc.invalidateQueries({ queryKey: ['kits'] });
           }}
         />
@@ -373,6 +439,112 @@ function CreateKitModal({
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
             {saving ? 'Creando…' : 'Crear kit'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal asignar kit ────────────────────────────────────────────────────────
+
+function AsignarKitModal({
+  kit,
+  operadores,
+  recintos,
+  onClose,
+  onDone,
+}: {
+  kit: Kit;
+  operadores: User[];
+  recintos: Recinto[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [operadorId, setOperadorId] = useState(kit.operadorId ?? '');
+  const [recintoId, setRecintoId] = useState(kit.recintoId ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const parsed = asignarKitSchema.safeParse({ operadorId, recintoId });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.patch(`/kits/${kit.id}/asignar`, parsed.data);
+      onDone();
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'No se pudo asignar el kit');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
+      <form className="login-card" style={{ maxWidth: 480, width: '100%' }} onSubmit={onSubmit}>
+        <h1>Asignar kit</h1>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Kit <strong>{kit.codigoUnico}</strong> — {kit.nombre}
+        </p>
+
+        <div className="field">
+          <label>Operador</label>
+          <select
+            value={operadorId}
+            onChange={(e) => setOperadorId(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.9rem',
+            }}
+          >
+            <option value="">— Selecciona un operador —</option>
+            {operadores.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombres} {u.apellidos} ({u.cedula})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label>Recinto (CDA)</label>
+          <select
+            value={recintoId}
+            onChange={(e) => setRecintoId(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.9rem',
+            }}
+          >
+            <option value="">— Selecciona un recinto —</option>
+            {recintos.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.codigoRecinto} — {r.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {error && <div className="banner error">{error}</div>}
+
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn" disabled={saving}>
+            {saving ? 'Guardando…' : 'Asignar'}
           </button>
         </div>
       </form>

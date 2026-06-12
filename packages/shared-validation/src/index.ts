@@ -196,7 +196,13 @@ export const pdfQrSchema = z.object({
   kitIds: z.array(z.string().uuid()).min(1, 'Selecciona al menos un kit').max(200),
 });
 
+export const asignarKitSchema = z.object({
+  operadorId: z.string().uuid('Operador inválido'),
+  recintoId: z.string().uuid('Recinto inválido'),
+});
+
 export type CreateKitInput = z.infer<typeof createKitSchema>;
+export type AsignarKitInput = z.infer<typeof asignarKitSchema>;
 
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)
