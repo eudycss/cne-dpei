@@ -26,7 +26,7 @@ varias y acelerar el proceso):
 - [ ] Expo — https://expo.dev
 
 Te recomiendo crearlas todas con el mismo correo y, donde se pueda, con "Continuar con GitHub"
-(usando la cuenta de GitHub donde está el repo `Diret03/cne-imbabura`).
+(usando tu cuenta de GitHub, donde está tu repo `eudycss/cne-dpei`).
 
 ---
 
@@ -77,21 +77,25 @@ El `schema.prisma` de este proyecto requiere las extensiones `postgis` y `uuid-o
 
 ### 1.3 Obtener la cadena de conexión (DATABASE_URL)
 
+> ⚠️ La "conexión directa" de Supabase (`db.<ref>.supabase.co:5432`) **solo funciona por
+> IPv6**. La mayoría de redes (sobre todo en Ecuador) no tienen IPv6, así que vamos a usar el
+> **Connection Pooler (Session mode)**, que es compatible con IPv4 y también gratis.
+
 1. En el menú lateral, ve a **Project Settings** (ícono de engranaje) → **Database**.
-2. Busca la sección **"Connection string"** y selecciona la pestaña **"URI"**.
-3. Asegúrate de usar la **conexión directa** (no la de "Connection pooling"/pgbouncer) — para
-   este proyecto de prueba la conexión directa es más simple y evita problemas con las
-   migraciones de Prisma.
-4. Copia la URI, que se verá algo así:
+2. Busca la sección **"Connection string"** → pestaña **"URI"** → busca la opción
+   **"Connection pooling"** (a veces aparece como un switch/dropdown junto a la URI) y elige el
+   modo **"Session"** (puerto `5432`).
+3. Copia la URI, que se verá algo así (nota que el host ahora termina en
+   `pooler.supabase.com`, y el usuario es `postgres.<ref-del-proyecto>`, no solo `postgres`):
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxxxxxx.supabase.co:5432/postgres
+   postgresql://postgres.xxxxxxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-xx-xxxx-1.pooler.supabase.com:5432/postgres
    ```
-5. Reemplaza `[YOUR-PASSWORD]` por la contraseña que guardaste en el paso 1.1, y agrega
-   `?schema=public` al final (igual que en `.env.example`). Queda así:
+4. Reemplaza `[YOUR-PASSWORD]` (bórralo **junto con los corchetes `[` `]`**, no los dejes) por
+   la contraseña que guardaste en el paso 1.1, y agrega `?schema=public` al final. Queda así:
    ```
-   postgresql://postgres:TU_PASSWORD@db.xxxxxxxxxxxxxxxx.supabase.co:5432/postgres?schema=public
+   postgresql://postgres.xxxxxxxxxxxxxxxx:TU_PASSWORD@aws-0-xx-xxxx-1.pooler.supabase.com:5432/postgres?schema=public
    ```
-6. **Guarda este valor completo** — lo necesitas en la Fase 3 y la Fase 4. Llamémoslo
+5. **Guarda este valor completo** — lo necesitas en la Fase 3 y la Fase 4. Llamémoslo
    `SUPABASE_DATABASE_URL` en esta guía.
 
 > ⚠️ Importante: el plan gratuito de Supabase **pausa el proyecto tras 7 días sin actividad**.
@@ -131,12 +135,12 @@ Al final deberías tener 3 valores distintos guardados.
 ### 3.1 Crear cuenta y conectar GitHub
 
 1. Ve a https://render.com → "Get Started" → "Sign in with GitHub" → autoriza acceso al
-   repositorio `Diret03/cne-imbabura` (puedes dar acceso solo a ese repo).
+   repositorio `eudycss/cne-dpei` (puedes dar acceso solo a ese repo).
 
 ### 3.2 Crear el Web Service
 
 1. En el dashboard de Render, click **"New +"** → **"Web Service"**.
-2. Selecciona el repositorio `Diret03/cne-imbabura`.
+2. Selecciona el repositorio `eudycss/cne-dpei`.
 3. Configura:
    - **Name**: `cne-imbabura-api`
    - **Branch**: `probarweb`
@@ -212,11 +216,12 @@ de Prisma y el seed **desde tu PC**, apuntando temporalmente a Supabase.
    cd c:\Projects\cne-imbabura
    ```
 2. Define la variable de entorno `DATABASE_URL` **solo para esta sesión de PowerShell** (no
-   modifica ningún archivo):
+   modifica ningún archivo). Usa **comillas simples** `'...'` — si tu contraseña tiene `$`,
+   con comillas dobles PowerShell intenta interpretarlo como variable y falla:
    ```powershell
-   $env:DATABASE_URL = "postgresql://postgres:TU_PASSWORD@db.xxxxxxxxxxxxxxxx.supabase.co:5432/postgres?schema=public"
+   $env:DATABASE_URL = 'postgresql://postgres.xxxxxxxxxxxxxxxx:TU_PASSWORD@aws-0-xx-xxxx-1.pooler.supabase.com:5432/postgres?schema=public'
    ```
-   (usa el mismo `SUPABASE_DATABASE_URL` de la Fase 1.3)
+   (usa el mismo `SUPABASE_DATABASE_URL` de la Fase 1.3, sin corchetes)
 3. Aplica las migraciones a Supabase:
    ```powershell
    pnpm --filter @cne/api db:migrate:deploy
@@ -230,9 +235,66 @@ de Prisma y el seed **desde tu PC**, apuntando temporalmente a Supabase.
 5. Cierra esa ventana de PowerShell (o abre una nueva) para que `$env:DATABASE_URL` deje de
    estar definida y no interfiera con tu desarrollo local normal.
 
+### Si ves `P1011: Error opening a TLS connection ... os error 10054`
+
+Algunos ISP en Ecuador bloquean/cortan conexiones **TLS sobre puertos de base de datos**
+(5432, 6543), aunque el puerto 443 (HTTPS normal) funcione bien. Síntoma: `Test-NetConnection`
+al pooler da `TcpTestSucceeded: True`, pero Prisma corta con "An existing connection was
+forcibly closed by the remote host".
+
+**Solución:** activa los **datos móviles (hotspot) de tu celular**, conecta la PC a esa red, y
+vuelve a correr el comando de la Fase 4. Es un paso único — luego puedes volver a tu wifi normal.
+
+### Si ves `function uuid_generate_v4() does not exist`
+
+Supabase instala la extensión `uuid-ossp` en el schema `extensions`, pero Prisma fuerza
+`search_path=public` (por el `?schema=public` de la URL), así que no la encuentra. Pasa solo
+la **primera vez** que migras un proyecto Supabase nuevo.
+
+**Solución** (con `$env:DATABASE_URL` ya definido, desde `apps/api`):
+```powershell
+cd apps/api
+'DROP EXTENSION IF EXISTS "uuid-ossp"; CREATE EXTENSION "uuid-ossp" SCHEMA public;' | Out-File -Encoding utf8 fix-ext.sql
+npx prisma db execute --file fix-ext.sql --schema prisma/schema.prisma
+npx prisma migrate resolve --rolled-back 20260101000000_init --schema prisma/schema.prisma
+Remove-Item fix-ext.sql
+cd ../..
+```
+Luego repite el paso 3 (`db:migrate:deploy`) y el paso 4 (`db:seed`) normalmente.
+
 > El usuario admin creado es el de tu `apps/api/.env` actual (`ADMIN_EMAIL`,
 > `ADMIN_INITIAL_PASSWORD`, etc.) — los mismos datos que usas en local, pero ahora también
 > existen en la base de Supabase.
+
+### Si olvidaste la contraseña después de cambiarla en el navegador (primer login)
+
+**Síntoma:** Completaste el cambio de contraseña forzado (HU1-CA3) en la web y ya no recuerdas
+la contraseña nueva. El login con `Admin*Inicial2026` ahora da 401.
+
+**Ojo con "Forgot password" si configuraste `BREVO_API_KEY` real en Render:** el endpoint
+`/auth/forgot-password` enviará un correo real a `ADMIN_EMAIL` (ej.
+`admin@cne-imbabura.gob.ec`). Si ese dominio no existe/no recibe correo, el link de reseteo
+**nunca llega** — no esperes el correo, usa el método directo de abajo.
+
+**Solución — resetear directo en Supabase (sin necesitar conexión Prisma/hotspot):**
+
+1. Genera el hash localmente (es solo cómputo, no toca la BD), desde `apps/api`:
+   ```powershell
+   cd apps/api
+   node -e "require('argon2').hash('Admin*Inicial2026').then(h => console.log(h))"
+   cd ../..
+   ```
+2. Copia el hash (`$argon2id$v=19$...`).
+3. En Supabase → **SQL Editor** → "New query", pega y ejecuta (reemplaza `<hash>`):
+   ```sql
+   UPDATE usuarios
+   SET password_hash = '<hash>', debe_cambiar_pwd = true
+   WHERE email = 'admin@cne-imbabura.gob.ec';
+   ```
+4. Inicia sesión de nuevo con `Admin*Inicial2026` — te pedirá cambiar la contraseña otra vez.
+
+> Esto evita por completo el problema de TLS/ISP (P1011) porque el SQL Editor de Supabase
+> corre en el navegador (HTTPS 443), no necesita que tu PC se conecte directo a la base.
 
 ### Verificar en Swagger
 
@@ -258,7 +320,7 @@ Si esto funciona, **el backend en internet ya está 100% operativo**.
 
 1. Ve a https://vercel.com → "Sign Up" → "Continue with GitHub" → autoriza acceso al repo.
 2. Click **"Add New..."** → **"Project"**.
-3. Busca y selecciona `Diret03/cne-imbabura` → "Import".
+3. Busca y selecciona `eudycss/cne-dpei` → "Import".
 
 ### 5.2 Configurar el build (monorepo)
 
@@ -297,6 +359,29 @@ En la sección **"Environment Variables"**, agrega:
 
 > Si el build falla con un error relacionado a `@cne/shared-types` no encontrado, avísame con
 > el log del error y lo ajustamos — puede que el comando de build necesite un pequeño cambio.
+
+### Si ves `404: NOT_FOUND` al navegar o refrescar una ruta (ej. `/login`, `/change-password`)
+
+**Síntoma:** La pantalla inicial (`/`) carga bien, pero al navegar a otra ruta de React Router
+(o refrescar con F5 estando en `/login`, `/change-password`, etc.) Vercel responde con una
+página de error `404: NOT_FOUND` (formato `Code: NOT_FOUND`, `ID: iadX:iadX::...`).
+
+**Causa:** Es una SPA — todas las rutas las maneja React Router en el navegador. Vercel, por
+defecto, busca un archivo estático que coincida con esa ruta y, al no encontrarlo, devuelve su
+propio 404 antes de que el JS de React llegue a cargar.
+
+**Solución:** ya está resuelto en el repo con `apps/web/vercel.json`:
+
+```json
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+Si este archivo se borra o el problema reaparece en un proyecto Vercel nuevo, vuelve a crearlo
+en `apps/web/vercel.json` y haz commit/push (Vercel redepliega solo).
 
 ---
 
