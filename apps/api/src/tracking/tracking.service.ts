@@ -727,6 +727,12 @@ export class TrackingService {
       tiposPorOperador.set(t.operadorId, set);
     }
 
+    const recepcionesConFoto = await this.prisma.recepcionKit.findMany({
+      where: { operadorId: { in: operadorIds }, fotoMilitarUrl: { not: null } },
+      select: { operadorId: true },
+    });
+    const operadoresConFoto = new Set(recepcionesConFoto.map((r) => r.operadorId));
+
     const ultimasGps = await this.prisma.$queryRaw<
       { operador_id: string; lat: number; lng: number; capturado_en: Date }[]
     >`
@@ -782,8 +788,54 @@ export class TrackingService {
         operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
         estado: deriveEstado(tiposPorOperador.get(operadorId)),
         ubicacion,
+        tieneFotoMilitar: operadoresConFoto.has(operadorId),
       };
     });
+  }
+
+  /**
+   * Devuelve la foto del militar (cifrada en disco) descifrada para el CDA
+   * del recinto indicado. Reutiliza el mismo control de acceso que
+   * estadoCdas: administradores ven cualquier CDA, supervisores solo los de
+   * sus operadores asignados.
+   */
+  async obtenerFotoMilitar(
+    recintoId: string,
+    viewerId: string,
+    roles: RoleName[],
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const kit = await this.prisma.kitElectoral.findFirst({
+      where: { eventoId: evento.id, recintoId, operadorId: { not: null } },
+      select: { operadorId: true },
+    });
+    if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
+
+    const esAdmin = roles.includes('ADMINISTRADOR');
+    if (!esAdmin) {
+      const asignado = await this.prisma.asignacionSupervisor.findFirst({
+        where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
+        select: { id: true },
+      });
+      if (!asignado) throw new NotFoundException('CDA no encontrado');
+    }
+
+    const recepcion = await this.prisma.recepcionKit.findFirst({
+      where: { operadorId: kit.operadorId, fotoMilitarUrl: { not: null } },
+      select: { fotoMilitarUrl: true },
+      orderBy: { confirmadoEn: 'desc' },
+    });
+    if (!recepcion?.fotoMilitarUrl) {
+      throw new NotFoundException('No hay foto del militar registrada para este CDA');
+    }
+
+    const buffer = await this.storage.readDecrypted(recepcion.fotoMilitarUrl);
+    return { buffer, contentType: detectarContentTypeImagen(buffer) };
   }
 
   /**
@@ -869,4 +921,31 @@ export class TrackingService {
 
     return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
+}
+
+/** Detecta el content-type de una imagen a partir de sus magic bytes. */
+function detectarContentTypeImagen(buffer: Buffer): string {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return 'image/png';
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.toString('ascii', 0, 4) === 'RIFF' &&
+    buffer.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buffer.length >= 4 && buffer.toString('ascii', 0, 4) === 'GIF8') {
+    return 'image/gif';
+  }
+  return 'image/jpeg';
 }

@@ -20,3 +20,14 @@ export async function getEstadoCdas(): Promise<CdaEstadoDto[]> {
   const { data } = await api.get<CdaEstadoDto[]>('/tracking/estado-cdas');
   return data;
 }
+
+/**
+ * HU3-CA2: foto del militar (descifrada) recibida al entregar el kit del CDA
+ * de ese recinto. Devuelve el blob de la imagen para mostrarla con un Object URL.
+ */
+export async function getFotoMilitar(recintoId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/tracking/estado-cdas/${recintoId}/foto-militar`, {
+    responseType: 'blob',
+  });
+  return data;
+}

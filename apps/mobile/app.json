@@ -5,7 +5,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#1e293b"
@@ -17,7 +20,9 @@
         "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesitamos tu ubicación en segundo plano para rastrear tu retorno al DPI durante la jornada electoral.",
         "NSCameraUsageDescription": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -28,7 +33,14 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
-        "CAMERA"
+        "CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -45,10 +57,21 @@
         {
           "cameraPermission": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "extra": {
-      "apiUrl": "http://localhost:3000"
+      "apiUrl": "http://localhost:3000",
+      "eas": {
+        "projectId": "dbc85be8-a23a-4bb1-8f34-d0a68c070a73"
+      }
     }
   }
 }

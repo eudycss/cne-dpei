@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
-import { getEstadoCdas, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
+import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
 
 const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
@@ -82,6 +82,53 @@ function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => vo
   );
 }
 
+function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['foto-militar', cda.recintoId],
+    queryFn: () => getFotoMilitar(cda.recintoId),
+  });
+
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const objectUrl = URL.createObjectURL(data);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [data]);
+
+  return (
+    <div
+      className="center"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
+    >
+      <div className="login-card" style={{ maxWidth: 480, width: '100%', padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+          <h2 style={{ margin: 0 }}>Foto del militar</h2>
+          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+            {cda.nombreRecinto} · {cda.operadorNombre}
+          </p>
+        </div>
+        <div
+          style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}
+        >
+          {isLoading ? (
+            <p className="muted">Cargando…</p>
+          ) : isError ? (
+            <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
+          ) : url ? (
+            <img src={url} alt="Foto del militar" style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 4 }} />
+          ) : null}
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-end', padding: '1rem' }}>
+          <button className="btn secondary" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MonitoreoPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['operadores-en-retorno'],
@@ -102,6 +149,7 @@ export function MonitoreoPage() {
   const cdas = cdaData ?? [];
   const [cantonFiltro, setCantonFiltro] = useState('');
   const [verUbicacion, setVerUbicacion] = useState<CdaEstadoDto | null>(null);
+  const [verFoto, setVerFoto] = useState<CdaEstadoDto | null>(null);
 
   const cantones = useMemo(() => {
     const map = new Map<number, string>();
@@ -218,6 +266,7 @@ export function MonitoreoPage() {
                 <th>Estado</th>
                 <th>Última actualización</th>
                 <th>Ubicación</th>
+                <th>Foto militar</th>
               </tr>
             </thead>
             <tbody>
@@ -254,12 +303,22 @@ export function MonitoreoPage() {
                         Ver ubicación
                       </button>
                     </td>
+                    <td>
+                      <button
+                        className="btn secondary"
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                        disabled={!c.tieneFotoMilitar}
+                        onClick={() => setVerFoto(c)}
+                      >
+                        Ver foto
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     No hay CDAs con operador asignado en el evento activo
                   </td>
                 </tr>
@@ -270,6 +329,7 @@ export function MonitoreoPage() {
       </div>
 
       {verUbicacion && <UbicacionModal cda={verUbicacion} onClose={() => setVerUbicacion(null)} />}
+      {verFoto && <FotoMilitarModal cda={verFoto} onClose={() => setVerFoto(null)} />}
     </div>
   );
 }

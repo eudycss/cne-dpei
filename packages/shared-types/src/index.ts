@@ -448,6 +448,7 @@ export interface CdaEstadoDto {
   operadorNombre: string;
   estado: EstadoOperadorCda;
   ubicacion: CdaUbicacion | null;
+  tieneFotoMilitar: boolean;
 }
 
 // HU5 — Llegada al DPI

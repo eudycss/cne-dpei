@@ -4,18 +4,23 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   ParseFilePipeBuilder,
   Post,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import type {
@@ -176,6 +181,26 @@ export class TrackingController {
   })
   estadoCdas(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.estadoCdas(user.sub, user.roles);
+  }
+
+  @Get('estado-cdas/:recintoId/foto-militar')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
+  @ApiOperation({
+    summary: 'HU3-CA2: foto del militar (descifrada) recibida al entregar el kit de ese CDA',
+  })
+  async fotoMilitar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('recintoId') recintoId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, contentType } = await this.tracking.obtenerFotoMilitar(
+      recintoId,
+      user.sub,
+      user.roles,
+    );
+    res.set({ 'Content-Type': contentType });
+    return new StreamableFile(buffer);
   }
 
   @Post('llegada-dpi')
