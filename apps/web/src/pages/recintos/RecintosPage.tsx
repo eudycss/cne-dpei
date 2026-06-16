@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import type { Canton, Paginated, Recinto, TipoRecinto } from '@cne/shared-types';
 import { createRecintoSchema, updateRecintoSchema } from '@cne/shared-validation';
 import { api } from '../../lib/api';
@@ -23,6 +24,7 @@ export function RecintosPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -69,16 +71,79 @@ export function RecintosPage() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ page: '1', pageSize: '200' });
+      if (cantonId) params.set('cantonId', cantonId);
+      const res = await api.get<Paginated<Recinto>>(`/recintos?${params}`);
+      const items = res.data.items;
+
+      const cdas = items.filter((r) => r.tipo === 'CDA');
+      const noCdas = items.filter((r) => r.tipo === 'NO_CDA');
+
+      const rows: any[][] = [];
+
+      rows.push(['RECINTOS ELECTORALES — CNE IMBABURA']);
+      rows.push([]);
+
+      for (const cda of cdas) {
+        const jt = (cda.juntasFemeninas ?? 0) + (cda.juntasMasculinas ?? 0);
+        rows.push(['Unidad Educativa CDA']);
+        rows.push(['Código', 'Nombre', 'JF', 'JM', 'JT']);
+        rows.push([cda.codigoRecinto, cda.nombre, cda.juntasFemeninas ?? 0, cda.juntasMasculinas ?? 0, jt]);
+        rows.push([]);
+
+        const asociadas = noCdas.filter((n) => n.cantonId === cda.cantonId);
+        if (asociadas.length > 0) {
+          rows.push(['Unidades Educativas NO CDA']);
+          rows.push(['Cantón', 'Parroquia', 'Dirección', 'Código', 'Nombre', 'JF', 'JM', 'JT']);
+          let sumNoCdaJt = 0;
+          for (const nc of asociadas) {
+            const ncJt = (nc.juntasFemeninas ?? 0) + (nc.juntasMasculinas ?? 0);
+            sumNoCdaJt += ncJt;
+            rows.push([
+              nc.cantonNombre ?? '',
+              nc.parroquia ?? '',
+              nc.direccion ?? '',
+              nc.codigoRecinto,
+              nc.nombre,
+              nc.juntasFemeninas ?? 0,
+              nc.juntasMasculinas ?? 0,
+              ncJt,
+            ]);
+          }
+          rows.push([]);
+          rows.push(['', '', '', '', '', '', 'Nro Juntas Total', jt + sumNoCdaJt]);
+        } else {
+          rows.push(['', '', '', '', '', '', 'Nro Juntas Total', jt]);
+        }
+        rows.push([]);
+        rows.push(['---']);
+        rows.push([]);
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Recintos');
+      XLSX.writeFile(wb, 'recintos_electorales.xlsx');
+    } catch (e: any) {
+      window.alert('No se pudo exportar: ' + (e?.message ?? ''));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <h2>Recintos Electorales</h2>
       <div className="card">
-        <div className="row">
+        <div className="row" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
           <SearchInput
             placeholder="Buscar por nombre, código o parroquia"
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 200 }}
           />
           <select value={cantonId} onChange={(e) => { setCantonId(e.target.value); setPage(1); }}>
             <option value="">Todos los cantones</option>
@@ -92,6 +157,14 @@ export function RecintosPage() {
               <option key={t} value={t}>{TIPO_LABELS[t]}</option>
             ))}
           </select>
+          <button
+            className="btn secondary"
+            onClick={handleExport}
+            disabled={exporting}
+            title="Exportar a Excel"
+          >
+            {exporting ? 'Exportando…' : '↓ Excel'}
+          </button>
           {isAdmin && (
             <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo</button>
           )}
@@ -101,72 +174,90 @@ export function RecintosPage() {
           <p className="muted">Cargando…</p>
         ) : (
           <>
-            <table>
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Nombre</th>
-                  <th>Cantón</th>
-                  <th>Parroquia / Zona</th>
-                  <th>Tipo</th>
-                  <th>Internet</th>
-                  <th>Cobertura</th>
-                  <th>Electores</th>
-                  {isAdmin && <th style={{ width: 180 }}>Acciones</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data?.items.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.codigoRecinto}</td>
-                    <td>{r.nombre}</td>
-                    <td>{r.cantonNombre ?? '—'}</td>
-                    <td>
-                      {r.parroquia ?? '—'}
-                      {r.zona && r.zona !== r.parroquia && (
-                        <span className="muted"> · {r.zona}</span>
-                      )}
-                    </td>
-                    <td>{TIPO_LABELS[r.tipo]}</td>
-                    <td>{r.tieneInternet ? 'Sí' : 'No'}</td>
-                    <td>{r.coberturaMovil ? 'Sí' : 'No'}</td>
-                    <td>{r.numeroElectores ?? '—'}</td>
-                    {isAdmin && (
-                      <td>
-                        <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
-                          <button
-                            className="btn secondary"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                            onClick={() => setEditing(r)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="btn danger"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                            disabled={deletingId === r.id}
-                            onClick={() => handleDelete(r.id, r.nombre)}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-                {data?.items.length === 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ minWidth: 900 }}>
+                <thead>
                   <tr>
-                    <td
-                      colSpan={isAdmin ? 9 : 8}
-                      className="muted"
-                      style={{ textAlign: 'center', padding: '1.5rem' }}
-                    >
-                      No hay recintos registrados
-                    </td>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Cantón</th>
+                    <th>Parroquia / Zona</th>
+                    <th>Tipo</th>
+                    <th>JF</th>
+                    <th>JM</th>
+                    <th>JT</th>
+                    <th>Internet</th>
+                    <th>Cobertura</th>
+                    <th>Electores</th>
+                    {isAdmin && <th style={{ width: 180 }}>Acciones</th>}
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data?.items.map((r) => {
+                    const jt =
+                      r.juntasFemeninas != null || r.juntasMasculinas != null
+                        ? (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0)
+                        : null;
+                    return (
+                      <tr key={r.id}>
+                        <td>{r.codigoRecinto}</td>
+                        <td>{r.nombre}</td>
+                        <td>{r.cantonNombre ?? '—'}</td>
+                        <td>
+                          {r.parroquia ?? '—'}
+                          {r.zona && r.zona !== r.parroquia && (
+                            <span className="muted"> · {r.zona}</span>
+                          )}
+                        </td>
+                        <td>{TIPO_LABELS[r.tipo]}</td>
+                        <td>{r.juntasFemeninas ?? '—'}</td>
+                        <td>{r.juntasMasculinas ?? '—'}</td>
+                        <td>
+                          {jt != null ? (
+                            <strong>{jt}</strong>
+                          ) : '—'}
+                        </td>
+                        <td>{r.tieneInternet ? 'Sí' : 'No'}</td>
+                        <td>{r.coberturaMovil ? 'Sí' : 'No'}</td>
+                        <td>{r.numeroElectores ?? '—'}</td>
+                        {isAdmin && (
+                          <td>
+                            <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
+                              <button
+                                className="btn secondary"
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                onClick={() => setEditing(r)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="btn danger"
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                disabled={deletingId === r.id}
+                                onClick={() => handleDelete(r.id, r.nombre)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {data?.items.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={isAdmin ? 12 : 11}
+                        className="muted"
+                        style={{ textAlign: 'center', padding: '1.5rem' }}
+                      >
+                        No hay recintos registrados
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
             <div className="row" style={{ marginTop: '1rem', justifyContent: 'space-between' }}>
               <span className="muted">
@@ -236,6 +327,8 @@ interface FormState {
   tieneInternet: boolean;
   coberturaMovil: boolean;
   numeroElectores: string;
+  juntasFemeninas: string;
+  juntasMasculinas: string;
 }
 
 type TextFieldKey = Exclude<keyof FormState, 'tipo' | 'tieneInternet' | 'coberturaMovil'>;
@@ -264,6 +357,8 @@ function RecintoModal({
     tieneInternet: recinto?.tieneInternet ?? false,
     coberturaMovil: recinto?.coberturaMovil ?? false,
     numeroElectores: recinto?.numeroElectores != null ? String(recinto.numeroElectores) : '',
+    juntasFemeninas: recinto?.juntasFemeninas != null ? String(recinto.juntasFemeninas) : '',
+    juntasMasculinas: recinto?.juntasMasculinas != null ? String(recinto.juntasMasculinas) : '',
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -294,6 +389,8 @@ function RecintoModal({
       tieneInternet: form.tieneInternet,
       coberturaMovil: form.coberturaMovil,
       numeroElectores: form.numeroElectores !== '' ? Number(form.numeroElectores) : null,
+      juntasFemeninas: form.juntasFemeninas !== '' ? Number(form.juntasFemeninas) : null,
+      juntasMasculinas: form.juntasMasculinas !== '' ? Number(form.juntasMasculinas) : null,
     };
     const schema = recinto ? updateRecintoSchema : createRecintoSchema;
     const parsed = schema.safeParse(payload);
@@ -318,22 +415,28 @@ function RecintoModal({
 
   return (
     <div
-      className="center"
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.4)',
-        zIndex: 10,
+        background: 'rgba(0,0,0,0.5)',
+        zIndex: 100,
         overflowY: 'auto',
-        padding: '2rem 0',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '1rem',
       }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <form
         className="login-card"
-        style={{ maxWidth: 560, width: '100%' }}
+        style={{ maxWidth: 520, width: '100%', margin: '0 auto' }}
         onSubmit={onSubmit}
+        onClick={(e) => e.stopPropagation()}
       >
-        <h1>{recinto ? 'Editar recinto' : 'Nuevo recinto'}</h1>
+        <h1 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
+          {recinto ? 'Editar recinto' : 'Nuevo recinto'}
+        </h1>
 
         <div className="field">
           <label>Código de recinto</label>
@@ -365,14 +468,15 @@ function RecintoModal({
           </select>
         </div>
 
-        <div className="field">
-          <label>Parroquia (opcional)</label>
-          <input value={form.parroquia} onChange={textField('parroquia')} maxLength={120} />
-        </div>
-
-        <div className="field">
-          <label>Zona (opcional)</label>
-          <input value={form.zona} onChange={textField('zona')} maxLength={120} />
+        <div className="row" style={{ gap: '0.75rem' }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Parroquia (opcional)</label>
+            <input value={form.parroquia} onChange={textField('parroquia')} maxLength={120} />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Zona (opcional)</label>
+            <input value={form.zona} onChange={textField('zona')} maxLength={120} />
+          </div>
         </div>
 
         <div className="field">
@@ -387,7 +491,7 @@ function RecintoModal({
           </select>
         </div>
 
-        <div className="row">
+        <div className="row" style={{ gap: '0.75rem' }}>
           <div className="field" style={{ flex: 1 }}>
             <label>Latitud</label>
             <input
@@ -412,6 +516,35 @@ function RecintoModal({
           </div>
         </div>
 
+        <div className="row" style={{ gap: '0.75rem' }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Juntas Femeninas (JF)</label>
+            <input
+              type="number"
+              min={0}
+              value={form.juntasFemeninas}
+              onChange={textField('juntasFemeninas')}
+              placeholder="0"
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Juntas Masculinas (JM)</label>
+            <input
+              type="number"
+              min={0}
+              value={form.juntasMasculinas}
+              onChange={textField('juntasMasculinas')}
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        {(form.juntasFemeninas !== '' || form.juntasMasculinas !== '') && (
+          <p className="muted" style={{ marginTop: '-0.5rem', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+            JT (total) = {(Number(form.juntasFemeninas) || 0) + (Number(form.juntasMasculinas) || 0)}
+          </p>
+        )}
+
         <div className="field">
           <label>Número de electores (opcional)</label>
           <input
@@ -422,7 +555,7 @@ function RecintoModal({
           />
         </div>
 
-        <div className="row" style={{ gap: '1.5rem' }}>
+        <div className="row" style={{ gap: '1.5rem', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <input
               type="checkbox"
@@ -443,7 +576,7 @@ function RecintoModal({
 
         {error && <div className="banner error">{error}</div>}
 
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem' }}>
           <button type="button" className="btn secondary" onClick={onClose}>
             Cancelar
           </button>

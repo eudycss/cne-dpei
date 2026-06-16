@@ -126,6 +126,8 @@ export interface Recinto {
   tieneInternet: boolean;
   coberturaMovil: boolean;
   numeroElectores: number | null;
+  juntasFemeninas: number | null;
+  juntasMasculinas: number | null;
 }
 
 export interface CreateRecintoRequest {
@@ -141,6 +143,8 @@ export interface CreateRecintoRequest {
   tieneInternet?: boolean;
   coberturaMovil?: boolean;
   numeroElectores?: number | null;
+  juntasFemeninas?: number | null;
+  juntasMasculinas?: number | null;
 }
 
 export interface UpdateRecintoRequest {
@@ -156,6 +160,8 @@ export interface UpdateRecintoRequest {
   tieneInternet?: boolean;
   coberturaMovil?: boolean;
   numeroElectores?: number | null;
+  juntasFemeninas?: number | null;
+  juntasMasculinas?: number | null;
 }
 
 export interface Militar {

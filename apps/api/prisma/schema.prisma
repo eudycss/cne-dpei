@@ -240,8 +240,10 @@ model Recinto {
   coberturaMovil  Boolean     @default(false) @map("cobertura_movil")
   distanciaDpiKm  Decimal?    @map("distancia_dpi_km") @db.Decimal(6, 2)
   tiempoDpiMin    Int?        @map("tiempo_dpi_min")
-  numeroElectores Int?        @map("numero_electores")
-  esDificilAcceso Boolean     @default(false) @map("es_dificil_acceso")
+  numeroElectores    Int?        @map("numero_electores")
+  juntasFemeninas    Int?        @map("juntas_femeninas")
+  juntasMasculinas   Int?        @map("juntas_masculinas")
+  esDificilAcceso    Boolean     @default(false) @map("es_dificil_acceso")
 
   canton     Canton    @relation(fields: [cantonId], references: [id])
   cdaDestino Recinto?  @relation("CdaDestino", fields: [cdaDestinoId], references: [id])

@@ -135,6 +135,8 @@ export const createRecintoSchema = z.object({
   tieneInternet: z.boolean().optional(),
   coberturaMovil: z.boolean().optional(),
   numeroElectores: z.number().int().nonnegative().nullable().optional(),
+  juntasFemeninas: z.number().int().nonnegative().nullable().optional(),
+  juntasMasculinas: z.number().int().nonnegative().nullable().optional(),
 });
 
 export const updateRecintoSchema = createRecintoSchema.partial();
