@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { postLlegadaDpi } from '../lib/queries/retorno';
@@ -27,6 +29,8 @@ type Props = {
 
 export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +119,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
       <View style={styles.container}>
         <AppBar subtitle="Llegada al DPI" />
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2563eb" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </View>
     );
@@ -190,21 +194,21 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   body: { padding: 20, paddingBottom: 40 },
-  title: { fontSize: 22, fontFamily: fontFamily.bold, color: '#1f2937' },
+  title: { fontSize: 22, fontFamily: fontFamily.bold, color: c.textPrimary },
   subtitle: {
     fontSize: 14,
     fontFamily: fontFamily.regular,
-    color: '#4b5563',
+    color: c.textMeta,
     marginTop: 8,
     marginBottom: 20,
     lineHeight: 20,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.bgCard,
     borderRadius: 12,
     padding: 8,
     shadowColor: '#000',
@@ -219,42 +223,42 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: c.border,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#9ca3af',
+    borderColor: c.textPlaceholder,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  checkboxOn: { backgroundColor: '#10b981', borderColor: '#10b981' },
+  checkboxOn: { backgroundColor: c.success, borderColor: c.success },
   checkboxMark: { color: '#fff', fontFamily: fontFamily.bold, fontSize: 14 },
   kitInfo: { flex: 1 },
-  kitNombre: { fontSize: 15, fontFamily: fontFamily.semiBold, color: '#1f2937' },
-  kitCodigo: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', marginTop: 2 },
-  kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: '#9ca3af', marginTop: 2 },
+  kitNombre: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.textPrimary },
+  kitCodigo: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
+  kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textPlaceholder, marginTop: 2 },
   contador: {
     fontSize: 13,
     fontFamily: fontFamily.medium,
-    color: '#6b7280',
+    color: c.textSecondary,
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 16,
   },
   btnPrimary: {
-    backgroundColor: '#2563eb',
+    backgroundColor: c.primary,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,
     alignItems: 'center',
   },
-  btnDisabled: { backgroundColor: '#9cb6ef' },
+  btnDisabled: { backgroundColor: c.primaryDisabled },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 15 },
   btnSecondary: { paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', marginTop: 12 },
-  btnSecondaryText: { color: '#6b7280', fontFamily: fontFamily.medium },
-  errorText: { color: '#dc2626', fontFamily: fontFamily.medium, textAlign: 'center', marginBottom: 16 },
+  btnSecondaryText: { color: c.textSecondary, fontFamily: fontFamily.medium },
+  errorText: { color: c.error, fontFamily: fontFamily.medium, textAlign: 'center', marginBottom: 16 },
 });

@@ -1,9 +1,14 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
 
 export function PlaceholderHome() {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const rol = user?.roles[0] ?? 'SIN_ROL';
 
   return (
@@ -24,11 +29,11 @@ export function PlaceholderHome() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  hello: { fontSize: 24, fontFamily: fontFamily.bold, color: '#1f2937' },
-  role: { fontSize: 15, fontFamily: fontFamily.semiBold, color: '#2563eb', marginTop: 8 },
-  note: { fontSize: 14, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 16, lineHeight: 20 },
-  button: { backgroundColor: '#e5e7eb', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 6, marginTop: 28 },
-  buttonText: { color: '#111827', fontFamily: fontFamily.semiBold },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  hello: { fontSize: 24, fontFamily: fontFamily.bold, color: c.textPrimary },
+  role: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.primary, marginTop: 8 },
+  note: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 16, lineHeight: 20 },
+  button: { backgroundColor: c.btnSecondaryBg, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 6, marginTop: 28, borderWidth: 1, borderColor: c.btnSecondaryBorder },
+  buttonText: { color: c.btnSecondaryText, fontFamily: fontFamily.semiBold },
 });

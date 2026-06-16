@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
 import {
@@ -26,6 +28,8 @@ type Props = {
 
 export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +110,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
       <View style={styles.container}>
         <AppBar subtitle="Registro de salida" />
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2563eb" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Cargando tu asignación…</Text>
         </View>
       </View>
@@ -202,15 +206,15 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
   scroll: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loadingText: { marginTop: 12, fontFamily: fontFamily.regular, color: '#6b7280' },
-  greeting: { fontSize: 20, fontFamily: fontFamily.bold, color: '#1f2937' },
-  eventoLabel: { fontSize: 13, fontFamily: fontFamily.medium, color: '#2563eb', marginTop: 4, marginBottom: 16 },
+  loadingText: { marginTop: 12, fontFamily: fontFamily.regular, color: c.textSecondary },
+  greeting: { fontSize: 20, fontFamily: fontFamily.bold, color: c.textPrimary },
+  eventoLabel: { fontSize: 13, fontFamily: fontFamily.medium, color: c.primary, marginTop: 4, marginBottom: 16 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.bgCard,
     padding: 16,
     borderRadius: 10,
     marginBottom: 14,
@@ -219,29 +223,29 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  cardTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 },
-  recintoNombre: { fontSize: 17, fontFamily: fontFamily.semiBold, color: '#1f2937' },
-  militarNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: '#1f2937' },
-  recintoMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: '#4b5563', marginTop: 2 },
-  note: { fontSize: 12, fontFamily: fontFamily.italic, color: '#6b7280', marginTop: 8 },
-  kitRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  cardTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 },
+  recintoNombre: { fontSize: 17, fontFamily: fontFamily.semiBold, color: c.textPrimary },
+  militarNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary },
+  recintoMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 2 },
+  note: { fontSize: 12, fontFamily: fontFamily.italic, color: c.textSecondary, marginTop: 8 },
+  kitRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
   kitRowLast: { borderBottomWidth: 0 },
-  kitCode: { fontSize: 12, fontFamily: fontFamily.bold, color: '#2563eb', letterSpacing: 0.5 },
-  kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: '#1f2937', marginTop: 2 },
-  kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: '#6b7280', marginTop: 2 },
+  kitCode: { fontSize: 12, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 0.5 },
+  kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary, marginTop: 2 },
+  kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
   submitButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: c.primary,
     paddingVertical: 14,
     borderRadius: 8,
     marginTop: 8,
   },
   submitText: { color: '#fff', textAlign: 'center', fontSize: 15, fontFamily: fontFamily.semiBold },
   logoutLink: { marginTop: 18, alignItems: 'center' },
-  logoutLinkText: { color: '#6b7280', fontFamily: fontFamily.medium, fontSize: 13 },
-  errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: '#1f2937', textAlign: 'center' },
-  errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 8 },
-  retryButton: { backgroundColor: '#2563eb', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
+  logoutLinkText: { color: c.textSecondary, fontFamily: fontFamily.medium, fontSize: 13 },
+  errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, textAlign: 'center' },
+  errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 8 },
+  retryButton: { backgroundColor: c.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
   retryText: { color: '#fff', fontFamily: fontFamily.semiBold },
   logoutButton: { paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 },
-  logoutText: { color: '#6b7280', fontFamily: fontFamily.medium },
+  logoutText: { color: c.textSecondary, fontFamily: fontFamily.medium },
 });

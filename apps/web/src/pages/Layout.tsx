@@ -1,10 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const { theme, toggle } = useTheme();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
 
@@ -56,11 +59,16 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">
-        {puedeVerNotificaciones ? (
-          <div className="topbar">
-            <NotificationsBell />
-          </div>
-        ) : null}
+        <div className="topbar">
+          <button
+            className="theme-toggle"
+            onClick={toggle}
+            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          {puedeVerNotificaciones ? <NotificationsBell /> : null}
+        </div>
         <Outlet />
       </main>
     </div>

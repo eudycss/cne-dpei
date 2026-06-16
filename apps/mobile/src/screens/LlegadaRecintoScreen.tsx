@@ -17,6 +17,8 @@ import type {
   ValidarKitResponse,
 } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { CameraFoto } from '../components/CameraFoto';
 import { CameraQr } from '../components/CameraQr';
@@ -35,6 +37,7 @@ import {
 import { fontFamily } from '../theme/typography';
 
 type Paso = 1 | 2 | 3;
+type Styles = ReturnType<typeof makeStyles>;
 
 type Props = {
   onLlegadaRegistrada: () => void;
@@ -42,6 +45,8 @@ type Props = {
 
 export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -210,7 +215,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       <View style={styles.container}>
         <AppBar subtitle="Llegada al recinto" />
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2563eb" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Cargando…</Text>
         </View>
       </View>
@@ -241,11 +246,11 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.greeting}>Hola {user?.nombres} 👋</Text>
         <View style={styles.stepper}>
-          <StepBadge n={1} label="Foto militar" active={paso === 1} done={paso > 1} />
+          <StepBadge n={1} label="Foto militar" active={paso === 1} done={paso > 1} styles={styles} />
           <View style={styles.stepLine} />
-          <StepBadge n={2} label="Escanear kits" active={paso === 2} done={paso > 2} />
+          <StepBadge n={2} label="Escanear kits" active={paso === 2} done={paso > 2} styles={styles} />
           <View style={styles.stepLine} />
-          <StepBadge n={3} label="Confirmar" active={paso === 3} done={false} />
+          <StepBadge n={3} label="Confirmar" active={paso === 3} done={false} styles={styles} />
         </View>
 
         {paso === 1 ? (
@@ -255,6 +260,8 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
             fotoUrl={fotoUrl}
             subiendoFoto={subiendoFoto}
             onTomarFoto={() => setMostrarCamaraFoto(true)}
+            styles={styles}
+            colors={colors}
           />
         ) : null}
 
@@ -265,6 +272,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
             kitsPendientes={kitsPendientes}
             onEscanear={() => setMostrarCamaraQr(true)}
             onIngresoManual={() => setMostrarIngresoManual(true)}
+            styles={styles}
           />
         ) : null}
 
@@ -274,6 +282,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
             cantidadKits={asignacion.kits.length}
             registrando={registrando}
             onConfirmar={registrarLlegada}
+            styles={styles}
           />
         ) : null}
 
@@ -373,11 +382,13 @@ function StepBadge({
   label,
   active,
   done,
+  styles,
 }: {
   n: number;
   label: string;
   active: boolean;
   done: boolean;
+  styles: Styles;
 }) {
   return (
     <View style={styles.stepBadgeWrap}>
@@ -400,12 +411,16 @@ function Paso1({
   fotoUrl,
   subiendoFoto,
   onTomarFoto,
+  styles,
+  colors,
 }: {
   militar: MiAsignacionResponse['militar'];
   fotoUri: string | null;
   fotoUrl: string | null;
   subiendoFoto: boolean;
   onTomarFoto: () => void;
+  styles: Styles;
+  colors: Colors;
 }) {
   return (
     <>
@@ -462,12 +477,14 @@ function Paso2({
   kitsPendientes,
   onEscanear,
   onIngresoManual,
+  styles,
 }: {
   kits: MiAsignacionKit[];
   kitsRecibidos: Set<string>;
   kitsPendientes: MiAsignacionKit[];
   onEscanear: () => void;
   onIngresoManual: () => void;
+  styles: Styles;
 }) {
   return (
     <>
@@ -510,11 +527,13 @@ function Paso3({
   cantidadKits,
   registrando,
   onConfirmar,
+  styles,
 }: {
   recintoNombre: string;
   cantidadKits: number;
   registrando: boolean;
   onConfirmar: () => void;
+  styles: Styles;
 }) {
   return (
     <>
@@ -541,26 +560,26 @@ function Paso3({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
   scroll: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loadingText: { marginTop: 12, fontFamily: fontFamily.regular, color: '#6b7280' },
-  greeting: { fontSize: 20, fontFamily: fontFamily.bold, color: '#1f2937', marginBottom: 12 },
+  loadingText: { marginTop: 12, fontFamily: fontFamily.regular, color: c.textSecondary },
+  greeting: { fontSize: 20, fontFamily: fontFamily.bold, color: c.textPrimary, marginBottom: 12 },
 
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
   stepBadgeWrap: { alignItems: 'center', minWidth: 80 },
   stepCircle: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  stepCircleIdle: { backgroundColor: '#e5e7eb' },
-  stepCircleActive: { backgroundColor: '#2563eb' },
-  stepCircleDone: { backgroundColor: '#10b981' },
+  stepCircleIdle: { backgroundColor: c.border },
+  stepCircleActive: { backgroundColor: c.primary },
+  stepCircleDone: { backgroundColor: c.success },
   stepCircleText: { color: '#fff', fontFamily: fontFamily.bold, fontSize: 13 },
-  stepLabel: { fontSize: 11, fontFamily: fontFamily.medium, color: '#6b7280', marginTop: 4, textAlign: 'center' },
-  stepLabelActive: { color: '#1f2937', fontFamily: fontFamily.semiBold },
-  stepLine: { flex: 1, height: 2, backgroundColor: '#e5e7eb', marginHorizontal: -4 },
+  stepLabel: { fontSize: 11, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 4, textAlign: 'center' },
+  stepLabelActive: { color: c.textPrimary, fontFamily: fontFamily.semiBold },
+  stepLine: { flex: 1, height: 2, backgroundColor: c.border, marginHorizontal: -4 },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.bgCard,
     padding: 16,
     borderRadius: 10,
     marginBottom: 14,
@@ -569,30 +588,30 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  cardTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: '#6b7280', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 },
-  militarNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: '#1f2937' },
-  recintoMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: '#4b5563', marginTop: 2 },
-  note: { fontSize: 12, fontFamily: fontFamily.italic, color: '#6b7280', marginTop: 8, lineHeight: 18 },
+  cardTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 },
+  militarNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary },
+  recintoMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 2 },
+  note: { fontSize: 12, fontFamily: fontFamily.italic, color: c.textSecondary, marginTop: 8, lineHeight: 18 },
 
-  preview: { width: '100%', height: 220, borderRadius: 8, marginBottom: 10, backgroundColor: '#e5e7eb' },
+  preview: { width: '100%', height: 220, borderRadius: 8, marginBottom: 10, backgroundColor: c.border },
   previewPlaceholder: {
     width: '100%',
     height: 140,
     borderRadius: 8,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: c.placeholder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: c.border,
     borderStyle: 'dashed',
   },
-  previewPlaceholderText: { color: '#9ca3af', fontFamily: fontFamily.medium, fontSize: 13 },
+  previewPlaceholderText: { color: c.textPlaceholder, fontFamily: fontFamily.medium, fontSize: 13 },
   fotoConfirm: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#d1fae5',
+    backgroundColor: c.successBg,
     borderRadius: 8,
     padding: 14,
     marginBottom: 10,
@@ -601,55 +620,57 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#10b981',
+    backgroundColor: c.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
   fotoConfirmCheck: { color: '#fff', fontSize: 18, fontFamily: fontFamily.bold },
-  fotoConfirmText: { color: '#065f46', fontFamily: fontFamily.semiBold, fontSize: 13, flex: 1 },
+  fotoConfirmText: { color: c.successText, fontFamily: fontFamily.semiBold, fontSize: 13, flex: 1 },
 
   kitRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: c.border,
   },
   kitRowLast: { borderBottomWidth: 0 },
   kitRowMain: { flex: 1 },
-  kitCode: { fontSize: 12, fontFamily: fontFamily.bold, color: '#2563eb', letterSpacing: 0.5 },
-  kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: '#1f2937', marginTop: 2 },
+  kitCode: { fontSize: 12, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 0.5 },
+  kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary, marginTop: 2 },
   kitEstado: { fontSize: 12, fontFamily: fontFamily.semiBold, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  kitEstadoOk: { color: '#065f46', backgroundColor: '#d1fae5' },
-  kitEstadoPend: { color: '#92400e', backgroundColor: '#fef3c7' },
+  kitEstadoOk: { color: c.successText, backgroundColor: c.successBg },
+  kitEstadoPend: { color: c.warningText, backgroundColor: c.warningBg },
 
-  btnPrimary: { backgroundColor: '#2563eb', paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
+  btnPrimary: { backgroundColor: c.primary, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
   btnSecondary: {
-    backgroundColor: '#fff',
+    backgroundColor: c.btnSecondaryBg,
     paddingVertical: 12,
     borderRadius: 8,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: c.btnSecondaryBorder,
   },
-  btnSecondaryText: { color: '#1f2937', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
+  btnSecondaryText: { color: c.btnSecondaryText, textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
 
   linkBack: { alignItems: 'center', marginTop: 6, marginBottom: 4 },
-  linkBackText: { color: '#2563eb', fontFamily: fontFamily.medium, fontSize: 13 },
+  linkBackText: { color: c.primary, fontFamily: fontFamily.medium, fontSize: 13 },
   logoutLink: { marginTop: 14, alignItems: 'center' },
-  logoutLinkText: { color: '#6b7280', fontFamily: fontFamily.medium, fontSize: 13 },
+  logoutLinkText: { color: c.textSecondary, fontFamily: fontFamily.medium, fontSize: 13 },
 
-  errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: '#1f2937', textAlign: 'center' },
-  errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 8, marginBottom: 16 },
+  errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, textAlign: 'center' },
+  errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  modalCard: { backgroundColor: '#fff', borderRadius: 12, padding: 22, width: '100%', maxWidth: 380 },
-  modalTitle: { fontSize: 18, fontFamily: fontFamily.bold, color: '#1f2937', marginBottom: 4 },
-  modalSubtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', marginBottom: 14 },
+  modalBackdrop: { flex: 1, backgroundColor: c.modalOverlay, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: c.bgCard, borderRadius: 12, padding: 22, width: '100%', maxWidth: 380 },
+  modalTitle: { fontSize: 18, fontFamily: fontFamily.bold, color: c.textPrimary, marginBottom: 4 },
+  modalSubtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginBottom: 14 },
   input: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: c.borderInput,
+    backgroundColor: c.bgPage,
+    color: c.textPrimary,
     padding: 12,
     borderRadius: 6,
     marginBottom: 14,
@@ -658,7 +679,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   modalActions: { flexDirection: 'row', gap: 8 },
-  kitPreviewCode: { fontSize: 18, fontFamily: fontFamily.bold, color: '#2563eb', letterSpacing: 1, marginTop: 6 },
-  kitPreviewName: { fontSize: 16, fontFamily: fontFamily.semiBold, color: '#1f2937', marginTop: 6 },
-  kitPreviewContenidos: { fontSize: 13, fontFamily: fontFamily.regular, color: '#4b5563', marginTop: 4, marginBottom: 8 },
+  kitPreviewCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1, marginTop: 6 },
+  kitPreviewName: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 6 },
+  kitPreviewContenidos: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 4, marginBottom: 8 },
 });

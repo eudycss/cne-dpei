@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { OperadorEnRetorno } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getOperadoresEnRetorno } from '../lib/queries/monitoreo';
 import { fontFamily } from '../theme/typography';
@@ -67,7 +69,9 @@ function formatearHora(iso: string): string {
 }
 
 export function MonitoreoScreen() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const webviewRef = useRef<WebView>(null);
   const listoRef = useRef(false);
   const [operadores, setOperadores] = useState<OperadorEnRetorno[]>([]);
@@ -122,7 +126,7 @@ export function MonitoreoScreen() {
           En retorno ({operadores.length})
         </Text>
         {loading ? (
-          <ActivityIndicator color="#2563eb" style={{ marginTop: 12 }} />
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
         ) : error ? (
           <Text style={styles.error}>{error}</Text>
         ) : operadores.length === 0 ? (
@@ -147,17 +151,17 @@ export function MonitoreoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
   mapWrap: { height: '50%', width: '100%' },
   map: { flex: 1 },
-  list: { flex: 1 },
+  list: { flex: 1, backgroundColor: c.bgPage },
   listContent: { padding: 16 },
-  listTitle: { fontSize: 16, fontFamily: fontFamily.bold, color: '#1f2937', marginBottom: 8 },
-  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e7eb' },
-  rowName: { fontSize: 15, fontFamily: fontFamily.semiBold, color: '#1f2937' },
-  rowMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', marginTop: 2 },
-  empty: { fontSize: 14, fontFamily: fontFamily.regular, color: '#6b7280', marginTop: 8 },
-  error: { fontSize: 14, fontFamily: fontFamily.medium, color: '#dc2626', marginTop: 8 },
-  logout: { color: '#6b7280', fontFamily: fontFamily.medium, textAlign: 'center', marginTop: 24 },
+  listTitle: { fontSize: 16, fontFamily: fontFamily.bold, color: c.textPrimary, marginBottom: 8 },
+  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  rowName: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.textPrimary },
+  rowMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
+  empty: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 8 },
+  error: { fontSize: 14, fontFamily: fontFamily.medium, color: c.error, marginTop: 8 },
+  logout: { color: c.textSecondary, fontFamily: fontFamily.medium, textAlign: 'center', marginTop: 24 },
 });

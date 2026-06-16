@@ -38,7 +38,7 @@ export function PasswordField({ value, onChange, label, autoComplete, required }
             cursor: 'pointer',
             padding: '4px',
             lineHeight: 1,
-            color: '#6b7280',
+            color: 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
           }}
