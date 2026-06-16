@@ -1,24 +1,14 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
 
-// Orden de resolución del backend:
-// 1) EXPO_PUBLIC_API_URL (.env) — necesario en dispositivo físico: debe ser la
-//    IP LAN de la PC (p. ej. http://192.168.1.50:3000). Si está definida, gana.
-// 2) extra.apiUrl de app.json.
-// 3) En emulador Android, "localhost" apunta al propio emulador; se traduce al
-//    alias del host 10.0.2.2. iOS simulator y web sí resuelven localhost.
+// Expo Go → API local (EXPO_PUBLIC_LOCAL_API_URL en .env)
+// EAS Build → API en Render (EXPO_PUBLIC_API_URL en eas.json)
 function resolveBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
-  if (fromEnv) return fromEnv;
-
-  const configured =
-    (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:3000';
-  if (Platform.OS === 'android') {
-    return configured.replace(/(\/\/)(localhost|127\.0\.0\.1)(?=[:/]|$)/, '$110.0.2.2');
+  if (Constants.executionEnvironment === 'storeClient') {
+    return process.env.EXPO_PUBLIC_LOCAL_API_URL ?? 'http://localhost:3000';
   }
-  return configured;
+  return process.env.EXPO_PUBLIC_API_URL ?? 'https://cne-imbabura-api.onrender.com';
 }
 
 const BASE_URL = resolveBaseUrl();

@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { fontFamily } from '../theme/typography';
 
@@ -9,6 +12,9 @@ interface Props {
 
 export function EnRetornoScreen({ onMarcarLlegada }: Props) {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <View style={styles.container}>
       <AppBar subtitle="En retorno al DPI" />
@@ -36,24 +42,24 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   iconCircle: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2563eb',
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
   },
   icon: { fontSize: 36 },
-  title: { fontSize: 24, fontFamily: fontFamily.bold, color: '#1f2937', textAlign: 'center' },
-  subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: '#4b5563', textAlign: 'center', marginTop: 12, lineHeight: 20 },
-  message: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', textAlign: 'center', marginTop: 16, marginBottom: 32, lineHeight: 20 },
+  title: { fontSize: 24, fontFamily: fontFamily.bold, color: c.textPrimary, textAlign: 'center' },
+  subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textMeta, textAlign: 'center', marginTop: 12, lineHeight: 20 },
+  message: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 16, marginBottom: 32, lineHeight: 20 },
   btnPrimary: {
-    backgroundColor: '#2563eb',
+    backgroundColor: c.primary,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,
@@ -62,5 +68,5 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 15 },
   btnSecondary: { paddingVertical: 10, paddingHorizontal: 24 },
-  btnSecondaryText: { color: '#6b7280', fontFamily: fontFamily.medium },
+  btnSecondaryText: { color: c.textSecondary, fontFamily: fontFamily.medium },
 });

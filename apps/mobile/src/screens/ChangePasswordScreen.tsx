@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
 
 export function ChangePasswordScreen() {
   const { markPasswordChanged } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -59,13 +63,13 @@ export function ChangePasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  card: { width: '100%', maxWidth: 380, backgroundColor: '#fff', padding: 24, borderRadius: 12 },
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  card: { width: '100%', maxWidth: 380, backgroundColor: c.bgCard, padding: 24, borderRadius: 12 },
   logoWrap: { alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 20, fontFamily: fontFamily.bold, color: '#1f2937' },
-  subtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: '#6b7280', marginVertical: 8 },
-  label: { fontSize: 13, fontFamily: fontFamily.medium, color: '#374151', marginBottom: 4 },
-  button: { backgroundColor: '#2563eb', padding: 12, borderRadius: 6, marginTop: 4 },
+  title: { fontSize: 20, fontFamily: fontFamily.bold, color: c.textPrimary },
+  subtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginVertical: 8 },
+  label: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textLabel, marginBottom: 4 },
+  button: { backgroundColor: c.primary, padding: 12, borderRadius: 6, marginTop: 4 },
   buttonText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold },
 });

@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
 import { PlaceholderHome } from './src/screens/PlaceholderHome';
@@ -54,6 +55,7 @@ function OperadorFlow() {
   // HU2 → HU5: el operador transita por estados durante la jornada electoral.
   // Al iniciar consultamos mi-asignacion para arrancar en la etapa correcta;
   // si el operador cerró la app y la vuelve a abrir no retrocede.
+  const { colors } = useTheme();
   const [etapa, setEtapa] = useState<OperadorEtapa | null>(null);
 
   useEffect(() => {
@@ -74,8 +76,8 @@ function OperadorFlow() {
 
   if (etapa === null) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f6fa' }}>
-        <ActivityIndicator size="large" color="#2563eb" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPage }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -100,11 +102,12 @@ function OperadorFlow() {
 
 function Navigator() {
   const { user, restoring } = useAuth();
+  const { colors } = useTheme();
 
   if (restoring) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPage }}>
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -126,6 +129,18 @@ function Navigator() {
         <Stack.Screen name="Home" component={PlaceholderHome} />
       )}
     </Stack.Navigator>
+  );
+}
+
+function ThemedApp() {
+  const { theme } = useTheme();
+  return (
+    <>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      <NavigationContainer>
+        <Navigator />
+      </NavigationContainer>
+    </>
   );
 }
 
@@ -151,12 +166,11 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <NavigationContainer>
-          <Navigator />
-        </NavigationContainer>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ThemedApp />
+        </AuthProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
