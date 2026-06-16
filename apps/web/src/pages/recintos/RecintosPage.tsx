@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import type { Canton, Paginated, Recinto, TipoRecinto } from '@cne/shared-types';
@@ -25,6 +25,9 @@ export function RecintosPage() {
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -134,6 +137,27 @@ export function RecintosPage() {
     }
   }
 
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post<{ creados: number; actualizados: number; errores: { fila: number; error: string }[] }>('/recintos/bulk', fd);
+      const { creados, actualizados, errores } = res.data;
+      let msg = `Importación completa: ${creados} creados, ${actualizados} actualizados.`;
+      if (errores.length > 0) msg += `\n${errores.length} error(es):\n` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join('\n');
+      window.alert(msg);
+      qc.invalidateQueries({ queryKey: ['recintos'] });
+    } catch (err: any) {
+      window.alert('Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido'));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
   return (
     <>
       <h2>Recintos Electorales</h2>
@@ -166,6 +190,12 @@ export function RecintosPage() {
             {exporting ? 'Exportando…' : '↓ Excel'}
           </button>
           {isAdmin && (
+            <label className="btn secondary" title="Importar desde Excel/CSV" style={{ cursor: 'pointer' }}>
+              {importing ? 'Importando…' : '↑ Importar'}
+              <input ref={importInputRef} type="file" accept=".xlsx,.csv" hidden onChange={handleImport} disabled={importing} />
+            </label>
+          )}
+          {isAdmin && (
             <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo</button>
           )}
         </div>
@@ -178,6 +208,7 @@ export function RecintosPage() {
               <table style={{ minWidth: 900 }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 32 }}></th>
                     <th>Código</th>
                     <th>Nombre</th>
                     <th>Cantón</th>
@@ -186,9 +217,6 @@ export function RecintosPage() {
                     <th>JF</th>
                     <th>JM</th>
                     <th>JT</th>
-                    <th>Internet</th>
-                    <th>Cobertura</th>
-                    <th>Electores</th>
                     {isAdmin && <th style={{ width: 180 }}>Acciones</th>}
                   </tr>
                 </thead>
@@ -198,56 +226,76 @@ export function RecintosPage() {
                       r.juntasFemeninas != null || r.juntasMasculinas != null
                         ? (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0)
                         : null;
+                    const isCda = r.tipo === 'CDA';
+                    const isExpanded = expandedId === r.id;
+                    const colSpan = isAdmin ? 10 : 9;
                     return (
-                      <tr key={r.id}>
-                        <td>{r.codigoRecinto}</td>
-                        <td>{r.nombre}</td>
-                        <td>{r.cantonNombre ?? '—'}</td>
-                        <td>
-                          {r.parroquia ?? '—'}
-                          {r.zona && r.zona !== r.parroquia && (
-                            <span className="muted"> · {r.zona}</span>
-                          )}
-                        </td>
-                        <td>{TIPO_LABELS[r.tipo]}</td>
-                        <td>{r.juntasFemeninas ?? '—'}</td>
-                        <td>{r.juntasMasculinas ?? '—'}</td>
-                        <td>
-                          {jt != null ? (
-                            <strong>{jt}</strong>
-                          ) : '—'}
-                        </td>
-                        <td>{r.tieneInternet ? 'Sí' : 'No'}</td>
-                        <td>{r.coberturaMovil ? 'Sí' : 'No'}</td>
-                        <td>{r.numeroElectores ?? '—'}</td>
-                        {isAdmin && (
-                          <td>
-                            <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
+                      <Fragment key={r.id}>
+                        <tr>
+                          <td style={{ textAlign: 'center', padding: '0.25rem' }}>
+                            {isCda && (
                               <button
-                                className="btn secondary"
-                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                                onClick={() => setEditing(r)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-muted)' }}
+                                onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                                title={isExpanded ? 'Cerrar' : 'Ver No CDAs asociados'}
                               >
-                                Editar
+                                {isExpanded ? '▼' : '▶'}
                               </button>
-                              <button
-                                className="btn danger"
-                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                                disabled={deletingId === r.id}
-                                onClick={() => handleDelete(r.id, r.nombre)}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
+                            )}
                           </td>
+                          <td>{r.codigoRecinto}</td>
+                          <td>{r.nombre}</td>
+                          <td>{r.cantonNombre ?? '—'}</td>
+                          <td>
+                            {r.parroquia ?? '—'}
+                            {r.zona && r.zona !== r.parroquia && (
+                              <span className="muted"> · {r.zona}</span>
+                            )}
+                          </td>
+                          <td>{TIPO_LABELS[r.tipo]}</td>
+                          <td>{r.juntasFemeninas ?? '—'}</td>
+                          <td>{r.juntasMasculinas ?? '—'}</td>
+                          <td>
+                            {jt != null ? (
+                              <strong>{jt}</strong>
+                            ) : '—'}
+                          </td>
+                          {isAdmin && (
+                            <td>
+                              <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
+                                <button
+                                  className="btn secondary"
+                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                  onClick={() => setEditing(r)}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  className="btn danger"
+                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                  disabled={deletingId === r.id}
+                                  onClick={() => handleDelete(r.id, r.nombre)}
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                        {isCda && isExpanded && (
+                          <tr>
+                            <td colSpan={colSpan} style={{ padding: '0 0.75rem 1rem 0.75rem', background: 'var(--color-surface-alt, #f4f6f8)' }}>
+                              <FichaSubtable cda={r} onEdit={isAdmin ? setEditing : undefined} />
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </Fragment>
                     );
                   })}
                   {data?.items.length === 0 && (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 12 : 11}
+                        colSpan={isAdmin ? 10 : 9}
                         className="muted"
                         style={{ textAlign: 'center', padding: '1.5rem' }}
                       >
@@ -305,10 +353,135 @@ export function RecintosPage() {
           onDone={() => {
             setEditing(null);
             qc.invalidateQueries({ queryKey: ['recintos'] });
+            qc.invalidateQueries({ queryKey: ['recintos-origenes'] });
           }}
         />
       )}
     </>
+  );
+}
+
+// ─── Ficha expandible por CDA ────────────────────────────────────────────────
+
+const SECTION_CDA     = { bg: 'rgba(59,130,246,0.08)',  border: '#3b82f6', label: 'Unidad Educativa CDA' };
+const SECTION_NOCDA   = { bg: 'rgba(34,197,94,0.08)',   border: '#22c55e', label: 'Unidades Educativas NO CDA' };
+const SECTION_CONTING = { bg: 'rgba(245,158,11,0.08)',  border: '#f59e0b', label: 'En caso de problema con el kit, dirigirse a' };
+
+const sectionStyle = (s: typeof SECTION_CDA): React.CSSProperties => ({
+  borderLeft: `4px solid ${s.border}`,
+  background: s.bg,
+  borderRadius: '0 4px 4px 0',
+  padding: '0.6rem 0.75rem',
+  marginTop: '0.6rem',
+});
+
+function jt(r: Recinto) {
+  return r.juntasFemeninas != null || r.juntasMasculinas != null
+    ? (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0)
+    : null;
+}
+
+function FichaSubtable({ cda, onEdit }: { cda: Recinto; onEdit?: (r: Recinto) => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['recintos-origenes', cda.id],
+    queryFn: async () => {
+      const res = await api.get<Paginated<Recinto>>(`/recintos?cdaDestinoId=${cda.id}&pageSize=100`);
+      return res.data.items;
+    },
+  });
+
+  const cdaJt = jt(cda);
+  const noCdaTotalJt = data?.reduce((acc, nc) => acc + (jt(nc) ?? 0), 0) ?? 0;
+  const totalGeneral = (cdaJt ?? 0) + noCdaTotalJt;
+
+  const thStyle: React.CSSProperties = { fontWeight: 600, fontSize: '0.78rem', padding: '0.3rem 0.5rem', textAlign: 'left' };
+  const tdStyle: React.CSSProperties = { fontSize: '0.82rem', padding: '0.25rem 0.5rem' };
+
+  return (
+    <div style={{ paddingTop: '0.25rem' }}>
+
+      {/* — Sección CDA — */}
+      <div style={sectionStyle(SECTION_CDA)}>
+        <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.8rem', color: '#3b82f6' }}>{SECTION_CDA.label}</p>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+          <table style={{ flex: 1 }}>
+            <thead><tr>
+              <th style={thStyle}>Código</th>
+              <th style={thStyle}>Nombre</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JF</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JM</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JT</th>
+            </tr></thead>
+            <tbody><tr>
+              <td style={tdStyle}>{cda.codigoRecinto}</td>
+              <td style={tdStyle}>{cda.nombre}</td>
+              <td style={{ ...tdStyle, textAlign: 'center' }}>{cda.juntasFemeninas ?? '—'}</td>
+              <td style={{ ...tdStyle, textAlign: 'center' }}>{cda.juntasMasculinas ?? '—'}</td>
+              <td style={{ ...tdStyle, textAlign: 'center' }}>{cdaJt != null ? <strong>{cdaJt}</strong> : '—'}</td>
+            </tr></tbody>
+          </table>
+          <div style={{ textAlign: 'center', border: '2px solid #3b82f6', borderRadius: 6, padding: '0.3rem 0.9rem', minWidth: 80 }}>
+            <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 600 }}>Nro Juntas Total</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3b82f6', lineHeight: 1.1 }}>{totalGeneral}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* — Sección NO-CDAs — */}
+      <div style={sectionStyle(SECTION_NOCDA)}>
+        <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.8rem', color: '#16a34a' }}>{SECTION_NOCDA.label}</p>
+        {isLoading ? (
+          <p className="muted" style={{ fontSize: '0.82rem' }}>Cargando…</p>
+        ) : !data || data.length === 0 ? (
+          <p className="muted" style={{ fontSize: '0.82rem' }}>Sin No CDAs asignados.</p>
+        ) : (
+          <table style={{ width: '100%' }}>
+            <thead><tr>
+              <th style={thStyle}>Cantón</th>
+              <th style={thStyle}>Parroquia</th>
+              <th style={thStyle}>Código</th>
+              <th style={thStyle}>Nombre</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JF</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JM</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>JT</th>
+              {onEdit && <th style={{ width: 28 }}></th>}
+            </tr></thead>
+            <tbody>
+              {data.map((nc) => {
+                const ncJt = jt(nc);
+                return (
+                  <tr key={nc.id}>
+                    <td style={tdStyle}>{nc.cantonNombre ?? '—'}</td>
+                    <td style={tdStyle}>{nc.parroquia ?? '—'}</td>
+                    <td style={tdStyle}>{nc.codigoRecinto}</td>
+                    <td style={tdStyle}>{nc.nombre}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>{nc.juntasFemeninas ?? '—'}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>{nc.juntasMasculinas ?? '—'}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>{ncJt != null ? <strong>{ncJt}</strong> : '—'}</td>
+                    {onEdit && (
+                      <td style={{ padding: '0.15rem 0.25rem' }}>
+                        <button
+                          onClick={() => onEdit(nc)}
+                          title="Editar juntas"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#16a34a', padding: '0.1rem 0.2rem' }}
+                        >✏</button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* — Sección Contingencia — */}
+      <div style={sectionStyle(SECTION_CONTING)}>
+        <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.8rem', color: '#d97706' }}>{SECTION_CONTING.label}</p>
+        <p className="muted" style={{ fontSize: '0.82rem', margin: 0 }}>Sin unidad de contingencia configurada.</p>
+      </div>
+
+    </div>
   );
 }
 

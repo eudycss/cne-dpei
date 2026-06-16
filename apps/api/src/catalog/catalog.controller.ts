@@ -8,9 +8,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CreateRecintoRequest, UpdateRecintoRequest } from '@cne/shared-types';
 import { RecintosService } from './recintos.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -33,6 +36,7 @@ export class CatalogController {
     @Query('search') search?: string,
     @Query('cantonId') cantonId?: string,
     @Query('tipo') tipo?: 'CDA' | 'NO_CDA',
+    @Query('cdaDestinoId') cdaDestinoId?: string,
   ) {
     return this.recintos.listRecintos({
       page: page ? Number(page) : 1,
@@ -40,7 +44,17 @@ export class CatalogController {
       search,
       cantonId: cantonId ? Number(cantonId) : undefined,
       tipo,
+      cdaDestinoId,
     });
+  }
+
+  @Post('recintos/bulk')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Carga masiva de recintos desde Excel/CSV' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  bulkRecintos(@UploadedFile() file: Express.Multer.File) {
+    return this.recintos.bulkUpload(file);
   }
 
   @Get('recintos/:id')

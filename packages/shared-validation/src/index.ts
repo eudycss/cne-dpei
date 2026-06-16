@@ -141,6 +141,30 @@ export const createRecintoSchema = z.object({
 
 export const updateRecintoSchema = createRecintoSchema.partial();
 
+// Fila de Excel/CSV para carga masiva de recintos
+export const bulkRecintoRowSchema = z.object({
+  codigo_recinto: z.string().min(1, 'Código requerido'),
+  nombre: z.string().min(1, 'Nombre requerido'),
+  canton_codigo: z.string().min(1, 'Código de cantón requerido'),
+  tipo: z.enum(['CDA', 'NO_CDA']),
+  parroquia: z.string().optional(),
+  zona: z.string().optional(),
+  latitud: z.coerce.number().min(-90).max(90),
+  longitud: z.coerce.number().min(-180).max(180),
+  tiene_internet: z.preprocess(
+    (v) => { if (typeof v === 'boolean') return v; const s = String(v ?? '').trim().toLowerCase(); return s === '1' || s === 'si' || s === 'sí' || s === 'true'; },
+    z.boolean(),
+  ).optional(),
+  cobertura_movil: z.preprocess(
+    (v) => { if (typeof v === 'boolean') return v; const s = String(v ?? '').trim().toLowerCase(); return s === '1' || s === 'si' || s === 'sí' || s === 'true'; },
+    z.boolean(),
+  ).optional(),
+  numero_electores: z.coerce.number().int().nonnegative().optional(),
+  juntas_femeninas: z.coerce.number().int().nonnegative().optional(),
+  juntas_masculinas: z.coerce.number().int().nonnegative().optional(),
+  cda_destino_codigo: z.string().optional(),
+});
+
 // --- Eventos electorales (HU20) ---
 export const tipoEventoEnum = z.enum([
   'ELECCION_GENERAL',
@@ -274,6 +298,7 @@ export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;
 
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;
+export type BulkRecintoRow = z.infer<typeof bulkRecintoRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;
 export type ConfigAlertasInput = z.infer<typeof configAlertasSchema>;
 export type UpsertAsignacionInput = z.infer<typeof upsertAsignacionSchema>;
