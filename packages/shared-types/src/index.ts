@@ -485,6 +485,40 @@ export interface LlegadaDpiResponse {
   ocurridoEn: string;
 }
 
+// Reporte admin de NO-CDAs pendientes (impresión)
+
+export interface ReporteNoCdaDetalle {
+  id: string;
+  codigoRecinto: string;
+  nombre: string;
+  llegado: boolean;
+}
+
+export interface ReporteNoCdaItem {
+  cdaId: string;
+  cdaCodigo: string;
+  cdaNombre: string;
+  operadorNombre: string;
+  operadorCedula: string;
+  kitsCodigos: string[];
+  totalNoCdas: number;
+  totalLlegados: number;
+  noCdas: ReporteNoCdaDetalle[];
+}
+
+export interface ReporteFlujoItem {
+  cdaId: string;
+  cdaCodigo: string;
+  cdaNombre: string;
+  operadorNombre: string;
+  operadorCedula: string;
+  kitsCodigos: string[];
+  salidaDpiEn: string | null;
+  llegadaRecintoEn: string | null;
+  salidaRecintoEn: string | null;
+  llegadaDpiEn: string | null;
+}
+
 // ===================================================================
 // FASE 4 — Notificaciones in-app (HU2-CA3, base para HU19)
 // ===================================================================

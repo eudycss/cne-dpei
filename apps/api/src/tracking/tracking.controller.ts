@@ -198,6 +198,24 @@ export class TrackingController {
     return this.tracking.estadoCdas(user.sub, user.roles);
   }
 
+  @Get('reporte-no-cda')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'Reporte admin: NO-CDAs visitados vs. pendientes por CDA del evento activo',
+  })
+  reporteNoCda() {
+    return this.tracking.reporteNoCdas();
+  }
+
+  @Get('reporte-flujo')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'Reporte admin: hitos del flujo (Salida DPI/Llegada Recinto/Salida Recinto/Llegada DPI) por CDA',
+  })
+  reporteFlujo() {
+    return this.tracking.reporteFlujoCdas();
+  }
+
   @Get('estado-cdas/:recintoId/foto-militar')
   @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
   @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })

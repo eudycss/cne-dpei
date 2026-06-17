@@ -20,6 +20,8 @@ import type {
   OperadorEnRetornoKit,
   RecepcionKitRequest,
   RecepcionKitResponse,
+  ReporteFlujoItem,
+  ReporteNoCdaItem,
   RoleName,
   SalidaDpiRequest,
   SalidaDpiResponse,
@@ -894,6 +896,170 @@ export class TrackingService {
         estado: deriveEstado(tiposPorOperador.get(operadorId)),
         ubicacion,
         tieneFotoMilitar: operadoresConFoto.has(operadorId),
+      };
+    });
+  }
+
+  /**
+   * Reporte admin: por cada CDA con operador asignado, total de NO-CDAs
+   * visitados vs. pendientes, para seguimiento manual/impresión.
+   */
+  async reporteNoCdas(): Promise<ReporteNoCdaItem[]> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return [];
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
+      select: { recintoId: true, operadorId: true, codigoUnico: true },
+    });
+    const operadorPorRecinto = new Map<string, string>();
+    const kitsPorRecinto = new Map<string, string[]>();
+    for (const k of kits) {
+      if (!k.recintoId || !k.operadorId) continue;
+      operadorPorRecinto.set(k.recintoId, k.operadorId);
+      const codigos = kitsPorRecinto.get(k.recintoId) ?? [];
+      codigos.push(k.codigoUnico);
+      kitsPorRecinto.set(k.recintoId, codigos);
+    }
+
+    const cdaIds = Array.from(operadorPorRecinto.keys());
+    if (cdaIds.length === 0) return [];
+
+    const cdas = await this.prisma.recinto.findMany({
+      where: { id: { in: cdaIds }, tipo: 'CDA' },
+      orderBy: { codigoRecinto: 'asc' },
+    });
+    if (cdas.length === 0) return [];
+
+    const operadorIds = Array.from(new Set(cdas.map((c) => operadorPorRecinto.get(c.id)!)));
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { id: { in: operadorIds } },
+      select: { id: true, nombres: true, apellidos: true, cedula: true },
+    });
+    const usuarioPorId = new Map(usuarios.map((u) => [u.id, u]));
+
+    const noCdas = await this.prisma.recinto.findMany({
+      where: { cdaDestinoId: { in: cdaIds } },
+      orderBy: { nombre: 'asc' },
+    });
+    const noCdasPorCda = new Map<string, typeof noCdas>();
+    for (const nc of noCdas) {
+      const lista = noCdasPorCda.get(nc.cdaDestinoId!) ?? [];
+      lista.push(nc);
+      noCdasPorCda.set(nc.cdaDestinoId!, lista);
+    }
+
+    const llegadas = await this.prisma.eventoTracking.findMany({
+      where: {
+        eventoId: evento.id,
+        tipo: 'LLEGADA_NO_CDA',
+        recintoId: { in: noCdas.map((nc) => nc.id) },
+        operadorId: { in: operadorIds },
+      },
+      select: { recintoId: true },
+    });
+    const recintosConLlegada = new Set(llegadas.map((l) => l.recintoId));
+
+    return cdas.map((cda) => {
+      const operadorId = operadorPorRecinto.get(cda.id)!;
+      const usuario = usuarioPorId.get(operadorId);
+      const hijos = noCdasPorCda.get(cda.id) ?? [];
+      const totalLlegados = hijos.filter((nc) => recintosConLlegada.has(nc.id)).length;
+
+      return {
+        cdaId: cda.id,
+        cdaCodigo: cda.codigoRecinto,
+        cdaNombre: cda.nombre,
+        operadorNombre: usuario ? `${usuario.nombres} ${usuario.apellidos}` : 'Operador',
+        operadorCedula: usuario?.cedula ?? '—',
+        kitsCodigos: kitsPorRecinto.get(cda.id) ?? [],
+        totalNoCdas: hijos.length,
+        totalLlegados,
+        noCdas: hijos.map((nc) => ({
+          id: nc.id,
+          codigoRecinto: nc.codigoRecinto,
+          nombre: nc.nombre,
+          llegado: recintosConLlegada.has(nc.id),
+        })),
+      };
+    });
+  }
+
+  /**
+   * Reporte admin: hitos del flujo (Salida DPI / Llegada Recinto / Salida
+   * Recinto / Llegada DPI) por CDA del evento activo, con su hora.
+   */
+  async reporteFlujoCdas(): Promise<ReporteFlujoItem[]> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return [];
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
+      select: { recintoId: true, operadorId: true, codigoUnico: true },
+    });
+    const operadorPorRecinto = new Map<string, string>();
+    const kitsPorRecinto = new Map<string, string[]>();
+    for (const k of kits) {
+      if (!k.recintoId || !k.operadorId) continue;
+      operadorPorRecinto.set(k.recintoId, k.operadorId);
+      const codigos = kitsPorRecinto.get(k.recintoId) ?? [];
+      codigos.push(k.codigoUnico);
+      kitsPorRecinto.set(k.recintoId, codigos);
+    }
+
+    const cdaIds = Array.from(operadorPorRecinto.keys());
+    if (cdaIds.length === 0) return [];
+
+    const cdas = await this.prisma.recinto.findMany({
+      where: { id: { in: cdaIds }, tipo: 'CDA' },
+      orderBy: { codigoRecinto: 'asc' },
+    });
+    if (cdas.length === 0) return [];
+
+    const operadorIds = Array.from(new Set(cdas.map((c) => operadorPorRecinto.get(c.id)!)));
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { id: { in: operadorIds } },
+      select: { id: true, nombres: true, apellidos: true, cedula: true },
+    });
+    const usuarioPorId = new Map(usuarios.map((u) => [u.id, u]));
+
+    const hitos = await this.prisma.eventoTracking.findMany({
+      where: {
+        eventoId: evento.id,
+        operadorId: { in: operadorIds },
+        tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
+      },
+      select: { operadorId: true, tipo: true, ocurridoEn: true },
+    });
+    const hitosPorOperador = new Map<string, Map<string, Date>>();
+    for (const h of hitos) {
+      const mapa = hitosPorOperador.get(h.operadorId) ?? new Map<string, Date>();
+      mapa.set(h.tipo, h.ocurridoEn);
+      hitosPorOperador.set(h.operadorId, mapa);
+    }
+
+    return cdas.map((cda) => {
+      const operadorId = operadorPorRecinto.get(cda.id)!;
+      const usuario = usuarioPorId.get(operadorId);
+      const mapa = hitosPorOperador.get(operadorId);
+
+      return {
+        cdaId: cda.id,
+        cdaCodigo: cda.codigoRecinto,
+        cdaNombre: cda.nombre,
+        operadorNombre: usuario ? `${usuario.nombres} ${usuario.apellidos}` : 'Operador',
+        operadorCedula: usuario?.cedula ?? '—',
+        kitsCodigos: kitsPorRecinto.get(cda.id) ?? [],
+        salidaDpiEn: mapa?.get('SALIDA_DPI')?.toISOString() ?? null,
+        llegadaRecintoEn: mapa?.get('LLEGADA_RECINTO')?.toISOString() ?? null,
+        salidaRecintoEn: mapa?.get('SALIDA_RECINTO')?.toISOString() ?? null,
+        llegadaDpiEn: mapa?.get('LLEGADA_DPI')?.toISOString() ?? null,
       };
     });
   }

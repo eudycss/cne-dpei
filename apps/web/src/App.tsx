@@ -13,6 +13,7 @@ import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
+import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -81,6 +82,16 @@ export default function App() {
 
         {/* Monitoreo de operadores en retorno (HU6) */}
         <Route path="/operadores" element={<MonitoreoPage />} />
+
+        {/* Reporte admin de NO-CDAs pendientes */}
+        <Route
+          path="/reportes/no-cda"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR']}>
+              <ReporteNoCdaPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -10,6 +10,7 @@ export function Layout() {
   const { theme, toggle } = useTheme();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+  const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
 
   return (
     <div className="app-shell">
@@ -39,6 +40,11 @@ export function Layout() {
         <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
           Monitoreo
         </NavLink>
+        {esAdmin && (
+          <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Reportes
+          </NavLink>
+        )}
         <div className="me">
           <div>
             <strong>{user?.nombres} {user?.apellidos}</strong>
