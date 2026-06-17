@@ -20,7 +20,7 @@ export function RecintosPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [cantonId, setCantonId] = useState('');
-  const [tipo, setTipo] = useState('');
+  const [conOrigenes, setConOrigenes] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -45,12 +45,12 @@ export function RecintosPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recintos', { page, search: debounced, cantonId, tipo }],
+    queryKey: ['recintos', { page, search: debounced, cantonId, conOrigenes }],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), pageSize: '20' });
+      const params = new URLSearchParams({ page: String(page), pageSize: '20', tipo: 'CDA' });
       if (debounced) params.set('search', debounced);
       if (cantonId) params.set('cantonId', cantonId);
-      if (tipo) params.set('tipo', tipo);
+      if (conOrigenes) params.set('conOrigenes', conOrigenes);
       const res = await api.get<Paginated<Recinto>>(`/recintos?${params}`);
       return res.data;
     },
@@ -175,11 +175,10 @@ export function RecintosPage() {
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
-          <select value={tipo} onChange={(e) => { setTipo(e.target.value); setPage(1); }}>
-            <option value="">Todos los tipos</option>
-            {TIPOS.map((t) => (
-              <option key={t} value={t}>{TIPO_LABELS[t]}</option>
-            ))}
+          <select value={conOrigenes} onChange={(e) => { setConOrigenes(e.target.value); setPage(1); }}>
+            <option value="">Total</option>
+            <option value="true">CDA con NO-CDAs</option>
+            <option value="false">CDA sin NO-CDAs</option>
           </select>
           <button
             className="btn secondary"
@@ -226,14 +225,14 @@ export function RecintosPage() {
                       r.juntasFemeninas != null || r.juntasMasculinas != null
                         ? (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0)
                         : null;
-                    const isCda = r.tipo === 'CDA';
+                    const isExpandable = r.tipo === 'CDA' && (r.noCdasCount ?? 0) > 0;
                     const isExpanded = expandedId === r.id;
                     const colSpan = isAdmin ? 10 : 9;
                     return (
                       <Fragment key={r.id}>
                         <tr>
                           <td style={{ textAlign: 'center', padding: '0.25rem' }}>
-                            {isCda && (
+                            {isExpandable && (
                               <button
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--color-muted)' }}
                                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
@@ -282,7 +281,7 @@ export function RecintosPage() {
                             </td>
                           )}
                         </tr>
-                        {isCda && isExpanded && (
+                        {isExpandable && isExpanded && (
                           <tr>
                             <td colSpan={colSpan} style={{ padding: '0 0.75rem 1rem 0.75rem', background: 'var(--color-surface-alt, #f4f6f8)' }}>
                               <FichaSubtable cda={r} onEdit={isAdmin ? setEditing : undefined} />

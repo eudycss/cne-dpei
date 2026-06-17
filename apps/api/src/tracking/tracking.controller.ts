@@ -26,6 +26,7 @@ import {
 import type {
   IngestaPosicionesRequest,
   LlegadaDpiRequest,
+  LlegadaNoCdaRequest,
   LlegadaRecintoRequest,
   RecepcionKitRequest,
   SalidaDpiRequest,
@@ -35,6 +36,7 @@ import type {
 import {
   ingestaPosicionesSchema,
   llegadaDpiSchema,
+  llegadaNoCdaSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -137,6 +139,19 @@ export class TrackingController {
     @Body(new ZodValidationPipe(llegadaRecintoSchema)) body: LlegadaRecintoRequest,
   ) {
     return this.tracking.registrarLlegadaRecinto(user.sub, body);
+  }
+
+  @Post('llegada-no-cda')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Checklist: registra que el operador ya visitó un NO-CDA a su cargo',
+  })
+  llegadaNoCda(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(llegadaNoCdaSchema)) body: LlegadaNoCdaRequest,
+  ) {
+    return this.tracking.registrarLlegadaNoCda(user.sub, body);
   }
 
   @Post('salida-recinto')

@@ -103,6 +103,10 @@ Changes to either shared package require rebuilding them (`pnpm --filter @cne/<p
 - One task at a time. Do not combine multiple changes in a single response unless the user groups them explicitly.
 - For complex changes (new domain, schema change, multi-file feature), propose a plan and wait for approval before writing any code.
 
+### Code quality
+- Always apply clean code principles: avoid spaghetti code, keep functions/components simple and readable.
+- Before writing new code, check if an existing pattern, function, or component can be reused instead of duplicating logic.
+
 ### Mandatory steps after certain changes
 - **Modified `packages/shared-types` or `packages/shared-validation`** → always rebuild both:
   ```bash

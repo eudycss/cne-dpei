@@ -11,6 +11,8 @@ import type {
   IngestaPosicionesResponse,
   LlegadaDpiRequest,
   LlegadaDpiResponse,
+  LlegadaNoCdaRequest,
+  LlegadaNoCdaResponse,
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
   MiAsignacionResponse,
@@ -28,6 +30,7 @@ import type {
 import {
   ingestaPosicionesSchema,
   llegadaDpiSchema,
+  llegadaNoCdaSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -85,37 +88,61 @@ export class TrackingService {
     });
     if (!recinto) throw new NotFoundException('Recinto no encontrado');
 
+    const noCdas = await this.prisma.recinto.findMany({
+      where: { cdaDestinoId: recinto.id },
+      include: { canton: true },
+      orderBy: { nombre: 'asc' },
+    });
+
     const militar = await this.prisma.militar.findFirst({
       where: { recintoId },
       orderBy: { creadoEn: 'asc' },
     });
 
-    const [salidaPrevia, llegadaPrevia, salidaRecintoPrevia, llegadaDpiPrevia, recepciones] =
-      await this.prisma.$transaction([
-        this.prisma.eventoTracking.findFirst({
-          where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_DPI' },
-          select: { id: true },
-        }),
-        this.prisma.eventoTracking.findFirst({
-          where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
-          select: { id: true },
-        }),
-        this.prisma.eventoTracking.findFirst({
-          where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
-          select: { id: true },
-        }),
-        this.prisma.eventoTracking.findFirst({
-          where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
-          select: { id: true },
-        }),
-        this.prisma.recepcionKit.findMany({
-          where: { operadorId, kitId: { in: kits.map((k) => k.id) } },
-          select: { kitId: true, fotoMilitarUrl: true },
-        }),
-      ]);
+    const [
+      salidaPrevia,
+      llegadaPrevia,
+      salidaRecintoPrevia,
+      llegadaDpiPrevia,
+      recepciones,
+      llegadasNoCda,
+    ] = await this.prisma.$transaction([
+      this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_DPI' },
+        select: { id: true },
+      }),
+      this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
+        select: { id: true },
+      }),
+      this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
+        select: { id: true },
+      }),
+      this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
+        select: { id: true },
+      }),
+      this.prisma.recepcionKit.findMany({
+        where: { operadorId, kitId: { in: kits.map((k) => k.id) } },
+        select: { kitId: true, fotoMilitarUrl: true },
+      }),
+      this.prisma.eventoTracking.findMany({
+        where: {
+          eventoId: evento.id,
+          operadorId,
+          tipo: 'LLEGADA_NO_CDA',
+          recintoId: { in: noCdas.map((nc) => nc.id) },
+        },
+        select: { recintoId: true, ocurridoEn: true },
+      }),
+    ]);
 
     const recibidosSet = new Set(recepciones.map((r) => r.kitId));
     const fotoMilitarUrl = recepciones.find((r) => r.fotoMilitarUrl)?.fotoMilitarUrl ?? null;
+    const llegadaNoCdaPorRecinto = new Map(
+      llegadasNoCda.map((l) => [l.recintoId, l.ocurridoEn.toISOString()]),
+    );
 
     return {
       eventoId: evento.id,
@@ -127,7 +154,21 @@ export class TrackingService {
         direccion: recinto.direccion ?? null,
         cantonNombre: recinto.canton?.nombre ?? null,
         parroquia: recinto.parroquia ?? null,
+        juntasFemeninas: recinto.juntasFemeninas ?? null,
+        juntasMasculinas: recinto.juntasMasculinas ?? null,
+        llegadaRegistradaEn: null,
       },
+      noCdas: noCdas.map((nc) => ({
+        id: nc.id,
+        codigoRecinto: nc.codigoRecinto,
+        nombre: nc.nombre,
+        direccion: nc.direccion ?? null,
+        cantonNombre: nc.canton?.nombre ?? null,
+        parroquia: nc.parroquia ?? null,
+        juntasFemeninas: nc.juntasFemeninas ?? null,
+        juntasMasculinas: nc.juntasMasculinas ?? null,
+        llegadaRegistradaEn: llegadaNoCdaPorRecinto.get(nc.id) ?? null,
+      })),
       militar: militar
         ? {
             id: militar.id,
@@ -431,6 +472,70 @@ export class TrackingService {
     });
 
     return { id, ocurridoEn: ocurridoEn.toISOString() };
+  }
+
+  /**
+   * Checklist del operador: registra que ya visitó un NO-CDA a su cargo
+   * (un EventoTracking LLEGADA_NO_CDA por NO-CDA, sin GPS). Rechaza
+   * NO-CDAs que no dependan del CDA del operador y segundos registros
+   * del mismo NO-CDA con 409.
+   */
+  async registrarLlegadaNoCda(
+    operadorId: string,
+    input: LlegadaNoCdaRequest,
+  ): Promise<LlegadaNoCdaResponse> {
+    const parsed = llegadaNoCdaSchema.parse(input);
+
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, operadorId },
+      select: { recintoId: true },
+    });
+    const cdaId = kits[0]?.recintoId ?? null;
+    if (!cdaId) throw new NotFoundException('No tienes un CDA asignado para el evento activo');
+
+    const noCda = await this.prisma.recinto.findUnique({
+      where: { id: parsed.recintoId },
+      select: { id: true, cdaDestinoId: true },
+    });
+    if (!noCda || noCda.cdaDestinoId !== cdaId) {
+      throw new NotFoundException('Ese NO-CDA no está a tu cargo');
+    }
+
+    const existente = await this.prisma.eventoTracking.findFirst({
+      where: {
+        eventoId: evento.id,
+        operadorId,
+        tipo: 'LLEGADA_NO_CDA',
+        recintoId: parsed.recintoId,
+      },
+      select: { id: true },
+    });
+    if (existente) throw new ConflictException('Ya registraste la llegada a este NO-CDA');
+
+    const ocurridoEn = new Date();
+
+    const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+      VALUES (
+        uuid_generate_v4(),
+        ${evento.id}::uuid,
+        ${operadorId}::uuid,
+        'LLEGADA_NO_CDA'::tipo_tracking,
+        ${parsed.recintoId}::uuid,
+        NULL,
+        ${ocurridoEn}::timestamptz,
+        false,
+        now()
+      )
+      RETURNING id;
+    `)[0].id;
+
+    return { id, recintoId: parsed.recintoId, ocurridoEn: ocurridoEn.toISOString() };
   }
 
   /**

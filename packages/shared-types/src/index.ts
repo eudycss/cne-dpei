@@ -128,6 +128,7 @@ export interface Recinto {
   numeroElectores: number | null;
   juntasFemeninas: number | null;
   juntasMasculinas: number | null;
+  noCdasCount?: number;
 }
 
 export interface CreateRecintoRequest {
@@ -308,6 +309,9 @@ export interface MiAsignacionRecinto {
   direccion: string | null;
   cantonNombre: string | null;
   parroquia: string | null;
+  juntasFemeninas: number | null;
+  juntasMasculinas: number | null;
+  llegadaRegistradaEn: string | null;
 }
 
 export interface MiAsignacionMilitar {
@@ -329,6 +333,7 @@ export interface MiAsignacionResponse {
   eventoId: string;
   eventoNombre: string;
   recinto: MiAsignacionRecinto;
+  noCdas: MiAsignacionRecinto[];
   militar: MiAsignacionMilitar | null;
   kits: MiAsignacionKit[];
   yaRegistroSalida: boolean;
@@ -378,6 +383,16 @@ export interface LlegadaRecintoRequest {
 
 export interface LlegadaRecintoResponse {
   id: string;
+  ocurridoEn: string;
+}
+
+export interface LlegadaNoCdaRequest {
+  recintoId: string;
+}
+
+export interface LlegadaNoCdaResponse {
+  id: string;
+  recintoId: string;
   ocurridoEn: string;
 }
 

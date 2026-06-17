@@ -37,6 +37,7 @@ export class CatalogController {
     @Query('cantonId') cantonId?: string,
     @Query('tipo') tipo?: 'CDA' | 'NO_CDA',
     @Query('cdaDestinoId') cdaDestinoId?: string,
+    @Query('conOrigenes') conOrigenes?: 'true' | 'false',
   ) {
     return this.recintos.listRecintos({
       page: page ? Number(page) : 1,
@@ -45,6 +46,7 @@ export class CatalogController {
       cantonId: cantonId ? Number(cantonId) : undefined,
       tipo,
       cdaDestinoId,
+      conOrigenes,
     });
   }
 

@@ -262,6 +262,10 @@ export const llegadaRecintoSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
 });
 
+export const llegadaNoCdaSchema = z.object({
+  recintoId: z.string().uuid(),
+});
+
 // HU4 — Salida del recinto y rastreo continuo
 export const salidaRecintoSchema = z.object({
   latitud: z.number().min(-90).max(90),
@@ -292,6 +296,7 @@ export const llegadaDpiSchema = z.object({
 export type ValidarKitInput = z.infer<typeof validarKitSchema>;
 export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
 export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
+export type LlegadaNoCdaInput = z.infer<typeof llegadaNoCdaSchema>;
 export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
 export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
 export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;

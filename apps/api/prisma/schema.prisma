@@ -59,6 +59,7 @@ enum TipoTracking {
   LLEGADA_RECINTO
   SALIDA_RECINTO
   LLEGADA_DPI
+  LLEGADA_NO_CDA
 
   @@map("tipo_tracking")
 }

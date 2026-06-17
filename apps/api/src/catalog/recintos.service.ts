@@ -29,6 +29,7 @@ export class RecintosService {
     cantonId?: number;
     tipo?: 'CDA' | 'NO_CDA';
     cdaDestinoId?: string;
+    conOrigenes?: 'true' | 'false';
   }): Promise<Paginated<Recinto>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
@@ -43,12 +44,14 @@ export class RecintosService {
     if (opts.cantonId) where.cantonId = opts.cantonId;
     if (opts.tipo) where.tipo = opts.tipo;
     if (opts.cdaDestinoId) where.cdaDestinoId = opts.cdaDestinoId;
+    if (opts.conOrigenes === 'true') where.origenes = { some: {} };
+    if (opts.conOrigenes === 'false') where.origenes = { none: {} };
 
     const [total, items] = await this.prisma.$transaction([
       this.prisma.recinto.count({ where }),
       this.prisma.recinto.findMany({
         where,
-        include: { canton: true },
+        include: { canton: true, _count: { select: { origenes: true } } },
         orderBy: { nombre: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -315,5 +318,6 @@ function toRecintoDto(r: any, coords?: { lat: number; lng: number }): Recinto {
     numeroElectores: r.numeroElectores ?? null,
     juntasFemeninas: r.juntasFemeninas ?? null,
     juntasMasculinas: r.juntasMasculinas ?? null,
+    noCdasCount: r._count?.origenes,
   };
 }
