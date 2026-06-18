@@ -66,6 +66,25 @@ export function UsersList() {
     }
   }
 
+  async function resetearEstado(u: User) {
+    if (
+      !window.confirm(
+        `¿Resetear el progreso de tracking de ${u.nombres} ${u.apellidos}? Esto borra su recorrido del evento activo y regresa sus kits a "Asignado". Útil solo para pruebas.`,
+      )
+    ) {
+      return;
+    }
+    setTogglingId(u.id);
+    try {
+      const res = await api.post<{ kitsReseteados: number }>(`/tracking/reset-operador/${u.id}`);
+      window.alert(`Estado reseteado. ${res.data.kitsReseteados} kit(s) regresados a "Asignado".`);
+    } catch (e: any) {
+      window.alert(e?.response?.data?.message ?? 'No se pudo resetear el estado');
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   return (
     <>
       <h2>Usuarios</h2>
@@ -144,6 +163,16 @@ export function UsersList() {
                           >
                             Restablecer clave
                           </button>
+                          {u.roles.includes('OPERADOR_CDA') && (
+                            <button
+                              className="btn secondary"
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                              disabled={togglingId === u.id}
+                              onClick={() => resetearEstado(u)}
+                            >
+                              Resetear estado
+                            </button>
+                          )}
                           <button
                             className={u.activo ? 'btn danger' : 'btn'}
                             style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}

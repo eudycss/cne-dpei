@@ -1370,6 +1370,32 @@ export class TrackingService {
 
     return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
+
+  async resetEstadoOperador(operadorId: string): Promise<{ kitsReseteados: number }> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, operadorId },
+      select: { id: true },
+    });
+    const kitIds = kits.map((k) => k.id);
+
+    await this.prisma.$transaction([
+      this.prisma.eventoTracking.deleteMany({ where: { eventoId: evento.id, operadorId } }),
+      this.prisma.posicionGps.deleteMany({ where: { eventoId: evento.id, operadorId } }),
+      this.prisma.recepcionKit.deleteMany({ where: { kitId: { in: kitIds } } }),
+      this.prisma.recepcionDpiKit.deleteMany({ where: { kitId: { in: kitIds } } }),
+      this.prisma.kitElectoral.updateMany({
+        where: { id: { in: kitIds } },
+        data: { estado: 'ASIGNADO' },
+      }),
+    ]);
+
+    return { kitsReseteados: kitIds.length };
+  }
 }
 
 /** Detecta el content-type de una imagen a partir de sus magic bytes. */

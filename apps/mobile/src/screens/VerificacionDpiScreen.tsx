@@ -63,7 +63,7 @@ export function VerificacionDpiScreen() {
       await verificarKitRetorno({
         kitId: kit.id,
         items,
-        observaciones: todosMarcados ? null : observaciones.trim(),
+        observaciones: observaciones.trim() || null,
       });
       setVerificados((n) => n + 1);
       setKit(null);
@@ -122,21 +122,19 @@ export function VerificacionDpiScreen() {
                   ))}
                 </View>
 
-                {!todosMarcados ? (
-                  <>
-                    <Text style={styles.obsLabel}>Observaciones (obligatorio)</Text>
-                    <TextInput
-                      style={styles.textArea}
-                      value={observaciones}
-                      onChangeText={setObservaciones}
-                      placeholder="Describe qué falta o qué está dañado"
-                      placeholderTextColor={colors.textPlaceholder}
-                      multiline
-                      numberOfLines={3}
-                      maxLength={500}
-                    />
-                  </>
-                ) : null}
+                <Text style={[styles.obsLabel, !todosMarcados && styles.obsLabelRequired]}>
+                  Observaciones {todosMarcados ? '(opcional)' : '(obligatorio)'}
+                </Text>
+                <TextInput
+                  style={styles.textArea}
+                  value={observaciones}
+                  onChangeText={setObservaciones}
+                  placeholder="Describe qué falta o qué está dañado"
+                  placeholderTextColor={colors.textPlaceholder}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={500}
+                />
               </>
             ) : null}
             <View style={styles.modalActions}>
@@ -214,7 +212,8 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   checkboxOn: { backgroundColor: c.success, borderColor: c.success },
   checkboxMark: { color: '#fff', fontFamily: fontFamily.bold, fontSize: 13 },
   itemTexto: { flex: 1, fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary },
-  obsLabel: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.error, marginTop: 6, marginBottom: 6 },
+  obsLabel: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, marginTop: 6, marginBottom: 6 },
+  obsLabelRequired: { color: c.error },
   textArea: {
     borderWidth: 1,
     borderColor: c.borderInput,

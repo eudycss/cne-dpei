@@ -285,4 +285,15 @@ export class TrackingController {
   kitsVerificadosRetorno(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.kitsVerificadosRetorno(user.sub, user.roles);
   }
+
+  @Post('reset-operador/:operadorId')
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'operadorId', description: 'ID del operador a resetear' })
+  @ApiOperation({
+    summary: 'Pruebas: borra el progreso de tracking del operador y regresa sus kits a ASIGNADO',
+  })
+  resetEstadoOperador(@Param('operadorId') operadorId: string) {
+    return this.tracking.resetEstadoOperador(operadorId);
+  }
 }
