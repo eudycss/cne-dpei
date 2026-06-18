@@ -27,7 +27,7 @@ import { SalidaRecintoScreen } from './src/screens/SalidaRecintoScreen';
 import { EnRetornoScreen } from './src/screens/EnRetornoScreen';
 import { LlegadaDpiScreen } from './src/screens/LlegadaDpiScreen';
 import { RetornadoScreen } from './src/screens/RetornadoScreen';
-import { MonitoreoScreen } from './src/screens/MonitoreoScreen';
+import { SupervisorFlow } from './src/screens/SupervisorFlow';
 import { getMiAsignacion } from './src/lib/queries/tracking';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
@@ -124,7 +124,7 @@ function Navigator() {
       ) : esOperador ? (
         <Stack.Screen name="Home" component={OperadorFlow} />
       ) : esSupervisor ? (
-        <Stack.Screen name="Home" component={MonitoreoScreen} />
+        <Stack.Screen name="Home" component={SupervisorFlow} />
       ) : (
         <Stack.Screen name="Home" component={PlaceholderHome} />
       )}

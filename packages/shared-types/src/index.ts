@@ -375,6 +375,47 @@ export interface RecepcionKitResponse {
   confirmadoEn: string;
 }
 
+// Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)
+export interface ItemChecklist {
+  texto: string;
+  marcado: boolean;
+}
+
+export interface ValidarKitRetornoResponse {
+  id: string;
+  codigoUnico: string;
+  nombre: string;
+  operadorNombre: string;
+  items: ItemChecklist[];
+  yaVerificado: boolean;
+}
+
+export interface VerificarKitRetornoRequest {
+  kitId: string;
+  items: ItemChecklist[];
+  observaciones?: string | null;
+}
+
+export interface VerificarKitRetornoResponse {
+  id: string;
+  kitId: string;
+  confirmadoEn: string;
+}
+
+export interface KitVerificadoRetorno {
+  kitId: string;
+  codigoUnico: string;
+  nombre: string;
+  operadorId: string;
+  operadorNombre: string;
+  confirmadoEn: string;
+}
+
+export interface KitsVerificadosRetornoResponse {
+  total: number;
+  items: KitVerificadoRetorno[];
+}
+
 export interface LlegadaRecintoRequest {
   latitud: number;
   longitud: number;

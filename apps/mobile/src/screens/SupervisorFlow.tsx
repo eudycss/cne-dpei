@@ -1,0 +1,69 @@
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme/ThemeContext';
+import { Colors } from '../theme/colors';
+import { fontFamily } from '../theme/typography';
+import { MonitoreoScreen } from './MonitoreoScreen';
+import { VerificacionDpiScreen } from './VerificacionDpiScreen';
+import { KitsVerificadosScreen } from './KitsVerificadosScreen';
+
+type Tab = 'MONITOREO' | 'VERIFICAR_DPI' | 'VERIFICADOS';
+
+export function SupervisorFlow() {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [tab, setTab] = useState<Tab>('MONITOREO');
+
+  return (
+    <View style={styles.container}>
+      <View style={[styles.tabBar, { paddingTop: insets.top + 6 }]}>
+        <Pressable
+          style={[styles.tabBtn, tab === 'MONITOREO' && styles.tabBtnActive]}
+          onPress={() => setTab('MONITOREO')}
+        >
+          <Text style={[styles.tabText, tab === 'MONITOREO' && styles.tabTextActive]}>Monitoreo</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'VERIFICAR_DPI' && styles.tabBtnActive]}
+          onPress={() => setTab('VERIFICAR_DPI')}
+        >
+          <Text style={[styles.tabText, tab === 'VERIFICAR_DPI' && styles.tabTextActive]}>
+            Verificar Kits DPI
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'VERIFICADOS' && styles.tabBtnActive]}
+          onPress={() => setTab('VERIFICADOS')}
+        >
+          <Text style={[styles.tabText, tab === 'VERIFICADOS' && styles.tabTextActive]}>Verificados</Text>
+        </Pressable>
+      </View>
+      {tab === 'MONITOREO' ? (
+        <MonitoreoScreen />
+      ) : tab === 'VERIFICAR_DPI' ? (
+        <VerificacionDpiScreen />
+      ) : (
+        <KitsVerificadosScreen />
+      )}
+    </View>
+  );
+}
+
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPage },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: c.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  tabBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  tabBtnActive: { backgroundColor: c.primary },
+  tabText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary },
+  tabTextActive: { color: '#fff' },
+});

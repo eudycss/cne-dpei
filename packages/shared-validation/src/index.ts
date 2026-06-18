@@ -293,6 +293,23 @@ export const llegadaDpiSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
 });
 
+// Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)
+export const itemChecklistSchema = z.object({
+  texto: z.string().min(1),
+  marcado: z.boolean(),
+});
+
+export const verificarKitRetornoSchema = z
+  .object({
+    kitId: z.string().uuid('Kit inválido'),
+    items: z.array(itemChecklistSchema).min(1),
+    observaciones: z.string().max(500).nullable().optional(),
+  })
+  .refine(
+    (d) => d.items.every((i) => i.marcado) || !!d.observaciones?.trim(),
+    { message: 'Escribe una observación indicando qué falta', path: ['observaciones'] },
+  );
+
 export type ValidarKitInput = z.infer<typeof validarKitSchema>;
 export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
 export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
@@ -300,6 +317,7 @@ export type LlegadaNoCdaInput = z.infer<typeof llegadaNoCdaSchema>;
 export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
 export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
 export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;
+export type VerificarKitRetornoInput = z.infer<typeof verificarKitRetornoSchema>;
 
 export type CreateMilitarInput = z.infer<typeof createMilitarSchema>;
 export type BulkMilitarRow = z.infer<typeof bulkMilitarRowSchema>;

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Logo } from './Logo';
@@ -11,15 +11,32 @@ import { Colors } from '../theme/colors';
 
 interface AppBarProps {
   subtitle?: string;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
-export function AppBar({ subtitle }: AppBarProps) {
+export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const insets = useSafeAreaInsets();
   const { theme, colors, toggle } = useTheme();
   const { user } = useAuth();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showMiRecinto, setShowMiRecinto] = useState(false);
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
+  const spin = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!refreshing) {
+      spin.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [refreshing, spin]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 10 }]}>
@@ -28,6 +45,13 @@ export function AppBar({ subtitle }: AppBarProps) {
         <Text style={styles.title}>CNE Imbabura</Text>
         <Text style={styles.subtitle}>{subtitle ?? 'Trazabilidad Electoral'}</Text>
       </View>
+      {onRefresh && (
+        <Pressable onPress={onRefresh} disabled={refreshing} hitSlop={8} accessibilityLabel="Actualizar">
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <Ionicons name="refresh-circle" size={28} color={colors.primary} />
+          </Animated.View>
+        </Pressable>
+      )}
       {esOperador && (
         <Pressable onPress={() => setShowMiRecinto(true)} hitSlop={8} accessibilityLabel="Mi recinto">
           <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />

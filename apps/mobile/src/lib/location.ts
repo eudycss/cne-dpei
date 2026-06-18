@@ -120,3 +120,39 @@ export async function detenerRastreo(): Promise<void> {
     await Location.stopLocationUpdatesAsync(TRACKING_TASK);
   }
 }
+
+/**
+ * Rastreo en primer plano: complementa a `iniciarRastreo` para que el punto
+ * en el mapa del supervisor también se actualice probando en Expo Go, donde
+ * el rastreo en segundo plano (TaskManager) no corre.
+ */
+export async function iniciarRastreoPrimerPlano(): Promise<Location.LocationSubscription | null> {
+  const servicesEnabled = await Location.hasServicesEnabledAsync();
+  if (!servicesEnabled) return null;
+
+  const current = await Location.getForegroundPermissionsAsync();
+  let granted = current.status === 'granted';
+  if (!granted) {
+    const req = await Location.requestForegroundPermissionsAsync();
+    granted = req.status === 'granted';
+  }
+  if (!granted) return null;
+
+  return Location.watchPositionAsync(
+    { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 0 },
+    async (loc) => {
+      const posiciones = [
+        {
+          latitud: loc.coords.latitude,
+          longitud: loc.coords.longitude,
+          capturadoEn: new Date(loc.timestamp).toISOString(),
+        },
+      ];
+      try {
+        await postPosiciones({ posiciones });
+      } catch {
+        // Sin conexión o error transitorio: se descarta el lote.
+      }
+    },
+  );
+}

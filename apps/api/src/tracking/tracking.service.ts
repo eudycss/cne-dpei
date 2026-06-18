@@ -9,6 +9,8 @@ import type {
   EstadoOperadorCda,
   IngestaPosicionesRequest,
   IngestaPosicionesResponse,
+  KitVerificadoRetorno,
+  KitsVerificadosRetornoResponse,
   LlegadaDpiRequest,
   LlegadaDpiResponse,
   LlegadaNoCdaRequest,
@@ -28,6 +30,9 @@ import type {
   SalidaRecintoRequest,
   SalidaRecintoResponse,
   ValidarKitResponse,
+  ValidarKitRetornoResponse,
+  VerificarKitRetornoRequest,
+  VerificarKitRetornoResponse,
 } from '@cne/shared-types';
 import {
   ingestaPosicionesSchema,
@@ -37,6 +42,7 @@ import {
   recepcionKitSchema,
   salidaDpiSchema,
   salidaRecintoSchema,
+  verificarKitRetornoSchema,
 } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
@@ -379,6 +385,178 @@ export class TrackingService {
       kitId: kit.id,
       confirmadoEn: row.confirmado_en.toISOString(),
     };
+  }
+
+  /**
+   * Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR): busca el
+   * kit por código y devuelve su checklist de contenidos (parseado desde
+   * `contenidos`) para que el supervisor confirme qué viene completo.
+   */
+  async validarKitRetorno(
+    supervisorId: string,
+    roles: RoleName[],
+    codigo: string,
+  ): Promise<ValidarKitRetornoResponse> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const kit = await this.prisma.kitElectoral.findUnique({
+      where: { eventoId_codigoUnico: { eventoId: evento.id, codigoUnico: codigo.trim() } },
+    });
+    if (!kit) throw new NotFoundException('Kit no encontrado en el evento activo');
+    if (!kit.operadorId) {
+      throw new BadRequestException('Este kit no está asignado a ningún operador');
+    }
+    await this.verificarPertenenciaOperador(evento.id, supervisorId, roles, kit.operadorId);
+
+    if (kit.estado !== 'EN_RETORNO' && kit.estado !== 'RETORNADO') {
+      throw new BadRequestException('Este kit todavía no salió del recinto');
+    }
+
+    const operador = await this.prisma.usuario.findUnique({
+      where: { id: kit.operadorId },
+      select: { nombres: true, apellidos: true },
+    });
+
+    const yaVerificado = !!(await this.prisma.recepcionDpiKit.findFirst({
+      where: { kitId: kit.id },
+      select: { id: true },
+    }));
+
+    return {
+      id: kit.id,
+      codigoUnico: kit.codigoUnico,
+      nombre: kit.nombre,
+      operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : 'Operador',
+      items: parseContenidos(kit.contenidos).map((texto) => ({ texto, marcado: true })),
+      yaVerificado,
+    };
+  }
+
+  /**
+   * Inserta el registro independiente de verificación de retorno al DPI.
+   * No altera EstadoKit ni el flujo de salida/llegada ya existente.
+   * Idempotente: si el kit ya fue verificado, retorna el registro existente.
+   */
+  async confirmarVerificacionKitRetorno(
+    supervisorId: string,
+    roles: RoleName[],
+    input: VerificarKitRetornoRequest,
+  ): Promise<VerificarKitRetornoResponse> {
+    const parsed = verificarKitRetornoSchema.parse(input);
+
+    const kit = await this.prisma.kitElectoral.findUnique({ where: { id: parsed.kitId } });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+    if (!kit.operadorId) {
+      throw new BadRequestException('Este kit no está asignado a ningún operador');
+    }
+    await this.verificarPertenenciaOperador(kit.eventoId, supervisorId, roles, kit.operadorId);
+
+    const existente = await this.prisma.recepcionDpiKit.findFirst({
+      where: { kitId: kit.id },
+      select: { id: true, confirmadoEn: true },
+    });
+    if (existente) {
+      return { id: existente.id, kitId: kit.id, confirmadoEn: existente.confirmadoEn.toISOString() };
+    }
+
+    const creado = await this.prisma.recepcionDpiKit.create({
+      data: {
+        kitId: kit.id,
+        supervisorId,
+        items: parsed.items,
+        observaciones: parsed.observaciones ?? null,
+      },
+    });
+
+    return { id: creado.id, kitId: kit.id, confirmadoEn: creado.confirmadoEn.toISOString() };
+  }
+
+  /**
+   * Verificación retorno DPI: lista de kits ya verificados (con fila en
+   * `recepciones_dpi_kit`), filtrada a los operadores del supervisor igual que
+   * `operadoresEnRetorno`. El total acompaña la lista para mostrarlo en el móvil.
+   */
+  async kitsVerificadosRetorno(
+    viewerId: string,
+    roles: RoleName[],
+  ): Promise<KitsVerificadosRetornoResponse> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return { total: 0, items: [] };
+
+    const esAdmin = roles.includes('ADMINISTRADOR');
+    let operadorIds: string[] | undefined;
+    if (!esAdmin) {
+      const asignados = await this.prisma.asignacionSupervisor.findMany({
+        where: { eventoId: evento.id, supervisorId: viewerId },
+        select: { operadorId: true },
+      });
+      operadorIds = asignados.map((a) => a.operadorId);
+      if (operadorIds.length === 0) return { total: 0, items: [] };
+    }
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, ...(operadorIds ? { operadorId: { in: operadorIds } } : {}) },
+      select: { id: true, codigoUnico: true, nombre: true, operadorId: true },
+    });
+    if (kits.length === 0) return { total: 0, items: [] };
+
+    const recepciones = await this.prisma.recepcionDpiKit.findMany({
+      where: { kitId: { in: kits.map((k) => k.id) } },
+      orderBy: { confirmadoEn: 'desc' },
+    });
+    if (recepciones.length === 0) return { total: 0, items: [] };
+
+    const kitPorId = new Map(kits.map((k) => [k.id, k]));
+    const operadoresIds = Array.from(
+      new Set(
+        recepciones
+          .map((r) => kitPorId.get(r.kitId)?.operadorId)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const operadores = await this.prisma.usuario.findMany({
+      where: { id: { in: operadoresIds } },
+      select: { id: true, nombres: true, apellidos: true },
+    });
+    const nombrePorId = new Map(operadores.map((o) => [o.id, `${o.nombres} ${o.apellidos}`]));
+
+    const items: KitVerificadoRetorno[] = recepciones.map((r) => {
+      const kit = kitPorId.get(r.kitId);
+      return {
+        kitId: r.kitId,
+        codigoUnico: kit?.codigoUnico ?? '',
+        nombre: kit?.nombre ?? '',
+        operadorId: kit?.operadorId ?? '',
+        operadorNombre: kit?.operadorId ? nombrePorId.get(kit.operadorId) ?? 'Operador' : 'Operador',
+        confirmadoEn: r.confirmadoEn.toISOString(),
+      };
+    });
+
+    return { total: items.length, items };
+  }
+
+  /** Lanza 400 si el operador no está asignado a este supervisor (admins pasan siempre). */
+  private async verificarPertenenciaOperador(
+    eventoId: string,
+    supervisorId: string,
+    roles: RoleName[],
+    operadorId: string,
+  ): Promise<void> {
+    if (roles.includes('ADMINISTRADOR')) return;
+    const asignado = await this.prisma.asignacionSupervisor.findFirst({
+      where: { eventoId, supervisorId, operadorId },
+      select: { id: true },
+    });
+    if (!asignado) {
+      throw new BadRequestException('Este kit no pertenece a uno de tus operadores');
+    }
   }
 
   /**
@@ -1220,3 +1398,12 @@ function detectarContentTypeImagen(buffer: Buffer): string {
   }
   return 'image/jpeg';
 }
+
+function parseContenidos(contenidos: string | null): string[] {
+  if (!contenidos?.trim()) return [];
+  const porLinea = contenidos.split('\n').map((s) => s.trim()).filter(Boolean);
+  if (porLinea.length > 1) return porLinea;
+  return contenidos.split(',').map((s) => s.trim()).filter(Boolean);
+}
+// ponytail: heurística simple (salto de línea, si no hay, coma). Si en el futuro
+// los admins necesitan listas más ricas, migrar `contenidos` a una tabla real.

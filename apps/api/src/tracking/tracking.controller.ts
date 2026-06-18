@@ -32,6 +32,7 @@ import type {
   SalidaDpiRequest,
   SalidaRecintoRequest,
   ValidarKitRequest,
+  VerificarKitRetornoRequest,
 } from '@cne/shared-types';
 import {
   ingestaPosicionesSchema,
@@ -42,6 +43,7 @@ import {
   salidaDpiSchema,
   salidaRecintoSchema,
   validarKitSchema,
+  verificarKitRetornoSchema,
 } from '@cne/shared-validation';
 
 import { TrackingService } from './tracking.service';
@@ -247,5 +249,40 @@ export class TrackingController {
     @Body(new ZodValidationPipe(llegadaDpiSchema)) body: LlegadaDpiRequest,
   ) {
     return this.tracking.registrarLlegadaDpi(user.sub, body);
+  }
+
+  @Post('validar-kit-retorno')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verificación retorno DPI: valida el kit escaneado y devuelve su checklist',
+  })
+  validarKitRetorno(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(validarKitSchema)) body: ValidarKitRequest,
+  ) {
+    return this.tracking.validarKitRetorno(user.sub, user.roles, body.codigo);
+  }
+
+  @Post('verificar-kit-retorno')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Verificación retorno DPI: confirma el checklist de contenidos de un kit',
+  })
+  verificarKitRetorno(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(verificarKitRetornoSchema)) body: VerificarKitRetornoRequest,
+  ) {
+    return this.tracking.confirmarVerificacionKitRetorno(user.sub, user.roles, body);
+  }
+
+  @Get('kits-verificados-retorno')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'Verificación retorno DPI: kits ya verificados con el total',
+  })
+  kitsVerificadosRetorno(@CurrentUser() user: AuthenticatedUser) {
+    return this.tracking.kitsVerificadosRetorno(user.sub, user.roles);
   }
 }
