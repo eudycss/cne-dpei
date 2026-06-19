@@ -49,6 +49,15 @@ import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 
+// HU3: margen para registrar la llegada al recinto. Es configurable por evento
+// (ConfigAlerta.margenLlegadaMetros, vía "Configurar alertas" en Eventos) para
+// poder hacer demos sin estar en el recinto real, sin tocar este código.
+// El mobile usa el mismo valor (recibido en miAsignacion) para gatear el botón
+// en UX, pero la validación que de verdad importa es la del servidor, en
+// registrarLlegadaRecinto.
+const MARGEN_LLEGADA_METROS_DEFAULT = 150;
+const MAX_HOLGURA_GPS_METROS = 100;
+
 @Injectable()
 export class TrackingService {
   constructor(
@@ -95,6 +104,19 @@ export class TrackingService {
       include: { canton: true },
     });
     if (!recinto) throw new NotFoundException('Recinto no encontrado');
+
+    const coordsRecinto = await this.prisma.$queryRaw<{ lat: number; lng: number }[]>`
+      SELECT ST_Y(ubicacion::geometry) AS lat, ST_X(ubicacion::geometry) AS lng
+      FROM recintos WHERE id = ${recinto.id}::uuid AND ubicacion IS NOT NULL;
+    `;
+    const latitudRecinto = coordsRecinto[0]?.lat ?? null;
+    const longitudRecinto = coordsRecinto[0]?.lng ?? null;
+
+    const configAlerta = await this.prisma.configAlerta.findUnique({
+      where: { eventoId: evento.id },
+      select: { margenLlegadaMetros: true },
+    });
+    const margenLlegadaMetros = configAlerta?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT;
 
     const noCdas = await this.prisma.recinto.findMany({
       where: { cdaDestinoId: recinto.id },
@@ -165,6 +187,8 @@ export class TrackingService {
         juntasFemeninas: recinto.juntasFemeninas ?? null,
         juntasMasculinas: recinto.juntasMasculinas ?? null,
         llegadaRegistradaEn: null,
+        latitud: latitudRecinto,
+        longitud: longitudRecinto,
       },
       noCdas: noCdas.map((nc) => ({
         id: nc.id,
@@ -176,6 +200,8 @@ export class TrackingService {
         juntasFemeninas: nc.juntasFemeninas ?? null,
         juntasMasculinas: nc.juntasMasculinas ?? null,
         llegadaRegistradaEn: llegadaNoCdaPorRecinto.get(nc.id) ?? null,
+        latitud: null,
+        longitud: null,
       })),
       militar: militar
         ? {
@@ -197,6 +223,7 @@ export class TrackingService {
       yaRegistroSalidaRecinto: !!salidaRecintoPrevia,
       yaRegistroLlegadaDpi: !!llegadaDpiPrevia,
       fotoMilitarUrl,
+      margenLlegadaMetros,
     };
   }
 
@@ -607,6 +634,36 @@ export class TrackingService {
 
     const recintoId = kits[0]?.recintoId ?? null;
     const ocurridoEn = new Date(parsed.ocurridoEn);
+
+    // HU3: el operador debe estar físicamente en el recinto para registrar la
+    // llegada. Margen = margen del evento (configurable, default 150m) +
+    // holgura por la imprecisión que reporta el GPS del propio celular (con
+    // tope, para que un valor basura no anule el control). PostGIS::geography
+    // devuelve metros directos.
+    if (recintoId) {
+      const filas = await this.prisma.$queryRaw<{ metros: number | null }[]>`
+        SELECT ST_Distance(
+          r.ubicacion,
+          ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography
+        ) AS metros
+        FROM recintos r
+        WHERE r.id = ${recintoId}::uuid AND r.ubicacion IS NOT NULL;
+      `;
+      const metros = filas[0]?.metros;
+      if (metros != null) {
+        const config = await this.prisma.configAlerta.findUnique({
+          where: { eventoId: evento.id },
+          select: { margenLlegadaMetros: true },
+        });
+        const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
+        const margen = (config?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT) + holgura;
+        if (metros > margen) {
+          throw new BadRequestException(
+            `Estás a ${Math.round(metros)} m del recinto. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+          );
+        }
+      }
+    }
 
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)

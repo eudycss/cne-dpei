@@ -195,6 +195,7 @@ export const configAlertasSchema = z.object({
   umbralLlegadaRecintoMin: z.number().int().min(1).max(1440),
   umbralLlegadaDpiMin: z.number().int().min(1).max(1440),
   umbralSinSyncMin: z.number().int().min(1).max(1440),
+  margenLlegadaMetros: z.number().int().min(10).max(50000),
 });
 
 export const closeEventoSchema = z.object({
@@ -260,6 +261,7 @@ export const llegadaRecintoSchema = z.object({
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  precisionMetros: z.number().nonnegative().nullable().optional(),
 });
 
 export const llegadaNoCdaSchema = z.object({

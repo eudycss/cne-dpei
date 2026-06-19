@@ -523,6 +523,7 @@ function ConfigAlertasModal({
     umbralLlegadaRecintoMin: cfg?.umbralLlegadaRecintoMin ?? 120,
     umbralLlegadaDpiMin: cfg?.umbralLlegadaDpiMin ?? 120,
     umbralSinSyncMin: cfg?.umbralSinSyncMin ?? 30,
+    margenLlegadaMetros: cfg?.margenLlegadaMetros ?? 150,
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -534,6 +535,7 @@ function ConfigAlertasModal({
       umbralLlegadaRecintoMin: cfg.umbralLlegadaRecintoMin,
       umbralLlegadaDpiMin: cfg.umbralLlegadaDpiMin,
       umbralSinSyncMin: cfg.umbralSinSyncMin,
+      margenLlegadaMetros: cfg.margenLlegadaMetros,
     });
     setSynced(true);
   }
@@ -621,6 +623,22 @@ function ConfigAlertasModal({
           />
           <span className="muted">
             Alerta si no se recibe ningún dato del operador en X minutos.
+          </span>
+        </div>
+
+        <div className="field">
+          <label>Margen de llegada al recinto (m)</label>
+          <input
+            type="number"
+            min={10}
+            max={50000}
+            value={form.margenLlegadaMetros}
+            onChange={numField('margenLlegadaMetros')}
+            required
+          />
+          <span className="muted">
+            Distancia máxima permitida para registrar "Llegada al Recinto". Sube este valor
+            temporalmente en un evento de prueba para hacer una demo sin estar en el recinto real.
           </span>
         </div>
 

@@ -196,5 +196,6 @@ function toConfigDto(c: any): ConfigAlertas {
     umbralLlegadaRecintoMin: c.umbralLlegadaRecintoMin,
     umbralLlegadaDpiMin: c.umbralLlegadaDpiMin,
     umbralSinSyncMin: c.umbralSinSyncMin,
+    margenLlegadaMetros: c.margenLlegadaMetros,
   };
 }

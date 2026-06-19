@@ -204,6 +204,7 @@ export interface ConfigAlertas {
   umbralLlegadaRecintoMin: number;
   umbralLlegadaDpiMin: number;
   umbralSinSyncMin: number;
+  margenLlegadaMetros: number;
 }
 
 export interface EventoElectoral {
@@ -312,6 +313,8 @@ export interface MiAsignacionRecinto {
   juntasFemeninas: number | null;
   juntasMasculinas: number | null;
   llegadaRegistradaEn: string | null;
+  latitud: number | null;
+  longitud: number | null;
 }
 
 export interface MiAsignacionMilitar {
@@ -341,6 +344,7 @@ export interface MiAsignacionResponse {
   yaRegistroSalidaRecinto: boolean;
   yaRegistroLlegadaDpi: boolean;
   fotoMilitarUrl: string | null;
+  margenLlegadaMetros: number;
 }
 
 // HU3 — Llegada al recinto y recepción de kits
@@ -420,6 +424,7 @@ export interface LlegadaRecintoRequest {
   latitud: number;
   longitud: number;
   ocurridoEn: string;
+  precisionMetros?: number | null;
 }
 
 export interface LlegadaRecintoResponse {

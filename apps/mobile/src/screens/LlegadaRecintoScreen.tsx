@@ -35,7 +35,10 @@ import {
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
 } from '../lib/location';
+import { distanciaMetros } from '../lib/geo';
 import { fontFamily } from '../theme/typography';
+
+type UbicacionInfo = { distanciaM: number; margenM: number; dentro: boolean };
 
 type Paso = 1 | 2 | 3;
 type Styles = ReturnType<typeof makeStyles>;
@@ -69,6 +72,9 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
 
   // Paso 3: confirmar llegada
   const [registrando, setRegistrando] = useState(false);
+  const [ubicacionInfo, setUbicacionInfo] = useState<UbicacionInfo | null>(null);
+  const [verificandoUbicacion, setVerificandoUbicacion] = useState(false);
+  const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -174,6 +180,39 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     }
   }
 
+  const verificarUbicacion = useCallback(async () => {
+    if (!asignacion || asignacion.recinto.latitud == null || asignacion.recinto.longitud == null) return;
+    setVerificandoUbicacion(true);
+    setErrorUbicacion(null);
+    try {
+      const pos = await obtenerUbicacionPuntual();
+      const distanciaM = distanciaMetros(
+        { latitud: pos.latitud, longitud: pos.longitud },
+        { latitud: asignacion.recinto.latitud, longitud: asignacion.recinto.longitud },
+      );
+      const holgura = Math.min(pos.precisionMetros ?? 0, 100);
+      const margenM = asignacion.margenLlegadaMetros + holgura;
+      setUbicacionInfo({ distanciaM, margenM, dentro: distanciaM <= margenM });
+    } catch (e) {
+      setUbicacionInfo(null);
+      if (e instanceof LocationPermissionDeniedError) {
+        setErrorUbicacion('Concede el permiso de ubicación para verificar tu cercanía al recinto.');
+      } else if (e instanceof LocationServicesDisabledError) {
+        setErrorUbicacion('Activa los servicios de ubicación para verificar tu cercanía al recinto.');
+      } else {
+        setErrorUbicacion('No se pudo obtener tu ubicación.');
+      }
+    } finally {
+      setVerificandoUbicacion(false);
+    }
+  }, [asignacion]);
+
+  useEffect(() => {
+    if (paso === 3) verificarUbicacion();
+    // Solo al entrar al paso 3; "Actualizar ubicación" cubre los refrescos manuales.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso]);
+
   async function registrarLlegada() {
     setRegistrando(true);
     try {
@@ -182,6 +221,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
+        precisionMetros: ubicacion.precisionMetros,
       });
       onLlegadaRegistrada();
     } catch (e: any) {
@@ -288,6 +328,10 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
             cantidadKits={asignacion.kits.length}
             registrando={registrando}
             onConfirmar={registrarLlegada}
+            ubicacionInfo={ubicacionInfo}
+            verificandoUbicacion={verificandoUbicacion}
+            errorUbicacion={errorUbicacion}
+            onActualizarUbicacion={verificarUbicacion}
             styles={styles}
           />
         ) : null}
@@ -528,19 +572,75 @@ function Paso2({
   );
 }
 
+function UbicacionCard({
+  info,
+  verificando,
+  error,
+  onActualizar,
+  styles,
+}: {
+  info: UbicacionInfo | null;
+  verificando: boolean;
+  error: string | null;
+  onActualizar: () => void;
+  styles: Styles;
+}) {
+  const variante = verificando ? 'neutral' : error ? 'neutral' : info ? (info.dentro ? 'ok' : 'warn') : 'neutral';
+  const wrapStyle =
+    variante === 'ok' ? styles.ubicCardOk : variante === 'warn' ? styles.ubicCardWarn : styles.ubicCardNeutral;
+  const textStyle =
+    variante === 'ok' ? styles.ubicTextOk : variante === 'warn' ? styles.ubicTextWarn : styles.ubicTextNeutral;
+
+  let mensaje: string;
+  if (verificando) {
+    mensaje = 'Obteniendo tu ubicación…';
+  } else if (error) {
+    mensaje = error;
+  } else if (info?.dentro) {
+    mensaje = 'Estás en el recinto.';
+  } else if (info) {
+    mensaje = `Estás a ${Math.round(info.distanciaM)} m del recinto. Acércate a menos de ${Math.round(info.margenM)} m.`;
+  } else {
+    mensaje = 'No se ha verificado tu cercanía al recinto.';
+  }
+
+  return (
+    <View style={[styles.ubicCard, wrapStyle]}>
+      <Text style={[styles.ubicText, textStyle]}>{mensaje}</Text>
+      <Pressable onPress={onActualizar} disabled={verificando} hitSlop={8}>
+        <Text style={styles.ubicRefrescar}>{verificando ? 'Verificando…' : 'Actualizar ubicación'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function Paso3({
   recintoNombre,
   cantidadKits,
   registrando,
   onConfirmar,
+  ubicacionInfo,
+  verificandoUbicacion,
+  errorUbicacion,
+  onActualizarUbicacion,
   styles,
 }: {
   recintoNombre: string;
   cantidadKits: number;
   registrando: boolean;
   onConfirmar: () => void;
+  ubicacionInfo: UbicacionInfo | null;
+  verificandoUbicacion: boolean;
+  errorUbicacion: string | null;
+  onActualizarUbicacion: () => void;
   styles: Styles;
 }) {
+  // Si no se pudo verificar la cercanía (sin coords del recinto, sin permiso de
+  // GPS, etc.) no bloqueamos: el servidor vuelve a validar al confirmar y, si
+  // hace falta el GPS para registrar el punto, el flujo ya lo pide ahí.
+  const bloqueadoPorLejania = ubicacionInfo != null && !ubicacionInfo.dentro;
+  const puedeConfirmar = !registrando && !verificandoUbicacion && !bloqueadoPorLejania;
+
   return (
     <>
       <View style={styles.card}>
@@ -553,10 +653,19 @@ function Paso3({
           supervisor y a los administradores.
         </Text>
       </View>
+
+      <UbicacionCard
+        info={ubicacionInfo}
+        verificando={verificandoUbicacion}
+        error={errorUbicacion}
+        onActualizar={onActualizarUbicacion}
+        styles={styles}
+      />
+
       <Pressable
-        style={[styles.btnPrimary, registrando && { opacity: 0.6 }]}
+        style={[styles.btnPrimary, !puedeConfirmar && { opacity: 0.5 }]}
         onPress={onConfirmar}
-        disabled={registrando}
+        disabled={!puedeConfirmar}
       >
         <Text style={styles.btnPrimaryText}>
           {registrando ? 'Registrando…' : 'Confirmar Llegada al Recinto'}
@@ -647,6 +756,16 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   kitEstado: { fontSize: 12, fontFamily: fontFamily.semiBold, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   kitEstadoOk: { color: c.successText, backgroundColor: c.successBg },
   kitEstadoPend: { color: c.warningText, backgroundColor: c.warningBg },
+
+  ubicCard: { borderRadius: 10, padding: 14, marginBottom: 10 },
+  ubicCardOk: { backgroundColor: c.successBg },
+  ubicCardWarn: { backgroundColor: c.warningBg },
+  ubicCardNeutral: { backgroundColor: c.placeholder },
+  ubicText: { fontSize: 13, fontFamily: fontFamily.medium, marginBottom: 6 },
+  ubicTextOk: { color: c.successText },
+  ubicTextWarn: { color: c.warningText },
+  ubicTextNeutral: { color: c.textSecondary },
+  ubicRefrescar: { fontSize: 12, fontFamily: fontFamily.semiBold, color: c.primary },
 
   btnPrimary: { backgroundColor: c.primary, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },

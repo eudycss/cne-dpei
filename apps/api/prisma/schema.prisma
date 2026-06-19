@@ -287,10 +287,11 @@ model EventoElectoral {
 }
 
 model ConfigAlerta {
-  eventoId                 String @id @map("evento_id") @db.Uuid
+  eventoId                String @id @map("evento_id") @db.Uuid
   umbralLlegadaRecintoMin Int    @default(120) @map("umbral_llegada_recinto_min")
   umbralLlegadaDpiMin     Int    @default(120) @map("umbral_llegada_dpi_min")
   umbralSinSyncMin        Int    @default(30) @map("umbral_sin_sync_min")
+  margenLlegadaMetros     Int    @default(150) @map("margen_llegada_metros")
 
   @@map("config_alertas")
 }
