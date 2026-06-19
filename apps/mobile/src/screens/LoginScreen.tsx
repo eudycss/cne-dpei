@@ -9,16 +9,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
+import { reiniciarApp } from '../lib/reload';
 
 export function LoginScreen() {
   const { login } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,6 +48,14 @@ export function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
     >
+      <Pressable
+        style={[styles.reloadBtn, { top: insets.top + 12 }]}
+        onPress={reiniciarApp}
+        hitSlop={8}
+        accessibilityLabel="Reiniciar app"
+      >
+        <Ionicons name="refresh-circle" size={28} color={colors.primary} />
+      </Pressable>
       <View style={styles.card}>
         <View style={styles.logoWrap}>
           <Logo height={72} />
@@ -57,6 +69,8 @@ export function LoginScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
+          autoComplete="email"
+          textContentType="username"
           value={email}
           onChangeText={setEmail}
           placeholderTextColor={colors.textPlaceholder}
@@ -80,6 +94,7 @@ export function LoginScreen() {
 
 const makeStyles = (c: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bgPage, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  reloadBtn: { position: 'absolute', right: 16, zIndex: 1 },
   card: { width: '100%', maxWidth: 380, backgroundColor: c.bgCard, padding: 24, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   logoWrap: { alignItems: 'center', marginBottom: 12 },
   title: { fontSize: 22, fontFamily: fontFamily.bold, textAlign: 'center', color: c.textPrimary },

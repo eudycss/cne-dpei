@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -225,7 +226,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
   if (error || !asignacion) {
     return (
       <View style={styles.container}>
-        <AppBar subtitle="Llegada al recinto" />
+        <AppBar subtitle="Llegada al recinto" onRefresh={cargar} />
         <View style={styles.center}>
           <Text style={styles.errorTitle}>No se pudo cargar tu asignación</Text>
           <Text style={styles.errorMsg}>{error}</Text>
@@ -242,8 +243,13 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="Llegada al recinto" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <AppBar subtitle="Llegada al recinto" onRefresh={cargar} refreshing={loading} />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={cargar} tintColor={colors.primary} colors={[colors.primary]} />
+        }
+      >
         <Text style={styles.greeting}>Hola {user?.nombres} 👋</Text>
         <View style={styles.stepper}>
           <StepBadge n={1} label="Foto militar" active={paso === 1} done={paso > 1} styles={styles} />

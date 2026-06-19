@@ -21,6 +21,8 @@ export function PasswordField({ value, onChange, placeholder }: PasswordFieldPro
       <TextInput
         style={styles.input}
         secureTextEntry={!show}
+        autoComplete="password"
+        textContentType="password"
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}

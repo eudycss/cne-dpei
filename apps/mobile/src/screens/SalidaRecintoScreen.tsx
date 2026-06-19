@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -148,7 +149,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   if (error) {
     return (
       <View style={styles.container}>
-        <AppBar subtitle="Salida del recinto" />
+        <AppBar subtitle="Salida del recinto" onRefresh={cargar} />
         <View style={styles.center}>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable style={styles.btnSecondary} onPress={cargar}>
@@ -161,8 +162,13 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="Salida del recinto" />
-      <ScrollView contentContainerStyle={styles.body}>
+      <AppBar subtitle="Salida del recinto" onRefresh={cargar} refreshing={loading} />
+      <ScrollView
+        contentContainerStyle={styles.body}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={cargar} tintColor={colors.primary} colors={[colors.primary]} />
+        }
+      >
         <Text style={styles.title}>Salida del recinto electoral</Text>
         <Text style={styles.subtitle}>
           Hola {user?.nombres}, marca todos tus kits electorales para confirmar que salen

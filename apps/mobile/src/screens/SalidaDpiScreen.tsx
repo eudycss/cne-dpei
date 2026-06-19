@@ -4,6 +4,7 @@ import {
   Alert,
   Linking,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -120,7 +121,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
   if (error || !asignacion) {
     return (
       <View style={styles.container}>
-        <AppBar subtitle="Registro de salida" />
+        <AppBar subtitle="Registro de salida" onRefresh={cargar} />
         <View style={styles.center}>
           <Text style={styles.errorTitle}>No se pudo cargar tu asignación</Text>
           <Text style={styles.errorMsg}>{error}</Text>
@@ -139,8 +140,13 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="Registro de salida" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <AppBar subtitle="Registro de salida" onRefresh={cargar} refreshing={loading} />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={cargar} tintColor={colors.primary} colors={[colors.primary]} />
+        }
+      >
         <Text style={styles.greeting}>Hola {user?.nombres} 👋</Text>
         <Text style={styles.eventoLabel}>Evento: {eventoNombre}</Text>
 
