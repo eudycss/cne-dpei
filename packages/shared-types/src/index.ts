@@ -574,3 +574,65 @@ export interface NotificacionItem {
   creadoEn: string;
   leidaEn: string | null;
 }
+
+// ===================================================================
+// FASE 5 — Incidencias (HU14)
+// ===================================================================
+
+export type TipoIncidencia =
+  | 'KIT_DANADO'
+  | 'KIT_FALTANTE'
+  | 'PROBLEMA_RECINTO'
+  | 'RETRASO'
+  | 'PROBLEMA_SEGURIDAD'
+  | 'OTRO';
+
+export type EstadoIncidencia = 'ABIERTA' | 'ATENDIDA' | 'CERRADA';
+
+export interface Incidencia {
+  id: string;
+  eventoId: string;
+  operadorId: string;
+  operadorNombre: string | null;
+  recintoId: string | null;
+  recintoNombre: string | null;
+  kitId: string | null;
+  kitCodigo: string | null;
+  tipo: TipoIncidencia;
+  descripcion: string | null;
+  fotoUrl: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  estado: EstadoIncidencia;
+  reportadoEn: string;
+  desdeOffline: boolean;
+}
+
+export interface IncidenciaComentario {
+  id: string;
+  incidenciaId: string;
+  usuarioId: string;
+  usuarioNombre: string | null;
+  comentario: string;
+  creadoEn: string;
+}
+
+export interface IncidenciaDetalle extends Incidencia {
+  comentarios: IncidenciaComentario[];
+}
+
+export interface CreateIncidenciaRequest {
+  tipo: TipoIncidencia;
+  descripcion?: string | null;
+  fotoBase64?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  recintoId?: string | null;
+  kitId?: string | null;
+  desdeOffline?: boolean;
+}
+
+export interface UpdateEstadoIncidenciaRequest {
+  estado: 'ATENDIDA' | 'CERRADA';
+  comentario?: string | null;
+}

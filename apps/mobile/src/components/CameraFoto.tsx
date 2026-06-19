@@ -13,7 +13,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { fontFamily } from '../theme/typography';
 
 interface Props {
-  onCapture: (uri: string) => void;
+  onCapture: (uri: string, base64?: string) => void;
   onCancel: () => void;
 }
 
@@ -100,7 +100,7 @@ export function CameraFoto({ onCapture, onCancel }: Props) {
           <Pressable style={styles.btnRepetir} onPress={repetir}>
             <Text style={styles.btnRepetirText}>Repetir</Text>
           </Pressable>
-          <Pressable style={styles.btnUsar} onPress={() => onCapture(capturedUri)}>
+          <Pressable style={styles.btnUsar} onPress={() => onCapture(capturedUri, capturedBase64 ?? undefined)}>
             <Text style={styles.btnUsarText}>Usar esta foto</Text>
           </Pressable>
         </View>

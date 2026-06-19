@@ -17,6 +17,7 @@ import { KitsModule } from './kits/kits.module';
 import { StorageModule } from './storage/storage.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { IncidenciasModule } from './incidencias/incidencias.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     StorageModule,
     NotificationsModule,
     TrackingModule,
+    IncidenciasModule,
   ],
   providers: [
     {

@@ -325,3 +325,40 @@ export type BulkRecintoRow = z.infer<typeof bulkRecintoRowSchema>;
 export type CreateEventoInput = z.infer<typeof createEventoSchema>;
 export type ConfigAlertasInput = z.infer<typeof configAlertasSchema>;
 export type UpsertAsignacionInput = z.infer<typeof upsertAsignacionSchema>;
+
+// ===================================================================
+// HU14 — Incidencias
+// ===================================================================
+
+export const tipoIncidenciaEnum = z.enum([
+  'KIT_DANADO',
+  'KIT_FALTANTE',
+  'PROBLEMA_RECINTO',
+  'RETRASO',
+  'PROBLEMA_SEGURIDAD',
+  'OTRO',
+]);
+
+export const createIncidenciaSchema = z
+  .object({
+    tipo: tipoIncidenciaEnum,
+    descripcion: z.string().max(1000).nullable().optional(),
+    fotoBase64: z.string().nullable().optional(),
+    lat: z.number().min(-90).max(90).nullable().optional(),
+    lng: z.number().min(-180).max(180).nullable().optional(),
+    recintoId: z.string().uuid().nullable().optional(),
+    kitId: z.string().uuid().nullable().optional(),
+    desdeOffline: z.boolean().optional(),
+  })
+  .refine((d) => (d.lat == null) === (d.lng == null), {
+    message: 'lat y lng deben venir juntos',
+    path: ['lng'],
+  });
+
+export const updateEstadoIncidenciaSchema = z.object({
+  estado: z.enum(['ATENDIDA', 'CERRADA']),
+  comentario: z.string().max(1000).nullable().optional(),
+});
+
+export type CreateIncidenciaInput = z.infer<typeof createIncidenciaSchema>;
+export type UpdateEstadoIncidenciaInput = z.infer<typeof updateEstadoIncidenciaSchema>;

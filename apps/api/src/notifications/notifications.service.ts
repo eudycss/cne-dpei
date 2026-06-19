@@ -78,6 +78,23 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * HU14-CA1: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
+   * y los administradores cuando el operador reporta una incidencia.
+   */
+  async encolarIncidencia(opts: {
+    operadorId: string;
+    eventoId: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'INCIDENCIA',
+      payload: opts.payload,
+    });
+  }
+
   private async encolarParaSupervisorYAdmins(opts: {
     operadorId: string;
     eventoId: string;

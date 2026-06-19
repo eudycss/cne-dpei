@@ -40,6 +40,9 @@ export function Layout() {
         <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
           Monitoreo
         </NavLink>
+        <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
+          Incidencias
+        </NavLink>
         {esAdmin && (
           <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
             Reportes

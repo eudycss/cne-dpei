@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Logo } from './Logo';
 import { MiRecintoModal } from './MiRecintoModal';
+import { ReportarIncidenciaModal } from './ReportarIncidenciaModal';
 import { fontFamily } from '../theme/typography';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -21,6 +22,7 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const { user } = useAuth();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showMiRecinto, setShowMiRecinto] = useState(false);
+  const [showIncidencia, setShowIncidencia] = useState(false);
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
   const spin = useRef(new Animated.Value(0)).current;
 
@@ -57,6 +59,11 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
         </Pressable>
       )}
+      {esOperador && (
+        <Pressable onPress={() => setShowIncidencia(true)} hitSlop={8} accessibilityLabel="Reportar incidencia">
+          <Ionicons name="warning-outline" size={22} color={colors.textSecondary} />
+        </Pressable>
+      )}
       <Pressable onPress={toggle} hitSlop={8} accessibilityLabel={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
         <Ionicons
           name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'}
@@ -65,6 +72,9 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
         />
       </Pressable>
       {esOperador && <MiRecintoModal visible={showMiRecinto} onClose={() => setShowMiRecinto(false)} />}
+      {esOperador && (
+        <ReportarIncidenciaModal visible={showIncidencia} onClose={() => setShowIncidencia(false)} />
+      )}
     </View>
   );
 }
