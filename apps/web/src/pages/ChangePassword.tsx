@@ -45,7 +45,7 @@ export function ChangePassword() {
         </div>
         <h1>Cambia tu contraseña</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
-          Por seguridad, debes cambiar la contraseña inicial. Mínimo 12 caracteres con
+          Por seguridad, debes cambiar la contraseña inicial. Entre 6 y 8 caracteres con
           mayúsculas, minúsculas, dígitos y símbolos.
         </p>
         <PasswordField

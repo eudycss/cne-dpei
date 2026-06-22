@@ -47,7 +47,7 @@ export function ChangePasswordScreen() {
         </View>
         <Text style={styles.title}>Cambia tu contraseña</Text>
         <Text style={styles.subtitle}>
-          Mínimo 12 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
+          Entre 6 y 8 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
         </Text>
         <Text style={styles.label}>Contraseña actual</Text>
         <PasswordField value={current} onChange={setCurrent} />
