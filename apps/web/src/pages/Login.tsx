@@ -1,7 +1,5 @@
 import { FormEvent, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { SlotText } from 'slot-text/react';
-import 'slot-text/style.css';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
@@ -59,7 +57,7 @@ export function Login() {
         />
         {error && <div className="banner error">{error}</div>}
         <button className="btn" type="submit" disabled={loading} style={{ width: '100%' }}>
-          <SlotText text={loading ? 'Ingresando…' : 'Iniciar sesión'} />
+          {loading ? 'Ingresando…' : 'Iniciar sesión'}
         </button>
       </form>
     </div>
