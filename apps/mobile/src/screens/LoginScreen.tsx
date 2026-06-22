@@ -16,6 +16,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
+import { SlotText } from '../components/SlotText';
 import { fontFamily } from '../theme/typography';
 import { reiniciarApp } from '../lib/reload';
 
@@ -85,7 +86,7 @@ export function LoginScreen() {
           onPress={onSubmit}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>{loading ? 'Ingresando…' : 'Iniciar sesión'}</Text>
+          <SlotText text={loading ? 'Ingresando…' : 'Iniciar sesión'} style={styles.buttonText} />
         </Pressable>
       </View>
     </KeyboardAvoidingView>

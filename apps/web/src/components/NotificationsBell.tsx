@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SlotText } from 'slot-text/react';
+import 'slot-text/style.css';
 import {
   describirNotificacion,
   formatearFechaHora,
@@ -49,7 +51,9 @@ export function NotificationsBell() {
       >
         <Bell size={18} />
         {noLeidas > 0 ? (
-          <span className="notif-badge">{noLeidas > 99 ? '99+' : noLeidas}</span>
+          <span className="notif-badge">
+            <SlotText text={noLeidas > 99 ? '99+' : String(noLeidas)} />
+          </span>
         ) : null}
       </button>
 

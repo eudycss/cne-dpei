@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { SlotText } from 'slot-text/react';
+import 'slot-text/style.css';
 import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
@@ -163,6 +165,12 @@ export function MonitoreoPage() {
     ? cdas.filter((c) => String(c.cantonId) === cantonFiltro)
     : cdas;
 
+  const conteoPorEstado = useMemo(() => {
+    const acc = {} as Record<EstadoOperadorCda, number>;
+    for (const c of cdasFiltrados) acc[c.estado] = (acc[c.estado] ?? 0) + 1;
+    return acc;
+  }, [cdasFiltrados]);
+
   return (
     <div>
       <h2>Monitoreo de operadores en retorno</h2>
@@ -211,7 +219,7 @@ export function MonitoreoPage() {
 
         <div className="card" style={{ flex: '1 1 280px', minWidth: 260 }}>
           <h3 style={{ marginTop: 0 }}>
-            En retorno ({operadores.length})
+            En retorno (<SlotText text={String(operadores.length)} />)
           </h3>
           {isLoading ? (
             <p style={{ opacity: 0.7 }}>Cargando…</p>
@@ -249,6 +257,26 @@ export function MonitoreoPage() {
               <option key={id} value={id}>{nombre}</option>
             ))}
           </select>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', margin: '0.75rem 0' }}>
+          {(Object.keys(ESTADO_INFO) as EstadoOperadorCda[]).map((estado) => {
+            const info = ESTADO_INFO[estado];
+            return (
+              <span key={estado} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: info.color,
+                    display: 'inline-block',
+                  }}
+                />
+                {info.label}: <strong><SlotText text={String(conteoPorEstado[estado] ?? 0)} /></strong>
+              </span>
+            );
+          })}
         </div>
 
         {cdaLoading ? (
@@ -289,7 +317,7 @@ export function MonitoreoPage() {
                             display: 'inline-block',
                           }}
                         />
-                        {info.label}
+                        <SlotText text={info.label} />
                       </span>
                     </td>
                     <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
