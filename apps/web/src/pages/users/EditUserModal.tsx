@@ -1,15 +1,17 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { updateUserSchema } from '@cne/shared-validation';
-import type { User } from '@cne/shared-types';
+import type { Role, User } from '@cne/shared-types';
 import { api } from '../../lib/api';
 
 interface Props {
   user: User;
+  isAdmin: boolean;
   onClose: () => void;
   onDone: () => void;
 }
 
-export function EditUserModal({ user, onClose, onDone }: Props) {
+export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
   const [form, setForm] = useState({
     nombres: user.nombres,
     apellidos: user.apellidos,
@@ -18,6 +20,17 @@ export function EditUserModal({ user, onClose, onDone }: Props) {
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const { data: roles } = useQuery({
+    queryKey: ['roles'],
+    queryFn: async () => (await api.get<Role[]>('/roles')).data,
+    enabled: isAdmin,
+  });
+  const rolOriginalId = roles?.find((r) => r.nombre === user.roles[0])?.id ?? '';
+  const [rolId, setRolId] = useState('');
+  useEffect(() => {
+    setRolId(rolOriginalId);
+  }, [rolOriginalId]);
 
   function update(key: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -40,6 +53,9 @@ export function EditUserModal({ user, onClose, onDone }: Props) {
     setSaving(true);
     try {
       await api.patch(`/users/${user.id}`, parsed.data);
+      if (isAdmin && rolId && rolId !== rolOriginalId) {
+        await api.post('/users/assign-roles', { userIds: [user.id], roleIds: [rolId] });
+      }
       onDone();
     } catch (err: any) {
       setError(err?.response?.data?.message ?? 'No se pudo guardar');
@@ -71,6 +87,16 @@ export function EditUserModal({ user, onClose, onDone }: Props) {
           <label>Teléfono (opcional)</label>
           <input value={form.telefono} onChange={update('telefono')} />
         </div>
+        {isAdmin && (
+          <div className="field">
+            <label>Rol</label>
+            <select value={rolId} onChange={(e) => setRolId(e.target.value)}>
+              {roles?.map((r) => (
+                <option key={r.id} value={r.id}>{r.nombre}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {error && <div className="banner error">{error}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>

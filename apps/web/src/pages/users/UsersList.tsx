@@ -235,6 +235,7 @@ export function UsersList() {
       {editing && (
         <EditUserModal
           user={editing}
+          isAdmin={isAdmin}
           onClose={() => setEditing(null)}
           onDone={() => {
             setEditing(null);
