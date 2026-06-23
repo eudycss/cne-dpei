@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EventoElectoral, Kit, Paginated, Recinto, User } from '@cne/shared-types';
 import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 
@@ -140,7 +141,7 @@ export function KitsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'Error al generar el PDF');
+      sileo.error({ title: e?.response?.data?.message ?? 'Error al generar el PDF' });
     } finally {
       setDownloading(false);
     }

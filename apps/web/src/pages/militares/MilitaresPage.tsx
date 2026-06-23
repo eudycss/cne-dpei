@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Militar, Paginated, Recinto } from '@cne/shared-types';
 import { createMilitarSchema, updateMilitarSchema } from '@cne/shared-validation';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
@@ -45,7 +46,7 @@ export function MilitaresPage() {
       await api.delete(`/militares/${id}`);
       qc.invalidateQueries({ queryKey: ['militares'] });
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'No se pudo eliminar');
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar' });
     } finally {
       setDeletingId(null);
     }

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import type { Canton, Paginated, Recinto, TipoRecinto } from '@cne/shared-types';
 import { createRecintoSchema, updateRecintoSchema } from '@cne/shared-validation';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
@@ -68,7 +69,7 @@ export function RecintosPage() {
       await api.delete(`/recintos/${id}`);
       qc.invalidateQueries({ queryKey: ['recintos'] });
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'No se pudo eliminar');
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar' });
     } finally {
       setDeletingId(null);
     }
@@ -131,7 +132,7 @@ export function RecintosPage() {
       XLSX.utils.book_append_sheet(wb, ws, 'Recintos');
       XLSX.writeFile(wb, 'recintos_electorales.xlsx');
     } catch (e: any) {
-      window.alert('No se pudo exportar: ' + (e?.message ?? ''));
+      sileo.error({ title: 'No se pudo exportar: ' + (e?.message ?? '') });
     } finally {
       setExporting(false);
     }
@@ -146,12 +147,15 @@ export function RecintosPage() {
       fd.append('file', file);
       const res = await api.post<{ creados: number; actualizados: number; errores: { fila: number; error: string }[] }>('/recintos/bulk', fd);
       const { creados, actualizados, errores } = res.data;
-      let msg = `Importación completa: ${creados} creados, ${actualizados} actualizados.`;
-      if (errores.length > 0) msg += `\n${errores.length} error(es):\n` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join('\n');
-      window.alert(msg);
+      sileo[errores.length > 0 ? 'warning' : 'success']({
+        title: `Importación completa: ${creados} creados, ${actualizados} actualizados.`,
+        description: errores.length > 0
+          ? `${errores.length} error(es): ` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join(', ')
+          : undefined,
+      });
       qc.invalidateQueries({ queryKey: ['recintos'] });
     } catch (err: any) {
-      window.alert('Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido'));
+      sileo.error({ title: 'Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido') });
     } finally {
       setImporting(false);
       if (importInputRef.current) importInputRef.current.value = '';

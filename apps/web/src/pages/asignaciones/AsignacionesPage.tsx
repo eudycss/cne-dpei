@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-types';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 
@@ -87,7 +88,7 @@ export function AsignacionesPage() {
           await api.delete(`/asignaciones/${existente.id}`);
           qc.invalidateQueries({ queryKey: ['asignaciones', eventoId] });
         } catch (e: any) {
-          window.alert(e?.response?.data?.message ?? 'No se pudo eliminar la asignación');
+          sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar la asignación' });
         }
       }
       return;
@@ -96,7 +97,7 @@ export function AsignacionesPage() {
       await api.put('/asignaciones', { eventoId, operadorId, supervisorId });
       qc.invalidateQueries({ queryKey: ['asignaciones', eventoId] });
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'No se pudo guardar la asignación');
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo guardar la asignación' });
     }
   }
 

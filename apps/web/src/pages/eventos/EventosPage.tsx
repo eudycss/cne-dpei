@@ -11,6 +11,7 @@ import {
   createEventoSchema,
   updateEventoSchema,
 } from '@cne/shared-validation';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -91,7 +92,7 @@ export function EventosPage() {
       await api.post(`/eventos/${e.id}/activate`);
       qc.invalidateQueries({ queryKey: ['eventos'] });
     } catch (err: any) {
-      window.alert(err?.response?.data?.message ?? 'No se pudo activar el evento');
+      sileo.error({ title: err?.response?.data?.message ?? 'No se pudo activar el evento' });
     } finally {
       setActivatingId(null);
     }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated, Role, User } from '@cne/shared-types';
+import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
@@ -60,7 +61,7 @@ export function UsersList() {
       await api.patch(`/users/${u.id}`, { activo: !u.activo });
       qc.invalidateQueries({ queryKey: ['users'] });
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'No se pudo cambiar el estado');
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo cambiar el estado' });
     } finally {
       setTogglingId(null);
     }
@@ -77,9 +78,9 @@ export function UsersList() {
     setTogglingId(u.id);
     try {
       const res = await api.post<{ kitsReseteados: number }>(`/tracking/reset-operador/${u.id}`);
-      window.alert(`Estado reseteado. ${res.data.kitsReseteados} kit(s) regresados a "Asignado".`);
+      sileo.success({ title: `Estado reseteado. ${res.data.kitsReseteados} kit(s) regresados a "Asignado".` });
     } catch (e: any) {
-      window.alert(e?.response?.data?.message ?? 'No se pudo resetear el estado');
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo resetear el estado' });
     } finally {
       setTogglingId(null);
     }
