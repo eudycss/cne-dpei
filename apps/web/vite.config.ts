@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
@@ -19,5 +20,10 @@ export default defineConfig({
       // Permitir servir el logo central ubicado fuera de apps/web
       allow: [workspaceRoot],
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./vitest.setup.ts'],
   },
 });
