@@ -10,9 +10,12 @@ import {
   Post,
   Query,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import type { AsignarKitRequest, CreateKitRequest, PdfQrRequest } from '@cne/shared-types';
 import { asignarKitSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
@@ -48,6 +51,16 @@ export class KitsController {
     });
   }
 
+  @Get('template.xlsx')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'HU11: plantilla Excel de carga masiva de kits' })
+  async template(@Res() res: Response) {
+    const buf = await this.kits.generateTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=plantilla_kits.xlsx');
+    res.send(buf);
+  }
+
   @Post()
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'HU11-CA1: crear kit electoral con código QR único' })
@@ -55,6 +68,15 @@ export class KitsController {
     @Body(new ZodValidationPipe(createKitSchema)) body: CreateKitRequest,
   ) {
     return this.kits.create(body);
+  }
+
+  @Post('bulk')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'HU11: carga masiva de kits (Excel/CSV) con asignación opcional' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  bulk(@UploadedFile() file: Express.Multer.File, @Query('eventoId') eventoId: string) {
+    return this.kits.bulkUpload(file, eventoId);
   }
 
   @Patch(':id/asignar')

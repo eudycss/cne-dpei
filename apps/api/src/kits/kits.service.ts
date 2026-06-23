@@ -7,8 +7,18 @@ import {
 import * as crypto from 'node:crypto';
 import * as QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
-import { asignarKitSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
-import type { AsignarKitRequest, CreateKitRequest, Kit, Paginated, PdfQrRequest } from '@cne/shared-types';
+import * as ExcelJS from 'exceljs';
+import { parse as csvParse } from 'csv-parse/sync';
+import { asignarKitSchema, bulkKitRowSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+import type {
+  AsignarKitRequest,
+  BulkUploadResult,
+  BulkUploadRow,
+  CreateKitRequest,
+  Kit,
+  Paginated,
+  PdfQrRequest,
+} from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
@@ -140,7 +150,165 @@ export class KitsService {
     return this.buildPdf(kits);
   }
 
+  /**
+   * Carga masiva de kits para un evento. Cada fila crea un kit con código único
+   * autogenerado; si trae cédula del operador + código del recinto, además lo
+   * asigna (estado ASIGNADO), respetando la regla de un solo recinto por
+   * operador. Si no trae asignación, el kit queda EN_BODEGA.
+   */
+  async bulkUpload(file: Express.Multer.File, eventoId: string): Promise<BulkUploadResult> {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+
+    const rows = await this.parseRows(file);
+    if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');
+
+    // Precargas: operadores (por cédula) y recintos (por código).
+    const operadores = await this.prisma.usuario.findMany({
+      where: { roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
+      select: { id: true, cedula: true },
+    });
+    const operadorPorCedula = new Map(operadores.map((o) => [o.cedula.trim(), o.id]));
+    const recintos = await this.prisma.recinto.findMany({ select: { id: true, codigoRecinto: true } });
+    const recintoPorCodigo = new Map(recintos.map((r) => [r.codigoRecinto.toLowerCase().trim(), r.id]));
+
+    // Regla 1 operador = 1 recinto por evento: arrancamos del estado actual en BD.
+    const asignadosBd = await this.prisma.kitElectoral.findMany({
+      where: { eventoId, operadorId: { not: null }, recintoId: { not: null } },
+      select: { operadorId: true, recintoId: true },
+    });
+    const recintoPorOperador = new Map<string, string>();
+    for (const k of asignadosBd) {
+      if (k.operadorId && k.recintoId) recintoPorOperador.set(k.operadorId, k.recintoId);
+    }
+
+    const errores: BulkUploadRow[] = [];
+    let creados = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const filaNum = i + 2; // +1 header, +1 base-1
+      const raw = rows[i];
+      const parsed = bulkKitRowSchema.safeParse(raw);
+      if (!parsed.success) {
+        errores.push({
+          fila: filaNum,
+          error: parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '),
+          datos: raw,
+        });
+        continue;
+      }
+      const d = parsed.data;
+      const cedula = (d.cedula_operador ?? '').trim();
+      const codigoRecinto = (d.codigo_recinto ?? '').trim();
+
+      let operadorId: string | null = null;
+      let recintoId: string | null = null;
+      if (cedula !== '') {
+        operadorId = operadorPorCedula.get(cedula) ?? null;
+        if (!operadorId) {
+          errores.push({ fila: filaNum, error: `Operador no encontrado o sin rol OPERADOR_CDA: ${cedula}`, datos: raw });
+          continue;
+        }
+        recintoId = recintoPorCodigo.get(codigoRecinto.toLowerCase()) ?? null;
+        if (!recintoId) {
+          errores.push({ fila: filaNum, error: `Recinto no encontrado: ${codigoRecinto}`, datos: raw });
+          continue;
+        }
+        const yaAsignado = recintoPorOperador.get(operadorId);
+        if (yaAsignado && yaAsignado !== recintoId) {
+          errores.push({
+            fila: filaNum,
+            error: `El operador ${cedula} ya tiene kits asignados a otro recinto en este evento`,
+            datos: raw,
+          });
+          continue;
+        }
+      }
+
+      try {
+        const codigoUnico = await this.generarCodigoUnico(eventoId);
+        await this.prisma.kitElectoral.create({
+          data: {
+            eventoId,
+            codigoUnico,
+            qrPayload: codigoUnico,
+            nombre: d.nombre,
+            contenidos: d.contenidos?.trim() ? d.contenidos.trim() : null,
+            operadorId,
+            recintoId,
+            estado: operadorId ? 'ASIGNADO' : 'EN_BODEGA',
+          },
+        });
+        if (operadorId && recintoId) recintoPorOperador.set(operadorId, recintoId);
+        creados++;
+      } catch (e: any) {
+        errores.push({ fila: filaNum, error: e?.message ?? 'Error desconocido', datos: raw });
+      }
+    }
+
+    return { creados, errores };
+  }
+
+  async generateTemplate(): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Kits');
+    ws.columns = [
+      { header: 'nombre', key: 'nombre', width: 28 },
+      { header: 'contenidos', key: 'contenidos', width: 40 },
+      { header: 'cedula_operador', key: 'cedula_operador', width: 16 },
+      { header: 'codigo_recinto', key: 'codigo_recinto', width: 16 },
+    ];
+    ws.addRow({
+      nombre: 'Kit Recinto 28',
+      contenidos: 'Acta, sobres, sellos',
+      cedula_operador: '1002003004',
+      codigo_recinto: '28',
+    });
+    ws.addRow({ nombre: 'Kit de reserva (sin asignar)', contenidos: '', cedula_operador: '', codigo_recinto: '' });
+    ws.getRow(1).font = { bold: true };
+    const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+    return Buffer.from(buffer);
+  }
+
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  private async parseRows(file: Express.Multer.File): Promise<Array<Record<string, string>>> {
+    const filename = (file.originalname ?? '').toLowerCase();
+    const isExcel = filename.endsWith('.xlsx') || filename.endsWith('.xls');
+    const isCsv = filename.endsWith('.csv') || file.mimetype === 'text/csv';
+
+    if (isExcel) {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(file.buffer as any);
+      const ws = wb.worksheets[0];
+      if (!ws) return [];
+      const headers: string[] = [];
+      ws.getRow(1).eachCell((cell, col) => {
+        headers[col - 1] = String(cell.value ?? '').trim().toLowerCase();
+      });
+      const result: Array<Record<string, string>> = [];
+      ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+        if (rowNum === 1) return;
+        const obj: Record<string, string> = {};
+        headers.forEach((h, i) => {
+          if (!h) return;
+          const v = row.getCell(i + 1).value;
+          obj[h] = v == null ? '' : String(v).trim();
+        });
+        result.push(obj);
+      });
+      return result;
+    }
+    if (isCsv) {
+      return csvParse(file.buffer.toString('utf8'), {
+        columns: (h: string[]) => h.map((c) => c.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+      }) as Array<Record<string, string>>;
+    }
+    throw new BadRequestException('Formato no soportado: usa .xlsx o .csv');
+  }
 
   private async generarCodigoUnico(eventoId: string, intentos = 0): Promise<string> {
     if (intentos > 9) throw new BadRequestException('No se pudo generar un código único tras varios intentos');

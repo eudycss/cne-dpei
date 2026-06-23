@@ -20,9 +20,11 @@ describe('KitsService', () => {
     },
     usuario: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     recinto: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
   };
@@ -178,6 +180,87 @@ describe('KitsService', () => {
       const pdf = await service.generatePdfQr({ kitIds: [kitId] } as any);
       expect(Buffer.isBuffer(pdf)).toBe(true);
       expect(pdf.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('bulkUpload', () => {
+    function csvFile(csv: string) {
+      return {
+        originalname: 'kits.csv',
+        mimetype: 'text/csv',
+        buffer: Buffer.from(csv, 'utf8'),
+      } as Express.Multer.File;
+    }
+
+    it('lanza BadRequestException si no se envía archivo', async () => {
+      await expect(service.bulkUpload(undefined as any, eventoId)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('lanza NotFoundException si el evento no existe', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(null);
+      await expect(service.bulkUpload(csvFile('nombre\nKit A'), eventoId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza BadRequestException si el archivo no tiene filas', async () => {
+      // parseRows lanza antes de tocar usuario/recinto/kit, así que solo se consulta el evento.
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      await expect(
+        service.bulkUpload(csvFile('nombre,contenidos,cedula_operador,codigo_recinto'), eventoId),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('crea kits asignados y en bodega, y reporta operador/recinto inexistentes', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, cedula: '1002003004' }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: recintoId, codigoRecinto: '28' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]); // sin asignaciones previas
+      prisma.kitElectoral.findUnique.mockResolvedValue(null); // generarCodigoUnico: sin colisión
+      prisma.kitElectoral.create.mockResolvedValue(kitRow());
+
+      const csv = [
+        'nombre,contenidos,cedula_operador,codigo_recinto',
+        'Kit A,Acta,1002003004,28', // asignado
+        'Kit B,,,', // bodega
+        'Kit C,,9999999999,28', // operador inexistente -> error
+        'Kit D,,1002003004,99', // recinto inexistente -> error
+      ].join('\n');
+
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.creados).toBe(2);
+      expect(result.errores).toHaveLength(2);
+      expect(prisma.kitElectoral.create).toHaveBeenCalledTimes(2);
+      const estados = prisma.kitElectoral.create.mock.calls.map((c) => c[0].data.estado);
+      expect(estados).toContain('ASIGNADO'); // Kit A
+      expect(estados).toContain('EN_BODEGA'); // Kit B
+    });
+
+    it('reporta error si un operador queda con kits en dos recintos distintos', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, cedula: '1002003004' }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: '28' },
+        { id: '99999999-9999-9999-9999-999999999999', codigoRecinto: '30' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findUnique.mockResolvedValue(null);
+      prisma.kitElectoral.create.mockResolvedValue(kitRow());
+
+      const csv = [
+        'nombre,contenidos,cedula_operador,codigo_recinto',
+        'Kit A,,1002003004,28', // asigna recinto 28
+        'Kit B,,1002003004,30', // mismo operador, otro recinto -> error
+      ].join('\n');
+
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.creados).toBe(1);
+      expect(result.errores).toHaveLength(1);
+      expect(result.errores[0].error).toMatch(/otro recinto/i);
     });
   });
 });

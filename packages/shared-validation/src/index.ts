@@ -228,8 +228,29 @@ export const asignarKitSchema = z.object({
   recintoId: z.string().uuid('Recinto inválido'),
 });
 
+// Fila de Excel/CSV para carga masiva de kits. El código único se autogenera;
+// el operador se referencia por su cédula y el recinto por su código.
+// La asignación es opcional: si se omiten ambos, el kit queda en bodega.
+export const bulkKitRowSchema = z
+  .object({
+    nombre: z.string().min(1, 'Nombre requerido').max(160),
+    contenidos: z.string().max(1000).optional(),
+    cedula_operador: z.string().optional(),
+    codigo_recinto: z.string().optional(),
+  })
+  .refine(
+    (r) => {
+      const op = (r.cedula_operador ?? '').trim();
+      const rec = (r.codigo_recinto ?? '').trim();
+      // Para asignar se requieren ambos; o ninguno (kit en bodega).
+      return (op === '' && rec === '') || (op !== '' && rec !== '');
+    },
+    { message: 'Para asignar el kit se requieren cédula_operador y código_recinto juntos' },
+  );
+
 export type CreateKitInput = z.infer<typeof createKitSchema>;
 export type AsignarKitInput = z.infer<typeof asignarKitSchema>;
+export type BulkKitRow = z.infer<typeof bulkKitRowSchema>;
 
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)

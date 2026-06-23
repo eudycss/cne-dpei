@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EventoElectoral, Kit, Paginated, Recinto, User } from '@cne/shared-types';
 import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
@@ -53,7 +53,9 @@ export function KitsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [assigning, setAssigning] = useState<Kit | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -147,6 +149,48 @@ export function KitsPage() {
     }
   }
 
+  async function downloadTemplate() {
+    try {
+      const res = await api.get('/kits/template.xlsx', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'plantilla_kits.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo descargar la plantilla' });
+    }
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !eventoId) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post<{ creados: number; errores: { fila: number; error: string }[] }>(
+        `/kits/bulk?eventoId=${eventoId}`,
+        fd,
+      );
+      const { creados, errores } = res.data;
+      sileo[errores.length > 0 ? 'warning' : 'success']({
+        title: `Importación completa: ${creados} kit(s) creado(s).`,
+        description:
+          errores.length > 0
+            ? `${errores.length} error(es): ` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join(', ')
+            : undefined,
+      });
+      qc.invalidateQueries({ queryKey: ['kits'] });
+    } catch (err: any) {
+      sileo.error({ title: 'Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido') });
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
   const eventoSeleccionado = eventos?.find((e) => e.id === eventoId);
   const pageIds = kitsData?.items.map((k) => k.id) ?? [];
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
@@ -202,6 +246,24 @@ export function KitsPage() {
             />
             <button className="btn" onClick={() => setShowCreate(true)}>
               + Nuevo kit
+            </button>
+            <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
+              ↓ Plantilla
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={{ display: 'none' }}
+              onChange={handleImport}
+            />
+            <button
+              className="btn secondary"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+              title="Carga masiva de kits (Excel/CSV)"
+            >
+              {importing ? 'Importando…' : '↑ Importar'}
             </button>
             <button
               className="btn secondary"
