@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-types';
 import { sileo } from 'sileo';
@@ -12,6 +12,8 @@ export function AsignacionesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
   // Debounce de búsqueda
@@ -101,6 +103,48 @@ export function AsignacionesPage() {
     }
   }
 
+  async function downloadTemplate() {
+    try {
+      const res = await api.get('/asignaciones/template.xlsx', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'plantilla_asignaciones.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo descargar la plantilla' });
+    }
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !eventoId) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post<{ creados: number; errores: { fila: number; error: string }[] }>(
+        `/asignaciones/bulk?eventoId=${eventoId}`,
+        fd,
+      );
+      const { creados, errores } = res.data;
+      sileo[errores.length > 0 ? 'warning' : 'success']({
+        title: `Importación completa: ${creados} asignación(es) creada(s).`,
+        description:
+          errores.length > 0
+            ? `${errores.length} error(es): ` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join(', ')
+            : undefined,
+      });
+      qc.invalidateQueries({ queryKey: ['asignaciones', eventoId] });
+    } catch (err: any) {
+      sileo.error({ title: 'Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido') });
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
   const eventoSeleccionado = eventos?.find((e) => e.id === eventoId);
   const isLoading = loadingOp || loadingAsig;
 
@@ -161,6 +205,24 @@ export function AsignacionesPage() {
                   onChange={(v) => setSearch(v)}
                   style={{ flex: 1 }}
                 />
+                <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
+                  ↓ Plantilla
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  style={{ display: 'none' }}
+                  onChange={handleImport}
+                />
+                <button
+                  className="btn secondary"
+                  disabled={importing}
+                  onClick={() => importInputRef.current?.click()}
+                  title="Carga masiva de asignaciones (Excel/CSV)"
+                >
+                  {importing ? 'Importando…' : '↑ Importar'}
+                </button>
               </div>
 
               <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem' }}>

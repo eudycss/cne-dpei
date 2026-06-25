@@ -212,6 +212,16 @@ export const upsertAsignacionSchema = z.object({
   supervisorId: z.string().uuid('Supervisor inválido'),
 });
 
+// Fila de Excel/CSV para carga masiva de asignaciones operador↔supervisor.
+// Ambos se referencian por cédula; a diferencia de los kits, aquí los dos
+// campos son obligatorios porque una fila sin asignación no tiene sentido.
+export const bulkAsignacionRowSchema = z.object({
+  cedula_operador: z.string().min(1, 'Requerido'),
+  cedula_supervisor: z.string().min(1, 'Requerido'),
+});
+
+export type BulkAsignacionRow = z.infer<typeof bulkAsignacionRowSchema>;
+
 // --- Kits electorales (HU11) ---
 export const createKitSchema = z.object({
   eventoId: z.string().uuid('Evento inválido'),

@@ -8,7 +8,6 @@ import * as crypto from 'node:crypto';
 import * as QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import * as ExcelJS from 'exceljs';
-import { parse as csvParse } from 'csv-parse/sync';
 import { asignarKitSchema, bulkKitRowSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
 import type {
   AsignarKitRequest,
@@ -20,6 +19,7 @@ import type {
   PdfQrRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { parseUploadRows } from '../common/parse-upload-rows';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
 const MM = 72 / 25.4;
@@ -161,7 +161,7 @@ export class KitsService {
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
 
-    const rows = await this.parseRows(file);
+    const rows = await parseUploadRows(file);
     if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');
 
     // Precargas: operadores (por cédula) y recintos (por código).
@@ -272,43 +272,6 @@ export class KitsService {
   }
 
   // ─── internos ─────────────────────────────────────────────────────────────
-
-  private async parseRows(file: Express.Multer.File): Promise<Array<Record<string, string>>> {
-    const filename = (file.originalname ?? '').toLowerCase();
-    const isExcel = filename.endsWith('.xlsx') || filename.endsWith('.xls');
-    const isCsv = filename.endsWith('.csv') || file.mimetype === 'text/csv';
-
-    if (isExcel) {
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(file.buffer as any);
-      const ws = wb.worksheets[0];
-      if (!ws) return [];
-      const headers: string[] = [];
-      ws.getRow(1).eachCell((cell, col) => {
-        headers[col - 1] = String(cell.value ?? '').trim().toLowerCase();
-      });
-      const result: Array<Record<string, string>> = [];
-      ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
-        if (rowNum === 1) return;
-        const obj: Record<string, string> = {};
-        headers.forEach((h, i) => {
-          if (!h) return;
-          const v = row.getCell(i + 1).value;
-          obj[h] = v == null ? '' : String(v).trim();
-        });
-        result.push(obj);
-      });
-      return result;
-    }
-    if (isCsv) {
-      return csvParse(file.buffer.toString('utf8'), {
-        columns: (h: string[]) => h.map((c) => c.trim().toLowerCase()),
-        skip_empty_lines: true,
-        trim: true,
-      }) as Array<Record<string, string>>;
-    }
-    throw new BadRequestException('Formato no soportado: usa .xlsx o .csv');
-  }
 
   private async generarCodigoUnico(eventoId: string, intentos = 0): Promise<string> {
     if (intentos > 9) throw new BadRequestException('No se pudo generar un código único tras varios intentos');

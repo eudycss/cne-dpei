@@ -3,9 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { upsertAsignacionSchema } from '@cne/shared-validation';
-import type { Asignacion, UpsertAsignacionRequest } from '@cne/shared-types';
+import * as ExcelJS from 'exceljs';
+import { bulkAsignacionRowSchema, upsertAsignacionSchema } from '@cne/shared-validation';
+import type {
+  Asignacion,
+  BulkUploadResult,
+  BulkUploadRow,
+  UpsertAsignacionRequest,
+} from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { parseUploadRows } from '../common/parse-upload-rows';
 
 @Injectable()
 export class AsignacionesService {
@@ -79,6 +86,87 @@ export class AsignacionesService {
     const existing = await this.prisma.asignacionSupervisor.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Asignación no encontrada');
     await this.prisma.asignacionSupervisor.delete({ where: { id } });
+  }
+
+  /**
+   * Carga masiva de asignaciones operador↔supervisor para un evento. Cada fila
+   * referencia operador y supervisor por cédula; hace upsert igual que el alta
+   * individual (1 supervisor por operador y evento).
+   */
+  async bulkUpload(file: Express.Multer.File, eventoId: string): Promise<BulkUploadResult> {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+
+    const rows = await parseUploadRows(file);
+    if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');
+
+    const operadores = await this.prisma.usuario.findMany({
+      where: { roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
+      select: { id: true, cedula: true },
+    });
+    const operadorPorCedula = new Map(operadores.map((o) => [o.cedula.trim(), o.id]));
+    const supervisores = await this.prisma.usuario.findMany({
+      where: { roles: { some: { rol: { nombre: 'TECNICO_SUPERVISOR' } } } },
+      select: { id: true, cedula: true },
+    });
+    const supervisorPorCedula = new Map(supervisores.map((s) => [s.cedula.trim(), s.id]));
+
+    const errores: BulkUploadRow[] = [];
+    let creados = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const filaNum = i + 2; // +1 header, +1 base-1
+      const raw = rows[i];
+      const parsed = bulkAsignacionRowSchema.safeParse(raw);
+      if (!parsed.success) {
+        errores.push({
+          fila: filaNum,
+          error: parsed.error.issues.map((iss) => `${iss.path.join('.')}: ${iss.message}`).join('; '),
+          datos: raw,
+        });
+        continue;
+      }
+      const cedulaOp = parsed.data.cedula_operador.trim();
+      const cedulaSv = parsed.data.cedula_supervisor.trim();
+
+      const operadorId = operadorPorCedula.get(cedulaOp);
+      if (!operadorId) {
+        errores.push({ fila: filaNum, error: `Operador no encontrado o sin rol OPERADOR_CDA: ${cedulaOp}`, datos: raw });
+        continue;
+      }
+      const supervisorId = supervisorPorCedula.get(cedulaSv);
+      if (!supervisorId) {
+        errores.push({ fila: filaNum, error: `Supervisor no encontrado o sin rol TECNICO_SUPERVISOR: ${cedulaSv}`, datos: raw });
+        continue;
+      }
+
+      try {
+        await this.prisma.asignacionSupervisor.upsert({
+          where: { eventoId_operadorId: { eventoId, operadorId } },
+          create: { eventoId, operadorId, supervisorId },
+          update: { supervisorId },
+        });
+        creados++;
+      } catch (e: any) {
+        errores.push({ fila: filaNum, error: e?.message ?? 'Error desconocido', datos: raw });
+      }
+    }
+
+    return { creados, errores };
+  }
+
+  async generateTemplate(): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Asignaciones');
+    ws.columns = [
+      { header: 'cedula_operador', key: 'cedula_operador', width: 18 },
+      { header: 'cedula_supervisor', key: 'cedula_supervisor', width: 18 },
+    ];
+    ws.addRow({ cedula_operador: '1002003004', cedula_supervisor: '1003004005' });
+    ws.getRow(1).font = { bold: true };
+    const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+    return Buffer.from(buffer);
   }
 }
 
