@@ -395,3 +395,8 @@ export const updateEstadoIncidenciaSchema = z.object({
 
 export type CreateIncidenciaInput = z.infer<typeof createIncidenciaSchema>;
 export type UpdateEstadoIncidenciaInput = z.infer<typeof updateEstadoIncidenciaSchema>;
+
+// --- Alertas (HU18) ---
+export const updateEstadoAlertaSchema = z.object({
+  estado: z.enum(['VISTA', 'ATENDIDA']),
+});

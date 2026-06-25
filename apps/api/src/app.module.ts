@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import * as path from 'node:path';
 
@@ -18,6 +19,7 @@ import { StorageModule } from './storage/storage.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { IncidenciasModule } from './incidencias/incidencias.module';
+import { AlertasModule } from './alertas/alertas.module';
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { IncidenciasModule } from './incidencias/incidencias.module';
         redact: ['req.headers.authorization', 'req.headers.cookie'],
       },
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -50,6 +53,7 @@ import { IncidenciasModule } from './incidencias/incidencias.module';
     NotificationsModule,
     TrackingModule,
     IncidenciasModule,
+    AlertasModule,
   ],
   providers: [
     {

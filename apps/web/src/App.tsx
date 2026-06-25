@@ -14,6 +14,7 @@ import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
+import { AlertasPage } from './pages/alertas/AlertasPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
@@ -86,6 +87,8 @@ export default function App() {
 
         {/* Incidencias (HU14) */}
         <Route path="/incidencias" element={<IncidenciasPage />} />
+        {/* Alertas (HU18) */}
+        <Route path="/alertas" element={<AlertasPage />} />
 
         {/* Reporte admin de NO-CDAs pendientes */}
         <Route

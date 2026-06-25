@@ -95,6 +95,22 @@ export class NotificationsService {
     });
   }
 
+  /** HU18: notifica al supervisor y admins cuando se genera una alerta. */
+  async encolarAlerta(opts: {
+    operadorId: string;
+    eventoId: string;
+    alertaId: string;
+    tipo: string;
+    mensaje: string;
+  }): Promise<void> {
+    await this.encolarParaSupervisorYAdmins({
+      operadorId: opts.operadorId,
+      eventoId: opts.eventoId,
+      tipoEvento: 'ALERTA_GENERADA',
+      payload: { alertaId: opts.alertaId, tipo: opts.tipo, mensaje: opts.mensaje },
+    });
+  }
+
   private async encolarParaSupervisorYAdmins(opts: {
     operadorId: string;
     eventoId: string;

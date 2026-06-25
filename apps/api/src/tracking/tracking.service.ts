@@ -46,6 +46,7 @@ import {
 } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
+import { AlertasService } from '../alertas/alertas.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -64,6 +65,7 @@ export class TrackingService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly storage: StorageService,
+    private readonly alertas: AlertasService,
   ) {}
 
   /**
@@ -366,6 +368,22 @@ export class TrackingService {
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id: parsed.kitId } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
     if (kit.operadorId !== operadorId) {
+      // CA4: kit escaneado por operador incorrecto → alerta + rechazo
+      const operadorAsignado = kit.operadorId
+        ? await this.prisma.usuario.findUnique({
+            where: { id: kit.operadorId },
+            select: { nombres: true, apellidos: true },
+          })
+        : null;
+      await this.alertas.generarKitNoCorresponde({
+        eventoId: kit.eventoId,
+        operadorId,
+        kitId: kit.id,
+        codigoKit: kit.codigoUnico,
+        operadorAsignadoNombre: operadorAsignado
+          ? `${operadorAsignado.nombres} ${operadorAsignado.apellidos}`.trim()
+          : 'desconocido',
+      });
       throw new BadRequestException('Este kit no te pertenece');
     }
 

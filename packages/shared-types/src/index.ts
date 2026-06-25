@@ -641,3 +641,31 @@ export interface UpdateEstadoIncidenciaRequest {
   estado: 'ATENDIDA' | 'CERRADA';
   comentario?: string | null;
 }
+
+// ===================================================================
+// HU18 — Alertas
+// ===================================================================
+
+export type TipoAlerta =
+  | 'NO_LLEGO_RECINTO'
+  | 'NO_LLEGO_DPI'
+  | 'SIN_SINCRONIZAR'
+  | 'KIT_NO_CORRESPONDE';
+
+export type EstadoAlerta = 'GENERADA' | 'VISTA' | 'ATENDIDA';
+
+export interface Alerta {
+  id: string;
+  eventoId: string;
+  operadorId: string | null;
+  operadorNombre?: string | null;
+  kitId: string | null;
+  tipo: TipoAlerta;
+  mensaje: string;
+  estado: EstadoAlerta;
+  generadaEn: string;
+}
+
+export interface UpdateEstadoAlertaRequest {
+  estado: 'VISTA' | 'ATENDIDA';
+}
