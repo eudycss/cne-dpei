@@ -51,6 +51,12 @@ export function UsersList() {
     });
   }
 
+  function toggleAll() {
+    const ids = data?.items.map((u) => u.id) ?? [];
+    const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
+    setSelected(allSelected ? new Set() : new Set(ids));
+  }
+
   async function toggleActivo(u: User) {
     const accion = u.activo ? 'desactivar' : 'activar';
     if (!window.confirm(`¿Seguro que deseas ${accion} a ${u.nombres} ${u.apellidos}?`)) {
@@ -119,7 +125,20 @@ export function UsersList() {
             <table>
               <thead>
                 <tr>
-                  {isAdmin && <th style={{ width: 30 }}></th>}
+                  {isAdmin && (
+                    <th style={{ width: 30 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!data?.items.length && data.items.every((u) => selected.has(u.id))}
+                        ref={(el) => {
+                          if (el) el.indeterminate =
+                            !!data?.items.some((u) => selected.has(u.id)) &&
+                            !data.items.every((u) => selected.has(u.id));
+                        }}
+                        onChange={toggleAll}
+                      />
+                    </th>
+                  )}
                   <th>Cédula</th>
                   <th>Nombres</th>
                   <th>Email</th>
