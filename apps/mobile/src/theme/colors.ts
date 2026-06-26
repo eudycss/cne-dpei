@@ -48,4 +48,4 @@ export const darkColors = {
   modalOverlay: 'rgba(0,0,0,0.75)',
 } as const;
 
-export type Colors = typeof lightColors;
+export type Colors = Record<keyof typeof lightColors, string>;
