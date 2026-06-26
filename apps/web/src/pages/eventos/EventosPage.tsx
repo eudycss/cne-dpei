@@ -15,6 +15,7 @@ import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { getTiposEvento } from '../../lib/queries/tipos-evento';
+import { TiposEventoPage } from '../tipos-evento/TiposEventoPage';
 
 function EstadoBadge({ estado }: { estado: EstadoEvento }) {
   const styles: Record<EstadoEvento, React.CSSProperties> = {
@@ -50,6 +51,7 @@ export function EventosPage() {
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const qc = useQueryClient();
 
+  const [tab, setTab] = useState<'eventos' | 'tipos'>('eventos');
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<EventoElectoral | null>(null);
   const [closing, setClosing] = useState<EventoElectoral | null>(null);
@@ -89,9 +91,35 @@ export function EventosPage() {
     }
   }
 
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '0.45rem 1rem',
+    border: 'none',
+    borderBottom: active ? '2px solid #2563eb' : '2px solid transparent',
+    background: 'none',
+    color: active ? '#2563eb' : '#6b7280',
+    fontWeight: active ? 600 : 400,
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+  });
+
   return (
     <>
       <h2>Eventos Electorales</h2>
+
+      {isAdmin && (
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+          <button style={tabStyle(tab === 'eventos')} onClick={() => setTab('eventos')}>
+            Eventos
+          </button>
+          <button style={tabStyle(tab === 'tipos')} onClick={() => setTab('tipos')}>
+            Tipos de Evento
+          </button>
+        </div>
+      )}
+
+      {tab === 'tipos' ? (
+        <TiposEventoPage />
+      ) : (
       <div className="card">
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           {isAdmin && (
@@ -204,8 +232,9 @@ export function EventosPage() {
           </table>
         )}
       </div>
+      )}
 
-      {showCreate && (
+      {tab === 'eventos' && showCreate && (
         <EventoModal
           tiposEvento={tiposEvento}
           onClose={() => setShowCreate(false)}
@@ -216,7 +245,7 @@ export function EventosPage() {
         />
       )}
 
-      {editing && (
+      {tab === 'eventos' && editing && (
         <EventoModal
           evento={editing}
           tiposEvento={tiposEvento}
@@ -228,7 +257,7 @@ export function EventosPage() {
         />
       )}
 
-      {closing && (
+      {tab === 'eventos' && closing && (
         <CloseEventoModal
           evento={closing}
           onClose={() => setClosing(null)}
@@ -239,7 +268,7 @@ export function EventosPage() {
         />
       )}
 
-      {configurando && (
+      {tab === 'eventos' && configurando && (
         <ConfigAlertasModal
           evento={configurando}
           onClose={() => setConfigurando(null)}

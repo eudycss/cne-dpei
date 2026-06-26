@@ -47,8 +47,7 @@ export function TiposEventoPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Tipos de Evento Electoral</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '1rem' }}>
         <button className="btn primary" onClick={() => setShowCreate(true)}>+ Nuevo tipo</button>
       </div>
 

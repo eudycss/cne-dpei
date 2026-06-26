@@ -15,7 +15,6 @@ import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
-import { TiposEventoPage } from './pages/tipos-evento/TiposEventoPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
@@ -90,7 +89,6 @@ export default function App() {
         <Route path="/incidencias" element={<IncidenciasPage />} />
         {/* Alertas (HU18) */}
         <Route path="/alertas" element={<AlertasPage />} />
-        <Route path="/tipos-evento" element={<TiposEventoPage />} />
 
         {/* Reporte admin de NO-CDAs pendientes */}
         <Route
