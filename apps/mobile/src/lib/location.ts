@@ -92,9 +92,9 @@ TaskManager.defineTask(TRACKING_TASK, async ({ data, error }) => {
 
   try {
     await postPosiciones({ posiciones });
+    // Si no hay señal, postPosiciones encola el lote en AsyncStorage (HU13).
   } catch {
-    // Sin conexión o error transitorio: se descarta el lote (HU13 añadirá
-    // persistencia local y reenvío en orden cronológico).
+    // Solo errores inesperados llegan aquí; los errores de red ya los absorbe withOffline.
   }
 });
 
@@ -151,7 +151,7 @@ export async function iniciarRastreoPrimerPlano(): Promise<Location.LocationSubs
       try {
         await postPosiciones({ posiciones });
       } catch {
-        // Sin conexión o error transitorio: se descarta el lote.
+        // Solo errores inesperados; los de red los absorbe withOffline.
       }
     },
   );

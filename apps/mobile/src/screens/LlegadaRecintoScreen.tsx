@@ -161,13 +161,16 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     setConfirmandoKit(true);
     try {
       const ubicacion = await obtenerUbicacionPuntual();
-      await confirmarRecepcionKit({
+      const result = await confirmarRecepcionKit({
         kitId: kitPreview.id,
         fotoMilitarUrl: fotoUrl,
         militarId: asignacion.militar?.id ?? null,
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
       });
+      if (result === null) {
+        Alert.alert('Sin señal', 'Recepción del kit guardada localmente. Se sincronizará automáticamente.');
+      }
       const nuevos = new Set(kitsRecibidos);
       nuevos.add(kitPreview.id);
       setKitsRecibidos(nuevos);
@@ -217,12 +220,15 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     setRegistrando(true);
     try {
       const ubicacion = await obtenerUbicacionPuntual();
-      await registrarLlegadaRecinto({
+      const result = await registrarLlegadaRecinto({
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
         precisionMetros: ubicacion.precisionMetros,
       });
+      if (result === null) {
+        Alert.alert('Sin señal', 'Llegada al recinto guardada localmente. Se sincronizará automáticamente.');
+      }
       onLlegadaRegistrada();
     } catch (e: any) {
       if (e?.response?.status === 409) {

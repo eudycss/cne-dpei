@@ -96,7 +96,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
         // Ubicación opcional: se reporta igual sin coordenadas si falla.
       }
 
-      await reportarIncidencia({
+      const result = await reportarIncidencia({
         tipo,
         descripcion: descripcion.trim() || undefined,
         fotoBase64: fotoBase64 ?? undefined,
@@ -105,7 +105,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
       });
       limpiarFormulario();
       setExito(true);
-      cargarLista();
+      if (result !== null) cargarLista();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'No se pudo reportar la incidencia. Intenta de nuevo.');
     } finally {

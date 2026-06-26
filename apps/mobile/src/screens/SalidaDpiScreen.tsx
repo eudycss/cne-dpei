@@ -71,11 +71,14 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
     setSubmitting(true);
     try {
       const ubicacion = await obtenerUbicacionPuntual();
-      await postSalidaDpi({
+      const result = await postSalidaDpi({
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
       });
+      if (result === null) {
+        Alert.alert('Sin señal', 'Salida guardada localmente. Se sincronizará automáticamente cuando recuperes conexión.');
+      }
       onSalidaRegistrada();
     } catch (e: any) {
       if (e instanceof LocationPermissionDeniedError) {

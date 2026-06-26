@@ -8,6 +8,7 @@ import { MiRecintoModal } from './MiRecintoModal';
 import { ReportarIncidenciaModal } from './ReportarIncidenciaModal';
 import { NotificacionesModal } from './NotificacionesModal';
 import { getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
+import { usePendingCount } from '../lib/offline-queue';
 import { fontFamily } from '../theme/typography';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -32,6 +33,7 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
   // El operador no es destinatario de notificaciones (van al supervisor + admins).
   const recibeNotif = !!user && !esOperador;
+  const pendientes = usePendingCount();
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -102,6 +104,12 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           <Ionicons name="warning-outline" size={22} color={colors.textSecondary} />
         </Pressable>
       )}
+      {esOperador && pendientes > 0 && (
+        <View style={styles.syncBadge}>
+          <Ionicons name="cloud-upload-outline" size={16} color={colors.warningText} />
+          <Text style={styles.syncBadgeText}>{pendientes}</Text>
+        </View>
+      )}
       {recibeNotif && (
         <Pressable onPress={() => setShowNotif(true)} hitSlop={8} accessibilityLabel="Notificaciones">
           <View>
@@ -165,4 +173,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 9, fontFamily: fontFamily.bold, color: '#fff' },
+  syncBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  syncBadgeText: { fontSize: 11, fontFamily: fontFamily.semiBold, color: c.warningText },
 });

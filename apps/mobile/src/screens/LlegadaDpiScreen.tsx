@@ -85,11 +85,14 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
     setRegistrando(true);
     try {
       const ubicacion = await obtenerUbicacionPuntual();
-      await postLlegadaDpi({
+      const result = await postLlegadaDpi({
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
       });
+      if (result === null) {
+        Alert.alert('Sin señal', 'Llegada al DPI guardada localmente. Se sincronizará automáticamente.');
+      }
       // HU5-CA3: finaliza el rastreo en tiempo real.
       await detenerRastreo();
       onLlegadaRegistrada();

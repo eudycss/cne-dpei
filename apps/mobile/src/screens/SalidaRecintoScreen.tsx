@@ -89,16 +89,19 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       // HU4-CA2: no se permite la acción si los servicios de ubicación están apagados.
       await asegurarServiciosUbicacion();
       const ubicacion = await obtenerUbicacionPuntual();
-      await postSalidaRecinto({
+      const result = await postSalidaRecinto({
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
       });
 
+      if (result === null) {
+        Alert.alert('Sin señal', 'Salida del recinto guardada localmente. Se sincronizará automáticamente.');
+      }
+
       // HU4-CA3: iniciar rastreo continuo en segundo plano. Es "best-effort":
-      // la salida ya quedó registrada arriba, así que si esto falla (p.ej. Expo
-      // Go no soporta ubicación en background en Android) el operador igual
-      // debe poder continuar al siguiente paso.
+      // la salida ya quedó registrada (o encolada), así que si esto falla el operador
+      // igual debe poder continuar.
       try {
         await solicitarPermisoBackground();
         await iniciarRastreo();

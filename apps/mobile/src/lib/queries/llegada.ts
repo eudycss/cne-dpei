@@ -7,7 +7,9 @@ import type {
   ValidarKitResponse,
 } from '@cne/shared-types';
 import { api } from '../api';
+import { withOffline } from '../offline-queue';
 
+// subirFotoMilitar NO tiene soporte offline: la URL de la foto es requerida por confirmarRecepcionKit.
 export async function subirFotoMilitar(uri: string): Promise<FotoMilitarResponse> {
   const form = new FormData();
   // En RN, FormData acepta el objeto { uri, name, type } como blob; los tipos
@@ -25,21 +27,22 @@ export async function subirFotoMilitar(uri: string): Promise<FotoMilitarResponse
   return data;
 }
 
+// validarKit requiere respuesta del servidor — NO se envuelve con offline.
 export async function validarKit(codigo: string): Promise<ValidarKitResponse> {
   const { data } = await api.post<ValidarKitResponse>('/tracking/validar-kit', { codigo });
   return data;
 }
 
-export async function confirmarRecepcionKit(
-  body: RecepcionKitRequest,
-): Promise<RecepcionKitResponse> {
-  const { data } = await api.post<RecepcionKitResponse>('/tracking/recepcion-kit', body);
-  return data;
+export async function confirmarRecepcionKit(body: RecepcionKitRequest): Promise<RecepcionKitResponse | null> {
+  return withOffline('/tracking/recepcion-kit', 'post', body, async () => {
+    const { data } = await api.post<RecepcionKitResponse>('/tracking/recepcion-kit', body);
+    return data;
+  });
 }
 
-export async function registrarLlegadaRecinto(
-  body: LlegadaRecintoRequest,
-): Promise<LlegadaRecintoResponse> {
-  const { data } = await api.post<LlegadaRecintoResponse>('/tracking/llegada-recinto', body);
-  return data;
+export async function registrarLlegadaRecinto(body: LlegadaRecintoRequest): Promise<LlegadaRecintoResponse | null> {
+  return withOffline('/tracking/llegada-recinto', 'post', body, async () => {
+    const { data } = await api.post<LlegadaRecintoResponse>('/tracking/llegada-recinto', body);
+    return data;
+  });
 }
