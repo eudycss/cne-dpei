@@ -4,7 +4,7 @@ import type {
   ConfigAlertas,
   EstadoEvento,
   EventoElectoral,
-  TipoEventoElectoral,
+  TipoEventoCatalog,
 } from '@cne/shared-types';
 import {
   configAlertasSchema,
@@ -14,26 +14,7 @@ import {
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const TIPO_LABELS: Record<TipoEventoElectoral, string> = {
-  ELECCION_GENERAL: 'Elección General',
-  SEGUNDA_VUELTA: 'Segunda Vuelta',
-  CONSULTA_POPULAR: 'Consulta Popular',
-  REFERENDUM: 'Referéndum',
-  ELECCIONES_SECCIONALES: 'Elecciones Seccionales',
-  OTRO: 'Otro',
-};
-
-const TIPOS: TipoEventoElectoral[] = [
-  'ELECCION_GENERAL',
-  'SEGUNDA_VUELTA',
-  'CONSULTA_POPULAR',
-  'REFERENDUM',
-  'ELECCIONES_SECCIONALES',
-  'OTRO',
-];
+import { getTiposEvento } from '../../lib/queries/tipos-evento';
 
 function EstadoBadge({ estado }: { estado: EstadoEvento }) {
   const styles: Record<EstadoEvento, React.CSSProperties> = {
@@ -79,6 +60,16 @@ export function EventosPage() {
     queryKey: ['eventos'],
     queryFn: async () => (await api.get<EventoElectoral[]>('/eventos')).data,
   });
+
+  const { data: tiposEvento = [] } = useQuery({
+    queryKey: ['tipos-evento'],
+    queryFn: async () => (await getTiposEvento()).data,
+    staleTime: Infinity,
+  });
+
+  function tipoLabel(codigo: string) {
+    return tiposEvento.find((t) => t.codigo === codigo)?.etiqueta ?? codigo;
+  }
 
   async function handleActivar(e: EventoElectoral) {
     if (
@@ -134,7 +125,7 @@ export function EventosPage() {
                       </div>
                     )}
                   </td>
-                  <td>{TIPO_LABELS[e.tipo]}</td>
+                  <td>{tipoLabel(e.tipo)}</td>
                   <td>{e.fechaJornada}</td>
                   <td>
                     <EstadoBadge estado={e.estado} />
@@ -216,6 +207,7 @@ export function EventosPage() {
 
       {showCreate && (
         <EventoModal
+          tiposEvento={tiposEvento}
           onClose={() => setShowCreate(false)}
           onDone={() => {
             setShowCreate(false);
@@ -227,6 +219,7 @@ export function EventosPage() {
       {editing && (
         <EventoModal
           evento={editing}
+          tiposEvento={tiposEvento}
           onClose={() => setEditing(null)}
           onDone={() => {
             setEditing(null);
@@ -264,16 +257,19 @@ export function EventosPage() {
 
 function EventoModal({
   evento,
+  tiposEvento,
   onClose,
   onDone,
 }: {
   evento?: EventoElectoral;
+  tiposEvento: TipoEventoCatalog[];
   onClose: () => void;
   onDone: () => void;
 }) {
+  const defaultTipo = evento?.tipo ?? tiposEvento[0]?.codigo ?? '';
   const [form, setForm] = useState({
     nombre: evento?.nombre ?? '',
-    tipo: (evento?.tipo ?? 'ELECCION_GENERAL') as TipoEventoElectoral,
+    tipo: defaultTipo,
     fechaJornada: evento?.fechaJornada ?? '',
     descripcion: evento?.descripcion ?? '',
   });
@@ -342,9 +338,9 @@ function EventoModal({
         <div className="field">
           <label>Tipo</label>
           <select value={form.tipo} onChange={field('tipo')}>
-            {TIPOS.map((t) => (
-              <option key={t} value={t}>
-                {TIPO_LABELS[t]}
+            {tiposEvento.map((t) => (
+              <option key={t.codigo} value={t.codigo}>
+                {t.etiqueta}
               </option>
             ))}
           </select>

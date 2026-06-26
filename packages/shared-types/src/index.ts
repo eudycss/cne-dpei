@@ -190,13 +190,14 @@ export interface UpdateMilitarRequest {
   recintoId?: string;
 }
 
-export type TipoEventoElectoral =
-  | 'ELECCION_GENERAL'
-  | 'SEGUNDA_VUELTA'
-  | 'CONSULTA_POPULAR'
-  | 'REFERENDUM'
-  | 'ELECCIONES_SECCIONALES'
-  | 'OTRO';
+export type TipoEventoElectoral = string;
+
+export interface TipoEventoCatalog {
+  id: string;
+  codigo: string;
+  etiqueta: string;
+  activo: boolean;
+}
 
 export type EstadoEvento = 'BORRADOR' | 'ACTIVO' | 'CERRADO';
 

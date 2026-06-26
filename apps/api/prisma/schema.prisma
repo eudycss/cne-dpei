@@ -32,17 +32,6 @@ enum EstadoEvento {
   @@map("estado_evento")
 }
 
-enum TipoEventoElectoral {
-  ELECCION_GENERAL
-  SEGUNDA_VUELTA
-  CONSULTA_POPULAR
-  REFERENDUM
-  ELECCIONES_SECCIONALES
-  OTRO
-
-  @@map("tipo_evento_electoral")
-}
-
 enum EstadoKit {
   EN_BODEGA
   ASIGNADO
@@ -273,11 +262,20 @@ model Militar {
 // =====================================================================
 // EVENTOS ELECTORALES (HU20)
 // =====================================================================
+model TipoEventoCatalog {
+  id       String  @id @default(uuid()) @db.Uuid
+  codigo   String  @unique @db.VarChar(50)
+  etiqueta String  @db.VarChar(120)
+  activo   Boolean @default(true)
+
+  @@map("tipos_evento_electoral")
+}
+
 model EventoElectoral {
-  id           String              @id @default(uuid()) @db.Uuid
-  nombre       String              @db.VarChar(160)
-  tipo         TipoEventoElectoral
-  fechaJornada DateTime            @map("fecha_jornada") @db.Date
+  id           String       @id @default(uuid()) @db.Uuid
+  nombre       String       @db.VarChar(160)
+  tipo         String       @db.VarChar(50)
+  fechaJornada DateTime     @map("fecha_jornada") @db.Date
   descripcion  String?
   estado       EstadoEvento        @default(BORRADOR)
   creadoEn     DateTime            @default(now()) @map("creado_en") @db.Timestamptz(6)

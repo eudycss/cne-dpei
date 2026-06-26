@@ -42,6 +42,7 @@ export class EventosService {
 
   async create(input: CreateEventoRequest): Promise<EventoElectoral> {
     const parsed = createEventoSchema.parse(input);
+    await this.assertTipoValido(parsed.tipo);
     const evento = await this.prisma.eventoElectoral.create({
       data: {
         nombre: parsed.nombre,
@@ -59,6 +60,7 @@ export class EventosService {
 
   async update(id: string, input: UpdateEventoRequest): Promise<EventoElectoral> {
     const parsed = updateEventoSchema.parse(input);
+    if (parsed.tipo) await this.assertTipoValido(parsed.tipo);
     const existing = await this.prisma.eventoElectoral.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Evento no encontrado');
     if (existing.estado !== 'BORRADOR') {
@@ -175,6 +177,11 @@ export class EventosService {
       select: { id: true, nombres: true, apellidos: true },
     });
     return operadores.map((o) => ({ id: o.id, nombre: `${o.nombres} ${o.apellidos}` }));
+  }
+
+  private async assertTipoValido(codigo: string): Promise<void> {
+    const t = await this.prisma.tipoEventoCatalog.findUnique({ where: { codigo } });
+    if (!t || !t.activo) throw new BadRequestException(`Tipo de evento inválido: '${codigo}'`);
   }
 }
 

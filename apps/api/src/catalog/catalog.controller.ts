@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CreateRecintoRequest, UpdateRecintoRequest } from '@cne/shared-types';
 import { RecintosService } from './recintos.service';
+import { TiposEventoService } from './tipos-evento.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -25,7 +26,10 @@ import { Roles } from '../common/roles.decorator';
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CatalogController {
-  constructor(private readonly recintos: RecintosService) {}
+  constructor(
+    private readonly recintos: RecintosService,
+    private readonly tiposEvento: TiposEventoService,
+  ) {}
 
   @Get('recintos')
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
@@ -89,5 +93,45 @@ export class CatalogController {
   @ApiOperation({ summary: 'Listar cantones de Imbabura' })
   listCantones() {
     return this.recintos.listCantones();
+  }
+
+  // --- Tipos de evento electoral ---
+
+  @Get('tipos-evento')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'OPERADOR_CDA')
+  @ApiOperation({ summary: 'Listar tipos de evento activos' })
+  listTiposEvento() {
+    return this.tiposEvento.list();
+  }
+
+  @Get('tipos-evento/admin')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Listar todos los tipos de evento (incluye inactivos)' })
+  listTiposEventoAdmin() {
+    return this.tiposEvento.listAll();
+  }
+
+  @Post('tipos-evento')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Crear tipo de evento' })
+  createTipoEvento(@Body() body: { codigo: string; etiqueta: string }) {
+    return this.tiposEvento.create(body.codigo, body.etiqueta);
+  }
+
+  @Patch('tipos-evento/:id')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Actualizar tipo de evento' })
+  updateTipoEvento(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { etiqueta?: string; activo?: boolean },
+  ) {
+    return this.tiposEvento.update(id, body);
+  }
+
+  @Delete('tipos-evento/:id')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Eliminar tipo de evento (falla si tiene eventos asociados)' })
+  removeTipoEvento(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tiposEvento.remove(id);
   }
 }

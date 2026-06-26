@@ -166,18 +166,9 @@ export const bulkRecintoRowSchema = z.object({
 });
 
 // --- Eventos electorales (HU20) ---
-export const tipoEventoEnum = z.enum([
-  'ELECCION_GENERAL',
-  'SEGUNDA_VUELTA',
-  'CONSULTA_POPULAR',
-  'REFERENDUM',
-  'ELECCIONES_SECCIONALES',
-  'OTRO',
-]);
-
 export const createEventoSchema = z.object({
   nombre: z.string().min(1, 'Requerido').max(160),
-  tipo: tipoEventoEnum,
+  tipo: z.string().min(1).max(50),
   fechaJornada: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
@@ -186,7 +177,7 @@ export const createEventoSchema = z.object({
 
 export const updateEventoSchema = z.object({
   nombre: z.string().min(1).max(160).optional(),
-  tipo: tipoEventoEnum.optional(),
+  tipo: z.string().min(1).max(50).optional(),
   fechaJornada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   descripcion: z.string().max(2000).nullable().optional(),
 });

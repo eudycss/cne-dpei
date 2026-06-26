@@ -47,6 +47,11 @@ export function Layout() {
           Alertas
         </NavLink>
         {esAdmin && (
+          <NavLink to="/tipos-evento" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Tipos de Evento
+          </NavLink>
+        )}
+        {esAdmin && (
           <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
             Reportes
           </NavLink>
