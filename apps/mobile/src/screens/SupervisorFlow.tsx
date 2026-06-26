@@ -7,8 +7,9 @@ import { fontFamily } from '../theme/typography';
 import { MonitoreoScreen } from './MonitoreoScreen';
 import { VerificacionDpiScreen } from './VerificacionDpiScreen';
 import { KitsVerificadosScreen } from './KitsVerificadosScreen';
+import { AlertasScreen } from './AlertasScreen';
 
-type Tab = 'MONITOREO' | 'VERIFICAR_DPI' | 'VERIFICADOS';
+type Tab = 'MONITOREO' | 'VERIFICAR_DPI' | 'VERIFICADOS' | 'ALERTAS';
 
 export function SupervisorFlow() {
   const { colors } = useTheme();
@@ -39,13 +40,21 @@ export function SupervisorFlow() {
         >
           <Text style={[styles.tabText, tab === 'VERIFICADOS' && styles.tabTextActive]}>Verificados</Text>
         </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'ALERTAS' && styles.tabBtnActive]}
+          onPress={() => setTab('ALERTAS')}
+        >
+          <Text style={[styles.tabText, tab === 'ALERTAS' && styles.tabTextActive]}>Alertas</Text>
+        </Pressable>
       </View>
       {tab === 'MONITOREO' ? (
         <MonitoreoScreen />
       ) : tab === 'VERIFICAR_DPI' ? (
         <VerificacionDpiScreen />
-      ) : (
+      ) : tab === 'VERIFICADOS' ? (
         <KitsVerificadosScreen />
+      ) : (
+        <AlertasScreen />
       )}
     </View>
   );
