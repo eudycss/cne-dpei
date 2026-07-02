@@ -52,3 +52,7 @@ apps/api/storage/
 .claude/
 !.claude/commands/
 CLAUDE.local.md
+
+# Playwright/Chrome testing artifacts (raíz)
+.playwright-mcp/
+/*.png
