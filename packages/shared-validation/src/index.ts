@@ -227,6 +227,13 @@ export const pdfQrSchema = z.object({
 export const asignarKitSchema = z.object({
   operadorId: z.string().uuid('Operador inválido'),
   recintoId: z.string().uuid('Recinto inválido'),
+  justificacion: z.string().max(500).optional(),
+});
+
+// HU12-CA6: justificación excepcional para modificar asignaciones con el
+// evento ya congelado (jornada electoral iniciada).
+export const desasignarKitSchema = z.object({
+  justificacion: z.string().max(500).optional(),
 });
 
 // Fila de Excel/CSV para carga masiva de kits. El código único se autogenera;
@@ -251,6 +258,7 @@ export const bulkKitRowSchema = z
 
 export type CreateKitInput = z.infer<typeof createKitSchema>;
 export type AsignarKitInput = z.infer<typeof asignarKitSchema>;
+export type DesasignarKitInput = z.infer<typeof desasignarKitSchema>;
 export type BulkKitRow = z.infer<typeof bulkKitRowSchema>;
 
 // ===================================================================

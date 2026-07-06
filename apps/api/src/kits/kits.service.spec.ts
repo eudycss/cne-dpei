@@ -50,6 +50,16 @@ describe('KitsService', () => {
     };
   }
 
+  // Por defecto BORRADOR con jornada futura: no congelado (HU12-CA6).
+  function eventoRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: eventoId,
+      estado: 'BORRADOR',
+      fechaJornada: new Date('2099-01-01'),
+      ...overrides,
+    };
+  }
+
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
@@ -71,7 +81,7 @@ describe('KitsService', () => {
     });
 
     it('crea el kit con un código único y estado EN_BODEGA', async () => {
-      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(null); // sin colisión de código
       prisma.kitElectoral.create.mockResolvedValueOnce(kitRow());
 
@@ -99,6 +109,7 @@ describe('KitsService', () => {
 
     it('lanza BadRequestException si el usuario no tiene rol OPERADOR_CDA', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findFirst.mockResolvedValueOnce(null);
       await expect(service.asignar(kitId, { operadorId, recintoId } as any)).rejects.toThrow(
         BadRequestException,
@@ -107,6 +118,7 @@ describe('KitsService', () => {
 
     it('lanza NotFoundException si el recinto no existe', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findFirst.mockResolvedValueOnce({ id: operadorId });
       prisma.recinto.findUnique.mockResolvedValueOnce(null);
       await expect(service.asignar(kitId, { operadorId, recintoId } as any)).rejects.toThrow(
@@ -116,6 +128,7 @@ describe('KitsService', () => {
 
     it('lanza ConflictException si el operador ya tiene kits en otro recinto', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findFirst.mockResolvedValueOnce({ id: operadorId });
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
       prisma.kitElectoral.findMany.mockResolvedValueOnce([
@@ -129,6 +142,7 @@ describe('KitsService', () => {
 
     it('asigna el kit y pasa de EN_BODEGA a ASIGNADO', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'EN_BODEGA' }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findFirst.mockResolvedValueOnce({ id: operadorId });
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
       prisma.kitElectoral.findMany.mockResolvedValueOnce([]); // sin conflictos
@@ -144,6 +158,39 @@ describe('KitsService', () => {
         data: { operadorId, recintoId, estado: 'ASIGNADO' },
       });
     });
+
+    // HU12-CA6: freeze de asignaciones el día de la jornada electoral.
+    it('lanza BadRequestException con frozen:true si el evento ya inició su jornada y no hay justificación', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(
+        eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }),
+      );
+      await expect(service.asignar(kitId, { operadorId, recintoId } as any)).rejects.toMatchObject(
+        { response: { frozen: true } },
+      );
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('permite reasignar con jornada iniciada si se envía justificación', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'EN_BODEGA' }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(
+        eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }),
+      );
+      prisma.usuario.findFirst.mockResolvedValueOnce({ id: operadorId });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.update.mockResolvedValueOnce(
+        kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
+      );
+
+      const result = await service.asignar(kitId, {
+        operadorId,
+        recintoId,
+        justificacion: 'Kit dañado, se reemplaza en campo',
+      } as any);
+
+      expect(result.estado).toBe('ASIGNADO');
+    });
   });
 
   describe('desasignar', () => {
@@ -156,6 +203,7 @@ describe('KitsService', () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(
         kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
       );
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.kitElectoral.update.mockResolvedValueOnce(kitRow({ estado: 'EN_BODEGA' }));
 
       await service.desasignar(kitId);
@@ -164,6 +212,17 @@ describe('KitsService', () => {
         where: { id: kitId },
         data: { operadorId: null, recintoId: null, estado: 'EN_BODEGA' },
       });
+    });
+
+    it('lanza BadRequestException con frozen:true si el evento ya inició su jornada y no hay justificación', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(
+        kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
+      );
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(
+        eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }),
+      );
+      await expect(service.desasignar(kitId)).rejects.toMatchObject({ response: { frozen: true } });
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
     });
   });
 
@@ -207,14 +266,24 @@ describe('KitsService', () => {
 
     it('lanza BadRequestException si el archivo no tiene filas', async () => {
       // parseRows lanza antes de tocar usuario/recinto/kit, así que solo se consulta el evento.
-      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       await expect(
         service.bulkUpload(csvFile('nombre,contenidos,cedula_operador,codigo_recinto'), eventoId),
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('lanza BadRequestException con frozen:true si el evento ya inició su jornada (sin excepción posible)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(
+        eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }),
+      );
+      await expect(
+        service.bulkUpload(csvFile('nombre\nKit A'), eventoId),
+      ).rejects.toMatchObject({ response: { frozen: true } });
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
     it('crea kits asignados y en bodega, y reporta operador/recinto inexistentes', async () => {
-      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, cedula: '1002003004' }]);
       prisma.recinto.findMany.mockResolvedValueOnce([{ id: recintoId, codigoRecinto: '28' }]);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([]); // sin asignaciones previas
@@ -240,7 +309,7 @@ describe('KitsService', () => {
     });
 
     it('reporta error si un operador queda con kits en dos recintos distintos', async () => {
-      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, cedula: '1002003004' }]);
       prisma.recinto.findMany.mockResolvedValueOnce([
         { id: recintoId, codigoRecinto: '28' },

@@ -8,12 +8,19 @@ import * as crypto from 'node:crypto';
 import * as QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import * as ExcelJS from 'exceljs';
-import { asignarKitSchema, bulkKitRowSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+import {
+  asignarKitSchema,
+  bulkKitRowSchema,
+  createKitSchema,
+  desasignarKitSchema,
+  pdfQrSchema,
+} from '@cne/shared-validation';
 import type {
   AsignarKitRequest,
   BulkUploadResult,
   BulkUploadRow,
   CreateKitRequest,
+  DesasignarKitRequest,
   Kit,
   Paginated,
   PdfQrRequest,
@@ -86,6 +93,10 @@ export class KitsService {
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
 
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    this.assertNoFrozen(evento, parsed.justificacion);
+
     const operador = await this.prisma.usuario.findFirst({
       where: {
         id: parsed.operadorId,
@@ -123,9 +134,15 @@ export class KitsService {
     return toKitDto(updated);
   }
 
-  async desasignar(id: string): Promise<Kit> {
+  async desasignar(id: string, input?: DesasignarKitRequest): Promise<Kit> {
+    const parsed = desasignarKitSchema.parse(input ?? {});
+
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
+
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    this.assertNoFrozen(evento, parsed.justificacion);
 
     const updated = await this.prisma.kitElectoral.update({
       where: { id },
@@ -160,6 +177,9 @@ export class KitsService {
     if (!file) throw new BadRequestException('Archivo requerido');
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    // HU12-CA6: la carga masiva no admite excepciones — una vez congelado el
+    // evento, las asignaciones puntuales se hacen una por una con justificación.
+    this.assertNoFrozen(evento);
 
     const rows = await parseUploadRows(file);
     if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');
@@ -272,6 +292,27 @@ export class KitsService {
   }
 
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  /**
+   * HU12-CA6: una vez iniciada la jornada electoral (evento ACTIVO y fecha de
+   * jornada alcanzada), las asignaciones quedan congeladas. Se puede modificar
+   * igual con una justificación explícita, que queda en bitácora.
+   */
+  private assertNoFrozen(
+    evento: { estado: string; fechaJornada: Date },
+    justificacion?: string,
+  ): void {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const jornada = evento.fechaJornada.toISOString().slice(0, 10);
+    const congelado = evento.estado === 'ACTIVO' && hoy >= jornada;
+    if (congelado && !justificacion?.trim()) {
+      throw new BadRequestException({
+        message:
+          'Las asignaciones están congeladas: ya inició la jornada electoral. Proporciona una justificación para modificar esta asignación.',
+        frozen: true,
+      });
+    }
+  }
 
   private async generarCodigoUnico(eventoId: string, intentos = 0): Promise<string> {
     if (intentos > 9) throw new BadRequestException('No se pudo generar un código único tras varios intentos');

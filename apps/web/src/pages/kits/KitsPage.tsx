@@ -339,8 +339,28 @@ export function KitsPage() {
                             style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
                             onClick={async () => {
                               if (!window.confirm('¿Quitar la asignación de este kit?')) return;
-                              await api.patch(`/kits/${kit.id}/desasignar`);
-                              qc.invalidateQueries({ queryKey: ['kits'] });
+                              try {
+                                await api.patch(`/kits/${kit.id}/desasignar`, {});
+                                qc.invalidateQueries({ queryKey: ['kits'] });
+                              } catch (err: any) {
+                                const data = err?.response?.data;
+                                if (!data?.frozen) {
+                                  sileo.error({ title: data?.message ?? 'No se pudo quitar la asignación' });
+                                  return;
+                                }
+                                const justificacion = window.prompt(
+                                  `${data.message}\n\nIngresa una justificación para continuar:`,
+                                );
+                                if (!justificacion?.trim()) return;
+                                try {
+                                  await api.patch(`/kits/${kit.id}/desasignar`, { justificacion });
+                                  qc.invalidateQueries({ queryKey: ['kits'] });
+                                } catch (err2: any) {
+                                  sileo.error({
+                                    title: err2?.response?.data?.message ?? 'No se pudo quitar la asignación',
+                                  });
+                                }
+                              }
                             }}
                           >
                             Quitar
@@ -526,13 +546,19 @@ function AsignarKitModal({
 }) {
   const [operadorId, setOperadorId] = useState(kit.operadorId ?? '');
   const [recintoId, setRecintoId] = useState(kit.recintoId ?? '');
+  const [justificacion, setJustificacion] = useState('');
+  const [frozen, setFrozen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const parsed = asignarKitSchema.safeParse({ operadorId, recintoId });
+    const parsed = asignarKitSchema.safeParse({
+      operadorId,
+      recintoId,
+      justificacion: justificacion.trim() || undefined,
+    });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
       return;
@@ -542,7 +568,9 @@ function AsignarKitModal({
       await api.patch(`/kits/${kit.id}/asignar`, parsed.data);
       onDone();
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'No se pudo asignar el kit');
+      const data = err?.response?.data;
+      if (data?.frozen) setFrozen(true);
+      setError(data?.message ?? 'No se pudo asignar el kit');
     } finally {
       setSaving(false);
     }
@@ -601,6 +629,28 @@ function AsignarKitModal({
             ))}
           </select>
         </div>
+
+        {frozen && (
+          <div className="field">
+            <label>Justificación (requerida)</label>
+            <textarea
+              value={justificacion}
+              onChange={(e) => setJustificacion(e.target.value)}
+              rows={3}
+              maxLength={500}
+              required
+              placeholder="La jornada electoral ya inició: explica por qué se necesita este cambio…"
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.65rem',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: '0.9rem',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+        )}
 
         {error && <div className="banner error">{error}</div>}
 

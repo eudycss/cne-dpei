@@ -5,6 +5,7 @@ import { TrackingService } from './tracking.service';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
+import { AlertasService } from '../alertas/alertas.service';
 
 describe('TrackingService', () => {
   let service: TrackingService;
@@ -43,6 +44,10 @@ describe('TrackingService', () => {
     readDecrypted: jest.fn(),
   };
 
+  const alertas = {
+    generarKitNoCorresponde: jest.fn(),
+  };
+
   const eventoId = '22222222-2222-2222-2222-222222222222';
   const operadorId = '11111111-1111-1111-1111-111111111111';
   const recintoId = '44444444-4444-4444-4444-444444444444';
@@ -62,6 +67,7 @@ describe('TrackingService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationsService, useValue: notifications },
         { provide: StorageService, useValue: storage },
+        { provide: AlertasService, useValue: alertas },
       ],
     }).compile();
 

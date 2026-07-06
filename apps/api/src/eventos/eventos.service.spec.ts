@@ -23,6 +23,7 @@ describe('EventosService', () => {
     asignacionSupervisor: { findMany: jest.fn() },
     eventoTracking: { findMany: jest.fn() },
     usuario: { findMany: jest.fn() },
+    tipoEventoCatalog: { findUnique: jest.fn() },
   };
 
   const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -75,6 +76,7 @@ describe('EventosService', () => {
 
   describe('create', () => {
     it('crea el evento junto con su configuración de alertas por defecto', async () => {
+      prisma.tipoEventoCatalog.findUnique.mockResolvedValueOnce({ codigo: 'ELECCION_GENERAL', activo: true });
       prisma.eventoElectoral.create.mockResolvedValueOnce(eventoRow());
       prisma.configAlerta.create.mockResolvedValueOnce(configRow);
       // this.get(id) interno:

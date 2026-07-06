@@ -17,8 +17,18 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import type { AsignarKitRequest, CreateKitRequest, PdfQrRequest } from '@cne/shared-types';
-import { asignarKitSchema, createKitSchema, pdfQrSchema } from '@cne/shared-validation';
+import type {
+  AsignarKitRequest,
+  CreateKitRequest,
+  DesasignarKitRequest,
+  PdfQrRequest,
+} from '@cne/shared-types';
+import {
+  asignarKitSchema,
+  createKitSchema,
+  desasignarKitSchema,
+  pdfQrSchema,
+} from '@cne/shared-validation';
 
 import { KitsService } from './kits.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -92,8 +102,11 @@ export class KitsController {
   @Patch(':id/desasignar')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'Quitar la asignación de operador/recinto de un kit' })
-  desasignar(@Param('id', ParseUUIDPipe) id: string) {
-    return this.kits.desasignar(id);
+  desasignar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(desasignarKitSchema)) body: DesasignarKitRequest,
+  ) {
+    return this.kits.desasignar(id, body);
   }
 
   @Post('pdf-qr')

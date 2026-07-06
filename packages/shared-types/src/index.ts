@@ -298,6 +298,11 @@ export interface PdfQrRequest {
 export interface AsignarKitRequest {
   operadorId: string;
   recintoId: string;
+  justificacion?: string;
+}
+
+export interface DesasignarKitRequest {
+  justificacion?: string;
 }
 
 // ===================================================================

@@ -47,6 +47,10 @@ const AUDIT_TABLE: Array<{
   // Fase 3 — kits electorales (HU11)
   { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
   { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },
+  // HU12 — asignación de kits a recintos/operadores (incluye freeze CA6)
+  { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/asignar$/, accion: 'KIT_ASIGNAR', entidad: 'kit' },
+  { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/desasignar$/, accion: 'KIT_DESASIGNAR', entidad: 'kit' },
+  { method: 'POST', pathRegex: /^\/kits\/bulk$/, accion: 'KIT_BULK_UPLOAD', entidad: 'kit' },
   // Fase 4 — tracking del operador (HU2)
   { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
   // Fase 4 — llegada al recinto y recepción de kits (HU3)
@@ -79,12 +83,14 @@ export class AuditInterceptor implements NestInterceptor {
             (typeof resBody === 'object' && resBody && 'user' in resBody
               ? (resBody as any).user?.id
               : undefined);
+          const justificacion = (req.body as any)?.justificacion;
           await this.prisma.bitacoraAuditoria.create({
             data: {
               usuarioId: userId ?? null,
               accion: match.accion,
               entidad: match.entidad ?? null,
               entidadId: match.entidadId?.(req, resBody) ?? null,
+              datosDespues: justificacion ? { justificacion } : undefined,
               dispositivo: req.headers['user-agent']?.slice(0, 160) ?? null,
               ip: req.ip ?? null,
             },
