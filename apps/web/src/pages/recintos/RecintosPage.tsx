@@ -505,9 +505,10 @@ interface FormState {
   numeroElectores: string;
   juntasFemeninas: string;
   juntasMasculinas: string;
+  esDificilAcceso: boolean;
 }
 
-type TextFieldKey = Exclude<keyof FormState, 'tipo' | 'tieneInternet' | 'coberturaMovil'>;
+type TextFieldKey = Exclude<keyof FormState, 'tipo' | 'tieneInternet' | 'coberturaMovil' | 'esDificilAcceso'>;
 
 function RecintoModal({
   recinto,
@@ -535,6 +536,7 @@ function RecintoModal({
     numeroElectores: recinto?.numeroElectores != null ? String(recinto.numeroElectores) : '',
     juntasFemeninas: recinto?.juntasFemeninas != null ? String(recinto.juntasFemeninas) : '',
     juntasMasculinas: recinto?.juntasMasculinas != null ? String(recinto.juntasMasculinas) : '',
+    esDificilAcceso: recinto?.esDificilAcceso ?? false,
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -544,7 +546,7 @@ function RecintoModal({
       setForm((f) => ({ ...f, [k]: e.target.value }));
   }
 
-  function checkboxField(k: 'tieneInternet' | 'coberturaMovil') {
+  function checkboxField(k: 'tieneInternet' | 'coberturaMovil' | 'esDificilAcceso') {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.checked }));
   }
@@ -567,6 +569,7 @@ function RecintoModal({
       numeroElectores: form.numeroElectores !== '' ? Number(form.numeroElectores) : null,
       juntasFemeninas: form.juntasFemeninas !== '' ? Number(form.juntasFemeninas) : null,
       juntasMasculinas: form.juntasMasculinas !== '' ? Number(form.juntasMasculinas) : null,
+      esDificilAcceso: form.esDificilAcceso,
     };
     const schema = recinto ? updateRecintoSchema : createRecintoSchema;
     const parsed = schema.safeParse(payload);
@@ -747,6 +750,14 @@ function RecintoModal({
               onChange={checkboxField('coberturaMovil')}
             />
             Cobertura móvil
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <input
+              type="checkbox"
+              checked={form.esDificilAcceso}
+              onChange={checkboxField('esDificilAcceso')}
+            />
+            Recinto de difícil acceso
           </label>
         </div>
 

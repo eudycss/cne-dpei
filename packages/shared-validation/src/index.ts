@@ -137,6 +137,7 @@ export const createRecintoSchema = z.object({
   numeroElectores: z.number().int().nonnegative().nullable().optional(),
   juntasFemeninas: z.number().int().nonnegative().nullable().optional(),
   juntasMasculinas: z.number().int().nonnegative().nullable().optional(),
+  esDificilAcceso: z.boolean().optional(),
 });
 
 export const updateRecintoSchema = createRecintoSchema.partial();
@@ -298,6 +299,10 @@ export const llegadaNoCdaSchema = z.object({
   recintoId: z.string().uuid(),
 });
 
+export const llegadaRecintoManualSchema = z.object({
+  recintoId: z.string().uuid(),
+});
+
 // HU4 — Salida del recinto y rastreo continuo
 export const salidaRecintoSchema = z.object({
   latitud: z.number().min(-90).max(90),
@@ -346,6 +351,7 @@ export type ValidarKitInput = z.infer<typeof validarKitSchema>;
 export type RecepcionKitInput = z.infer<typeof recepcionKitSchema>;
 export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
 export type LlegadaNoCdaInput = z.infer<typeof llegadaNoCdaSchema>;
+export type LlegadaRecintoManualInput = z.infer<typeof llegadaRecintoManualSchema>;
 export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
 export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
 export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;

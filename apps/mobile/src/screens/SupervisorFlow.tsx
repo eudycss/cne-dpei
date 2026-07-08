@@ -8,8 +8,9 @@ import { MonitoreoScreen } from './MonitoreoScreen';
 import { VerificacionDpiScreen } from './VerificacionDpiScreen';
 import { KitsVerificadosScreen } from './KitsVerificadosScreen';
 import { AlertasScreen } from './AlertasScreen';
+import { RecintosDificilAccesoScreen } from './RecintosDificilAccesoScreen';
 
-type Tab = 'MONITOREO' | 'VERIFICAR_DPI' | 'VERIFICADOS' | 'ALERTAS';
+type Tab = 'MONITOREO' | 'VERIFICAR_DPI' | 'VERIFICADOS' | 'ALERTAS' | 'DIFICIL_ACCESO';
 
 export function SupervisorFlow() {
   const { colors } = useTheme();
@@ -46,6 +47,14 @@ export function SupervisorFlow() {
         >
           <Text style={[styles.tabText, tab === 'ALERTAS' && styles.tabTextActive]}>Alertas</Text>
         </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'DIFICIL_ACCESO' && styles.tabBtnActive]}
+          onPress={() => setTab('DIFICIL_ACCESO')}
+        >
+          <Text style={[styles.tabText, tab === 'DIFICIL_ACCESO' && styles.tabTextActive]}>
+            Recintos difíciles
+          </Text>
+        </Pressable>
       </View>
       {tab === 'MONITOREO' ? (
         <MonitoreoScreen />
@@ -53,8 +62,10 @@ export function SupervisorFlow() {
         <VerificacionDpiScreen />
       ) : tab === 'VERIFICADOS' ? (
         <KitsVerificadosScreen />
-      ) : (
+      ) : tab === 'ALERTAS' ? (
         <AlertasScreen />
+      ) : (
+        <RecintosDificilAccesoScreen />
       )}
     </View>
   );

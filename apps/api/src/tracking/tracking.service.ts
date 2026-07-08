@@ -15,6 +15,8 @@ import type {
   LlegadaDpiResponse,
   LlegadaNoCdaRequest,
   LlegadaNoCdaResponse,
+  LlegadaRecintoManualRequest,
+  LlegadaRecintoManualResponse,
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
   MiAsignacionResponse,
@@ -22,6 +24,7 @@ import type {
   OperadorEnRetornoKit,
   RecepcionKitRequest,
   RecepcionKitResponse,
+  RecintoDificilAccesoDto,
   ReporteFlujoItem,
   ReporteNoCdaItem,
   RoleName,
@@ -38,6 +41,7 @@ import {
   ingestaPosicionesSchema,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
+  llegadaRecintoManualSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -605,6 +609,63 @@ export class TrackingService {
   }
 
   /**
+   * INSERT común de EventoTracking LLEGADA_RECINTO (con o sin GPS) + transición
+   * de kits a EN_RECINTO. Compartido por el registro automático del operador
+   * (con geocerca) y el manual del supervisor (sin GPS, para recintos sin señal).
+   * No valida precondiciones de negocio (SALIDA_DPI previa, kits recibidos) —
+   * esas quedan en cada método público porque difieren entre ambos flujos.
+   */
+  private async insertarLlegadaRecinto(
+    eventoId: string,
+    operadorId: string,
+    recintoId: string | null,
+    ubicacion: { latitud: number; longitud: number } | null,
+    ocurridoEn: Date,
+    estadoKitsFiltro: any,
+  ): Promise<string> {
+    const rows = ubicacion
+      ? await this.prisma.$queryRaw<{ id: string }[]>`
+          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+          VALUES (
+            uuid_generate_v4(),
+            ${eventoId}::uuid,
+            ${operadorId}::uuid,
+            'LLEGADA_RECINTO'::tipo_tracking,
+            ${recintoId}::uuid,
+            ST_SetSRID(ST_MakePoint(${ubicacion.longitud}, ${ubicacion.latitud}), 4326)::geography,
+            ${ocurridoEn}::timestamptz,
+            false,
+            now()
+          )
+          RETURNING id;
+        `
+      : await this.prisma.$queryRaw<{ id: string }[]>`
+          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+          VALUES (
+            uuid_generate_v4(),
+            ${eventoId}::uuid,
+            ${operadorId}::uuid,
+            'LLEGADA_RECINTO'::tipo_tracking,
+            ${recintoId}::uuid,
+            NULL,
+            ${ocurridoEn}::timestamptz,
+            false,
+            now()
+          )
+          RETURNING id;
+        `;
+
+    if (recintoId) {
+      await this.prisma.kitElectoral.updateMany({
+        where: { eventoId, operadorId, estado: estadoKitsFiltro },
+        data: { estado: 'EN_RECINTO' },
+      });
+    }
+
+    return rows[0].id;
+  }
+
+  /**
    * HU3-CA7: registra EventoTracking LLEGADA_RECINTO con GPS, valida que se
    * hayan recibido todos los kits y notifica a supervisor y administradores.
    * Rechaza segundo POST con 409.
@@ -683,28 +744,14 @@ export class TrackingService {
       }
     }
 
-    const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
-      VALUES (
-        uuid_generate_v4(),
-        ${evento.id}::uuid,
-        ${operadorId}::uuid,
-        'LLEGADA_RECINTO'::tipo_tracking,
-        ${recintoId}::uuid,
-        ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
-        ${ocurridoEn}::timestamptz,
-        false,
-        now()
-      )
-      RETURNING id;
-    `)[0].id;
-
-    if (recintoId) {
-      await this.prisma.kitElectoral.updateMany({
-        where: { eventoId: evento.id, operadorId, estado: 'ENTREGADO' },
-        data: { estado: 'EN_RECINTO' },
-      });
-    }
+    const id = await this.insertarLlegadaRecinto(
+      evento.id,
+      operadorId,
+      recintoId,
+      { latitud: parsed.latitud, longitud: parsed.longitud },
+      ocurridoEn,
+      'ENTREGADO',
+    );
 
     const operador = await this.prisma.usuario.findUnique({
       where: { id: operadorId },
@@ -723,6 +770,89 @@ export class TrackingService {
         recintoNombre,
         kitsRecibidos: kits.length,
         ocurridoEn: ocurridoEn.toISOString(),
+      },
+    });
+
+    return { id, ocurridoEn: ocurridoEn.toISOString() };
+  }
+
+  /**
+   * HU13 Parte B: registro manual de llegada al recinto por un supervisor/admin,
+   * para CDAs marcados esDificilAcceso (sin cobertura para que el operador
+   * confirme por GPS). Reusa el mismo tipo LLEGADA_RECINTO que el registro
+   * automático para que el estado de CDA / monitoreo lo traten igual. A
+   * diferencia del flujo del operador, NO exige SALIDA_DPI previa ni
+   * RecepcionKit: en un recinto sin señal esos pasos pueden no haber
+   * sincronizado nunca.
+   */
+  async registrarLlegadaRecintoManual(
+    supervisorId: string,
+    roles: RoleName[],
+    input: LlegadaRecintoManualRequest,
+  ): Promise<LlegadaRecintoManualResponse> {
+    const parsed = llegadaRecintoManualSchema.parse(input);
+
+    const evento = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' } });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const recinto = await this.prisma.recinto.findUnique({
+      where: { id: parsed.recintoId },
+      select: { id: true, tipo: true, esDificilAcceso: true, nombre: true },
+    });
+    if (!recinto || recinto.tipo !== 'CDA' || !recinto.esDificilAcceso) {
+      throw new BadRequestException('Este recinto no está marcado como de difícil acceso');
+    }
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, recintoId: recinto.id },
+      select: { operadorId: true },
+    });
+    const operadorIds = Array.from(
+      new Set(kits.map((k) => k.operadorId).filter((id): id is string => !!id)),
+    );
+    if (operadorIds.length === 0) {
+      throw new NotFoundException('Este recinto no tiene un operador asignado en el evento activo');
+    }
+    if (operadorIds.length > 1) {
+      throw new ConflictException(
+        'Este recinto tiene kits de más de un operador; contacta al administrador',
+      );
+    }
+    const operadorId = operadorIds[0];
+
+    await this.verificarPertenenciaOperador(evento.id, supervisorId, roles, operadorId);
+
+    const existente = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
+      select: { id: true },
+    });
+    if (existente) throw new ConflictException('Ya se registró la llegada de este operador al recinto');
+
+    const ocurridoEn = new Date();
+    const id = await this.insertarLlegadaRecinto(
+      evento.id,
+      operadorId,
+      recinto.id,
+      null,
+      ocurridoEn,
+      { notIn: ['EN_RECINTO', 'EN_RETORNO', 'RETORNADO'] },
+    );
+
+    const operador = await this.prisma.usuario.findUnique({
+      where: { id: operadorId },
+      select: { nombres: true, apellidos: true },
+    });
+
+    await this.notifications.encolarLlegadaRecinto({
+      operadorId,
+      eventoId: evento.id,
+      payload: {
+        operadorId,
+        operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
+        recintoNombre: recinto.nombre,
+        kitsRecibidos: kits.length,
+        ocurridoEn: ocurridoEn.toISOString(),
+        registradoManualmente: true,
       },
     });
 
@@ -1119,15 +1249,6 @@ export class TrackingService {
     const gpsPorOperador = new Map(ultimasGps.map((g) => [g.operador_id, g]));
     const trackingPorOperador = new Map(ultimasTracking.map((t) => [t.operador_id, t]));
 
-    function deriveEstado(tipos: Set<string> | undefined): EstadoOperadorCda {
-      if (!tipos) return 'EN_DPI';
-      if (tipos.has('LLEGADA_DPI')) return 'RETORNADO';
-      if (tipos.has('SALIDA_RECINTO')) return 'EN_RETORNO';
-      if (tipos.has('LLEGADA_RECINTO')) return 'EN_RECINTO';
-      if (tipos.has('SALIDA_DPI')) return 'EN_TRANSITO';
-      return 'EN_DPI';
-    }
-
     return recintos.map((recinto) => {
       const operadorId = operadorPorRecinto.get(recinto.id)!;
       const gps = gpsPorOperador.get(operadorId);
@@ -1146,9 +1267,92 @@ export class TrackingService {
         cantonNombre: recinto.canton?.nombre ?? null,
         operadorId,
         operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
-        estado: deriveEstado(tiposPorOperador.get(operadorId)),
+        estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
         ubicacion,
         tieneFotoMilitar: operadoresConFoto.has(operadorId),
+      };
+    });
+  }
+
+  private deriveEstadoOperador(tipos: Set<string> | undefined): EstadoOperadorCda {
+    if (!tipos) return 'EN_DPI';
+    if (tipos.has('LLEGADA_DPI')) return 'RETORNADO';
+    if (tipos.has('SALIDA_RECINTO')) return 'EN_RETORNO';
+    if (tipos.has('LLEGADA_RECINTO')) return 'EN_RECINTO';
+    if (tipos.has('SALIDA_DPI')) return 'EN_TRANSITO';
+    return 'EN_DPI';
+  }
+
+  /**
+   * HU13 Parte B: recintos CDA marcados esDificilAcceso del evento activo, con
+   * el estado actual de su operador, para que el supervisor sepa a cuáles les
+   * falta registrar la llegada manualmente. Mismo alcance que estadoCdas:
+   * supervisores ven solo sus operadores asignados, admins ven todos.
+   */
+  async recintosDificilAcceso(viewerId: string, roles: RoleName[]): Promise<RecintoDificilAccesoDto[]> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return [];
+
+    const esAdmin = roles.includes('ADMINISTRADOR');
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
+      select: { recintoId: true, operadorId: true },
+    });
+    const operadorPorRecinto = new Map<string, string>();
+    for (const k of kits) {
+      if (k.recintoId && k.operadorId) operadorPorRecinto.set(k.recintoId, k.operadorId);
+    }
+
+    let recintoIds = Array.from(operadorPorRecinto.keys());
+
+    if (!esAdmin) {
+      const asignados = await this.prisma.asignacionSupervisor.findMany({
+        where: { eventoId: evento.id, supervisorId: viewerId },
+        select: { operadorId: true },
+      });
+      const permitidos = new Set(asignados.map((a) => a.operadorId));
+      recintoIds = recintoIds.filter((rid) => permitidos.has(operadorPorRecinto.get(rid)!));
+    }
+
+    if (recintoIds.length === 0) return [];
+
+    const recintos = await this.prisma.recinto.findMany({
+      where: { id: { in: recintoIds }, tipo: 'CDA', esDificilAcceso: true },
+      orderBy: { codigoRecinto: 'asc' },
+    });
+    if (recintos.length === 0) return [];
+
+    const operadorIds = Array.from(new Set(recintos.map((r) => operadorPorRecinto.get(r.id)!)));
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { id: { in: operadorIds } },
+      select: { id: true, nombres: true, apellidos: true },
+    });
+    const nombrePorId = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+
+    const trackingRows = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id, operadorId: { in: operadorIds } },
+      select: { operadorId: true, tipo: true },
+    });
+    const tiposPorOperador = new Map<string, Set<string>>();
+    for (const t of trackingRows) {
+      const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
+      set.add(t.tipo);
+      tiposPorOperador.set(t.operadorId, set);
+    }
+
+    return recintos.map((recinto) => {
+      const operadorId = operadorPorRecinto.get(recinto.id)!;
+      return {
+        recintoId: recinto.id,
+        codigoRecinto: recinto.codigoRecinto,
+        nombreRecinto: recinto.nombre,
+        operadorId,
+        operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
+        estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
       };
     });
   }

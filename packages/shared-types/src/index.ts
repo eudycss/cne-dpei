@@ -128,6 +128,7 @@ export interface Recinto {
   numeroElectores: number | null;
   juntasFemeninas: number | null;
   juntasMasculinas: number | null;
+  esDificilAcceso: boolean;
   noCdasCount?: number;
 }
 
@@ -146,6 +147,7 @@ export interface CreateRecintoRequest {
   numeroElectores?: number | null;
   juntasFemeninas?: number | null;
   juntasMasculinas?: number | null;
+  esDificilAcceso?: boolean;
 }
 
 export interface UpdateRecintoRequest {
@@ -163,6 +165,7 @@ export interface UpdateRecintoRequest {
   numeroElectores?: number | null;
   juntasFemeninas?: number | null;
   juntasMasculinas?: number | null;
+  esDificilAcceso?: boolean;
 }
 
 export interface Militar {
@@ -448,6 +451,15 @@ export interface LlegadaNoCdaResponse {
   ocurridoEn: string;
 }
 
+export interface LlegadaRecintoManualRequest {
+  recintoId: string;
+}
+
+export interface LlegadaRecintoManualResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
 export interface SalidaDpiRequest {
   latitud: number;
   longitud: number;
@@ -522,6 +534,15 @@ export interface CdaEstadoDto {
   estado: EstadoOperadorCda;
   ubicacion: CdaUbicacion | null;
   tieneFotoMilitar: boolean;
+}
+
+export interface RecintoDificilAccesoDto {
+  recintoId: string;
+  codigoRecinto: string;
+  nombreRecinto: string;
+  operadorId: string;
+  operadorNombre: string;
+  estado: EstadoOperadorCda;
 }
 
 // HU5 — Llegada al DPI

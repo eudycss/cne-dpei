@@ -57,6 +57,8 @@ const AUDIT_TABLE: Array<{
   { method: 'POST', pathRegex: /^\/tracking\/foto-militar$/, accion: 'FOTO_MILITAR_UPLOAD', entidad: 'recepciones_kit' },
   { method: 'POST', pathRegex: /^\/tracking\/recepcion-kit$/, accion: 'RECEPCION_KIT', entidad: 'recepciones_kit' },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto$/, accion: 'REGISTRO_LLEGADA_RECINTO', entidad: 'eventos_tracking' },
+  // HU13 Parte B — registro manual de llegada por supervisor (recintos esDificilAcceso)
+  { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto-manual$/, accion: 'REGISTRO_LLEGADA_RECINTO_MANUAL', entidad: 'eventos_tracking' },
 ];
 
 @Injectable()

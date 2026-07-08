@@ -27,6 +27,7 @@ import type {
   IngestaPosicionesRequest,
   LlegadaDpiRequest,
   LlegadaNoCdaRequest,
+  LlegadaRecintoManualRequest,
   LlegadaRecintoRequest,
   RecepcionKitRequest,
   SalidaDpiRequest,
@@ -38,6 +39,7 @@ import {
   ingestaPosicionesSchema,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
+  llegadaRecintoManualSchema,
   llegadaRecintoSchema,
   recepcionKitSchema,
   salidaDpiSchema,
@@ -198,6 +200,28 @@ export class TrackingController {
   })
   estadoCdas(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.estadoCdas(user.sub, user.roles);
+  }
+
+  @Get('recintos-dificil-acceso')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'HU13 Parte B: CDAs esDificilAcceso del evento activo con el estado de su operador',
+  })
+  recintosDificilAcceso(@CurrentUser() user: AuthenticatedUser) {
+    return this.tracking.recintosDificilAcceso(user.sub, user.roles);
+  }
+
+  @Post('llegada-recinto-manual')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'HU13 Parte B: registro manual de llegada al recinto (sin GPS) para CDAs esDificilAcceso',
+  })
+  llegadaRecintoManual(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(llegadaRecintoManualSchema)) body: LlegadaRecintoManualRequest,
+  ) {
+    return this.tracking.registrarLlegadaRecintoManual(user.sub, user.roles, body);
   }
 
   @Get('reporte-no-cda')

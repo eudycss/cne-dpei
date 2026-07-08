@@ -91,13 +91,13 @@ export class RecintosService {
       INSERT INTO recintos (
         id, codigo_recinto, nombre, direccion, canton_id, parroquia, zona, tipo,
         ubicacion, tiene_internet, cobertura_movil, numero_electores,
-        juntas_femeninas, juntas_masculinas
+        juntas_femeninas, juntas_masculinas, es_dificil_acceso
       ) VALUES (
         ${id}::uuid, ${parsed.codigoRecinto}, ${parsed.nombre}, ${parsed.direccion ?? null},
         ${parsed.cantonId}, ${parsed.parroquia ?? null}, ${parsed.zona ?? null}, ${parsed.tipo}::tipo_recinto,
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${parsed.tieneInternet ?? false}, ${parsed.coberturaMovil ?? false}, ${parsed.numeroElectores ?? null},
-        ${parsed.juntasFemeninas ?? null}, ${parsed.juntasMasculinas ?? null}
+        ${parsed.juntasFemeninas ?? null}, ${parsed.juntasMasculinas ?? null}, ${parsed.esDificilAcceso ?? false}
       )
     `;
     return this.getRecinto(id);
@@ -128,6 +128,7 @@ export class RecintosService {
         numeroElectores: parsed.numeroElectores === undefined ? undefined : parsed.numeroElectores,
         juntasFemeninas: parsed.juntasFemeninas === undefined ? undefined : parsed.juntasFemeninas,
         juntasMasculinas: parsed.juntasMasculinas === undefined ? undefined : parsed.juntasMasculinas,
+        esDificilAcceso: parsed.esDificilAcceso ?? undefined,
       },
     });
 
@@ -318,6 +319,7 @@ function toRecintoDto(r: any, coords?: { lat: number; lng: number }): Recinto {
     numeroElectores: r.numeroElectores ?? null,
     juntasFemeninas: r.juntasFemeninas ?? null,
     juntasMasculinas: r.juntasMasculinas ?? null,
+    esDificilAcceso: r.esDificilAcceso ?? false,
     noCdasCount: r._count?.origenes,
   };
 }
