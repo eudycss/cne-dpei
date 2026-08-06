@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
@@ -59,6 +59,9 @@ export function Login() {
         <button className="btn" type="submit" disabled={loading} style={{ width: '100%' }}>
           {loading ? 'Ingresando…' : 'Iniciar sesión'}
         </button>
+        <p className="muted" style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
+        </p>
       </form>
     </div>
   );
