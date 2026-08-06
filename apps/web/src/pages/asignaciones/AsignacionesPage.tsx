@@ -37,6 +37,7 @@ export function AsignacionesPage() {
     queryFn: async () => {
       const params = new URLSearchParams({
         role: 'OPERADOR_CDA',
+        activo: 'true',
         pageSize: '20',
         page: String(page),
       });
@@ -49,7 +50,7 @@ export function AsignacionesPage() {
   const { data: supervisoresData } = useQuery({
     queryKey: ['users-supervisores'],
     queryFn: async () =>
-      (await api.get<Paginated<User>>('/users?role=TECNICO_SUPERVISOR&pageSize=500')).data,
+      (await api.get<Paginated<User>>('/users?role=TECNICO_SUPERVISOR&activo=true&pageSize=500')).data,
     staleTime: 60_000,
   });
 

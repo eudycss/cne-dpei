@@ -75,9 +75,9 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
             </div>
             <div
               className="row"
-              style={{ justifyContent: 'space-between', background: '#f3f4f6', padding: '0.6rem 0.8rem', borderRadius: 6 }}
+              style={{ justifyContent: 'space-between', background: 'var(--border-subtle)', padding: '0.6rem 0.8rem', borderRadius: 6 }}
             >
-              <code style={{ fontSize: '1rem' }}>{tempPassword}</code>
+              <code style={{ fontSize: '1rem', color: 'var(--text)' }}>{tempPassword}</code>
               <button className="btn secondary" style={{ padding: '0.3rem 0.6rem' }} onClick={copy}>
                 {copied ? '¡Copiado!' : 'Copiar'}
               </button>

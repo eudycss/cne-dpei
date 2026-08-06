@@ -39,12 +39,14 @@ export class UsersController {
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
     @Query('role') role?: string,
+    @Query('activo') activo?: string,
   ) {
     return this.users.list({
       page: page ? Number(page) : 1,
       pageSize: pageSize ? Number(pageSize) : 20,
       search,
       role,
+      activo: activo === undefined ? undefined : activo === 'true',
     });
   }
 

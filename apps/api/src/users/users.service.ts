@@ -41,6 +41,7 @@ export class UsersService {
     pageSize?: number;
     search?: string;
     role?: string;
+    activo?: boolean;
   }): Promise<Paginated<User>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
@@ -56,6 +57,9 @@ export class UsersService {
       : {};
     if (opts.role) {
       where.roles = { some: { rol: { nombre: opts.role } } };
+    }
+    if (opts.activo !== undefined) {
+      where.activo = opts.activo;
     }
     const [total, items] = await this.prisma.$transaction([
       this.prisma.usuario.count({ where }),
