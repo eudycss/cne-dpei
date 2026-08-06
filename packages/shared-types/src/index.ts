@@ -285,6 +285,7 @@ export interface Kit {
   recintoId: string | null;
   operadorId: string | null;
   estado: EstadoKit;
+  esPrueba: boolean;
   creadoEn: string;
 }
 
@@ -292,6 +293,7 @@ export interface CreateKitRequest {
   eventoId: string;
   nombre: string;
   contenidos?: string | null;
+  esPrueba?: boolean;
 }
 
 export interface PdfQrRequest {

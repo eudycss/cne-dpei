@@ -307,6 +307,7 @@ model KitElectoral {
   recintoId    String?   @map("recinto_id") @db.Uuid
   operadorId   String?   @map("operador_id") @db.Uuid
   estado       EstadoKit @default(EN_BODEGA)
+  esPrueba     Boolean   @default(false) @map("es_prueba")
   creadoEn     DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
 
   @@unique([eventoId, codigoUnico])

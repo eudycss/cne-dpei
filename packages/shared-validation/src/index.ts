@@ -219,6 +219,7 @@ export const createKitSchema = z.object({
   eventoId: z.string().uuid('Evento inválido'),
   nombre: z.string().min(1, 'Requerido').max(160),
   contenidos: z.string().max(1000).nullable().optional(),
+  esPrueba: z.boolean().optional(),
 });
 
 export const pdfQrSchema = z.object({

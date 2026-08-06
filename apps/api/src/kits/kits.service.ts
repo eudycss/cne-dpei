@@ -40,10 +40,12 @@ export class KitsService {
     page?: number;
     pageSize?: number;
     search?: string;
+    incluirPrueba?: boolean;
   }): Promise<Paginated<Kit>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
     const where: any = { eventoId: opts.eventoId };
+    if (!opts.incluirPrueba) where.esPrueba = false;
     if (opts.search) {
       where.OR = [
         { nombre: { contains: opts.search, mode: 'insensitive' } },
@@ -82,6 +84,7 @@ export class KitsService {
         nombre: parsed.nombre,
         contenidos: parsed.contenidos ?? null,
         estado: 'EN_BODEGA',
+        esPrueba: parsed.esPrueba ?? false,
       },
     });
     return toKitDto(kit);
@@ -403,6 +406,7 @@ function toKitDto(k: any): Kit {
     recintoId: k.recintoId ?? null,
     operadorId: k.operadorId ?? null,
     estado: k.estado,
+    esPrueba: k.esPrueba ?? false,
     creadoEn: k.creadoEn?.toISOString?.() ?? String(k.creadoEn),
   };
 }

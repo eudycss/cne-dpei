@@ -51,6 +51,7 @@ export class KitsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('incluirPrueba') incluirPrueba?: string,
   ) {
     if (!eventoId) return { items: [], total: 0, page: 1, pageSize: 20 };
     return this.kits.list({
@@ -58,6 +59,7 @@ export class KitsController {
       page: page ? Number(page) : 1,
       pageSize: pageSize ? Number(pageSize) : 20,
       search,
+      incluirPrueba: incluirPrueba === 'true',
     });
   }
 

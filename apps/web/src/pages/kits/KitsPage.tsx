@@ -55,6 +55,7 @@ export function KitsPage() {
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [assigning, setAssigning] = useState<Kit | null>(null);
+  const [incluirPrueba, setIncluirPrueba] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
@@ -63,7 +64,7 @@ export function KitsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [debounced, eventoId]);
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [debounced, eventoId, incluirPrueba]);
 
   // Eventos
   const { data: eventos } = useQuery({
@@ -80,10 +81,11 @@ export function KitsPage() {
 
   // Kits paginados
   const { data: kitsData, isLoading } = useQuery({
-    queryKey: ['kits', { eventoId, page, search: debounced }],
+    queryKey: ['kits', { eventoId, page, search: debounced, incluirPrueba }],
     queryFn: async () => {
       const params = new URLSearchParams({ eventoId, page: String(page), pageSize: '20' });
       if (debounced) params.set('search', debounced);
+      if (incluirPrueba) params.set('incluirPrueba', 'true');
       return (await api.get<Paginated<Kit>>(`/kits?${params}`)).data;
     },
     enabled: !!eventoId,
@@ -244,6 +246,14 @@ export function KitsPage() {
               onChange={(v) => setSearch(v)}
               style={{ flex: 1 }}
             />
+            <label className="row" style={{ margin: 0, gap: '0.35rem', fontSize: '0.85rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={incluirPrueba}
+                onChange={(e) => setIncluirPrueba(e.target.checked)}
+              />
+              Mostrar kits de prueba
+            </label>
             <button className="btn" onClick={() => setShowCreate(true)}>
               + Nuevo kit
             </button>
@@ -319,7 +329,25 @@ export function KitsPage() {
                           {kit.codigoUnico}
                         </code>
                       </td>
-                      <td>{kit.nombre}</td>
+                      <td>
+                        {kit.nombre}
+                        {kit.esPrueba && (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              display: 'inline-block',
+                              padding: '0.1rem 0.4rem',
+                              borderRadius: 999,
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: '#fee2e2',
+                              color: '#991b1b',
+                            }}
+                          >
+                            Prueba
+                          </span>
+                        )}
+                      </td>
                       <td className="muted" style={{ fontSize: '0.82rem' }}>
                         {kit.contenidos ?? '—'}
                       </td>
@@ -447,6 +475,7 @@ function CreateKitModal({
   onDone: () => void;
 }) {
   const [form, setForm] = useState({ nombre: '', contenidos: '' });
+  const [esPrueba, setEsPrueba] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -462,6 +491,7 @@ function CreateKitModal({
       eventoId,
       nombre: form.nombre,
       contenidos: form.contenidos || null,
+      esPrueba,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
@@ -515,6 +545,11 @@ function CreateKitModal({
             }}
           />
         </div>
+
+        <label className="row" style={{ margin: '0.5rem 0 0', gap: '0.35rem', alignItems: 'center' }}>
+          <input type="checkbox" checked={esPrueba} onChange={(e) => setEsPrueba(e.target.checked)} />
+          Es un kit de prueba (no aparecerá en el listado por defecto)
+        </label>
 
         {error && <div className="banner error">{error}</div>}
 

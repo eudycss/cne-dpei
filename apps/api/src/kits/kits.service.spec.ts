@@ -45,6 +45,7 @@ describe('KitsService', () => {
       recintoId: null,
       operadorId: null,
       estado: 'EN_BODEGA',
+      esPrueba: false,
       creadoEn: new Date('2026-06-19T10:00:00Z'),
       ...overrides,
     };
@@ -69,6 +70,22 @@ describe('KitsService', () => {
     }).compile();
 
     service = moduleRef.get(KitsService);
+  });
+
+  describe('list', () => {
+    it('excluye kits de prueba salvo que incluirPrueba=true', async () => {
+      prisma.kitElectoral.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow()]);
+      await service.list({ eventoId });
+      expect(prisma.kitElectoral.count).toHaveBeenCalledWith({
+        where: { eventoId, esPrueba: false },
+      });
+
+      prisma.kitElectoral.count.mockResolvedValueOnce(2);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow(), kitRow({ esPrueba: true })]);
+      await service.list({ eventoId, incluirPrueba: true });
+      expect(prisma.kitElectoral.count).toHaveBeenCalledWith({ where: { eventoId } });
+    });
   });
 
   describe('create', () => {
