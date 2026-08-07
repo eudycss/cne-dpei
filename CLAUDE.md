@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Electoral logistics traceability system for CNE Imbabura (Ecuador). Phase 1 monorepo with three clients and two shared packages.
+Electoral logistics traceability system for CNE Imbabura (Ecuador). pnpm monorepo with three clients (API, web, mobile) and two shared packages. The README describes a "Fase 1" (auth/users/roles) scope, but the codebase has since grown well past that — domains for catalog, eventos, kits, asignaciones, militares, tracking, incidencias, alertas, and notifications are all implemented (see API domains below). Treat the README's phase/roadmap claims as historical, not current.
 
 ## Commands
 
@@ -30,11 +30,20 @@ pnpm dev:mobile     # Expo mobile app
 
 # Testing
 pnpm --filter @cne/api test          # API unit tests (Jest)
-pnpm --filter @cne/api test:e2e      # API end-to-end tests (supertest)
+pnpm --filter @cne/api test:e2e      # API end-to-end tests (supertest, needs Postgres + seed)
+pnpm --filter @cne/web test          # Web unit tests (Vitest, single run)
+pnpm --filter @cne/web test:watch    # Web unit tests (Vitest, watch mode)
+pnpm --filter @cne/mobile test       # Mobile unit tests (Jest via jest-expo)
+pnpm test                            # All packages (pnpm -r test)
+
+# Run a single test file (Jest projects: api, mobile)
+pnpm --filter @cne/api test -- users.service.spec.ts
+pnpm --filter @cne/mobile test -- geo.test.ts
 
 # Production builds
 pnpm --filter @cne/api build
 pnpm --filter @cne/web build
+pnpm --filter @cne/mobile build      # tsc --noEmit (typecheck only, no bundle)
 
 # Prisma utilities (run from apps/api)
 pnpm --filter @cne/api db:studio     # Open Prisma Studio
@@ -67,13 +76,17 @@ All packages live under the `@cne/*` npm namespace. The shared packages must be 
 
 ### API (NestJS)
 
-Domain-driven modular structure. Each domain folder under `apps/api/src/` follows the pattern: `module`, `controller`, `service`, `dto`, `entities`. Current domains: `auth`, `users`, `roles`, `catalog`, `eventos`, `kits`, `asignaciones`, `militares`, `common`.
+Domain-driven modular structure. Each domain folder under `apps/api/src/` follows the pattern: `module`, `controller`, `service`, with `*.service.spec.ts` unit tests colocated. Domains: `auth`, `users`, `roles`, `catalog` (cantones/recintos/tipos de evento), `eventos`, `kits`, `asignaciones`, `militares`, `tracking` (GPS/eventos de trazabilidad electoral), `incidencias`, `alertas`, `notifications`, `storage` (encrypted file storage), `db` (Prisma module/service), `common` (shared guards, decorators, interceptors, pipes).
 
-**Authentication flow:** JWT access tokens (15 min) + refresh tokens (7 days) with rotation. Passwords are hashed with argon2id. First-login forced password change is enforced by the `MustChangePasswordGuard`. RBAC is implemented via `@Roles()` decorator + `RolesGuard`.
+**Authentication flow:** JWT access tokens (15 min) + refresh tokens (7 days) with rotation. Passwords are hashed with argon2id. First-login forced password change is enforced by a guard. RBAC is implemented via `@Roles()` decorator + `RolesGuard` (in `common/`).
 
-**Roles:** `ADMIN`, `SUPERVISOR`, `OPERADOR_CDA`.
+**Roles:** `ADMINISTRADOR`, `TECNICO_SUPERVISOR`, `OPERADOR_CDA` (checked via `@Roles(...)` per endpoint — not `ADMIN`/`SUPERVISOR`, a naming mismatch worth double-checking if you see those shorter forms elsewhere).
 
-**Audit logging:** A global interceptor writes to `bitacora_auditoria`, which has an immutable trigger — rows cannot be updated or deleted.
+**Request validation:** `common/zod-body.pipe.ts` + `common/zod-validation.filter.ts` validate request bodies against the Zod schemas from `@cne/shared-validation`, not `class-validator` DTOs (those packages are present as deps but validation is Zod-driven).
+
+**Audit logging:** A global interceptor (`common/audit.interceptor.ts`) writes to `bitacora_auditoria`, which has an immutable trigger — rows cannot be updated or deleted.
+
+**Notifications:** `auth/notifier.ts` currently uses a console-based notifier (prints reset links to stdout) — no SMTP/FCM wired up yet.
 
 **Swagger:** Auto-generated and available at `http://localhost:3000/api/docs` in development.
 
@@ -83,11 +96,11 @@ PostgreSQL 16 + PostGIS 3.4, managed via Prisma ORM. Schema source of truth is `
 
 ### Web Frontend
 
-React 18 + Vite. Server state managed with **TanStack Query** (not Redux/Zustand). Complex tables use **TanStack Table**. Routing via React Router v6.
+React 18 + Vite. Server state managed with **TanStack Query** (not Redux/Zustand). Complex tables use **TanStack Table**. Routing via React Router v6. `apps/web/src/pages/` is organized by domain (one folder per API domain: `eventos`, `kits`, `asignaciones`, `militares`, `recintos`, `alertas`, `incidencias`, etc.), each with its own `*.test.tsx` files colocated (Vitest + Testing Library). `apps/web/src/lib/queries/` holds TanStack Query hooks per domain.
 
 ### Mobile
 
-Expo SDK 51 (React Native 0.74). Tokens stored in `expo-secure-store` (never `AsyncStorage`). Currently skeleton — login is functional; other screens are in progress.
+Expo SDK 51 (React Native 0.74). Tokens stored in `expo-secure-store` (**never** `AsyncStorage`). `apps/mobile/src/lib/` has the API client, geolocation, push notifications, and an offline request queue (`offline-queue.ts`) with colocated `*.test.ts` Jest specs. `apps/mobile/src/screens/` holds one screen per field-operator flow (llegada/salida de DPI y recinto, tránsito, retorno, kits verificados, incidencias, alertas, monitoreo for supervisors). Login and the core field-operator flows are functional; treat screens not listed here as in progress.
 
 ### Shared Packages
 

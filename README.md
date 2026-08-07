@@ -2,26 +2,30 @@
 
 **CNE — Delegación Provincial de Imbabura**
 
-Monorepo del sistema descrito en los documentos de requisitos y arquitectura. Esta
-es la **Fase 1: Scaffold + base de identidad** (HU1 inicio de sesión, HU7 carga de
-usuarios, HU9 asignación de roles), construida por capas y verificada end-to-end.
+Monorepo del sistema descrito en los documentos de requisitos y arquitectura.
+Cubre identidad y RBAC (HU1, HU7, HU9, HU16), catálogos (recintos, cantones,
+tipos de evento), gestión de eventos electorales, kits (HU11, HU12), asignaciones
+operador↔supervisor (HU10), militares, trazabilidad del día electoral con cola
+offline (HU2–HU6, HU13), incidencias (HU14), alertas de anomalías (HU18) y
+notificaciones in-app (HU19 parcial — sin SMTP/FCM todavía).
 
 ---
 
-## Stack (Fase 1)
+## Stack
 
 | Capa | Tecnología |
 |---|---|
-| Backend | NestJS 10 + TypeScript 5, Prisma 5 |
+| Backend | NestJS 10 + TypeScript 5, Prisma 5, validación con Zod (`@cne/shared-validation`) |
 | Base de datos | PostgreSQL 16 + PostGIS 3.4 (Docker) |
-| Auth | JWT (access 15m / refresh 7d) + argon2, RBAC con Guards |
-| Web | React 18 + Vite + TanStack Query/Table |
-| Móvil | React Native 0.74 (Expo SDK 51) — skeleton |
+| Auth | JWT (access 15m / refresh 7d) + argon2, RBAC con Guards (roles `ADMINISTRADOR`, `TECNICO_SUPERVISOR`, `OPERADOR_CDA`) |
+| Web | React 18 + Vite + TanStack Query/Table, tests con Vitest + Testing Library |
+| Móvil | React Native 0.74 (Expo SDK 51), cola offline, tests con Jest (`jest-expo`) |
 | Compartido | `@cne/shared-types`, `@cne/shared-validation` (Zod) |
 | Monorepo | pnpm workspaces |
 
-> Diferidos a fases posteriores (con abstracciones ya preparadas): Redis/BullMQ,
-> MinIO, Socket.IO, Nginx, PgBouncer, FCM/SMTP. Ver la sección _Roadmap_.
+> Aún no implementado (ver _Roadmap_): Redis/BullMQ, MinIO, Socket.IO, Nginx,
+> PgBouncer, envío real de correo/push (SMTP/FCM) — las notificaciones hoy son
+> in-app o se imprimen en consola.
 
 ---
 
@@ -82,9 +86,12 @@ Al primer login el sistema obliga a cambiarla (HU1-CA3).
 ```
 cne-imbabura/
 ├── apps/
-│   ├── api/         Backend NestJS (auth, users, roles, audit) + Prisma
-│   ├── web/         App web admin/supervisor (React + Vite)
-│   └── mobile/      App móvil de campo (Expo) — login skeleton
+│   ├── api/         Backend NestJS: auth, users, roles, catalog, eventos, kits,
+│   │                asignaciones, militares, tracking, incidencias, alertas,
+│   │                notifications, storage, db (Prisma), common (RBAC/audit)
+│   ├── web/         App web admin/supervisor (React + Vite), páginas por dominio
+│   └── mobile/      App móvil de campo (Expo) — flujos completos de operador
+│                    y supervisor, cola offline
 ├── packages/
 │   ├── shared-types/        Interfaces TS compartidas
 │   └── shared-validation/   Esquemas Zod compartidos
@@ -95,48 +102,79 @@ cne-imbabura/
 
 ---
 
-## Funcionalidades de la Fase 1
+## Funcionalidades
 
-- **HU1** — Login con JWT, cambio obligatorio de contraseña inicial, política de
-  contraseña fuerte, refresh tokens con rotación, logout.
-- **HU7** — Alta manual de usuarios y **carga masiva** desde Excel (`.xlsx`) o
-  CSV, con validación fila por fila y reporte de errores. Plantilla descargable.
-- **HU9** — Asignación de roles a uno o varios usuarios.
-- **HU16 (parcial)** — Endpoints de recuperación de contraseña (el enlace se
-  imprime en consola vía `ConsoleNotifier`; se conectará SMTP en fase posterior).
-- **HU17 (base)** — Interceptor global que registra acciones críticas
-  (login, logout, cambios de contraseña, alta/edición de usuarios, carga masiva,
-  asignación de roles) en `bitacora_auditoria` (tabla append-only e inmutable por trigger).
+- **Identidad (HU1, HU7, HU9, HU16)** — Login con JWT, cambio obligatorio de
+  contraseña inicial, política de contraseña fuerte, refresh tokens con
+  rotación, logout. Alta manual y **carga masiva** de usuarios (Excel/CSV) con
+  validación fila por fila y plantilla descargable. Asignación de roles.
+  Recuperación de contraseña con páginas web dedicadas (el enlace se imprime en
+  consola vía `ConsoleNotifier`; SMTP real pendiente).
+- **Auditoría (HU17)** — Interceptor global que registra acciones críticas en
+  `bitacora_auditoria` (tabla append-only e inmutable por trigger).
+- **Catálogos** — Cantones, 137 recintos, y tipos de evento editables desde el
+  panel de administración.
+- **Eventos electorales** — Alta/edición, activación/cierre, configuración de
+  márgenes de alerta por evento.
+- **Kits electorales (HU11, HU12)** — Alta y carga masiva de kits, asignación
+  a recintos, generación de PDF con QR, congelamiento de asignaciones una vez
+  iniciada la jornada electoral.
+- **Asignaciones (HU10)** — Vínculo operador↔supervisor, carga masiva
+  Excel/CSV, plantilla descargable.
+- **Militares** — Alta, edición, baja y carga masiva del personal militar
+  asociado a cada recinto.
+- **Trazabilidad del día electoral (HU2–HU6, HU13)** — Flujo completo del
+  operador de CDA (salida DPI, foto militar, validación y recepción de kit,
+  llegada/salida de recinto, posiciones GPS, retorno) con cola offline en la
+  app móvil; vistas de supervisor (estado de CDAs, operadores en retorno,
+  llegada manual a recintos de difícil acceso, reportes de flujo).
+- **Incidencias (HU14)** — Reporte con foto desde el operador, seguimiento y
+  cambio de estado, comentarios, desde el panel de supervisor/admin.
+- **Alertas (HU18)** — Evaluación automática de anomalías (retrasos, etc.) y
+  listado para supervisores.
+- **Notificaciones (HU19, parcial)** — Notificaciones in-app (web y móvil);
+  sin integración SMTP/FCM todavía.
 
 ### Endpoints principales
 
-| Método | Ruta | Rol | HU |
+| Método | Ruta | Rol | Dominio |
 |---|---|---|---|
-| POST | `/auth/login` | público | HU1 |
-| POST | `/auth/refresh` | público | HU1 |
-| POST | `/auth/change-password` | autenticado | HU1-CA3 |
-| POST | `/auth/forgot-password` `/auth/reset-password` | público | HU16 |
-| GET | `/users` | admin/supervisor | HU7 |
-| POST | `/users` | admin | HU7-CA2 |
-| POST | `/users/bulk` | admin | HU7-CA1 |
-| GET | `/users/template.xlsx` | admin | HU7 |
-| POST | `/users/assign-roles` | admin | HU9 |
-| GET | `/roles` | admin/supervisor | HU9 |
+| POST | `/auth/login`, `/auth/refresh`, `/auth/logout` | público / autenticado | Auth |
+| POST | `/auth/change-password` | autenticado | Auth (HU1-CA3) |
+| POST | `/auth/forgot-password`, `/auth/reset-password` | público | Auth (HU16) |
+| GET/POST/PATCH | `/users`, `/users/bulk`, `/users/:id/reset-password`, `/users/assign-roles` | admin | Users (HU7, HU9) |
+| GET | `/roles` | admin/supervisor | Roles |
+| GET/POST/PATCH/DELETE | `/recintos`, `/recintos/bulk`, `/cantones`, `/tipos-evento` | admin/supervisor | Catalog |
+| GET/POST/PATCH | `/eventos`, `/eventos/:id/activate`, `/eventos/:id/close`, `/eventos/:id/config-alertas` | admin/supervisor | Eventos |
+| GET/POST/PATCH | `/kits`, `/kits/bulk`, `/kits/:id/asignar`, `/kits/pdf-qr` | admin/supervisor | Kits (HU11, HU12) |
+| GET/POST/PUT/DELETE | `/asignaciones`, `/asignaciones/bulk` | admin/supervisor | Asignaciones (HU10) |
+| GET/POST/PATCH/DELETE | `/militares`, `/militares/bulk` | admin/supervisor | Militares |
+| POST | `/tracking/salida-dpi`, `/tracking/recepcion-kit`, `/tracking/llegada-recinto`, `/tracking/posiciones`, `/tracking/llegada-dpi`, … | operador | Tracking (HU2–HU6) |
+| GET | `/tracking/estado-cdas`, `/tracking/operadores-en-retorno`, `/tracking/reporte-flujo` | supervisor/admin | Tracking |
+| POST | `/tracking/llegada-recinto-manual` | supervisor/admin | Tracking (HU13-B) |
+| POST/GET | `/incidencias`, `/incidencias/mias`, `/incidencias/:id/estado` | operador / supervisor | Incidencias (HU14) |
+| GET/PATCH | `/alertas`, `/alertas/:id` | supervisor/admin | Alertas (HU18) |
+| GET/PATCH | `/notificaciones/mias`, `/notificaciones/:id/leida` | autenticado | Notifications |
 
-Documentación interactiva: **http://localhost:3000/api/docs**
+Documentación interactiva y lista completa de endpoints: **http://localhost:3000/api/docs**
 
 ---
 
 ## Verificación
 
 ```bash
+# Tests unitarios por app
+pnpm --filter @cne/api test           # Jest (specs colocados por servicio)
+pnpm --filter @cne/web test           # Vitest + Testing Library
+pnpm --filter @cne/mobile test        # Jest (jest-expo)
+
 # Pruebas e2e del flujo completo de identidad (requiere postgres + seed)
 pnpm --filter @cne/api test:e2e
 
 # Typecheck/builds
 pnpm --filter @cne/api build
 pnpm --filter @cne/web build
-pnpm --filter @cne/mobile build
+pnpm --filter @cne/mobile build       # tsc --noEmit
 ```
 
 Flujo manual sugerido: login web con el admin → cambio de contraseña forzado →
@@ -193,24 +231,34 @@ WHERE email = 'admin@cne-imbabura.gob.ec';
 
 ---
 
-## Roadmap (fases siguientes)
+## Roadmap (pendiente)
 
-- **F2** Catálogos y eventos: militares (HU8), eventos electorales (HU20).
-- **F3** Kits y asignaciones: QR + PDF (HU11), asignaciones (HU10, HU12).
-- **F4** Día electoral: tracking (HU2–HU6), WebSocket en tiempo real, MinIO, GPS y
-  cámara en móvil, Redis.
-- **F5** Offline + incidencias: sincronización (HU13), incidencias (HU14).
-- **F6** Notificaciones y alertas: BullMQ + FCM + SMTP (HU19), alertas (HU18).
-- **F7** Dashboard y reportes: KPIs en tiempo real (HU15), exportes, bitácora (HU17).
-- **F8** Producción: Nginx + TLS, PgBouncer, worker separado, hardening, pruebas de carga.
+La mayoría de los dominios funcionales (catálogos, eventos, kits, asignaciones,
+militares, tracking del día electoral con GPS/cámara, incidencias, alertas,
+notificaciones in-app) ya están implementados — ver _Funcionalidades_ arriba.
+Lo que sigue pendiente es principalmente infraestructura y canales de entrega:
+
+- **Notificaciones reales** — conectar SMTP y FCM (hoy: in-app + `ConsoleNotifier`
+  para reset de contraseña) (HU19).
+- **Tiempo real** — WebSocket/Socket.IO para tracking en vivo en el panel web
+  (hoy: polling vía TanStack Query).
+- **Cola de trabajos** — Redis + BullMQ para notificaciones/alertas asíncronas.
+- **Almacenamiento de archivos** — MinIO u otro object storage (hoy: `storage`
+  guarda archivos cifrados localmente con AES-256-GCM).
+- **Dashboard y reportes (HU15)** — KPIs en tiempo real y exportes más allá de
+  los reportes de `tracking` ya existentes.
+- **Producción** — Nginx + TLS, PgBouncer, worker separado para jobs, hardening
+  y pruebas de carga.
 
 ---
 
-## Notas de seguridad (Fase 1)
+## Notas de seguridad
 
 - Contraseñas con **argon2id**. Tokens JWT firmados; refresh persistido y revocable.
-- En Fase 1 los tokens se guardan en `localStorage` (web) y `expo-secure-store`
+- Hoy los tokens se guardan en `localStorage` (web) y `expo-secure-store`
   (móvil). En el endurecimiento de producción el refresh token migrará a cookie
   `httpOnly` (ver `apps/web/src/lib/api.ts`).
+- Archivos (fotos de incidencias/militares) cifrados en reposo con AES-256-GCM
+  (`apps/api/src/storage`).
 - Secretos vía variables de entorno (`.env`), nunca hardcodeados.
 - Helmet, CORS restringido al origen de la web, validación estricta con Zod.
