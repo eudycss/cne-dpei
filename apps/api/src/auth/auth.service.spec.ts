@@ -236,6 +236,21 @@ describe('AuthService', () => {
       const [, link] = notifier.sendPasswordResetLink.mock.calls[0];
       expect(link).toContain('/reset-password?token=');
     });
+
+    it('usa solo el primer origen cuando WEB_ORIGIN trae varios separados por coma (CORS)', async () => {
+      config.get.mockReturnValueOnce(
+        'https://cne-dpei-web.vercel.app,http://localhost:5173',
+      );
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
+      await service.forgotPassword('op@cne-imbabura.gob.ec');
+      const [, link] = notifier.sendPasswordResetLink.mock.calls[0];
+      expect(link).toBe(
+        `https://cne-dpei-web.vercel.app/reset-password?token=${
+          (link as string).split('token=')[1]
+        }`,
+      );
+      expect(link).not.toContain(',');
+    });
   });
 
   describe('resetPassword', () => {

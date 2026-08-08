@@ -139,7 +139,8 @@ export class AuthService {
         expiraEn: new Date(Date.now() + RESET_TOKEN_TTL_MS),
       },
     });
-    const baseUrl = this.config.get<string>('WEB_ORIGIN') ?? 'http://localhost:5173';
+    const webOrigin = this.config.get<string>('WEB_ORIGIN') ?? 'http://localhost:5173';
+    const baseUrl = webOrigin.split(',')[0].trim();
     const link = `${baseUrl}/reset-password?token=${raw}`;
     await this.notifier.sendPasswordResetLink(user.email, link);
   }
