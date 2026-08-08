@@ -7,6 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   loginSchema,
   changePasswordSchema,
@@ -26,6 +27,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'HU1: Inicio de sesión' })
@@ -61,6 +63,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'HU16: Solicitar enlace de recuperación' })
@@ -69,6 +72,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'HU16: Establecer nueva contraseña con token' })

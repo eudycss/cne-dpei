@@ -38,16 +38,18 @@ export async function flushQueue(): Promise<void> {
     const queue = await getQueue();
     if (queue.length === 0) return;
     const remaining: QueuedAction[] = [];
-    for (const action of queue) {
+    for (let i = 0; i < queue.length; i++) {
+      const action = queue[i];
       try {
         await api[action.method](action.endpoint, action.payload);
       } catch (e) {
-        if (axios.isAxiosError(e) && !e.response) {
-          // Aún sin red: mantener en cola.
-          remaining.push(action);
-          break; // no seguir procesando si no hay red
+        if (isTransientError(e)) {
+          // Sin red o error del servidor (5xx, ej. Render despertando): mantener en cola
+          // esta acción y todas las que quedan por procesar, no solo la que falló.
+          remaining.push(...queue.slice(i));
+          break; // no seguir procesando si el backend no está respondiendo bien
         }
-        // Error 4xx/5xx: descartar (no reintentable).
+        // Error 4xx: descartar (error de validación, no reintentable).
       }
     }
     await saveQueue(remaining);
@@ -58,6 +60,11 @@ export async function flushQueue(): Promise<void> {
 
 export function isNetworkError(e: unknown): boolean {
   return axios.isAxiosError(e) && !e.response;
+}
+
+function isTransientError(e: unknown): boolean {
+  if (!axios.isAxiosError(e)) return false;
+  return isNetworkError(e) || (e.response?.status ?? 0) >= 500;
 }
 
 export async function withOffline<T>(
@@ -71,7 +78,7 @@ export async function withOffline<T>(
     flushQueue(); // best-effort, sin await
     return result;
   } catch (e) {
-    if (isNetworkError(e)) {
+    if (isTransientError(e)) {
       await enqueue({ endpoint, method, payload: { ...payload, desdeOffline: true } });
       return null;
     }

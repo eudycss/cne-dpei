@@ -7,6 +7,7 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { ZodValidationExceptionFilter } from './common/zod-validation.filter';
+import { parseWebOrigins } from './common/web-origin.util';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -16,7 +17,7 @@ async function bootstrap() {
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   app.enableCors({
-    origin: webOrigin.split(',').map((s) => s.trim()),
+    origin: parseWebOrigins(webOrigin),
     credentials: true,
   });
 

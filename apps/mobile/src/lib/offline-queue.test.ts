@@ -8,6 +8,7 @@ jest.mock('./api', () => ({
 
 const networkError = { isAxiosError: true, response: undefined };
 const badRequestError = { isAxiosError: true, response: { status: 400 } };
+const serverError = { isAxiosError: true, response: { status: 502 } };
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -53,7 +54,7 @@ describe('enqueue + flushQueue', () => {
     expect(api.post).toHaveBeenCalledTimes(1); // seguía en cola, se reintentó
   });
 
-  it('descarta la acción si el servidor responde 4xx/5xx (no reintentable)', async () => {
+  it('descarta la acción si el servidor responde 4xx (error de validación, no reintentable)', async () => {
     (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
 
     await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
@@ -64,10 +65,19 @@ describe('enqueue + flushQueue', () => {
     expect(api.post).not.toHaveBeenCalled(); // se descartó, no quedó en cola
   });
 
-  it('detiene el flush en la primera acción sin red, sin intentar las siguientes', async () => {
-    (api.post as jest.Mock)
-      .mockRejectedValueOnce(networkError)
-      .mockResolvedValueOnce({ data: {} });
+  it('mantiene la acción en cola si el servidor responde 5xx (falla transitoria, ej. cold start)', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(serverError);
+
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await flushQueue();
+
+    (api.post as jest.Mock).mockClear().mockResolvedValueOnce({ data: {} });
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledTimes(1); // seguía en cola, se reintentó
+  });
+
+  it('detiene el flush en la primera acción con 5xx, sin intentar las siguientes, pero sin perderlas', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(serverError);
 
     await enqueue({ endpoint: '/tracking/a', method: 'post', payload: {} });
     await enqueue({ endpoint: '/tracking/b', method: 'post', payload: {} });
@@ -75,6 +85,29 @@ describe('enqueue + flushQueue', () => {
 
     expect(api.post).toHaveBeenCalledTimes(1);
     expect(api.post).toHaveBeenCalledWith('/tracking/a', {});
+
+    (api.post as jest.Mock).mockClear().mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledTimes(2); // ninguna de las dos se perdió
+    expect(api.post).toHaveBeenNthCalledWith(1, '/tracking/a', {});
+    expect(api.post).toHaveBeenNthCalledWith(2, '/tracking/b', {});
+  });
+
+  it('detiene el flush en la primera acción sin red, sin intentar las siguientes, pero sin perderlas', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(networkError);
+
+    await enqueue({ endpoint: '/tracking/a', method: 'post', payload: {} });
+    await enqueue({ endpoint: '/tracking/b', method: 'post', payload: {} });
+    await flushQueue();
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/tracking/a', {});
+
+    (api.post as jest.Mock).mockClear().mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledTimes(2); // ninguna de las dos se perdió
+    expect(api.post).toHaveBeenNthCalledWith(1, '/tracking/a', {});
+    expect(api.post).toHaveBeenNthCalledWith(2, '/tracking/b', {});
   });
 });
 
@@ -104,5 +137,16 @@ describe('withOffline', () => {
 
     await expect(withOffline('/tracking/salida-dpi', 'post', {}, fn)).rejects.toBe(badRequestError);
     expect(api.post).not.toHaveBeenCalled(); // no se encoló
+  });
+
+  it('encola con desdeOffline:true y devuelve null cuando el servidor responde 5xx (falla transitoria)', async () => {
+    const fn = jest.fn().mockRejectedValue(serverError);
+    (api.post as jest.Mock).mockResolvedValueOnce({ data: {} });
+
+    const result = await withOffline('/tracking/salida-dpi', 'post', { foo: 'bar' }, fn);
+    expect(result).toBeNull();
+
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledWith('/tracking/salida-dpi', { foo: 'bar', desdeOffline: true });
   });
 });

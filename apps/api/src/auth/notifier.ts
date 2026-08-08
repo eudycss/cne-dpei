@@ -83,6 +83,14 @@ export function resolveNotifier(): INotifier {
   if (process.env.BREVO_API_KEY) {
     return new BrevoNotifier();
   }
-  new Logger('Notifier').warn('BREVO_API_KEY no configurada — usando ConsoleNotifier');
+  const log = new Logger('Notifier');
+  const msg = 'BREVO_API_KEY no configurada — usando ConsoleNotifier (los correos de recuperación NO llegan a los usuarios, solo quedan en los logs)';
+  // En producción esto es un error operativo, no una advertencia de desarrollo:
+  // un usuario bloqueado que pide recuperar su contraseña no recibirá nada.
+  if (process.env.NODE_ENV === 'production') {
+    log.error(msg);
+  } else {
+    log.warn(msg);
+  }
   return new ConsoleNotifier();
 }
