@@ -25,5 +25,10 @@
   },
   "dependencies": {
     "@react-native/assets-registry": "0.74.87"
+  },
+  "pnpm": {
+    "overrides": {
+      "yargs": "^17.6.2"
+    }
   }
 }
