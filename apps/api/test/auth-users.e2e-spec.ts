@@ -110,14 +110,14 @@ describe('Auth + Users (e2e)', () => {
     await request(app.getHttpServer())
       .post('/auth/change-password')
       .set('Authorization', `Bearer ${login.body.accessToken}`)
-      .send({ currentPassword: initialPassword, newPassword: 'NuevaClave*2026X' })
+      .send({ currentPassword: initialPassword, newPassword: 'Nueva*26' })
       .expect(204);
   });
 
   it('6. login con nueva contraseña → debeCambiarPwd false', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: newUserEmail, password: 'NuevaClave*2026X' })
+      .send({ email: newUserEmail, password: 'Nueva*26' })
       .expect(200);
     expect(res.body.user.debeCambiarPwd).toBe(false);
   });
@@ -125,12 +125,12 @@ describe('Auth + Users (e2e)', () => {
   it('rechaza contraseña débil en cambio', async () => {
     const login = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: newUserEmail, password: 'NuevaClave*2026X' })
+      .send({ email: newUserEmail, password: 'Nueva*26' })
       .expect(200);
     await request(app.getHttpServer())
       .post('/auth/change-password')
       .set('Authorization', `Bearer ${login.body.accessToken}`)
-      .send({ currentPassword: 'NuevaClave*2026X', newPassword: 'corta' })
+      .send({ currentPassword: 'Nueva*26', newPassword: 'corta' })
       .expect(400);
   });
 });
