@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import * as path from 'node:path';
 
@@ -40,6 +41,18 @@ import { AlertasModule } from './alertas/alertas.module';
       },
     }),
     ScheduleModule.forRoot(),
+    // Límite global por IP; solo para frenar abuso/DoS, no tráfico normal.
+    // Varios operadores pueden compartir una misma IP (red de un CDA, NAT de
+    // datos móviles) haciendo tracking/polling simultáneo, así que se deja
+    // holgado — los endpoints públicos sensibles (login, forgot-password)
+    // usan @Throttle con límites mucho más estrictos en su propio controller.
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 1000,
+      },
+    ]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -56,6 +69,10 @@ import { AlertasModule } from './alertas/alertas.module';
     AlertasModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,

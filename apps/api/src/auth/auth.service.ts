@@ -14,6 +14,7 @@ import type { LoginResponse, RoleName } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import type { JwtPayload } from './jwt.strategy';
 import { INotifier, NOTIFIER } from './notifier';
+import { parseWebOrigins } from '../common/web-origin.util';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora (HU16-CA3)
 
@@ -78,11 +79,18 @@ export class AuthService {
     if (!matches) {
       throw new UnauthorizedException('Refresh inválido');
     }
-    // Rotación: invalidamos el anterior y emitimos uno nuevo
-    await this.prisma.refreshToken.update({
-      where: { jti: payload.jti },
+    // Rotación: invalidamos el anterior y emitimos uno nuevo. El where con
+    // revocadoEn: null hace que la revocación sea atómica a nivel de fila: si
+    // dos requests llegan en paralelo con el mismo refresh token, solo una
+    // actualiza 0 filas (perdedora) y la otra 1 (ganadora). Un update sin esa
+    // condición deja que ambas "ganen" y emitan tokens nuevos.
+    const revocado = await this.prisma.refreshToken.updateMany({
+      where: { jti: payload.jti, revocadoEn: null },
       data: { revocadoEn: new Date() },
     });
+    if (revocado.count === 0) {
+      throw new UnauthorizedException('Refresh inválido');
+    }
     return this.issueTokens({
       sub: payload.sub,
       email: payload.email,
@@ -140,7 +148,7 @@ export class AuthService {
       },
     });
     const webOrigin = this.config.get<string>('WEB_ORIGIN') ?? 'http://localhost:5173';
-    const baseUrl = webOrigin.split(',')[0].trim();
+    const baseUrl = parseWebOrigins(webOrigin)[0] ?? 'http://localhost:5173';
     const link = `${baseUrl}/reset-password?token=${raw}`;
     await this.notifier.sendPasswordResetLink(user.email, link);
   }

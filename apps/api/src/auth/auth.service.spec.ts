@@ -161,7 +161,7 @@ describe('AuthService', () => {
       await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rota el refresh: revoca el anterior y emite uno nuevo', async () => {
+    it('rota el refresh: revoca el anterior (update atómico) y emite uno nuevo', async () => {
       jwt.verifyAsync.mockResolvedValueOnce(payload);
       prisma.refreshToken.findUnique.mockResolvedValueOnce({
         jti: 'jti-1',
@@ -170,15 +170,34 @@ describe('AuthService', () => {
         expiraEn: new Date(Date.now() + 10000),
       });
       verifyMock.mockResolvedValueOnce(true);
+      prisma.refreshToken.updateMany.mockResolvedValueOnce({ count: 1 });
 
       const result = await service.refresh('token');
 
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-        where: { jti: 'jti-1' },
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { jti: 'jti-1', revocadoEn: null },
         data: { revocadoEn: expect.any(Date) },
       });
       expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
       expect(result.accessToken).toBe('signed.jwt.token');
+    });
+
+    it('lanza UnauthorizedException si dos refresh concurrentes usan el mismo token (condición de carrera)', async () => {
+      // Ambas requests pasan la verificación inicial (revocadoEn aún null en la lectura),
+      // pero el update atómico con where revocadoEn:null solo afecta 1 fila: la primera
+      // gana (count 1), la segunda debe perder (count 0) y no emitir tokens nuevos.
+      jwt.verifyAsync.mockResolvedValueOnce(payload);
+      prisma.refreshToken.findUnique.mockResolvedValueOnce({
+        jti: 'jti-1',
+        tokenHash: 'h',
+        revocadoEn: null,
+        expiraEn: new Date(Date.now() + 10000),
+      });
+      verifyMock.mockResolvedValueOnce(true);
+      prisma.refreshToken.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
   });
 
@@ -250,6 +269,14 @@ describe('AuthService', () => {
         }`,
       );
       expect(link).not.toContain(',');
+    });
+
+    it('ignora segmentos vacíos en WEB_ORIGIN (ej. coma inicial) y no rompe el enlace', async () => {
+      config.get.mockReturnValueOnce(',https://cne-dpei-web.vercel.app');
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
+      await service.forgotPassword('op@cne-imbabura.gob.ec');
+      const [, link] = notifier.sendPasswordResetLink.mock.calls[0];
+      expect(link).toMatch(/^https:\/\/cne-dpei-web\.vercel\.app\/reset-password\?token=/);
     });
   });
 

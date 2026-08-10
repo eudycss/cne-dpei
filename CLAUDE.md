@@ -8,47 +8,12 @@ Electoral logistics traceability system for CNE Imbabura (Ecuador). pnpm monorep
 
 ## Commands
 
-```bash
-# Install all dependencies (run from root)
-pnpm install
+Standard `pnpm --filter @cne/<pkg> <script>` invocations; see each package's `package.json` for exact script names (`dev`, `build`, `test`, `test:e2e`/`test:watch`, `db:generate`/`db:migrate`/`db:seed`/`db:studio`). Root-level shortcuts: `pnpm install`, `pnpm db:up`/`db:down`/`db:reset`, `pnpm dev:api`/`dev:web`/`dev:mobile`, `pnpm test`/`build` (runs across all packages).
 
-# Database lifecycle
-pnpm db:up          # Start PostgreSQL 16 + PostGIS Docker container
-pnpm db:down        # Stop database
-pnpm db:reset       # Drop and recreate database
-pnpm db:migrate     # Run Prisma migrations
-pnpm db:seed        # Seed roles, cantons, 137 precincts, and initial admin
-
-# Build shared packages (required before running apps for the first time)
-pnpm --filter @cne/shared-types build
-pnpm --filter @cne/shared-validation build
-
-# Development servers
-pnpm dev:api        # NestJS backend → http://localhost:3000, Swagger → /api/docs
-pnpm dev:web        # Vite React frontend → http://localhost:5173
-pnpm dev:mobile     # Expo mobile app
-
-# Testing
-pnpm --filter @cne/api test          # API unit tests (Jest)
-pnpm --filter @cne/api test:e2e      # API end-to-end tests (supertest, needs Postgres + seed)
-pnpm --filter @cne/web test          # Web unit tests (Vitest, single run)
-pnpm --filter @cne/web test:watch    # Web unit tests (Vitest, watch mode)
-pnpm --filter @cne/mobile test       # Mobile unit tests (Jest via jest-expo)
-pnpm test                            # All packages (pnpm -r test)
-
-# Run a single test file (Jest projects: api, mobile)
-pnpm --filter @cne/api test -- users.service.spec.ts
-pnpm --filter @cne/mobile test -- geo.test.ts
-
-# Production builds
-pnpm --filter @cne/api build
-pnpm --filter @cne/web build
-pnpm --filter @cne/mobile build      # tsc --noEmit (typecheck only, no bundle)
-
-# Prisma utilities (run from apps/api)
-pnpm --filter @cne/api db:studio     # Open Prisma Studio
-pnpm --filter @cne/api db:generate   # Regenerate Prisma client after schema changes
-```
+Notes that aren't obvious from the scripts alone:
+- Shared packages (`pnpm --filter @cne/shared-types build`, `pnpm --filter @cne/shared-validation build`) must be built before apps can import them, and after every change to either package.
+- `pnpm db:seed` seeds roles, cantons, 137 precincts, and the initial admin.
+- Pass a file path after `--` to run a single test file, e.g. `pnpm --filter @cne/api test -- users.service.spec.ts`.
 
 ## Environment Setup
 
@@ -143,24 +108,4 @@ Changes to either shared package require rebuilding them (`pnpm --filter @cne/<p
 
 ### Troubleshooting
 
-**CORS error on login (`No 'Access-Control-Allow-Origin'`)**
-`apps/api/.env` and the root `.env` can drift. NestJS reads `apps/api/.env`, so if Vite started on a different port, CORS will block the browser. Fix:
-1. Check which port Vite actually started on (it prints it in the terminal).
-2. Update `WEB_ORIGIN` in `apps/api/.env` to match.
-3. Restart the API (`pnpm dev:api`).
-Always keep both `.env` files in sync — run `cp .env apps/api/.env` after any change to the root `.env`.
-
-**Login returns 401 but the user exists in the database**
-If `debe_cambiar_pwd = false` in the `usuarios` table, the initial password was already changed in a prior session. To reset it back to the seed value, run from `apps/api`:
-```bash
-node -e "
-const argon2 = require('argon2');
-argon2.hash(process.env.ADMIN_INITIAL_PASSWORD ?? 'Admin*Inicial2026').then(h => console.log(h));
-"
-```
-Then update the hash directly in the DB:
-```sql
-UPDATE usuarios
-SET password_hash = '<hash>', debe_cambiar_pwd = true
-WHERE email = 'admin@cne-imbabura.gob.ec';
-```
+CORS-on-login and 401-with-existing-admin-user debugging steps live in the `troubleshoot-cne-dpei` skill (`.claude/skills/troubleshoot-cne-dpei/SKILL.md`) — it loads on demand instead of on every session.
