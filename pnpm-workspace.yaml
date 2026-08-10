@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+shamefullyHoist: true
+overrides:
+  yargs: "^17.6.2"
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

@@ -1,0 +1,13 @@
+# Normaliza los finales de línea a LF para todo archivo de texto,
+# sin importar core.autocrlf en la máquina de cada dev. Sin esto, en
+# Windows los .npmrc/.yaml terminan en CRLF y pnpm ignora en silencio
+# valores como "node-linker=hoisted\r" porque no matchean su enum.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

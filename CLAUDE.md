@@ -102,6 +102,8 @@ React 18 + Vite. Server state managed with **TanStack Query** (not Redux/Zustand
 
 Expo SDK 51 (React Native 0.74). Tokens stored in `expo-secure-store` (**never** `AsyncStorage`). `apps/mobile/src/lib/` has the API client, geolocation, push notifications, and an offline request queue (`offline-queue.ts`) with colocated `*.test.ts` Jest specs. `apps/mobile/src/screens/` holds one screen per field-operator flow (llegada/salida de DPI y recinto, tránsito, retorno, kits verificados, incidencias, alertas, monitoreo for supervisors). Login and the core field-operator flows are functional; treat screens not listed here as in progress.
 
+For building the Android APK locally (Gradle, no EAS), see `apps/mobile/README.md`.
+
 ### Shared Packages
 
 `@cne/shared-types`: TypeScript `interface` / `type` definitions only (no runtime code).  
