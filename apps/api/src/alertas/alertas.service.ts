@@ -47,7 +47,9 @@ export class AlertasService {
             select: { id: true, nombres: true, apellidos: true },
           })
         : [];
-    const byId = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`.trim()]));
+    const byId = new Map<string, string>(
+      usuarios.map((u): [string, string] => [u.id, `${u.nombres} ${u.apellidos}`.trim()]),
+    );
     return rows.map((r) => toDto(r, byId.get(r.operadorId ?? '') ?? null));
   }
 

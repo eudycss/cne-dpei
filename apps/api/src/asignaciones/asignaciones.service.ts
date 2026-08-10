@@ -32,7 +32,7 @@ export class AsignacionesService {
       where: { id: { in: userIds } },
       select: { id: true, nombres: true, apellidos: true, cedula: true },
     });
-    const byId = new Map(users.map((u) => [u.id, u]));
+    const byId = new Map(users.map((u): [string, typeof u] => [u.id, u]));
 
     return rows.map((r) => toDto(r, byId));
   }
@@ -105,12 +105,16 @@ export class AsignacionesService {
       where: { roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
       select: { id: true, cedula: true },
     });
-    const operadorPorCedula = new Map(operadores.map((o) => [o.cedula.trim(), o.id]));
+    const operadorPorCedula = new Map<string, string>(
+      operadores.map((o): [string, string] => [o.cedula.trim(), o.id]),
+    );
     const supervisores = await this.prisma.usuario.findMany({
       where: { roles: { some: { rol: { nombre: 'TECNICO_SUPERVISOR' } } } },
       select: { id: true, cedula: true },
     });
-    const supervisorPorCedula = new Map(supervisores.map((s) => [s.cedula.trim(), s.id]));
+    const supervisorPorCedula = new Map<string, string>(
+      supervisores.map((s): [string, string] => [s.cedula.trim(), s.id]),
+    );
 
     const errores: BulkUploadRow[] = [];
     let creados = 0;

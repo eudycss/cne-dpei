@@ -192,9 +192,13 @@ export class KitsService {
       where: { roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
       select: { id: true, cedula: true },
     });
-    const operadorPorCedula = new Map(operadores.map((o) => [o.cedula.trim(), o.id]));
+    const operadorPorCedula = new Map<string, string>(
+      operadores.map((o): [string, string] => [o.cedula.trim(), o.id]),
+    );
     const recintos = await this.prisma.recinto.findMany({ select: { id: true, codigoRecinto: true } });
-    const recintoPorCodigo = new Map(recintos.map((r) => [r.codigoRecinto.toLowerCase().trim(), r.id]));
+    const recintoPorCodigo = new Map<string, string>(
+      recintos.map((r): [string, string] => [r.codigoRecinto.toLowerCase().trim(), r.id]),
+    );
 
     // Regla 1 operador = 1 recinto por evento: arrancamos del estado actual en BD.
     const asignadosBd = await this.prisma.kitElectoral.findMany({

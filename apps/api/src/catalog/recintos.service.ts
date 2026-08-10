@@ -172,10 +172,14 @@ export class RecintosService {
     if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');
 
     const cantones = await this.prisma.canton.findMany({ select: { id: true, codigo: true } });
-    const cantonByCodigo = new Map(cantones.map((c) => [c.codigo.toLowerCase().trim(), c.id]));
+    const cantonByCodigo = new Map<string, number>(
+      cantones.map((c): [string, number] => [c.codigo.toLowerCase().trim(), c.id]),
+    );
 
     const recintosList = await this.prisma.recinto.findMany({ select: { id: true, codigoRecinto: true } });
-    const recintoByCodigo = new Map(recintosList.map((r) => [r.codigoRecinto.toLowerCase().trim(), r.id]));
+    const recintoByCodigo = new Map<string, string>(
+      recintosList.map((r): [string, string] => [r.codigoRecinto.toLowerCase().trim(), r.id]),
+    );
 
     const errores: BulkUploadRow[] = [];
     let creados = 0;

@@ -274,7 +274,9 @@ export class IncidenciasService {
             AND ubicacion IS NOT NULL;
         `
       : [];
-    const ubicacionMap = new Map(ubicaciones.map((u) => [u.id, u]));
+    const ubicacionMap = new Map(
+      ubicaciones.map((u): [string, { id: string; lat: number; lng: number }] => [u.id, u]),
+    );
 
     return {
       items: rows.map((r) => toIncidenciaDto(r, operadorMap, recintoMap, kitMap, ubicacionMap)),
@@ -310,7 +312,9 @@ export class IncidenciasService {
       where: { id: { in: usuarioIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const usuarioMap = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+    const usuarioMap = new Map<string, string>(
+      usuarios.map((u): [string, string] => [u.id, `${u.nombres} ${u.apellidos}`]),
+    );
 
     return {
       ...incidencia,
@@ -410,7 +414,9 @@ export class IncidenciasService {
       where: { id: { in: usuarioIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const usuarioMap = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+    const usuarioMap = new Map<string, string>(
+      usuarios.map((u): [string, string] => [u.id, `${u.nombres} ${u.apellidos}`]),
+    );
 
     return comentariosRaw.map((c) => toComentarioDto(c, usuarioMap));
   }

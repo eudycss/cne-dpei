@@ -101,7 +101,9 @@ export class MilitaresService {
       where: { codigoRecinto: { in: codigos } },
       select: { id: true, codigoRecinto: true },
     });
-    const recintoByCodigo = new Map(recintos.map((r) => [r.codigoRecinto, r.id]));
+    const recintoByCodigo = new Map<string, string>(
+      recintos.map((r): [string, string] => [r.codigoRecinto, r.id]),
+    );
 
     const errores: BulkUploadRow[] = [];
     let creados = 0;
