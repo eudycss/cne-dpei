@@ -13,19 +13,10 @@ vi.mock('../../lib/queries/monitoreo', () => ({
   getFotoMilitar: vi.fn(),
 }));
 
-vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+vi.mock('../../components/map', () => ({
+  MapView: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   Marker: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  Popup: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  TileLayer: () => null,
-  useMap: () => ({ fitBounds: vi.fn() }),
-}));
-
-vi.mock('leaflet', () => ({
-  default: {
-    divIcon: vi.fn(() => ({})),
-    latLngBounds: vi.fn(() => ({})),
-  },
+  FitBounds: () => null,
 }));
 
 vi.mock('slot-text/react', () => ({

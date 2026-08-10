@@ -1,0 +1,18 @@
+/* Solo utilidades de Tailwind, sin preflight (el reset global rompería styles.css). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Las variantes dark: reaccionan al mismo atributo que ya usa ThemeContext. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Alias de color hacia las variables ya definidas en styles.css, para que los
+   componentes del mapa (mapcn) usen la misma paleta que el resto de la app. */
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-card: var(--bg-card);
+  --color-bg: var(--bg);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+}

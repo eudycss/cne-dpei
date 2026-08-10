@@ -1,13 +1,11 @@
-import 'leaflet/dist/leaflet.css';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
 import { SlotText } from 'slot-text/react';
 import 'slot-text/style.css';
-import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
+import type { CdaEstadoDto, EstadoOperadorCda } from '@cne/shared-types';
 import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
+import { MapView, Marker, FitBounds } from '../../components/map';
 
 const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
   EN_DPI: { label: 'En DPI', color: '#9ca3af' },
@@ -19,27 +17,6 @@ const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> =
 
 // Centro aproximado de la provincia de Imbabura (Ibarra) como vista por defecto.
 const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
-
-// Icono propio para evitar el problema de rutas de assets del icono por defecto
-// de Leaflet bajo bundlers como Vite.
-function iconoOperador(): L.DivIcon {
-  return L.divIcon({
-    className: 'operador-marker',
-    html: '<div style="background:#2563eb;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #2563eb"></div>',
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-function AjustarEncuadre({ operadores }: { operadores: OperadorEnRetorno[] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (operadores.length === 0) return;
-    const bounds = L.latLngBounds(operadores.map((o) => [o.latitud, o.longitud] as [number, number]));
-    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-  }, [operadores, map]);
-  return null;
-}
 
 function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   if (!cda.ubicacion) return null;
@@ -65,15 +42,9 @@ function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => vo
             · {formatearFechaHora(cda.ubicacion.capturadoEn)}
           </p>
         </div>
-        <MapContainer center={pos} zoom={14} style={{ height: 360, width: '100%' }} scrollWheelZoom>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={pos} icon={iconoOperador()}>
-            <Popup>{cda.operadorNombre}</Popup>
-          </Marker>
-        </MapContainer>
+        <MapView center={pos} zoom={14} className="h-[360px] w-full">
+          <Marker position={pos}>{cda.operadorNombre}</Marker>
+        </MapView>
         <div className="row" style={{ justifyContent: 'flex-end', padding: '1rem' }}>
           <button className="btn secondary" onClick={onClose}>
             Cerrar
@@ -181,40 +152,27 @@ export function MonitoreoPage() {
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
         <div className="card" style={{ flex: '2 1 520px', minHeight: 480, padding: 0, overflow: 'hidden' }}>
-          <MapContainer
-            center={CENTRO_IMBABURA}
-            zoom={11}
-            style={{ height: 480, width: '100%' }}
-            scrollWheelZoom
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <AjustarEncuadre operadores={operadores} />
+          <MapView center={CENTRO_IMBABURA} zoom={11} pitch={30} className="h-[480px] w-full">
+            <FitBounds points={operadores.map((o) => [o.latitud, o.longitud])} />
             {operadores.map((o) => (
-              <Marker key={o.operadorId} position={[o.latitud, o.longitud]} icon={iconoOperador()}>
-                <Popup>
-                  <strong>{o.operadorNombre}</strong>
-                  <br />
-                  <span style={{ fontSize: 12, opacity: 0.7 }}>
-                    Última posición: {formatearFechaHora(o.capturadoEn)}
-                  </span>
-                  <br />
-                  <span style={{ fontSize: 12 }}>
-                    Kits asignados ({o.kits.length}):
-                  </span>
-                  <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.1rem', fontSize: 12 }}>
-                    {o.kits.map((k) => (
-                      <li key={k.id}>
-                        {k.codigoUnico} — {k.nombre}
-                      </li>
-                    ))}
-                  </ul>
-                </Popup>
+              <Marker key={o.operadorId} position={[o.latitud, o.longitud]} pulse>
+                <strong>{o.operadorNombre}</strong>
+                <br />
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                  Última posición: {formatearFechaHora(o.capturadoEn)}
+                </span>
+                <br />
+                <span style={{ fontSize: 12 }}>Kits asignados ({o.kits.length}):</span>
+                <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.1rem', fontSize: 12 }}>
+                  {o.kits.map((k) => (
+                    <li key={k.id}>
+                      {k.codigoUnico} — {k.nombre}
+                    </li>
+                  ))}
+                </ul>
               </Marker>
             ))}
-          </MapContainer>
+          </MapView>
         </div>
 
         <div className="card" style={{ flex: '1 1 280px', minWidth: 260 }}>

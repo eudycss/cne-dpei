@@ -7,6 +7,7 @@ import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
 import { logoUrl } from './components/Logo';
+import './tailwind.css';
 import './styles.css';
 
 // Favicon desde el asset central (sin duplicar el binario)
