@@ -6,7 +6,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   loginSchema,
   changePasswordSchema,
@@ -29,6 +29,16 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'HU1: Inicio de sesión' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', format: 'email', example: 'admin@cne-imbabura.gob.ec' },
+        password: { type: 'string', format: 'password' },
+      },
+      required: ['email', 'password'],
+    },
+  })
   login(@Body(new ZodValidationPipe(loginSchema)) body: { email: string; password: string }) {
     return this.auth.login(body.email, body.password);
   }
@@ -37,6 +47,13 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar access token' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { refreshToken: { type: 'string' } },
+      required: ['refreshToken'],
+    },
+  })
   refresh(@Body() body: { refreshToken: string }) {
     return this.auth.refresh(body.refreshToken);
   }
@@ -52,6 +69,16 @@ export class AuthController {
   @Post('change-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'HU1-CA3: Cambio obligatorio de contraseña' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        currentPassword: { type: 'string', format: 'password' },
+        newPassword: { type: 'string', format: 'password' },
+      },
+      required: ['currentPassword', 'newPassword'],
+    },
+  })
   changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(changePasswordSchema))
@@ -64,6 +91,13 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'HU16: Solicitar enlace de recuperación' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { email: { type: 'string', format: 'email' } },
+      required: ['email'],
+    },
+  })
   forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) body: { email: string }) {
     return this.auth.forgotPassword(body.email);
   }
@@ -72,6 +106,16 @@ export class AuthController {
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'HU16: Establecer nueva contraseña con token' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string' },
+        newPassword: { type: 'string', format: 'password' },
+      },
+      required: ['token', 'newPassword'],
+    },
+  })
   resetPassword(
     @Body(new ZodValidationPipe(resetPasswordSchema))
     body: { token: string; newPassword: string },
