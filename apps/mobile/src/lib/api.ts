@@ -1,17 +1,10 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import Constants from 'expo-constants';
 
-// Expo Go → API local (EXPO_PUBLIC_LOCAL_API_URL en .env)
-// EAS Build → API en Render (EXPO_PUBLIC_API_URL en eas.json)
-function resolveBaseUrl(): string {
-  if (Constants.executionEnvironment === 'storeClient') {
-    return process.env.EXPO_PUBLIC_LOCAL_API_URL ?? 'http://localhost:3000';
-  }
-  return process.env.EXPO_PUBLIC_API_URL ?? 'https://cne-imbabura-api.onrender.com';
-}
-
-const BASE_URL = resolveBaseUrl();
+// EXPO_PUBLIC_API_URL en .env (dev client local) o eas.json (EAS Build).
+// La app requiere prebuild nativo (background location, config plugins) y
+// nunca corre en Expo Go, así que no hay rama storeClient que resolver.
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://cne-imbabura-api.onrender.com';
 
 const ACCESS_KEY = 'cne.access';
 const REFRESH_KEY = 'cne.refresh';
