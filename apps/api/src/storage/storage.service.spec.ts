@@ -34,7 +34,7 @@ function buildFakeSupabaseClient() {
     },
   });
 
-  return { client: { storage: { from } } as any, objects };
+  return { client: { from } as any, objects };
 }
 
 describe('StorageService', () => {
