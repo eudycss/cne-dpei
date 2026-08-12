@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { StorageClient } from '@supabase/storage-js';
 import * as crypto from 'node:crypto';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -28,7 +28,7 @@ export class StorageService implements OnModuleInit {
   private key!: Buffer;
   private bucket!: string;
   /** Público (no `private`) para poder inyectar un cliente falso en tests. */
-  client!: SupabaseClient;
+  client!: StorageClient;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -43,7 +43,13 @@ export class StorageService implements OnModuleInit {
     this.bucket = this.config.get<string>('SUPABASE_STORAGE_BUCKET') ?? DEFAULT_BUCKET;
     const url = this.config.getOrThrow<string>('SUPABASE_URL');
     const serviceRoleKey = this.config.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY');
-    this.client = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
+    // Solo el cliente de Storage (no el SDK completo @supabase/supabase-js):
+    // ese trae un cliente Realtime que exige WebSocket nativo (Node 22+) y
+    // Render corre Node 20, lo que crasheaba el proceso al arrancar.
+    this.client = new StorageClient(`${url}/storage/v1`, {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    });
   }
 
   /**
@@ -77,7 +83,7 @@ export class StorageService implements OnModuleInit {
     const filename = `${crypto.randomUUID()}.bin`;
     const fileId = `${opts.categoria}/${filename}`;
     const payload = Buffer.concat([iv, authTag, ciphertext]);
-    const { error } = await this.client.storage.from(this.bucket).upload(fileId, payload, {
+    const { error } = await this.client.from(this.bucket).upload(fileId, payload, {
       contentType: 'application/octet-stream',
       upsert: false,
     });
@@ -97,7 +103,7 @@ export class StorageService implements OnModuleInit {
     if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) {
       throw new BadRequestException('Identificador de archivo inválido');
     }
-    const { data: blob, error } = await this.client.storage.from(this.bucket).download(fileId);
+    const { data: blob, error } = await this.client.from(this.bucket).download(fileId);
     if (error || !blob) {
       throw new BadRequestException('Archivo no encontrado');
     }
@@ -117,7 +123,7 @@ export class StorageService implements OnModuleInit {
   async exists(fileId: string): Promise<boolean> {
     if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) return false;
     const [categoria, filename] = fileId.split('/');
-    const { data, error } = await this.client.storage
+    const { data, error } = await this.client
       .from(this.bucket)
       .list(categoria, { search: filename });
     if (error || !data) return false;
