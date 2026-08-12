@@ -1,23 +1,52 @@
 import { BadRequestException } from '@nestjs/common';
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 
 import { StorageService } from './storage.service';
 
-// Tests de integración ligera: cifrado/descifrado real (AES-256-GCM) sobre un
-// directorio temporal real. Sin Prisma. Verifica el round-trip, la integridad
-// (auth tag GCM) y las validaciones de entrada.
+/**
+ * Cliente Supabase Storage falso, en memoria, que implementa solo la
+ * superficie que StorageService usa (`from(bucket).upload/download/list`).
+ * Evita depender de red o de un proyecto Supabase real en los tests.
+ */
+function buildFakeSupabaseClient() {
+  const objects = new Map<string, Buffer>();
+
+  const from = (_bucket: string) => ({
+    upload: async (path: string, body: Buffer) => {
+      if (objects.has(path)) {
+        return { data: null, error: { message: 'ya existe' } };
+      }
+      objects.set(path, Buffer.from(body));
+      return { data: { path }, error: null };
+    },
+    download: async (path: string) => {
+      const buf = objects.get(path);
+      if (!buf) return { data: null, error: { message: 'no encontrado' } };
+      return { data: new Blob([buf]), error: null };
+    },
+    list: async (prefix: string, opts?: { search?: string }) => {
+      const matches = [...objects.keys()]
+        .filter((k) => k.startsWith(`${prefix}/`))
+        .map((k) => k.slice(prefix.length + 1))
+        .filter((name) => !opts?.search || name === opts.search)
+        .map((name) => ({ name }));
+      return { data: matches, error: null };
+    },
+  });
+
+  return { client: { storage: { from } } as any, objects };
+}
+
 describe('StorageService', () => {
   let service: StorageService;
-  let rootDir: string;
+  let objects: Map<string, Buffer>;
   const keyHex = crypto.randomBytes(32).toString('hex'); // 64 hex chars válidos
 
   function buildConfig(overrides: Record<string, string | undefined> = {}) {
     const values: Record<string, string | undefined> = {
       STORAGE_ENCRYPTION_KEY: keyHex,
-      STORAGE_DIR: rootDir,
+      SUPABASE_URL: 'http://localhost:54321',
+      SUPABASE_SERVICE_ROLE_KEY: 'fake-service-role-key',
       ...overrides,
     };
     return {
@@ -31,13 +60,11 @@ describe('StorageService', () => {
   }
 
   beforeEach(async () => {
-    rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cne-storage-'));
     service = new StorageService(buildConfig());
     await service.onModuleInit();
-  });
-
-  afterEach(async () => {
-    await fs.rm(rootDir, { recursive: true, force: true });
+    const fake = buildFakeSupabaseClient();
+    service.client = fake.client; // reemplaza el cliente real por el falso
+    objects = fake.objects;
   });
 
   describe('onModuleInit', () => {
@@ -58,13 +85,14 @@ describe('StorageService', () => {
       expect(recovered.equals(plaintext)).toBe(true);
     });
 
-    it('escribe el archivo cifrado en disco (no en claro)', async () => {
+    it('sube el objeto cifrado (no el plaintext) al bucket', async () => {
       const plaintext = Buffer.from('texto-secreto-en-claro', 'utf8');
       const fileId = await service.saveEncrypted({ categoria: 'militares', buffer: plaintext });
 
-      const onDisk = await fs.readFile(path.join(rootDir, fileId));
-      expect(onDisk.includes(plaintext)).toBe(false); // el plaintext no aparece tal cual
-      expect(onDisk.length).toBeGreaterThan(plaintext.length); // IV + authTag + ciphertext
+      const stored = objects.get(fileId);
+      expect(stored).toBeDefined();
+      expect(stored!.includes(plaintext)).toBe(false); // el plaintext no aparece tal cual
+      expect(stored!.length).toBeGreaterThan(plaintext.length); // IV + authTag + ciphertext
     });
 
     it('detecta manipulación del archivo (auth tag GCM)', async () => {
@@ -72,10 +100,8 @@ describe('StorageService', () => {
         categoria: 'militares',
         buffer: Buffer.from('contenido-a-proteger', 'utf8'),
       });
-      const fullPath = path.join(rootDir, fileId);
-      const data = await fs.readFile(fullPath);
-      data[data.length - 1] ^= 0xff; // corrompe el último byte del ciphertext
-      await fs.writeFile(fullPath, data);
+      const stored = objects.get(fileId)!;
+      stored[stored.length - 1] ^= 0xff; // corrompe el último byte del ciphertext
 
       await expect(service.readDecrypted(fileId)).rejects.toThrow();
     });
