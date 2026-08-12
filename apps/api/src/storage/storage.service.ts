@@ -1,16 +1,22 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // GCM recomienda 96 bits
 const AUTH_TAG_LENGTH = 16;
+const DEFAULT_BUCKET = 'archivos-cifrados';
 
 /**
- * Almacena archivos cifrados con AES-256-GCM en el filesystem local.
- * Formato del archivo en disco: [IV (12B)][AUTH_TAG (16B)][CIPHERTEXT].
+ * Almacena archivos cifrados con AES-256-GCM en Supabase Storage (bucket
+ * privado). Formato del objeto: [IV (12B)][AUTH_TAG (16B)][CIPHERTEXT]. El
+ * contenido en claro nunca sale del proceso de la API: se cifra antes de
+ * subirse y se descifra después de descargarse.
+ *
+ * Antes se guardaba en el filesystem local del contenedor, lo que perdía los
+ * archivos en cada redeploy/restart (Render Free no tiene disco persistente).
+ * Supabase Storage es persistente y ya es el proveedor usado para la BD.
  *
  * HU3-CA2: la fotografía del militar debe almacenarse cifrada como respaldo
  * de la cadena de custodia. La descarga (con descifrado) llegará cuando se
@@ -20,7 +26,9 @@ const AUTH_TAG_LENGTH = 16;
 export class StorageService implements OnModuleInit {
   private readonly log = new Logger(StorageService.name);
   private key!: Buffer;
-  private rootDir!: string;
+  private bucket!: string;
+  /** Público (no `private`) para poder inyectar un cliente falso en tests. */
+  client!: SupabaseClient;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -32,9 +40,10 @@ export class StorageService implements OnModuleInit {
       );
     }
     this.key = Buffer.from(keyHex, 'hex');
-    const dir = this.config.get<string>('STORAGE_DIR') ?? 'storage';
-    this.rootDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
-    await fs.mkdir(this.rootDir, { recursive: true });
+    this.bucket = this.config.get<string>('SUPABASE_STORAGE_BUCKET') ?? DEFAULT_BUCKET;
+    const url = this.config.getOrThrow<string>('SUPABASE_URL');
+    const serviceRoleKey = this.config.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY');
+    this.client = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
   }
 
   /**
@@ -66,26 +75,33 @@ export class StorageService implements OnModuleInit {
     }
 
     const filename = `${crypto.randomUUID()}.bin`;
-    const dir = path.join(this.rootDir, opts.categoria);
-    await fs.mkdir(dir, { recursive: true });
-    const fullPath = path.join(dir, filename);
-    await fs.writeFile(fullPath, Buffer.concat([iv, authTag, ciphertext]));
-
     const fileId = `${opts.categoria}/${filename}`;
+    const payload = Buffer.concat([iv, authTag, ciphertext]);
+    const { error } = await this.client.storage.from(this.bucket).upload(fileId, payload, {
+      contentType: 'application/octet-stream',
+      upsert: false,
+    });
+    if (error) {
+      throw new Error(`No se pudo guardar el archivo en Supabase Storage: ${error.message}`);
+    }
+
     this.log.debug?.(`Stored encrypted file ${fileId} (${opts.buffer.length}B plaintext)`);
     return fileId;
   }
 
   /**
-   * Lee y descifra un archivo por su identificador relativo. Reservado para
-   * vistas de evidencia (HU17); no usado por HU3 directamente.
+   * Descarga y descifra un archivo por su identificador relativo. Reservado
+   * para vistas de evidencia (HU17); no usado por HU3 directamente.
    */
   async readDecrypted(fileId: string): Promise<Buffer> {
     if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) {
       throw new BadRequestException('Identificador de archivo inválido');
     }
-    const fullPath = path.join(this.rootDir, fileId);
-    const data = await fs.readFile(fullPath);
+    const { data: blob, error } = await this.client.storage.from(this.bucket).download(fileId);
+    if (error || !blob) {
+      throw new BadRequestException('Archivo no encontrado');
+    }
+    const data = Buffer.from(await blob.arrayBuffer());
     if (data.length <= IV_LENGTH + AUTH_TAG_LENGTH) {
       throw new BadRequestException('Archivo corrupto');
     }
@@ -97,14 +113,14 @@ export class StorageService implements OnModuleInit {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   }
 
-  /** Verifica que el archivo identificado existe físicamente. */
+  /** Verifica que el archivo identificado existe en el bucket. */
   async exists(fileId: string): Promise<boolean> {
     if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) return false;
-    try {
-      await fs.access(path.join(this.rootDir, fileId));
-      return true;
-    } catch {
-      return false;
-    }
+    const [categoria, filename] = fileId.split('/');
+    const { data, error } = await this.client.storage
+      .from(this.bucket)
+      .list(categoria, { search: filename });
+    if (error || !data) return false;
+    return data.some((entry) => entry.name === filename);
   }
 }

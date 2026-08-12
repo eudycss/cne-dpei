@@ -16,22 +16,8 @@ Vercel + APK) funcionando y solo lo estás reforzando para ese día puntual.
       Dashboard de Render → tu servicio `cne-imbabura-api` → **Settings** → **Instance Type** →
       elegir `Starter`. Esto elimina el "dormido" tras 15 min sin tráfico.
 
-- [ ] **Agregar un Disk persistente** para que las fotos de incidencias/kits no se borren en un
-      reinicio o redeploy ($0.30/GB/mes, también prorrateado por segundo):
-      1. Dashboard de Render → tu servicio → pestaña **Disks** → **Add Disk**.
-      2. Tamaño: 1 GB es de sobra para empezar.
-      3. **Mount Path**: usa algo fuera del checkout del repo, ej. `/var/data`.
-      4. En **Environment** → edita `STORAGE_DIR` a una ruta **absoluta** dentro de ese mount,
-         ej. `/var/data/storage` (si dejas `STORAGE_DIR=storage` sin ruta absoluta, el código
-         lo resuelve contra el directorio de trabajo del proceso, que no necesariamente cae
-         dentro del disco montado — ver `apps/api/src/storage/storage.service.ts:36`).
-      5. Guardar → Render redeploya con el disco ya montado.
-
 - [ ] **Después del evento, bajar de vuelta a Free manualmente** (no es automático — si
       dejas el plan en Starter "por si acaso", te sigue cobrando por segundo indefinidamente).
-      ⚠️ El plan Free no soporta Disks adjuntos: antes de bajar, confirma en el dashboard de
-      Render (o con soporte) si el Disk se elimina al hacer el downgrade — si es así, respalda
-      lo que tenga guardado antes de bajar de plan.
 
 - [ ] **"Despertar" Supabase** — entra al dashboard del proyecto para resetear el contador de
       7 días de inactividad y confirmar que no está pausado.

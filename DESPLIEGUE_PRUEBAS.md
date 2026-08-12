@@ -128,6 +128,10 @@ a un bloc de notas temporal — los usarás en la Fase 3.
 
 Al final deberías tener 3 valores distintos guardados.
 
+Además necesitarás **SUPABASE_URL** y **SUPABASE_SERVICE_ROLE_KEY** (dashboard de Supabase →
+tu proyecto → **Project Settings** → **API Keys**; la `service_role` viene oculta, haz clic en
+"Reveal" para copiarla) — no se generan, se copian del proyecto que ya creaste en la Fase 1.
+
 ---
 
 ## Fase 3 — Desplegar el API (NestJS) en Render
@@ -172,7 +176,9 @@ agrega cada una de estas (botón "Add Environment Variable"):
 | `JWT_ACCESS_TTL` | `15m` | |
 | `JWT_REFRESH_TTL` | `7d` | |
 | `STORAGE_ENCRYPTION_KEY` | el tercer valor generado en la Fase 2 | |
-| `STORAGE_DIR` | `storage` | ⚠️ En el plan gratis de Render el disco es temporal: los archivos subidos (fotos, PDFs de kits) se borran cada vez que el servicio se reinicia o redepliega. Aceptable para pruebas. |
+| `SUPABASE_URL` | la URL de tu proyecto Supabase (Fase 1) | ej. `https://xxxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | la `service_role` key de tu proyecto Supabase | secreta — nunca la uses en el frontend |
+| `SUPABASE_STORAGE_BUCKET` | `archivos-cifrados` | bucket privado; créalo en Supabase Dashboard → Storage → New bucket (Public: **off**) si no existe |
 | `BREVO_API_KEY` | (déjalo vacío) | Sin esto, el sistema imprime los correos en los logs en vez de enviarlos — suficiente para probar. |
 
 **No** definas `NODE_ENV=production` por ahora: si lo dejas sin definir, Swagger queda disponible
