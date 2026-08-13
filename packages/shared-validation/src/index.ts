@@ -377,6 +377,7 @@ export const llegadaDpiSchema = z.object({
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  precisionMetros: z.number().nonnegative().nullable().optional(),
 });
 
 // Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)

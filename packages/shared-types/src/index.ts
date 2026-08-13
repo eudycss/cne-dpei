@@ -553,6 +553,7 @@ export interface LlegadaDpiRequest {
   latitud: number;
   longitud: number;
   ocurridoEn: string;
+  precisionMetros?: number | null;
 }
 
 export interface LlegadaDpiResponse {

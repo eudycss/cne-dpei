@@ -63,6 +63,13 @@ import { StorageService } from '../storage/storage.service';
 const MARGEN_LLEGADA_METROS_DEFAULT = 150;
 const MAX_HOLGURA_GPS_METROS = 100;
 
+// HU5: margen para registrar la llegada a la Delegación (config_alertas.
+// margenLlegadaDpiMetros), mismo patrón que MARGEN_LLEGADA_METROS_DEFAULT.
+// La validación en registrarLlegadaDpi solo se aplica si ya hay una
+// coordenada cargada en config_alertas.delegacionUbicacion — mientras esté
+// NULL (valor por defecto), no bloquea nada.
+const MARGEN_LLEGADA_DPI_METROS_DEFAULT = 150;
+
 @Injectable()
 export class TrackingService {
   constructor(
@@ -1606,6 +1613,35 @@ export class TrackingService {
     });
     const recintoId = kit?.recintoId ?? null;
     const ocurridoEn = new Date(parsed.ocurridoEn);
+
+    // HU5: el operador debe estar físicamente en la Delegación para registrar
+    // su llegada. Calcado del bloque de registrarLlegadaRecinto (mismo margen
+    // configurable + holgura GPS con tope), pero contra la coordenada fija de
+    // la Delegación (config_alertas.delegacionUbicacion) en vez de un recinto.
+    // Si esa coordenada todavía no está cargada (NULL), la query no devuelve
+    // filas y el bloque no bloquea nada — comportamiento idéntico al actual.
+    const filasDelegacion = await this.prisma.$queryRaw<{ metros: number | null }[]>`
+      SELECT ST_Distance(
+        ca.delegacion_ubicacion,
+        ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography
+      ) AS metros
+      FROM config_alertas ca
+      WHERE ca.evento_id = ${evento.id}::uuid AND ca.delegacion_ubicacion IS NOT NULL;
+    `;
+    const metrosDelegacion = filasDelegacion[0]?.metros;
+    if (metrosDelegacion != null) {
+      const config = await this.prisma.configAlerta.findUnique({
+        where: { eventoId: evento.id },
+        select: { margenLlegadaDpiMetros: true },
+      });
+      const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
+      const margen = (config?.margenLlegadaDpiMetros ?? MARGEN_LLEGADA_DPI_METROS_DEFAULT) + holgura;
+      if (metrosDelegacion > margen) {
+        throw new BadRequestException(
+          `Estás a ${Math.round(metrosDelegacion)} m de la Delegación. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+        );
+      }
+    }
 
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
