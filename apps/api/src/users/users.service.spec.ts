@@ -36,7 +36,7 @@ describe('UsersService', () => {
   };
 
   const validInput = {
-    cedula: '1002003004',
+    cedula: '1034567899', // cédula con dígito verificador válido (algoritmo módulo-10)
     email: 'nuevo@cne-imbabura.gob.ec',
     nombres: 'Ana',
     apellidos: 'López',
@@ -218,7 +218,7 @@ describe('UsersService', () => {
 
       const csv = [
         'cedula,email,nombres,apellidos,telefono',
-        '1002003004,uno@cne-imbabura.gob.ec,Ana,Lopez,',
+        '1034567899,uno@cne-imbabura.gob.ec,Ana,Lopez,',
         '12,malo@cne-imbabura.gob.ec,Bad,Row,', // cédula inválida -> error
       ].join('\n');
       const file = {

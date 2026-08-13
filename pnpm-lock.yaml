@@ -385,6 +385,9 @@ importers:
       typescript:
         specifier: 5.5.4
         version: 5.5.4
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@20.16.10)(jsdom@25.0.1(supports-color@8.1.1))(lightningcss@1.32.0)(supports-color@8.1.1)(terser@5.47.1)
 
 packages:
 
