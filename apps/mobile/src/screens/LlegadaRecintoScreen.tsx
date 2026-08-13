@@ -31,6 +31,7 @@ import {
   validarKit,
 } from '../lib/queries/llegada';
 import {
+  detenerRastreo,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
@@ -229,6 +230,8 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       if (result === null) {
         Alert.alert('Sin señal', 'Llegada al recinto guardada localmente. Se sincronizará automáticamente.');
       }
+      // HU5-CA3: finaliza el rastreo en tiempo real del tramo de ida.
+      await detenerRastreo();
       onLlegadaRegistrada();
     } catch (e: any) {
       if (e?.response?.status === 409) {

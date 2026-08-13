@@ -17,9 +17,11 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
 import {
+  iniciarRastreo,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
+  solicitarPermisoBackground,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 
@@ -79,6 +81,20 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
       if (result === null) {
         Alert.alert('Sin señal', 'Salida guardada localmente. Se sincronizará automáticamente cuando recuperes conexión.');
       }
+
+      // HU4-CA3: iniciar rastreo continuo en segundo plano hacia el recinto. Es
+      // "best-effort": la salida ya quedó registrada (o encolada), así que si esto
+      // falla el operador igual debe poder continuar.
+      try {
+        await solicitarPermisoBackground();
+        await iniciarRastreo();
+      } catch {
+        Alert.alert(
+          'Rastreo en segundo plano no disponible',
+          'Tu salida quedó registrada, pero no se pudo activar el rastreo de ubicación en segundo plano en este dispositivo.',
+        );
+      }
+
       onSalidaRegistrada();
     } catch (e: any) {
       if (e instanceof LocationPermissionDeniedError) {
