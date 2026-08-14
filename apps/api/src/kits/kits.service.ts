@@ -289,7 +289,7 @@ export class KitsService {
     ws.addRow({
       nombre: 'Kit Recinto 28',
       contenidos: 'Acta, sobres, sellos',
-      cedula_operador: '1002003004',
+      cedula_operador: '1710034065',
       codigo_recinto: '28',
     });
     ws.addRow({ nombre: 'Kit de reserva (sin asignar)', contenidos: '', cedula_operador: '', codigo_recinto: '' });

@@ -157,7 +157,7 @@ export class MilitaresService {
       { header: 'apellidos', key: 'apellidos', width: 24 },
       { header: 'codigo_recinto', key: 'codigo_recinto', width: 16 },
     ];
-    ws.addRow({ cedula: '1003456789', nombres: 'Pedro', apellidos: 'Suárez', codigo_recinto: '28' });
+    ws.addRow({ cedula: '1710034065', nombres: 'Pedro', apellidos: 'Suárez', codigo_recinto: '28' });
     ws.getRow(1).font = { bold: true };
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     return Buffer.from(buffer);

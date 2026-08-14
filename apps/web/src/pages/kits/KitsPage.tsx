@@ -5,6 +5,7 @@ import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
+import { SearchableSelect } from '../../components/SearchableSelect';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -586,6 +587,24 @@ function AsignarKitModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const operadorOptions = useMemo(
+    () =>
+      operadores.map((u) => ({
+        value: u.id,
+        label: `${u.nombres} ${u.apellidos}`,
+        sublabel: u.cedula,
+      })),
+    [operadores],
+  );
+  const recintoOptions = useMemo(
+    () =>
+      recintos.map((r) => ({
+        value: r.id,
+        label: `${r.codigoRecinto} — ${r.nombre}`,
+      })),
+    [recintos],
+  );
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -621,48 +640,26 @@ function AsignarKitModal({
 
         <div className="field">
           <label>Operador</label>
-          <select
+          <SearchableSelect
+            options={operadorOptions}
             value={operadorId}
-            onChange={(e) => setOperadorId(e.target.value)}
+            onChange={setOperadorId}
+            placeholder="— Selecciona un operador —"
+            searchPlaceholder="Busca por nombre o cédula…"
             required
-            style={{
-              width: '100%',
-              padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: '0.9rem',
-            }}
-          >
-            <option value="">— Selecciona un operador —</option>
-            {operadores.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.nombres} {u.apellidos} ({u.cedula})
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         <div className="field">
           <label>Recinto (CDA)</label>
-          <select
+          <SearchableSelect
+            options={recintoOptions}
             value={recintoId}
-            onChange={(e) => setRecintoId(e.target.value)}
+            onChange={setRecintoId}
+            placeholder="— Selecciona un recinto —"
+            searchPlaceholder="Busca por nombre o código…"
             required
-            style={{
-              width: '100%',
-              padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: '0.9rem',
-            }}
-          >
-            <option value="">— Selecciona un recinto —</option>
-            {recintos.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.codigoRecinto} — {r.nombre}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {frozen && (

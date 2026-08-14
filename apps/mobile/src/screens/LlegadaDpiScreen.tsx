@@ -89,6 +89,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
         latitud: ubicacion.latitud,
         longitud: ubicacion.longitud,
         ocurridoEn: new Date().toISOString(),
+        precisionMetros: ubicacion.precisionMetros,
       });
       if (result === null) {
         Alert.alert('Sin señal', 'Llegada al DPI guardada localmente. Se sincronizará automáticamente.');

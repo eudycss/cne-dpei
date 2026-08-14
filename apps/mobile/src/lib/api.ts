@@ -24,7 +24,10 @@ export const tokenStore = {
 
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  // Render free tier hace cold-start del backend (30-50s documentados) tras
+  // inactividad: 15s se quedaba corto y disparaba el catch de "refresh
+  // fallido" por timeout, no por token inválido.
+  timeout: 45000,
 });
 
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
@@ -36,6 +39,25 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 });
 
 let refreshing: Promise<string> | null = null;
+
+// Emisor simple de eventos: AuthContext se suscribe para enterarse cuando
+// api.ts invalida la sesión (401/403 real de /auth/refresh) y así reflejar
+// el logout en la UI en vez de dejar una sesión "zombie".
+const sessionExpiredListeners = new Set<() => void>();
+
+export function onSessionExpired(cb: () => void): () => void {
+  sessionExpiredListeners.add(cb);
+  return () => sessionExpiredListeners.delete(cb);
+}
+
+function notifySessionExpired(): void {
+  sessionExpiredListeners.forEach((cb) => cb());
+}
+
+/** true solo si el propio /auth/refresh respondió 401/403 (rechazo explícito). */
+function isRefreshRejection(err: unknown): boolean {
+  return axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403);
+}
 
 api.interceptors.response.use(
   (res) => res,
@@ -60,8 +82,16 @@ api.interceptors.response.use(
       original._retry = true;
       original.headers.Authorization = `Bearer ${newAccess}`;
       return api(original);
-    } catch {
-      await tokenStore.clear();
+    } catch (refreshErr) {
+      // Timeout, error de red o 5xx (p. ej. cold-start de Render) no
+      // significan que el refresh token sea inválido: solo tratamos la
+      // sesión como expirada si /auth/refresh rechazó explícitamente con
+      // 401/403. En cualquier otro caso propagamos el error original sin
+      // tocar SecureStore ni notificar a la UI.
+      if (isRefreshRejection(refreshErr)) {
+        await tokenStore.clear();
+        notifySessionExpired();
+      }
       return Promise.reject(err);
     }
   },

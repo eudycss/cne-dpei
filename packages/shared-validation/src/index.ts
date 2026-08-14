@@ -15,10 +15,44 @@ export const strongPasswordSchema = z
     'Debe incluir al menos un carácter especial',
   );
 
-// Cédula ecuatoriana: 10 dígitos (validación básica de longitud y dígitos)
+// Cédula ecuatoriana: 10 dígitos + algoritmo módulo-10 (Registro Civil EC).
+// Reglas:
+// - Dígitos 1-2 (código de provincia): 01-24.
+// - Dígito 3: 0-6 (persona natural).
+// - Dígito 10 (verificador): módulo 10 sobre los primeros 9 dígitos con
+//   coeficientes [2,1,2,1,2,1,2,1,2] — si el producto dígito*coeficiente es
+//   >=10 se le resta 9; se suman todos los productos; si suma % 10 === 0 el
+//   verificador esperado es 0, si no, 10 - (suma % 10).
+// Exportada por separado para poder validar cédulas fuera de un form/schema
+// (p. ej. en scripts de diagnóstico o servicios que no usan Zod).
+export function isValidCedulaEcuatoriana(cedula: string): boolean {
+  if (!/^\d{10}$/.test(cedula)) return false;
+
+  const digitos = cedula.split('').map(Number);
+
+  const provincia = Number(cedula.slice(0, 2));
+  if (provincia < 1 || provincia > 24) return false;
+
+  const tercerDigito = digitos[2];
+  if (tercerDigito < 0 || tercerDigito > 6) return false;
+
+  const coeficientes = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+  let suma = 0;
+  for (let i = 0; i < 9; i++) {
+    let producto = digitos[i] * coeficientes[i];
+    if (producto >= 10) producto -= 9;
+    suma += producto;
+  }
+
+  const modulo = suma % 10;
+  const verificadorEsperado = modulo === 0 ? 0 : 10 - modulo;
+  return verificadorEsperado === digitos[9];
+}
+
 export const cedulaSchema = z
   .string()
-  .regex(/^\d{10}$/, 'La cédula debe tener exactamente 10 dígitos');
+  .regex(/^\d{10}$/, 'La cédula debe tener exactamente 10 dígitos')
+  .refine(isValidCedulaEcuatoriana, 'Cédula ecuatoriana inválida');
 
 export const emailSchema = z
   .string()
@@ -30,12 +64,26 @@ export const nombreSchema = z
   .min(1, 'Requerido')
   .max(120, 'Máximo 120 caracteres');
 
+// Normaliza el valor crudo antes de validar: quita espacios, guiones y
+// paréntesis, y trata cadena vacía/null (celda de Excel/CSV vacía) como
+// ausente — el schema sigue siendo opcional.
+function normalizarTelefono(v: unknown): unknown {
+  if (v === '' || v === null || v === undefined) return undefined;
+  if (typeof v !== 'string') return v;
+  const normalizado = v.replace(/[\s\-()]/g, '');
+  return normalizado === '' ? undefined : normalizado;
+}
+
+// Celular ecuatoriano estricto: 09XXXXXXXX o +593 9XXXXXXXX (rechaza fijos
+// y cualquier otro formato).
 export const telefonoSchema = z.preprocess(
-  // Cadena vacía (celda de Excel/CSV vacía) se trata como ausente
-  (v) => (v === '' || v === null ? undefined : v),
+  normalizarTelefono,
   z
     .string()
-    .regex(/^[\d+\-\s()]{7,20}$/, 'Teléfono inválido')
+    .regex(
+      /^(?:\+593|0)9\d{8}$/,
+      'Teléfono inválido: debe ser un celular ecuatoriano (ej. 0991234567 o +593991234567)',
+    )
     .optional(),
 );
 
@@ -329,6 +377,7 @@ export const llegadaDpiSchema = z.object({
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  precisionMetros: z.number().nonnegative().nullable().optional(),
 });
 
 // Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)

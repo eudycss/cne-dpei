@@ -167,7 +167,7 @@ export class AsignacionesService {
       { header: 'cedula_operador', key: 'cedula_operador', width: 18 },
       { header: 'cedula_supervisor', key: 'cedula_supervisor', width: 18 },
     ];
-    ws.addRow({ cedula_operador: '1002003004', cedula_supervisor: '1003004005' });
+    ws.addRow({ cedula_operador: '1710034065', cedula_supervisor: '0926687856' });
     ws.getRow(1).font = { bold: true };
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     return Buffer.from(buffer);

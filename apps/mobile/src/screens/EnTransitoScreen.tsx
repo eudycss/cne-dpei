@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { LocationSubscription } from 'expo-location';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { fontFamily } from '../theme/typography';
+import { iniciarRastreoPrimerPlano } from '../lib/location';
 
 interface Props {
   onMarcarLlegada: () => void;
@@ -14,6 +16,20 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    let sub: LocationSubscription | null = null;
+    let cancelled = false;
+    (async () => {
+      const s = await iniciarRastreoPrimerPlano();
+      if (cancelled) s?.remove();
+      else sub = s;
+    })();
+    return () => {
+      cancelled = true;
+      sub?.remove();
+    };
+  }, []);
 
   return (
     <View style={styles.container}>

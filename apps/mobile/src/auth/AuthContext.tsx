@@ -8,7 +8,7 @@ import {
 } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
-import { api, tokenStore } from '../lib/api';
+import { api, onSessionExpired, tokenStore } from '../lib/api';
 
 interface SessionUser {
   id: string;
@@ -49,6 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
     else SecureStore.deleteItemAsync(USER_KEY);
   }, [user]);
+
+  // api.ts notifica aquí cuando /auth/refresh rechaza el refresh token con
+  // 401/403 real (sesión inválida) y ya limpió SecureStore. Sin esto, la UI
+  // se quedaba con una sesión "zombie": tokens borrados pero `user` seteado.
+  useEffect(() => {
+    const unsubscribe = onSessionExpired(() => {
+      setUser(null);
+    });
+    return unsubscribe;
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post<LoginResponse>('/auth/login', { email, password });

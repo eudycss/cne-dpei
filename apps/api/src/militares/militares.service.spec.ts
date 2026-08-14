@@ -27,7 +27,7 @@ describe('MilitaresService', () => {
   const militarId = '77777777-7777-7777-7777-777777777777';
 
   const validInput = {
-    cedula: '1002003004',
+    cedula: '1034567899', // cédula con dígito verificador válido (algoritmo módulo-10)
     nombres: 'Pedro',
     apellidos: 'Suárez',
     recintoId,
@@ -137,8 +137,8 @@ describe('MilitaresService', () => {
 
       const csv = [
         'cedula,nombres,apellidos,codigo_recinto',
-        '1002003004,Pedro,Suarez,28', // válida
-        '1002003005,Maria,Lopez,99', // recinto inexistente
+        '1034567899,Pedro,Suarez,28', // válida
+        '1750123455,Maria,Lopez,99', // recinto inexistente
         '12,Bad,Row,28', // cédula inválida
       ].join('\n');
       const file = {

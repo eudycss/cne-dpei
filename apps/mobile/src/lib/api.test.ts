@@ -6,7 +6,13 @@ jest.mock('axios', () => {
   };
   return {
     __esModule: true,
-    default: { create: jest.fn(() => instance), post: jest.fn() },
+    default: {
+      create: jest.fn(() => instance),
+      post: jest.fn(),
+      // Implementación mínima suficiente para los tests: los errores axios
+      // reales (rechazo HTTP, timeout, network error) traen isAxiosError=true.
+      isAxiosError: (err: any) => !!err && err.isAxiosError === true,
+    },
   };
 });
 
@@ -20,13 +26,26 @@ jest.mock('expo-constants', () => ({ executionEnvironment: 'bare' }));
 
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import { tokenStore } from './api';
+import { onSessionExpired, tokenStore } from './api';
 
 const mockInstance = (axios.create as jest.Mock).mock.results[0].value;
 // Capturados una sola vez: clearAllMocks() en cada test borra el historial de
 // llamadas (.mock.calls), y el registro de interceptores solo ocurre al importar api.ts.
 const requestInterceptor = mockInstance.interceptors.request.use.mock.calls[0][0];
 const responseErrorHandler = mockInstance.interceptors.response.use.mock.calls[0][1];
+
+/** Error axios de rechazo HTTP explícito (p. ej. refresh token inválido). */
+function httpError(status: number) {
+  return Object.assign(new Error(`Request failed with status code ${status}`), {
+    isAxiosError: true,
+    response: { status },
+  });
+}
+
+/** Error axios sin response: timeout o falla de red (cold-start de Render). */
+function networkError(message = 'timeout of 45000ms exceeded') {
+  return Object.assign(new Error(message), { isAxiosError: true });
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -100,14 +119,67 @@ describe('response interceptor — refresh en 401', () => {
     expect(result).toEqual({ config: original, retried: true });
   });
 
-  it('limpia los tokens y rechaza si el refresh falla', async () => {
+  it('limpia los tokens, notifica sesión expirada y rechaza si /auth/refresh responde 401', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
-    (axios.post as jest.Mock).mockRejectedValueOnce(new Error('refresh inválido'));
+    (axios.post as jest.Mock).mockRejectedValueOnce(httpError(401));
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
     const err = { response: { status: 401 }, config: { headers: {} } };
 
     await expect(responseErrorHandler(err)).rejects.toBe(err);
+
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('cne.access');
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('cne.refresh');
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('limpia los tokens y notifica sesión expirada si /auth/refresh responde 403', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockRejectedValueOnce(httpError(403));
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    const err = { response: { status: 401 }, config: { headers: {} } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('cne.access');
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('NO limpia tokens ni notifica si /auth/refresh falla por timeout', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockRejectedValueOnce(networkError('timeout of 45000ms exceeded'));
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    const err = { response: { status: 401 }, config: { headers: {} } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('NO limpia tokens ni notifica si /auth/refresh falla por error de red', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockRejectedValueOnce(networkError('Network Error'));
+    const err = { response: { status: 401 }, config: { headers: {} } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+
+  it('NO limpia tokens ni notifica si /auth/refresh responde 502 (cold-start de Render)', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockRejectedValueOnce(httpError(502));
+    const err = { response: { status: 401 }, config: { headers: {} } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
   it('dedupe: dos 401 concurrentes solo disparan un POST /auth/refresh', async () => {
@@ -121,6 +193,21 @@ describe('response interceptor — refresh en 401', () => {
     await Promise.all([responseErrorHandler(err1), responseErrorHandler(err2)]);
 
     expect(axios.post).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('onSessionExpired', () => {
+  it('permite desuscribirse', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockRejectedValueOnce(httpError(401));
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    unsubscribe();
+
+    const err = { response: { status: 401 }, config: { headers: {} } };
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 

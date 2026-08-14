@@ -285,11 +285,17 @@ model EventoElectoral {
 }
 
 model ConfigAlerta {
-  eventoId                String @id @map("evento_id") @db.Uuid
-  umbralLlegadaRecintoMin Int    @default(120) @map("umbral_llegada_recinto_min")
-  umbralLlegadaDpiMin     Int    @default(120) @map("umbral_llegada_dpi_min")
-  umbralSinSyncMin        Int    @default(30) @map("umbral_sin_sync_min")
-  margenLlegadaMetros     Int    @default(150) @map("margen_llegada_metros")
+  eventoId                String  @id @map("evento_id") @db.Uuid
+  umbralLlegadaRecintoMin Int     @default(120) @map("umbral_llegada_recinto_min")
+  umbralLlegadaDpiMin     Int     @default(120) @map("umbral_llegada_dpi_min")
+  umbralSinSyncMin        Int     @default(30) @map("umbral_sin_sync_min")
+  margenLlegadaMetros     Int     @default(150) @map("margen_llegada_metros")
+  margenLlegadaDpiMetros  Int     @default(150) @map("margen_llegada_dpi_metros")
+  // Coordenada de la Delegación Provincial Electoral de Imbabura, usada para
+  // validar la geocerca de "llegada al DPI" (HU5). Nullable a propósito: hasta
+  // que se cargue el valor real, registrarLlegadaDpi no debe bloquear nada
+  // (ver tracking.service.ts).
+  delegacionUbicacion     Unsupported("geography(Point,4326)")?
 
   @@map("config_alertas")
 }

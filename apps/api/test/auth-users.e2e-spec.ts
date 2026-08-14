@@ -20,12 +20,32 @@ import { ZodValidationExceptionFilter } from '../src/common/zod-validation.filte
  *
  * Requiere postgres levantado y `pnpm db:seed` ejecutado.
  */
+// Genera una cédula ecuatoriana con dígito verificador válido (algoritmo
+// módulo-10) a partir de un valor variable, para que siga pasando
+// cedulaSchema (que ahora valida el checksum, no solo longitud/dígitos).
+// Provincia fija 17 (Pichincha), tercer dígito fijo 5 (ambos válidos),
+// 6 dígitos variables derivados de `unique` para mantener unicidad por corrida.
+function generarCedulaValida(unique: number): string {
+  const variable = String(unique % 1_000_000).padStart(6, '0');
+  const primeros9 = `175${variable}`;
+  const coeficientes = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+  let suma = 0;
+  for (let i = 0; i < 9; i++) {
+    let producto = Number(primeros9[i]) * coeficientes[i];
+    if (producto >= 10) producto -= 9;
+    suma += producto;
+  }
+  const modulo = suma % 10;
+  const verificador = modulo === 0 ? 0 : 10 - modulo;
+  return `${primeros9}${verificador}`;
+}
+
 describe('Auth + Users (e2e)', () => {
   let app: INestApplication;
   let adminToken: string;
   const unique = Date.now();
   const newUserEmail = `e2e_${unique}@cne-test.gob.ec`;
-  const newUserCedula = String(1700000000 + (unique % 100000000)).slice(0, 10);
+  const newUserCedula = generarCedulaValida(unique);
   let initialPassword = '';
   const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@cne-imbabura.gob.ec';
   const adminPassword = process.env.ADMIN_INITIAL_PASSWORD ?? 'Admin*Inicial2026';
