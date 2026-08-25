@@ -1015,8 +1015,10 @@ export class TrackingService {
 
   /**
    * HU4-CA3: ingesta de un lote de posiciones GPS capturadas por el móvil durante
-   * el tramo de retorno al DPI. Solo se aceptan puntos mientras el operador esté
-   * en retorno (registró SALIDA_RECINTO y aún no LLEGADA_DPI).
+   * el tramo de ida (DPI→recinto) o de retorno (recinto→DPI). Solo se aceptan
+   * puntos mientras el operador esté en tránsito (estado EN_TRANSITO o
+   * EN_RETORNO, ver deriveEstadoOperador) — no antes de salir del DPI, no
+   * mientras está parado en el recinto, no tras llegar de vuelta al DPI.
    */
   async ingestarPosiciones(
     operadorId: string,
@@ -1030,21 +1032,18 @@ export class TrackingService {
     });
     if (!evento) throw new NotFoundException('No hay un evento electoral activo');
 
-    const [salidaRecinto, llegadaDpi] = await this.prisma.$transaction([
-      this.prisma.eventoTracking.findFirst({
-        where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
-        select: { id: true },
-      }),
-      this.prisma.eventoTracking.findFirst({
-        where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
-        select: { id: true },
-      }),
-    ]);
-    if (!salidaRecinto) {
-      throw new BadRequestException('Aún no has registrado la salida del recinto');
-    }
-    if (llegadaDpi) {
-      throw new BadRequestException('Ya registraste tu llegada al DPI; el rastreo finalizó');
+    const tracking = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id, operadorId },
+      select: { tipo: true },
+    });
+    const estado = this.deriveEstadoOperador(new Set<string>(tracking.map((t) => t.tipo)));
+    if (estado !== 'EN_TRANSITO' && estado !== 'EN_RETORNO') {
+      const mensajes: Partial<Record<EstadoOperadorCda, string>> = {
+        EN_DPI: 'Aún no has registrado tu salida del DPI',
+        EN_RECINTO: 'Aún no has registrado tu salida del recinto',
+        RETORNADO: 'Ya registraste tu llegada al DPI; el rastreo finalizó',
+      };
+      throw new BadRequestException(mensajes[estado] ?? 'No puedes enviar posiciones en este momento');
     }
 
     for (const p of parsed.posiciones) {
@@ -1064,10 +1063,10 @@ export class TrackingService {
   }
 
   /**
-   * HU4-CA4 / HU6: operadores actualmente en su tramo de retorno (registraron
-   * SALIDA_RECINTO y aún no LLEGADA_DPI) con su última posición GPS conocida.
-   * Los supervisores solo ven a sus operadores asignados; los administradores
-   * los ven a todos.
+   * HU4-CA4 / HU6: operadores actualmente en tránsito (tramo de ida DPI→recinto
+   * o de retorno recinto→DPI, estado EN_TRANSITO/EN_RETORNO, ver
+   * deriveEstadoOperador) con su última posición GPS conocida. Los supervisores
+   * solo ven a sus operadores asignados; los administradores los ven a todos.
    */
   async operadoresEnRetorno(
     viewerId: string,
@@ -1081,21 +1080,20 @@ export class TrackingService {
 
     const esAdmin = roles.includes('ADMINISTRADOR');
 
-    // Operadores con SALIDA_RECINTO y sin LLEGADA_DPI en el evento activo.
-    const [salidas, llegadas] = await this.prisma.$transaction([
-      this.prisma.eventoTracking.findMany({
-        where: { eventoId: evento.id, tipo: 'SALIDA_RECINTO' },
-        select: { operadorId: true },
-      }),
-      this.prisma.eventoTracking.findMany({
-        where: { eventoId: evento.id, tipo: 'LLEGADA_DPI' },
-        select: { operadorId: true },
-      }),
-    ]);
-    const retornados = new Set(llegadas.map((l) => l.operadorId));
-    let operadorIds = Array.from(new Set(salidas.map((s) => s.operadorId))).filter(
-      (id) => !retornados.has(id),
-    );
+    const trackingRows = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id },
+      select: { operadorId: true, tipo: true },
+    });
+    const tiposPorOperador = new Map<string, Set<string>>();
+    for (const t of trackingRows) {
+      const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
+      set.add(t.tipo);
+      tiposPorOperador.set(t.operadorId, set);
+    }
+    let operadorIds = Array.from(tiposPorOperador.keys()).filter((id) => {
+      const e = this.deriveEstadoOperador(tiposPorOperador.get(id));
+      return e === 'EN_TRANSITO' || e === 'EN_RETORNO';
+    });
 
     if (!esAdmin) {
       const asignados = await this.prisma.asignacionSupervisor.findMany({
@@ -1151,6 +1149,7 @@ export class TrackingService {
         longitud: pos.lng,
         capturadoEn: pos.capturado_en.toISOString(),
         kits: kitsPorId.get(id) ?? [],
+        estado: this.deriveEstadoOperador(tiposPorOperador.get(id)),
       });
     }
 

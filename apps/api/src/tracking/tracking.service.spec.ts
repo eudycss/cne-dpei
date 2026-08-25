@@ -356,11 +356,20 @@ describe('TrackingService', () => {
       posiciones: [{ latitud: 0.35, longitud: -78.11, capturadoEn: ocurridoEn }],
     };
 
-    it('lanza BadRequestException si aún no registró la salida del recinto', async () => {
+    it('lanza BadRequestException si aún no ha salido del DPI (EN_DPI)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.eventoTracking.findFirst
-        .mockResolvedValueOnce(null) // salida_recinto
-        .mockResolvedValueOnce(null); // llegada_dpi
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]);
+      await expect(service.ingestarPosiciones(operadorId, input as any)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('lanza BadRequestException si está parado en el recinto (EN_RECINTO)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { tipo: 'SALIDA_DPI' },
+        { tipo: 'LLEGADA_RECINTO' },
+      ]);
       await expect(service.ingestarPosiciones(operadorId, input as any)).rejects.toThrow(
         BadRequestException,
       );
@@ -368,25 +377,133 @@ describe('TrackingService', () => {
 
     it('lanza BadRequestException si ya registró la llegada al DPI (rastreo terminó)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.eventoTracking.findFirst
-        .mockResolvedValueOnce({ id: 'salida' }) // salida_recinto ok
-        .mockResolvedValueOnce({ id: 'llegada' }); // llegada_dpi -> termino
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { tipo: 'SALIDA_DPI' },
+        { tipo: 'LLEGADA_RECINTO' },
+        { tipo: 'SALIDA_RECINTO' },
+        { tipo: 'LLEGADA_DPI' },
+      ]);
       await expect(service.ingestarPosiciones(operadorId, input as any)).rejects.toThrow(
         BadRequestException,
       );
     });
 
-    it('inserta las posiciones y devuelve el conteo recibido', async () => {
+    it('acepta e inserta posiciones durante el tramo de ida (EN_TRANSITO)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.eventoTracking.findFirst
-        .mockResolvedValueOnce({ id: 'salida' }) // salida_recinto ok
-        .mockResolvedValueOnce(null); // sin llegada_dpi
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([{ tipo: 'SALIDA_DPI' }]);
       prisma.$executeRaw.mockResolvedValue(1);
 
       const result = await service.ingestarPosiciones(operadorId, input as any);
 
       expect(result.recibidas).toBe(1);
       expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('acepta e inserta posiciones durante el tramo de retorno (EN_RETORNO)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { tipo: 'SALIDA_DPI' },
+        { tipo: 'LLEGADA_RECINTO' },
+        { tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.$executeRaw.mockResolvedValue(1);
+
+      const result = await service.ingestarPosiciones(operadorId, input as any);
+
+      expect(result.recibidas).toBe(1);
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('operadoresEnRetorno', () => {
+    const operadorIdA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const operadorIdB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const operadorIdC = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const ultimaPosicion = [{ lat: 0.35, lng: -78.11, capturado_en: new Date(ocurridoEn) }];
+
+    it('sin evento activo devuelve lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+      expect(result).toEqual([]);
+    });
+
+    it('un admin ve operadores en ambos tramos con el estado correcto', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorIdA, nombres: 'Ana', apellidos: 'Perez' },
+        { id: operadorIdB, nombres: 'Beto', apellidos: 'Gomez' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce(ultimaPosicion)
+        .mockResolvedValueOnce(ultimaPosicion);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        expect.objectContaining({ operadorId: operadorIdA, estado: 'EN_TRANSITO' }),
+        expect.objectContaining({ operadorId: operadorIdB, estado: 'EN_RETORNO' }),
+      ]);
+    });
+
+    it('un supervisor solo ve a sus operadores asignados', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId: operadorIdB }]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorIdB, nombres: 'Beto', apellidos: 'Gomez' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce(ultimaPosicion);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['TECNICO_SUPERVISOR']);
+
+      expect(result).toEqual([
+        expect.objectContaining({ operadorId: operadorIdB, estado: 'EN_RETORNO' }),
+      ]);
+    });
+
+    it('excluye operadores en EN_DPI o RETORNADO', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdC, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdC, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdC, tipo: 'SALIDA_RECINTO' },
+        { operadorId: operadorIdC, tipo: 'LLEGADA_DPI' },
+      ]);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+
+      expect(result).toEqual([]);
+      expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+    });
+
+    it('excluye operadores calificados que aún no tienen posición GPS', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorIdA, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+
+      expect(result).toEqual([]);
     });
   });
 });

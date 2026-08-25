@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import type { OperadorEnRetorno } from '@cne/shared-types';
+import type { EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
@@ -30,23 +30,29 @@ const MAPA_HTML = `<!DOCTYPE html>
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
     var capa = L.layerGroup().addTo(map);
-    var icono = L.divIcon({
-      className: 'op',
-      html: '<div style="background:#2563eb;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #2563eb"></div>',
-      iconSize: [18, 18], iconAnchor: [9, 9]
-    });
+    var colorPorEstado = { EN_TRANSITO: '#7c3aed', EN_RETORNO: '#2563eb' };
+    var labelPorEstado = { EN_TRANSITO: 'En tránsito', EN_RETORNO: 'En retorno' };
+    function iconoPara(color) {
+      return L.divIcon({
+        className: 'op',
+        html: '<div style="background:' + color + ';width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px ' + color + '"></div>',
+        iconSize: [18, 18], iconAnchor: [9, 9]
+      });
+    }
     window.setOperadores = function (ops) {
       capa.clearLayers();
       var pts = [];
       for (var i = 0; i < ops.length; i++) {
         var o = ops[i];
+        var color = colorPorEstado[o.estado] || colorPorEstado.EN_RETORNO;
         var kitsHtml = '';
         for (var j = 0; j < o.kits.length; j++) {
           kitsHtml += '<li>' + o.kits[j].codigoUnico + ' — ' + o.kits[j].nombre + '</li>';
         }
         var popup = '<strong>' + o.operadorNombre + '</strong><br/>' +
+          '<span>' + (labelPorEstado[o.estado] || '') + '</span><br/>' +
           '<span>Kits (' + o.kits.length + '):</span><ul style="margin:4px 0 0;padding-left:16px">' + kitsHtml + '</ul>';
-        L.marker([o.latitud, o.longitud], { icon: icono }).bindPopup(popup).addTo(capa);
+        L.marker([o.latitud, o.longitud], { icon: iconoPara(color) }).bindPopup(popup).addTo(capa);
         pts.push([o.latitud, o.longitud]);
       }
       if (pts.length > 0) {
@@ -69,7 +75,7 @@ function formatearHora(iso: string): string {
 }
 
 // Mapa de un solo marcador para el modal "Ver ubicación" de un operador puntual.
-function ubicacionHtml(lat: number, lng: number): string {
+function ubicacionHtml(lat: number, lng: number, color: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -88,7 +94,7 @@ function ubicacionHtml(lat: number, lng: number): string {
     }).addTo(map);
     var icono = L.divIcon({
       className: 'op',
-      html: '<div style="background:#2563eb;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #2563eb"></div>',
+      html: '<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px ${color}"></div>',
       iconSize: [18, 18], iconAnchor: [9, 9]
     });
     L.marker([${lat}, ${lng}], { icon: icono }).addTo(map);
@@ -96,6 +102,15 @@ function ubicacionHtml(lat: number, lng: number): string {
 </body>
 </html>`;
 }
+
+const COLOR_POR_ESTADO: Partial<Record<EstadoOperadorCda, string>> = {
+  EN_TRANSITO: '#7c3aed',
+  EN_RETORNO: '#2563eb',
+};
+const LABEL_POR_ESTADO: Partial<Record<EstadoOperadorCda, string>> = {
+  EN_TRANSITO: 'En tránsito',
+  EN_RETORNO: 'En retorno',
+};
 
 export function MonitoreoScreen() {
   const { logout } = useAuth();
@@ -159,7 +174,7 @@ export function MonitoreoScreen() {
         }
       >
         <Text style={styles.listTitle}>
-          En retorno ({operadores.length})
+          En ruta ({operadores.length})
         </Text>
         {loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
@@ -167,16 +182,20 @@ export function MonitoreoScreen() {
           <Text style={styles.error}>{error}</Text>
         ) : operadores.length === 0 ? (
           <Text style={styles.empty}>
-            No hay operadores en retorno en este momento.
+            No hay operadores en tránsito ni en retorno en este momento.
           </Text>
         ) : (
           operadores.map((o) => (
             <Pressable key={o.operadorId} style={styles.row} onPress={() => setUbicacionDe(o)}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowName}>{o.operadorNombre}</Text>
-                <Text style={styles.rowMeta}>
-                  {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} · {formatearHora(o.capturadoEn)}
-                </Text>
+                <View style={styles.rowMetaRow}>
+                  <View style={[styles.estadoDot, { backgroundColor: COLOR_POR_ESTADO[o.estado] ?? colors.primary }]} />
+                  <Text style={styles.rowMeta}>
+                    {LABEL_POR_ESTADO[o.estado] ?? o.estado} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
+                    {formatearHora(o.capturadoEn)}
+                  </Text>
+                </View>
               </View>
               <Text style={styles.verUbicacion}>Ver ubicación</Text>
             </Pressable>
@@ -197,7 +216,13 @@ export function MonitoreoScreen() {
                 <View style={styles.modalMapWrap}>
                   <WebView
                     originWhitelist={['*']}
-                    source={{ html: ubicacionHtml(ubicacionDe.latitud, ubicacionDe.longitud) }}
+                    source={{
+                      html: ubicacionHtml(
+                        ubicacionDe.latitud,
+                        ubicacionDe.longitud,
+                        COLOR_POR_ESTADO[ubicacionDe.estado] ?? colors.primary,
+                      ),
+                    }}
                     style={styles.modalMap}
                   />
                 </View>
@@ -228,7 +253,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     borderBottomColor: c.border,
   },
   rowName: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.textPrimary },
-  rowMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
+  rowMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  estadoDot: { width: 7, height: 7, borderRadius: 4 },
+  rowMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary },
   verUbicacion: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.primary },
   empty: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 8 },
   error: { fontSize: 14, fontFamily: fontFamily.medium, color: c.error, marginTop: 8 },

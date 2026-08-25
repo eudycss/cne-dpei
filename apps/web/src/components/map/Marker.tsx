@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMapInstance } from './MapContext';
 
@@ -8,11 +8,13 @@ interface MarkerProps {
   position: [number, number];
   /** Anillo de pulso animado, reservado para posiciones "en vivo" (respeta prefers-reduced-motion). */
   pulse?: boolean;
+  /** Color del punto (CSS). Por defecto usa var(--primary). */
+  color?: string;
   /** Contenido del popup que se abre al hacer click en el marcador. */
   children?: ReactNode;
 }
 
-export function Marker({ position, pulse, children }: MarkerProps) {
+export function Marker({ position, pulse, color, children }: MarkerProps) {
   const map = useMapInstance();
   const markerElRef = useRef<HTMLDivElement | null>(null);
   const popupElRef = useRef<HTMLDivElement | null>(null);
@@ -50,7 +52,10 @@ export function Marker({ position, pulse, children }: MarkerProps) {
   return (
     <>
       {createPortal(
-        <div className={`operador-marker-dot${pulse ? ' operador-marker-dot--pulse' : ''}`} />,
+        <div
+          className={`operador-marker-dot${pulse ? ' operador-marker-dot--pulse' : ''}`}
+          style={color ? ({ '--marker-color': color } as CSSProperties) : undefined}
+        />,
         markerElRef.current!,
       )}
       {children ? createPortal(<div className="operador-popup">{children}</div>, popupElRef.current!) : null}

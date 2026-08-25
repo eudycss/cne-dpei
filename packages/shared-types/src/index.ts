@@ -514,6 +514,7 @@ export interface OperadorEnRetorno {
   longitud: number;
   capturadoEn: string;
   kits: OperadorEnRetornoKit[];
+  estado: EstadoOperadorCda;
 }
 
 // Estado en vivo de los CDAs (pantalla de monitoreo)
