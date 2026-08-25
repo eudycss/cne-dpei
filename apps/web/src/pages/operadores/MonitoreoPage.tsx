@@ -9,7 +9,7 @@ import { MapView, Marker, FitBounds } from '../../components/map';
 
 const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
   EN_DPI: { label: 'En DPI', color: '#9ca3af' },
-  EN_TRANSITO: { label: 'En tránsito', color: '#2563eb' },
+  EN_TRANSITO: { label: 'En tránsito', color: '#7c3aed' },
   EN_RECINTO: { label: 'En el recinto', color: '#f59e0b' },
   EN_RETORNO: { label: 'En retorno', color: '#2563eb' },
   RETORNADO: { label: 'Retornado', color: '#16a34a' },
@@ -144,10 +144,10 @@ export function MonitoreoPage() {
 
   return (
     <div>
-      <h2>Monitoreo de operadores en retorno</h2>
+      <h2>Monitoreo de operadores en ruta</h2>
       <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
-        Ubicación en tiempo real de tus operadores de CDA en su trayecto de regreso al DPI.
-        Se actualiza automáticamente cada 10 segundos.
+        Ubicación en tiempo real de tus operadores de CDA, tanto en su trayecto hacia el recinto
+        como en su regreso al DPI. Se actualiza automáticamente cada 10 segundos.
       </p>
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
@@ -155,11 +155,16 @@ export function MonitoreoPage() {
           <MapView center={CENTRO_IMBABURA} zoom={11} pitch={30} className="h-[480px] w-full">
             <FitBounds points={operadores.map((o) => [o.latitud, o.longitud])} />
             {operadores.map((o) => (
-              <Marker key={o.operadorId} position={[o.latitud, o.longitud]} pulse>
+              <Marker
+                key={o.operadorId}
+                position={[o.latitud, o.longitud]}
+                color={ESTADO_INFO[o.estado].color}
+                pulse
+              >
                 <strong>{o.operadorNombre}</strong>
                 <br />
                 <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  Última posición: {formatearFechaHora(o.capturadoEn)}
+                  {ESTADO_INFO[o.estado].label} · Última posición: {formatearFechaHora(o.capturadoEn)}
                 </span>
                 <br />
                 <span style={{ fontSize: 12 }}>Kits asignados ({o.kits.length}):</span>
@@ -177,14 +182,14 @@ export function MonitoreoPage() {
 
         <div className="card" style={{ flex: '1 1 280px', minWidth: 260 }}>
           <h3 style={{ marginTop: 0 }}>
-            En retorno (<SlotText text={String(operadores.length)} />)
+            En ruta (<SlotText text={String(operadores.length)} />)
           </h3>
           {isLoading ? (
             <p style={{ opacity: 0.7 }}>Cargando…</p>
           ) : isError ? (
             <p style={{ color: '#dc2626' }}>No se pudo cargar el monitoreo.</p>
           ) : operadores.length === 0 ? (
-            <p style={{ opacity: 0.7 }}>No hay operadores en retorno en este momento.</p>
+            <p style={{ opacity: 0.7 }}>No hay operadores en tránsito ni en retorno en este momento.</p>
           ) : (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {operadores.map((o) => (
@@ -193,8 +198,18 @@ export function MonitoreoPage() {
                   style={{ padding: '0.6rem 0', borderBottom: '1px solid #e5e7eb' }}
                 >
                   <strong>{o.operadorNombre}</strong>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} · {formatearFechaHora(o.capturadoEn)}
+                  <div style={{ fontSize: 13, opacity: 0.8, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: ESTADO_INFO[o.estado].color,
+                        display: 'inline-block',
+                      }}
+                    />
+                    {ESTADO_INFO[o.estado].label} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
+                    {formatearFechaHora(o.capturadoEn)}
                   </div>
                 </li>
               ))}

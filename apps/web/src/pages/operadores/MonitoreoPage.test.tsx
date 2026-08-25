@@ -34,6 +34,17 @@ const operadorRetorno: OperadorEnRetorno = {
   longitud: -78.12,
   capturadoEn: '2026-07-01T10:00:00.000Z',
   kits: [{ id: 'k1', codigoUnico: 'KIT-001', nombre: 'Kit A' }],
+  estado: 'EN_RETORNO',
+};
+
+const operadorTransito: OperadorEnRetorno = {
+  operadorId: 'op3',
+  operadorNombre: 'Carla Suárez',
+  latitud: 0.36,
+  longitud: -78.13,
+  capturadoEn: '2026-07-01T09:30:00.000Z',
+  kits: [],
+  estado: 'EN_TRANSITO',
 };
 
 const cdaConUbicacionYFoto: CdaEstadoDto = {
@@ -101,7 +112,9 @@ describe('MonitoreoPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('No hay operadores en retorno en este momento.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No hay operadores en tránsito ni en retorno en este momento.'),
+    ).toBeInTheDocument();
     expect(
       await screen.findByText('No hay CDAs con operador asignado en el evento activo'),
     ).toBeInTheDocument();
@@ -126,6 +139,24 @@ describe('MonitoreoPage', () => {
 
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
     expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+  });
+
+  it('diferencia visualmente a un operador en tránsito de uno en retorno', async () => {
+    getOperadoresMock.mockResolvedValue([operadorRetorno, operadorTransito]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    const filaRetorno = (await screen.findAllByText('Juan Pérez'))
+      .map((el) => el.closest('li'))
+      .find((li): li is HTMLLIElement => li !== null)!;
+    const filaTransito = screen
+      .getAllByText('Carla Suárez')
+      .map((el) => el.closest('li'))
+      .find((li): li is HTMLLIElement => li !== null)!;
+
+    expect(within(filaRetorno).getByText(/En retorno/)).toBeInTheDocument();
+    expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
   });
 
   it('el botón "Ver ubicación" está deshabilitado si el CDA no tiene ubicación, y abre el modal si la tiene', async () => {

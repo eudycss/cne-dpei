@@ -175,7 +175,7 @@ export class TrackingController {
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'HU4-CA3: ingesta de lotes de posiciones GPS durante el retorno',
+    summary: 'HU4-CA3: ingesta de lotes de posiciones GPS durante el tramo de ida o de retorno',
   })
   posiciones(
     @CurrentUser() user: AuthenticatedUser,
@@ -187,7 +187,7 @@ export class TrackingController {
   @Get('operadores-en-retorno')
   @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
   @ApiOperation({
-    summary: 'HU4-CA4 / HU6: operadores en retorno con su última posición GPS',
+    summary: 'HU4-CA4 / HU6: operadores en tránsito (ida o retorno) con su última posición GPS',
   })
   operadoresEnRetorno(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.operadoresEnRetorno(user.sub, user.roles);

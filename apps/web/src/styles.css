@@ -173,13 +173,20 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 
 /* Mapa de monitoreo (MapLibre GL) */
 .operador-marker-dot {
+  --marker-color: var(--primary);
   position: relative;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #60a5fa, var(--primary) 70%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--marker-color) 60%, white 40%),
+    var(--marker-color) 70%
+  );
   border: 3px solid #fff;
-  box-shadow: 0 0 0 1px var(--primary), 0 4px 14px rgba(37, 99, 235, 0.55);
+  box-shadow:
+    0 0 0 1px var(--marker-color),
+    0 4px 14px color-mix(in srgb, var(--marker-color) 55%, transparent);
 }
 [data-theme="dark"] .operador-marker-dot { border-color: var(--bg-card); }
 
@@ -189,7 +196,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   position: absolute;
   inset: -10px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+  background: radial-gradient(circle, var(--marker-color) 0%, transparent 70%);
   opacity: 0.5;
   z-index: -1;
 }
