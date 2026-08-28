@@ -37,6 +37,40 @@ El APK queda en `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
+> ⚠️ **Este build (`assembleDebug`) no sirve para instalar de forma standalone.** Por defecto, React Native no embebe el bundle de JS en la variante `debug` (solo en `release`) — el APK depende de que el servidor Metro (`pnpm --filter @cne/mobile start`) esté corriendo y accesible desde el dispositivo. Es útil para desarrollo/debug en la misma red, pero **no** para instalar en el celular de un operador de campo — para eso usa la siguiente sección.
+
+### Build para distribuir en campo (APK standalone, sin Metro)
+
+Para un APK que funcione solo, sin depender de Metro ni de esta máquina, hay que compilar la variante **`release`** (sí embebe el bundle de JS y las variables de entorno). Ya está firmada con el keystore de debug (`signingConfig signingConfigs.debug` en `android/app/build.gradle`), así que no hace falta generar un keystore de producción — alcanza para pruebas internas/de campo, no para Play Store.
+
+Además, si existe `apps/mobile/.env.development.local` en tu máquina, Expo lo prioriza sobre `.env` y el APK queda embebido con la URL que tenga ese archivo (típicamente una IP LAN local, no el backend de producción) — hay que sacarlo del camino antes de compilar. Antes de compilar un APK para repartir en una jornada real:
+
+1. Renombra temporalmente el archivo para que Expo no lo cargue:
+   ```bash
+   mv apps/mobile/.env.development.local apps/mobile/.env.development.local.bak
+   ```
+2. Compila la variante release:
+   ```bash
+   npx expo prebuild --platform android --clean
+   cd android
+   ./gradlew assembleRelease --console=plain
+   ```
+   Con el `.local` fuera del camino, Expo cae a `EXPO_PUBLIC_API_URL` de `apps/mobile/.env` (Render, producción).
+3. Verifica antes de instalar (el bundle de JS está comprimido dentro del APK, así que `strings` sobre el `.apk` directamente no encuentra nada — hay que extraerlo primero):
+   ```bash
+   unzip -o -q android/app/build/outputs/apk/release/app-release.apk assets/index.android.bundle -d /tmp/apk-check
+   grep -a -o 'https\?://[a-zA-Z0-9.-]*' /tmp/apk-check/assets/index.android.bundle | sort -u
+   ```
+   Debería aparecer `https://cne-imbabura-api.onrender.com`; si en cambio aparece una IP `192.168.*`/`10.*`, el build tomó la URL equivocada.
+4. El APK queda en `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`:
+   ```bash
+   adb install android/app/build/outputs/apk/release/app-release.apk
+   ```
+5. Restaura el archivo para seguir desarrollando localmente:
+   ```bash
+   mv apps/mobile/.env.development.local.bak apps/mobile/.env.development.local
+   ```
+
 `apps/mobile/android/` es output regenerado por `expo prebuild` y está en `.gitignore` — nunca edites archivos ahí a mano de forma permanente, se pierden en el siguiente `--clean`.
 
 ### Sobre `plugins/withPnpmGradlePluginFix.js`
