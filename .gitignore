@@ -56,3 +56,6 @@ CLAUDE.local.md
 # Playwright/Chrome testing artifacts (raíz)
 .playwright-mcp/
 /*.png
+
+# Datos de trabajo locales (plantillas con info sensible, no van al repo)
+plantilla/
