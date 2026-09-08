@@ -89,6 +89,23 @@ api.interceptors.response.use(
       // 401/403. En cualquier otro caso propagamos el error original sin
       // tocar SecureStore ni notificar a la UI.
       if (isRefreshRejection(refreshErr)) {
+        // El rastreo GPS en segundo plano (TaskManager) corre en un contexto
+        // JS aparte del de la app en primer plano, con su propia variable
+        // `refreshing` — la deduplicación de arriba no lo cubre. Si ambos
+        // contextos intentan refrescar casi al mismo tiempo, el backend solo
+        // deja rotar el token una vez (protección contra reuso, ver
+        // AuthService.refresh); el que pierde la carrera recibe este mismo
+        // 401 aunque la sesión siga siendo válida. Antes de desloguear,
+        // verificamos si el refresh token en SecureStore ya cambió respecto
+        // al que usamos: si cambió, alguien más ya ganó la carrera y dejó una
+        // sesión válida — reintentamos con esos tokens en vez de desloguear.
+        const currentRefresh = await tokenStore.getRefresh();
+        if (currentRefresh && currentRefresh !== refresh) {
+          const currentAccess = await tokenStore.getAccess();
+          original._retry = true;
+          original.headers.Authorization = `Bearer ${currentAccess}`;
+          return api(original);
+        }
         await tokenStore.clear();
         notifySessionExpired();
       }

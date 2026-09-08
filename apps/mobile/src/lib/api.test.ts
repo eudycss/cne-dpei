@@ -182,6 +182,30 @@ describe('response interceptor — refresh en 401', () => {
     expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
+  it('BUG: si otro contexto (ej. la tarea de rastreo en segundo plano) ya rotó el refresh token primero, no debe tratarse como sesión inválida', async () => {
+    // El refresh token que leímos al iniciar nuestro intento de refresh...
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-viejo');
+    (axios.post as jest.Mock).mockRejectedValueOnce(httpError(401));
+    // ...pero cuando /auth/refresh nos rechaza (porque otro contexto ya lo rotó
+    // primero, ej. la tarea de rastreo en segundo plano), SecureStore ya tiene
+    // los tokens NUEVOS que dejó el ganador de esa carrera.
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-nuevo-de-otro-contexto');
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('access-nuevo-de-otro-contexto');
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    const original: any = { headers: {} };
+    const err = { response: { status: 401 }, config: original };
+
+    const result = await responseErrorHandler(err);
+
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+    expect(original.headers.Authorization).toBe('Bearer access-nuevo-de-otro-contexto');
+    expect(original._retry).toBe(true);
+    expect(result).toEqual({ config: original, retried: true });
+    unsubscribe();
+  });
+
   it('dedupe: dos 401 concurrentes solo disparan un POST /auth/refresh', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValue('refresh-token');
     (axios.post as jest.Mock).mockResolvedValueOnce({
