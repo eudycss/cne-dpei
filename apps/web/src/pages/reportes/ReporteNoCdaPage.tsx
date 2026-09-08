@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
+import { sileo } from 'sileo';
 import type { ReporteFlujoItem, ReporteNoCdaItem } from '@cne/shared-types';
 import { api } from '../../lib/api';
 import { Logo } from '../../components/Logo';
@@ -35,6 +37,60 @@ export function ReporteNoCdaPage() {
   });
 
   const [vista, setVista] = useState<'flujo' | 'nocda'>('flujo');
+  const [exporting, setExporting] = useState(false);
+
+  function handleExportExcel() {
+    setExporting(true);
+    try {
+      const rows: any[][] = [];
+
+      if (vista === 'flujo') {
+        rows.push(['Reporte de flujo de CDAs — CNE Imbabura']);
+        rows.push([]);
+        rows.push(['Operador', 'Cédula', 'CDA', 'Kit(s)', 'Salida DPI', 'Llegada Recinto', 'Salida Recinto', 'Llegada DPI']);
+        for (const item of flujo ?? []) {
+          rows.push([
+            item.operadorNombre,
+            item.operadorCedula,
+            `${item.cdaCodigo} — ${item.cdaNombre}`,
+            item.kitsCodigos.join(', ') || '—',
+            item.salidaDpiEn ? formatHora(item.salidaDpiEn) : 'Pendiente',
+            item.llegadaRecintoEn ? formatHora(item.llegadaRecintoEn) : 'Pendiente',
+            item.salidaRecintoEn ? formatHora(item.salidaRecintoEn) : 'Pendiente',
+            item.llegadaDpiEn ? formatHora(item.llegadaDpiEn) : 'Pendiente',
+          ]);
+        }
+      } else {
+        rows.push(['Reporte de CDAs con sus NO-CDAs — CNE Imbabura']);
+        rows.push([]);
+        rows.push(['Operador', 'Cédula', 'CDA', 'Kit(s)', 'Llegados', 'Faltan', 'NO-CDAs']);
+        for (const item of data ?? []) {
+          const noCdasTexto =
+            item.noCdas.length === 0
+              ? '—'
+              : item.noCdas.map((nc) => `${nc.llegado ? '✓' : '✗'} ${nc.codigoRecinto} — ${nc.nombre}`).join('; ');
+          rows.push([
+            item.operadorNombre,
+            item.operadorCedula,
+            `${item.cdaCodigo} — ${item.cdaNombre}`,
+            item.kitsCodigos.join(', ') || '—',
+            item.totalLlegados,
+            item.totalNoCdas - item.totalLlegados,
+            noCdasTexto,
+          ]);
+        }
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, vista === 'flujo' ? 'Flujo CDAs' : 'CDAs y NO-CDAs');
+      XLSX.writeFile(wb, vista === 'flujo' ? 'reporte_flujo_cdas.xlsx' : 'reporte_cdas_nocdas.xlsx');
+    } catch (e: any) {
+      sileo.error({ title: 'No se pudo exportar: ' + (e?.message ?? '') });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const totales = useMemo(() => {
     if (!data) return { llegados: 0, faltantes: 0 };
@@ -84,6 +140,14 @@ export function ReporteNoCdaPage() {
               disabled={vista === 'flujo' ? !flujo?.length : !data?.length}
             >
               Imprimir
+            </button>
+            <button
+              className="btn secondary"
+              onClick={handleExportExcel}
+              disabled={exporting || (vista === 'flujo' ? !flujo?.length : !data?.length)}
+              title="Exportar a Excel"
+            >
+              {exporting ? 'Exportando…' : '↓ Excel'}
             </button>
           </div>
         </div>

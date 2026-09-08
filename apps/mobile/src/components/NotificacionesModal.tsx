@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NotificacionItem } from '@cne/shared-types';
 import { describirNotificacion, formatearFechaHora } from '../lib/notifications';
 import { useTheme } from '../theme/ThemeContext';
@@ -12,9 +12,21 @@ interface Props {
   noLeidas: number;
   onMarkLeida: (id: string) => void;
   onClose: () => void;
+  hayMas: boolean;
+  cargandoMas: boolean;
+  onCargarMas: () => void;
 }
 
-export function NotificacionesModal({ visible, items, noLeidas, onMarkLeida, onClose }: Props) {
+export function NotificacionesModal({
+  visible,
+  items,
+  noLeidas,
+  onMarkLeida,
+  onClose,
+  hayMas,
+  cargandoMas,
+  onCargarMas,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -49,6 +61,21 @@ export function NotificacionesModal({ visible, items, noLeidas, onMarkLeida, onC
                   </Pressable>
                 );
               })}
+              {hayMas ? (
+                <Pressable
+                  style={styles.cargarMasBtn}
+                  onPress={onCargarMas}
+                  disabled={cargandoMas}
+                  accessibilityLabel="Cargar más notificaciones"
+                  accessibilityState={{ disabled: cargandoMas, busy: cargandoMas }}
+                >
+                  {cargandoMas ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Text style={styles.cargarMasText}>Cargar más</Text>
+                  )}
+                </Pressable>
+              ) : null}
             </ScrollView>
           )}
 
@@ -74,4 +101,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   meta: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 2 },
   closeBtn: { marginTop: 18, alignSelf: 'flex-end', paddingVertical: 8, paddingHorizontal: 14 },
   closeBtnText: { fontSize: 14, fontFamily: fontFamily.bold, color: c.primary },
+  cargarMasBtn: { paddingVertical: 12, alignItems: 'center' },
+  cargarMasText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.primary },
 });

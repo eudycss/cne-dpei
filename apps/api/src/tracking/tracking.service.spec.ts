@@ -100,6 +100,46 @@ describe('TrackingService', () => {
       ]);
       await expect(service.miAsignacion(operadorId)).rejects.toThrow(ConflictException);
     });
+
+    it('incluye la coordenada y el margen de la Delegación cuando ya están configurados', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ lat: -0.35, lng: -78.12 }]) // coords recinto
+        .mockResolvedValueOnce([{ lat: 0.35849, lng: -78.11886 }]); // coords delegación
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({
+        margenLlegadaMetros: 120,
+        margenLlegadaDpiMetros: 200,
+      });
+      prisma.recinto.findMany.mockResolvedValueOnce([]); // noCdas
+      prisma.militar.findFirst.mockResolvedValueOnce(null);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+
+      const result = await service.miAsignacion(operadorId);
+
+      expect(result.delegacion).toEqual({ latitud: 0.35849, longitud: -78.11886 });
+      expect(result.margenLlegadaDpiMetros).toBe(200);
+      expect(result.margenLlegadaMetros).toBe(120);
+    });
+
+    it('devuelve delegacion=null y el margen por defecto si aún no hay coordenada configurada', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // sin coords de recinto
+        .mockResolvedValueOnce([]); // sin coords de delegación
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.militar.findFirst.mockResolvedValueOnce(null);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+
+      const result = await service.miAsignacion(operadorId);
+
+      expect(result.delegacion).toBeNull();
+      expect(result.margenLlegadaDpiMetros).toBe(150);
+    });
   });
 
   describe('registrarSalidaDpi', () => {

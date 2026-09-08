@@ -84,6 +84,8 @@ const asignacionFixture: MiAsignacionResponse = {
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: 'https://storage.example.com/foto.jpg',
   margenLlegadaMetros: 100,
+  delegacion: null,
+  margenLlegadaDpiMetros: 150,
 };
 
 describe('LlegadaRecintoScreen', () => {

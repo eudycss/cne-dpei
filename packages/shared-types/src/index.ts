@@ -356,6 +356,8 @@ export interface MiAsignacionResponse {
   yaRegistroLlegadaDpi: boolean;
   fotoMilitarUrl: string | null;
   margenLlegadaMetros: number;
+  delegacion: { latitud: number; longitud: number } | null;
+  margenLlegadaDpiMetros: number;
 }
 
 // HU3 — Llegada al recinto y recepción de kits
