@@ -170,6 +170,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .notif-item.unread:hover { background: var(--notif-unread-hover); }
 .notif-text { font-size: 0.88rem; color: var(--text); }
 .notif-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.notif-cargar-mas { display: block; width: 100%; padding: 0.65rem 1rem; background: transparent; border: none; border-top: 1px solid var(--border-subtle); color: var(--primary); font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.notif-cargar-mas:hover { background: var(--notif-item-hover); }
+.notif-cargar-mas:disabled { color: var(--text-muted); cursor: default; }
 
 /* Mapa de monitoreo (MapLibre GL) */
 .operador-marker-dot {
