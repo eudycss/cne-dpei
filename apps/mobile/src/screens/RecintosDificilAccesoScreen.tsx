@@ -21,7 +21,7 @@ const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> =
   EN_TRANSITO: { label: 'En tránsito', color: '#2563eb' },
   EN_RECINTO: { label: 'En el recinto', color: '#f59e0b' },
   EN_RETORNO: { label: 'En retorno', color: '#2563eb' },
-  RETORNADO: { label: 'Retornado', color: '#16a34a' },
+  RETORNADO: { label: 'Llegó al DPEI', color: '#16a34a' },
 };
 
 const YA_LLEGO: EstadoOperadorCda[] = ['EN_RECINTO', 'EN_RETORNO', 'RETORNADO'];

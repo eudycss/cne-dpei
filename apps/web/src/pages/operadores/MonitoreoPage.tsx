@@ -12,7 +12,7 @@ const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> =
   EN_TRANSITO: { label: 'En tránsito', color: '#7c3aed' },
   EN_RECINTO: { label: 'En el recinto', color: '#f59e0b' },
   EN_RETORNO: { label: 'En retorno', color: '#2563eb' },
-  RETORNADO: { label: 'Retornado', color: '#16a34a' },
+  RETORNADO: { label: 'Llegó al DPEI', color: '#16a34a' },
 };
 
 // Centro aproximado de la provincia de Imbabura (Ibarra) como vista por defecto.
