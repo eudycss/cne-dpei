@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { guardarVerificadorOffline } from '../lib/offlineAuth';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { Logo } from '../components/Logo';
@@ -10,7 +11,7 @@ import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
 
 export function ChangePasswordScreen() {
-  const { markPasswordChanged } = useAuth();
+  const { user, markPasswordChanged } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [current, setCurrent] = useState('');
@@ -32,6 +33,16 @@ export function ChangePasswordScreen() {
     try {
       await api.post('/auth/change-password', { currentPassword: current, newPassword: next });
       markPasswordChanged();
+      // El gate de cambio obligatorio ya se cumplió: recién ahora tiene
+      // sentido habilitar el login offline (login() no lo guardó porque
+      // debeCambiarPwd todavía era true en ese momento).
+      if (user) {
+        try {
+          await guardarVerificadorOffline(next, { ...user, debeCambiarPwd: false });
+        } catch {
+          /* si falla el guardado local, el cambio de contraseña ya tuvo éxito igual */
+        }
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.message ?? 'No se pudo cambiar la contraseña');
     } finally {

@@ -18,9 +18,18 @@ import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
 import { fontFamily } from '../theme/typography';
 import { reiniciarApp } from '../lib/reload';
+import { isNetworkError } from '../lib/offline-queue';
+
+const MENSAJE_OFFLINE: Record<'sin-verificador' | 'vencido' | 'invalido', string> = {
+  'sin-verificador':
+    'No hay conexión y este dispositivo todavía no tiene un ingreso previo guardado. Necesitas conectarte a internet al menos una vez para poder entrar sin conexión más adelante.',
+  vencido:
+    'No hay conexión y tu acceso sin conexión venció (más de 7 días desde tu último ingreso en línea). Conéctate a internet para renovarlo.',
+  invalido: 'No hay conexión. Revisa tu email y contraseña (deben ser los mismos de tu último ingreso en línea).',
+};
 
 export function LoginScreen() {
-  const { login } = useAuth();
+  const { login, loginOffline } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -37,7 +46,19 @@ export function LoginScreen() {
     try {
       await login(email, password);
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.message ?? 'No se pudo iniciar sesión');
+      if (isNetworkError(e)) {
+        const resultado = await loginOffline(email, password);
+        if (resultado.ok) {
+          Alert.alert(
+            'Sesión sin conexión',
+            'Ingresaste sin internet con tus datos guardados. Algunos datos podrían no estar actualizados hasta que recuperes conexión.',
+          );
+        } else {
+          Alert.alert('Sin conexión', MENSAJE_OFFLINE[resultado.razon]);
+        }
+      } else {
+        Alert.alert('Error', e?.response?.data?.message ?? 'No se pudo iniciar sesión');
+      }
     } finally {
       setLoading(false);
     }
