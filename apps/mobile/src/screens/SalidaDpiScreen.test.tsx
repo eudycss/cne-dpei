@@ -66,6 +66,8 @@ const asignacionFixture: MiAsignacionResponse = {
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: null,
   margenLlegadaMetros: 100,
+  delegacion: null,
+  margenLlegadaDpiMetros: 150,
 };
 
 /** Sube por el árbol desde un nodo (p.ej. el Text de un botón) hasta el <Pressable> que lo contiene. */

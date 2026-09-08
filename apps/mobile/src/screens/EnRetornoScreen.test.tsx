@@ -33,7 +33,7 @@ jest.mock('../theme/ThemeContext', () => ({
 
 jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 
-import { EnTransitoScreen } from './EnTransitoScreen';
+import { EnRetornoScreen } from './EnRetornoScreen';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import {
   iniciarRastreoPrimerPlano,
@@ -64,35 +64,34 @@ const asignacionFixture: MiAsignacionResponse = {
     juntasFemeninas: null,
     juntasMasculinas: null,
     llegadaRegistradaEn: null,
-    latitud: -0.35,
-    longitud: -78.12,
+    latitud: null,
+    longitud: null,
   },
   noCdas: [],
   militar: null,
   kits: [],
   yaRegistroSalida: true,
-  yaRegistroLlegada: false,
-  yaRegistroSalidaRecinto: false,
+  yaRegistroLlegada: true,
+  yaRegistroSalidaRecinto: true,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: null,
   margenLlegadaMetros: 100,
-  delegacion: null,
+  delegacion: { latitud: 0.35849, longitud: -78.11886 },
   margenLlegadaDpiMetros: 150,
 };
 
-describe('EnTransitoScreen', () => {
+describe('EnRetornoScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getMiAsignacion as jest.Mock).mockResolvedValue(asignacionFixture);
   });
 
   it('arranca el rastreo GPS en primer plano al montar', async () => {
-    const remove = jest.fn();
-    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove });
-    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.35, longitud: -78.12, precisionMetros: 5 });
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.35849, longitud: -78.11886, precisionMetros: 5 });
 
     await act(async () => {
-      create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
       await flushPromises();
     });
 
@@ -102,11 +101,11 @@ describe('EnTransitoScreen', () => {
   it('limpia la suscripción de rastreo al desmontar', async () => {
     const remove = jest.fn();
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove });
-    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.35, longitud: -78.12, precisionMetros: 5 });
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.35849, longitud: -78.11886, precisionMetros: 5 });
 
     let renderer!: ReactTestRenderer;
     await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      renderer = create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
       await flushPromises();
     });
 
@@ -117,47 +116,34 @@ describe('EnTransitoScreen', () => {
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it('no falla si no se pudo iniciar el rastreo (sin permiso o servicios desactivados)', async () => {
-    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue(null);
-    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.35, longitud: -78.12, precisionMetros: 5 });
-
-    let renderer!: ReactTestRenderer;
-    await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
-      await flushPromises();
-    });
-
-    expect(() => renderer.unmount()).not.toThrow();
-  });
-
-  it('deshabilita "Ya estoy en el recinto" cuando la ubicación está lejos del recinto', async () => {
+  it('deshabilita "Ya llegué al DPI" cuando la ubicación está lejos de la Delegación', async () => {
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
-    // Punto lejos de -0.35/-78.12 (recinto fixture) — fuera del margen de 100m.
-    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.40, longitud: -78.20, precisionMetros: 5 });
+    // Punto lejos de la delegación fixture — fuera del margen de 150m.
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.40, longitud: -78.20, precisionMetros: 5 });
 
     let renderer!: ReactTestRenderer;
     await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      renderer = create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
     expect(boton.props.disabled).toBe(true);
   });
 
-  it('habilita "Ya estoy en el recinto" y lo dispara al confirmar cercanía', async () => {
+  it('habilita "Ya llegué al DPI" y lo dispara al confirmar cercanía', async () => {
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
-    // Mismo punto que el recinto fixture — dentro del margen.
-    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.35, longitud: -78.12, precisionMetros: 5 });
+    // Mismo punto que la delegación fixture — dentro del margen.
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.35849, longitud: -78.11886, precisionMetros: 5 });
 
     const onMarcarLlegada = jest.fn();
     let renderer!: ReactTestRenderer;
     await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={onMarcarLlegada} />);
+      renderer = create(<EnRetornoScreen onMarcarLlegada={onMarcarLlegada} />);
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
     expect(boton.props.disabled).toBe(false);
 
     await act(async () => {
@@ -168,35 +154,32 @@ describe('EnTransitoScreen', () => {
     expect(onMarcarLlegada).toHaveBeenCalledTimes(1);
   });
 
+  it('no bloquea el botón cuando la Delegación todavía no tiene coordenada configurada', async () => {
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (getMiAsignacion as jest.Mock).mockResolvedValue({ ...asignacionFixture, delegacion: null });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    expect(boton.props.disabled).toBe(false);
+    expect(obtenerUbicacionPuntual).not.toHaveBeenCalled();
+  });
+
   it('no bloquea el botón si no se pudo verificar la ubicación (sin permiso de GPS)', async () => {
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
     (obtenerUbicacionPuntual as jest.Mock).mockRejectedValue(new LocationPermissionDeniedError());
 
     let renderer!: ReactTestRenderer;
     await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      renderer = create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
     expect(boton.props.disabled).toBe(false);
-  });
-
-  it('no bloquea el botón si el recinto todavía no tiene coordenadas configuradas', async () => {
-    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
-    (getMiAsignacion as jest.Mock).mockResolvedValue({
-      ...asignacionFixture,
-      recinto: { ...asignacionFixture.recinto, latitud: null, longitud: null },
-    });
-
-    let renderer!: ReactTestRenderer;
-    await act(async () => {
-      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
-      await flushPromises();
-    });
-
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
-    expect(boton.props.disabled).toBe(false);
-    expect(obtenerUbicacionPuntual).not.toHaveBeenCalled();
   });
 });

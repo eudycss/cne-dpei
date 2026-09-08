@@ -127,9 +127,24 @@ export class TrackingService {
 
     const configAlerta = await this.prisma.configAlerta.findUnique({
       where: { eventoId: evento.id },
-      select: { margenLlegadaMetros: true },
+      select: { margenLlegadaMetros: true, margenLlegadaDpiMetros: true },
     });
     const margenLlegadaMetros = configAlerta?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT;
+    const margenLlegadaDpiMetros =
+      configAlerta?.margenLlegadaDpiMetros ?? MARGEN_LLEGADA_DPI_METROS_DEFAULT;
+
+    // HU5: coordenadas de la Delegación (si ya se configuraron), para que el
+    // mobile pueda gatear el botón "Ya llegué al DPI" en EnRetornoScreen antes
+    // de que el operador entre a marcar los kits — mismo patrón que el gate de
+    // llegada al recinto. Igual que en registrarLlegadaDpi, si todavía no hay
+    // coordenada cargada la query no devuelve filas.
+    const coordsDelegacion = await this.prisma.$queryRaw<{ lat: number; lng: number }[]>`
+      SELECT ST_Y(delegacion_ubicacion::geometry) AS lat, ST_X(delegacion_ubicacion::geometry) AS lng
+      FROM config_alertas WHERE evento_id = ${evento.id}::uuid AND delegacion_ubicacion IS NOT NULL;
+    `;
+    const delegacion = coordsDelegacion[0]
+      ? { latitud: coordsDelegacion[0].lat, longitud: coordsDelegacion[0].lng }
+      : null;
 
     const noCdas = await this.prisma.recinto.findMany({
       where: { cdaDestinoId: recinto.id },
@@ -237,6 +252,8 @@ export class TrackingService {
       yaRegistroLlegadaDpi: !!llegadaDpiPrevia,
       fotoMilitarUrl,
       margenLlegadaMetros,
+      delegacion,
+      margenLlegadaDpiMetros,
     };
   }
 
