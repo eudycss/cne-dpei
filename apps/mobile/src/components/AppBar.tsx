@@ -30,6 +30,10 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const [showNotif, setShowNotif] = useState(false);
   const [notifs, setNotifs] = useState<NotificacionItem[]>([]);
   const [noLeidas, setNoLeidas] = useState(0);
+  const [totalNotifs, setTotalNotifs] = useState(0);
+  const [pageNotifs, setPageNotifs] = useState(1);
+  const [cargandoMasNotifs, setCargandoMasNotifs] = useState(false);
+  const NOTIF_PAGE_SIZE = 10;
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
   // El operador no es destinatario de notificaciones (van al supervisor + admins).
   const recibeNotif = !!user && !esOperador;
@@ -40,11 +44,17 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
     if (!recibeNotif) return;
     let activo = true;
     const cargar = () => {
-      getMisNotificaciones({ pageSize: 10 })
+      // Mientras el modal está abierto no pisamos la lista con el polling
+      // (si el usuario ya cargó más páginas, un refresh cada 30s la recortaría
+      // de vuelta a la primera). Se retoma al cerrar el modal.
+      if (showNotif) return;
+      getMisNotificaciones({ pageSize: NOTIF_PAGE_SIZE })
         .then((d) => {
           if (!activo) return;
           setNotifs(d.items);
           setNoLeidas(d.noLeidas);
+          setTotalNotifs(d.total);
+          setPageNotifs(1);
         })
         .catch(() => {});
     };
@@ -54,7 +64,23 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
       activo = false;
       clearInterval(id);
     };
-  }, [recibeNotif]);
+  }, [recibeNotif, showNotif]);
+
+  const cargarMasNotifs = async () => {
+    if (cargandoMasNotifs || notifs.length >= totalNotifs) return;
+    setCargandoMasNotifs(true);
+    try {
+      const siguiente = pageNotifs + 1;
+      const d = await getMisNotificaciones({ pageSize: NOTIF_PAGE_SIZE, page: siguiente });
+      setNotifs((prev) => [...prev, ...d.items]);
+      setTotalNotifs(d.total);
+      setPageNotifs(siguiente);
+    } catch {
+      /* el usuario puede reintentar tocando "Cargar más" de nuevo */
+    } finally {
+      setCargandoMasNotifs(false);
+    }
+  };
 
   const marcarLeida = async (notifId: string) => {
     setNotifs((prev) => prev.map((n) => (n.id === notifId ? { ...n, leidaEn: new Date().toISOString() } : n)));
@@ -140,6 +166,9 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           noLeidas={noLeidas}
           onMarkLeida={marcarLeida}
           onClose={() => setShowNotif(false)}
+          hayMas={notifs.length < totalNotifs}
+          cargandoMas={cargandoMasNotifs}
+          onCargarMas={cargarMasNotifs}
         />
       )}
     </View>

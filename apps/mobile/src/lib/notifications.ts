@@ -10,10 +10,12 @@ export interface NotificacionesMineResponse {
 export async function getMisNotificaciones(opts?: {
   soloNoLeidas?: boolean;
   pageSize?: number;
+  page?: number;
 }): Promise<NotificacionesMineResponse> {
   const params = new URLSearchParams();
   if (opts?.soloNoLeidas) params.set('soloNoLeidas', 'true');
   if (opts?.pageSize) params.set('pageSize', String(opts.pageSize));
+  if (opts?.page) params.set('page', String(opts.page));
   const qs = params.toString();
   const { data } = await api.get<NotificacionesMineResponse>(
     `/notificaciones/mias${qs ? `?${qs}` : ''}`,
