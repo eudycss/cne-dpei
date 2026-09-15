@@ -73,6 +73,35 @@ Además, si existe `apps/mobile/.env.development.local` en tu máquina, Expo lo 
 
 `apps/mobile/android/` es output regenerado por `expo prebuild` y está en `.gitignore` — nunca edites archivos ahí a mano de forma permanente, se pierden en el siguiente `--clean`.
 
+## Actualizaciones OTA (EAS Update)
+
+`app.json` ya tiene configurado `expo-updates` para poder publicar cambios de **solo JS/assets** sin que los operadores tengan que instalar un APK nuevo (`runtimeVersion` con policy `appVersion` + `updates.url` apuntando al proyecto EAS + canal `production` embebido vía `updates.requestHeaders`). Esto se leyó directamente del código del config plugin instalado (`@expo/config-plugins`, `utils/Updates.js`), no es un flujo estándar de `eas build` — funciona igual con el build local (`expo prebuild` + `gradlew`) que ya usa este proyecto.
+
+**Lo que falta hacer una sola vez (requiere tu cuenta de Expo — no lo puede correr un agente por vos):**
+
+```bash
+npx eas login
+npx eas channel:create production
+npx eas branch:create production
+npx eas channel:edit production --branch production
+```
+
+Si algún flag no existe en tu versión de `eas-cli`, corré el comando sin argumentos (o `eas update:configure`) y seguí el asistente interactivo — la CLI cambia de vez en cuando.
+
+**Luego, cada vez que quieras publicar un cambio de JS/assets sin generar un APK nuevo:**
+
+```bash
+npx eas update --branch production --message "descripción corta del cambio"
+```
+
+Los dispositivos que tengan el APK instalado con `runtimeVersion` compatible lo descargan solos la próxima vez que abren la app (chequeo automático al iniciar, no bloqueante — si no hay update, arranca igual con lo que ya tiene embebido).
+
+**Reglas importantes:**
+
+- **Solo sirve para JS/assets.** Cualquier cambio que toque código nativo o agregue una dependencia nativa (por ejemplo, `expo-crypto` agregado para el login offline) necesita sí o sí un APK nuevo (`expo prebuild` + `gradlew assembleRelease` + reinstalar) — un `eas update` no lo va a alcanzar.
+- **No subas `expo.version` en `app.json` salvo que estés generando un APK nuevo.** La policy `appVersion` calcula el `runtimeVersion` a partir de ese campo; si lo cambiás sin generar y distribuir un APK nuevo, los dispositivos ya instalados dejan de recibir tus próximos `eas update` (quedan con un runtimeVersion distinto al que estás publicando).
+- Como este `app.json` ahora toca configuración nativa (AndroidManifest), el próximo APK que generes (ver secciones de arriba) ya necesita el nuevo build para que el chequeo de OTA quede activo en los dispositivos — recién desde ese APK en adelante van a poder recibir actualizaciones sin reinstalar.
+
 ### Sobre `plugins/withPnpmGradlePluginFix.js`
 
 Este monorepo usa pnpm con `shamefullyHoist: true` (ver `pnpm-workspace.yaml` y `.npmrc`). En algunos estados de `node_modules` (por ejemplo si el hoisting real en disco no coincide con lo esperado tras un reinstall), `require.resolve('@react-native/gradle-plugin/package.json')` sin un hint de `paths` puede no resolver el paquete y romper el build de Gradle.
