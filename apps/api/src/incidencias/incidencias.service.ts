@@ -274,8 +274,8 @@ export class IncidenciasService {
             AND ubicacion IS NOT NULL;
         `
       : [];
-    const ubicacionMap = new Map(
-      ubicaciones.map((u): [string, { id: string; lat: number; lng: number }] => [u.id, u]),
+    const ubicacionMap = new Map<string, { lat: number; lng: number }>(
+      ubicaciones.map((u) => [u.id, u]),
     );
 
     return {

@@ -32,7 +32,7 @@ export class AsignacionesService {
       where: { id: { in: userIds } },
       select: { id: true, nombres: true, apellidos: true, cedula: true },
     });
-    const byId = new Map(users.map((u): [string, typeof u] => [u.id, u]));
+    const byId = new Map<string, (typeof users)[number]>(users.map((u) => [u.id, u]));
 
     return rows.map((r) => toDto(r, byId));
   }
@@ -75,7 +75,7 @@ export class AsignacionesService {
       update: { supervisorId: parsed.supervisorId },
     });
 
-    const byId = new Map([
+    const byId = new Map<string, typeof operador | typeof supervisor>([
       [operador.id, operador],
       [supervisor.id, supervisor],
     ]);
