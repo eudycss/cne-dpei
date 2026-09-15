@@ -198,7 +198,7 @@ export class TrackingService {
 
     const recibidosSet = new Set(recepciones.map((r) => r.kitId));
     const fotoMilitarUrl = recepciones.find((r) => r.fotoMilitarUrl)?.fotoMilitarUrl ?? null;
-    const llegadaNoCdaPorRecinto = new Map(
+    const llegadaNoCdaPorRecinto = new Map<string | null, string>(
       llegadasNoCda.map((l) => [l.recintoId, l.ocurridoEn.toISOString()]),
     );
 
@@ -570,8 +570,9 @@ export class TrackingService {
         where: { eventoId: evento.id, supervisorId: viewerId },
         select: { operadorId: true },
       });
-      operadorIds = asignados.map((a) => a.operadorId);
-      if (operadorIds.length === 0) return { total: 0, items: [] };
+      const ids = asignados.map((a) => a.operadorId);
+      if (ids.length === 0) return { total: 0, items: [] };
+      operadorIds = ids;
     }
 
     const kits = await this.prisma.kitElectoral.findMany({
@@ -586,9 +587,9 @@ export class TrackingService {
     });
     if (recepciones.length === 0) return { total: 0, items: [] };
 
-    const kitPorId = new Map(kits.map((k) => [k.id, k]));
-    const operadoresIds = Array.from(
-      new Set(
+    const kitPorId = new Map<string, (typeof kits)[number]>(kits.map((k) => [k.id, k]));
+    const operadoresIds: string[] = Array.from(
+      new Set<string>(
         recepciones
           .map((r) => kitPorId.get(r.kitId)?.operadorId)
           .filter((id): id is string => !!id),
@@ -598,7 +599,9 @@ export class TrackingService {
       where: { id: { in: operadoresIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const nombrePorId = new Map(operadores.map((o) => [o.id, `${o.nombres} ${o.apellidos}`]));
+    const nombrePorId = new Map<string, string>(
+      operadores.map((o) => [o.id, `${o.nombres} ${o.apellidos}`]),
+    );
 
     const items: KitVerificadoRetorno[] = recepciones.map((r) => {
       const kit = kitPorId.get(r.kitId);
@@ -831,8 +834,8 @@ export class TrackingService {
       where: { eventoId: evento.id, recintoId: recinto.id },
       select: { operadorId: true },
     });
-    const operadorIds = Array.from(
-      new Set(kits.map((k) => k.operadorId).filter((id): id is string => !!id)),
+    const operadorIds: string[] = Array.from(
+      new Set<string>(kits.map((k) => k.operadorId).filter((id): id is string => !!id)),
     );
     if (operadorIds.length === 0) {
       throw new NotFoundException('Este recinto no tiene un operador asignado en el evento activo');
@@ -1127,7 +1130,7 @@ export class TrackingService {
       where: { id: { in: operadorIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const nombrePorId = new Map(
+    const nombrePorId = new Map<string, string>(
       operadores.map((o) => [o.id, `${o.nombres} ${o.apellidos}`]),
     );
 
@@ -1227,7 +1230,7 @@ export class TrackingService {
       where: { id: { in: operadorIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const nombrePorId = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+    const nombrePorId = new Map<string, string>(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
@@ -1269,8 +1272,12 @@ export class TrackingService {
         AND ubicacion IS NOT NULL
       ORDER BY operador_id, ocurrido_en DESC;
     `;
-    const gpsPorOperador = new Map(ultimasGps.map((g) => [g.operador_id, g]));
-    const trackingPorOperador = new Map(ultimasTracking.map((t) => [t.operador_id, t]));
+    const gpsPorOperador = new Map<string, (typeof ultimasGps)[number]>(
+      ultimasGps.map((g) => [g.operador_id, g]),
+    );
+    const trackingPorOperador = new Map<string, (typeof ultimasTracking)[number]>(
+      ultimasTracking.map((t) => [t.operador_id, t]),
+    );
 
     return recintos.map((recinto) => {
       const operadorId = operadorPorRecinto.get(recinto.id)!;
@@ -1354,7 +1361,7 @@ export class TrackingService {
       where: { id: { in: operadorIds } },
       select: { id: true, nombres: true, apellidos: true },
     });
-    const nombrePorId = new Map(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
+    const nombrePorId = new Map<string, string>(usuarios.map((u) => [u.id, `${u.nombres} ${u.apellidos}`]));
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
@@ -1419,7 +1426,7 @@ export class TrackingService {
       where: { id: { in: operadorIds } },
       select: { id: true, nombres: true, apellidos: true, cedula: true },
     });
-    const usuarioPorId = new Map(usuarios.map((u) => [u.id, u]));
+    const usuarioPorId = new Map<string, (typeof usuarios)[number]>(usuarios.map((u) => [u.id, u]));
 
     const noCdas = await this.prisma.recinto.findMany({
       where: { cdaDestinoId: { in: cdaIds } },
@@ -1507,7 +1514,7 @@ export class TrackingService {
       where: { id: { in: operadorIds } },
       select: { id: true, nombres: true, apellidos: true, cedula: true },
     });
-    const usuarioPorId = new Map(usuarios.map((u) => [u.id, u]));
+    const usuarioPorId = new Map<string, (typeof usuarios)[number]>(usuarios.map((u) => [u.id, u]));
 
     const hitos = await this.prisma.eventoTracking.findMany({
       where: {
