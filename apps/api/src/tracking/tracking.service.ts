@@ -570,8 +570,9 @@ export class TrackingService {
         where: { eventoId: evento.id, supervisorId: viewerId },
         select: { operadorId: true },
       });
-      operadorIds = asignados.map((a) => a.operadorId);
-      if (operadorIds.length === 0) return { total: 0, items: [] };
+      const ids = asignados.map((a) => a.operadorId);
+      if (ids.length === 0) return { total: 0, items: [] };
+      operadorIds = ids;
     }
 
     const kits = await this.prisma.kitElectoral.findMany({
@@ -587,8 +588,8 @@ export class TrackingService {
     if (recepciones.length === 0) return { total: 0, items: [] };
 
     const kitPorId = new Map<string, (typeof kits)[number]>(kits.map((k) => [k.id, k]));
-    const operadoresIds = Array.from(
-      new Set(
+    const operadoresIds: string[] = Array.from(
+      new Set<string>(
         recepciones
           .map((r) => kitPorId.get(r.kitId)?.operadorId)
           .filter((id): id is string => !!id),
@@ -833,8 +834,8 @@ export class TrackingService {
       where: { eventoId: evento.id, recintoId: recinto.id },
       select: { operadorId: true },
     });
-    const operadorIds = Array.from(
-      new Set(kits.map((k) => k.operadorId).filter((id): id is string => !!id)),
+    const operadorIds: string[] = Array.from(
+      new Set<string>(kits.map((k) => k.operadorId).filter((id): id is string => !!id)),
     );
     if (operadorIds.length === 0) {
       throw new NotFoundException('Este recinto no tiene un operador asignado en el evento activo');
