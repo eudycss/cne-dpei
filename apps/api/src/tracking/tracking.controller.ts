@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -110,6 +111,33 @@ export class TrackingController {
     return this.tracking.guardarFotoMilitar(file);
   }
 
+  @Post('foto-acta')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({
+    summary: 'Evidencia obligatoria previa a la salida del recinto: sube la foto del acta (instalación o escrutinio) cifrada',
+  })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  subirFotoActa(
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /^image\// })
+        .addMaxSizeValidator({ maxSize: 8 * 1024 * 1024 })
+        .build({ errorHttpStatusCode: HttpStatus.BAD_REQUEST }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tracking.guardarFotoActa(file);
+  }
+
   @Post('validar-kit')
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.OK)
@@ -185,7 +213,7 @@ export class TrackingController {
   }
 
   @Get('operadores-en-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'HU4-CA4 / HU6: operadores en tránsito (ida o retorno) con su última posición GPS',
   })
@@ -194,7 +222,7 @@ export class TrackingController {
   }
 
   @Get('estado-cdas')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Estado en vivo de los CDAs del evento activo (operador, estado del flujo, última ubicación)',
   })
@@ -203,7 +231,7 @@ export class TrackingController {
   }
 
   @Get('recintos-dificil-acceso')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'HU13 Parte B: CDAs esDificilAcceso del evento activo con el estado de su operador',
   })
@@ -225,7 +253,7 @@ export class TrackingController {
   }
 
   @Get('reporte-no-cda')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Reporte admin: NO-CDAs visitados vs. pendientes por CDA del evento activo',
   })
@@ -234,7 +262,7 @@ export class TrackingController {
   }
 
   @Get('reporte-flujo')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Reporte admin: hitos del flujo (Salida DPI/Llegada Recinto/Salida Recinto/Llegada DPI) por CDA',
   })
@@ -243,7 +271,7 @@ export class TrackingController {
   }
 
   @Get('estado-cdas/:recintoId/foto-militar')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
   @ApiOperation({
     summary: 'HU3-CA2: foto del militar (descifrada) recibida al entregar el kit de ese CDA',
@@ -257,6 +285,32 @@ export class TrackingController {
       recintoId,
       user.sub,
       user.roles,
+    );
+    res.set({ 'Content-Type': contentType });
+    return new StreamableFile(buffer);
+  }
+
+  @Get('estado-cdas/:recintoId/foto-acta/:tipo')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
+  @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
+  @ApiParam({ name: 'tipo', description: 'instalacion | escrutinio' })
+  @ApiOperation({
+    summary: 'Foto del acta (instalación o escrutinio, descifrada) subida antes de la salida del recinto de ese CDA',
+  })
+  async fotoActa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('recintoId') recintoId: string,
+    @Param('tipo') tipo: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    if (tipo !== 'instalacion' && tipo !== 'escrutinio') {
+      throw new BadRequestException('tipo debe ser "instalacion" o "escrutinio"');
+    }
+    const { buffer, contentType } = await this.tracking.obtenerFotoActa(
+      recintoId,
+      user.sub,
+      user.roles,
+      tipo,
     );
     res.set({ 'Content-Type': contentType });
     return new StreamableFile(buffer);
@@ -302,7 +356,7 @@ export class TrackingController {
   }
 
   @Get('kits-verificados-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Verificación retorno DPI: kits ya verificados con el total',
   })

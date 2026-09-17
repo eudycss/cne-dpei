@@ -37,7 +37,7 @@ export default function App() {
       />
       <Route
         element={
-          <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']}>
+          <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR']}>
             <Layout />
           </ProtectedRoute>
         }
@@ -91,14 +91,21 @@ export default function App() {
 
         {/* Incidencias (HU14) */}
         <Route path="/incidencias" element={<IncidenciasPage />} />
-        {/* Alertas (HU18) */}
-        <Route path="/alertas" element={<AlertasPage />} />
+        {/* Alertas (HU18) — fuera del alcance de LECTOR */}
+        <Route
+          path="/alertas"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']}>
+              <AlertasPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Reporte admin de NO-CDAs pendientes */}
         <Route
           path="/reportes/no-cda"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR']}>
+            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']}>
               <ReporteNoCdaPage />
             </ProtectedRoute>
           }

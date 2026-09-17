@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { SlotText } from 'slot-text/react';
 import 'slot-text/style.css';
 import type { CdaEstadoDto, EstadoOperadorCda } from '@cne/shared-types';
-import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
+import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
 import { MapView, Marker, FitBounds } from '../../components/map';
 
@@ -102,6 +102,66 @@ function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => 
   );
 }
 
+const TITULO_ACTA: Record<'instalacion' | 'escrutinio', string> = {
+  instalacion: 'Acta de instalación',
+  escrutinio: 'Acta de escrutinio',
+};
+
+function FotoActaModal({
+  cda,
+  tipo,
+  onClose,
+}: {
+  cda: CdaEstadoDto;
+  tipo: 'instalacion' | 'escrutinio';
+  onClose: () => void;
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['foto-acta', cda.recintoId, tipo],
+    queryFn: () => getFotoActa(cda.recintoId, tipo),
+  });
+
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const objectUrl = URL.createObjectURL(data);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [data]);
+
+  return (
+    <div
+      className="center"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
+    >
+      <div className="login-card" style={{ maxWidth: 480, width: '100%', padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+          <h2 style={{ margin: 0 }}>{TITULO_ACTA[tipo]}</h2>
+          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+            {cda.nombreRecinto} · {cda.operadorNombre}
+          </p>
+        </div>
+        <div
+          style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}
+        >
+          {isLoading ? (
+            <p className="muted">Cargando…</p>
+          ) : isError ? (
+            <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
+          ) : url ? (
+            <img src={url} alt={TITULO_ACTA[tipo]} style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 4 }} />
+          ) : null}
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-end', padding: '1rem' }}>
+          <button className="btn secondary" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MonitoreoPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['operadores-en-retorno'],
@@ -123,6 +183,9 @@ export function MonitoreoPage() {
   const [cantonFiltro, setCantonFiltro] = useState('');
   const [verUbicacion, setVerUbicacion] = useState<CdaEstadoDto | null>(null);
   const [verFoto, setVerFoto] = useState<CdaEstadoDto | null>(null);
+  const [verActa, setVerActa] = useState<{ cda: CdaEstadoDto; tipo: 'instalacion' | 'escrutinio' } | null>(
+    null,
+  );
 
   const cantones = useMemo(() => {
     const map = new Map<number, string>();
@@ -268,6 +331,8 @@ export function MonitoreoPage() {
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
+                <th>Acta instalación</th>
+                <th>Acta escrutinio</th>
               </tr>
             </thead>
             <tbody>
@@ -314,12 +379,34 @@ export function MonitoreoPage() {
                         Ver foto
                       </button>
                     </td>
+                    <td>
+                      <button
+                        className="btn secondary"
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                        disabled={!c.tieneActaInstalacion}
+                        onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
+                        aria-label={`Ver acta de instalación — ${c.nombreRecinto}`}
+                      >
+                        Ver acta
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        className="btn secondary"
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                        disabled={!c.tieneActaEscrutinio}
+                        onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
+                        aria-label={`Ver acta de escrutinio — ${c.nombreRecinto}`}
+                      >
+                        Ver acta
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     No hay CDAs con operador asignado en el evento activo
                   </td>
                 </tr>
@@ -331,6 +418,9 @@ export function MonitoreoPage() {
 
       {verUbicacion && <UbicacionModal cda={verUbicacion} onClose={() => setVerUbicacion(null)} />}
       {verFoto && <FotoMilitarModal cda={verFoto} onClose={() => setVerFoto(null)} />}
+      {verActa && (
+        <FotoActaModal cda={verActa.cda} tipo={verActa.tipo} onClose={() => setVerActa(null)} />
+      )}
     </div>
   );
 }

@@ -32,7 +32,7 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Listado paginado de usuarios' })
   list(
     @Query('page') page?: string,

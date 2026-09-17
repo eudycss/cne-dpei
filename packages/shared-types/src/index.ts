@@ -1,4 +1,4 @@
-export type RoleName = 'ADMINISTRADOR' | 'TECNICO_SUPERVISOR' | 'OPERADOR_CDA';
+export type RoleName = 'ADMINISTRADOR' | 'TECNICO_SUPERVISOR' | 'OPERADOR_CDA' | 'LECTOR';
 
 export interface Role {
   id: string;
@@ -481,6 +481,8 @@ export interface SalidaRecintoRequest {
   latitud: number;
   longitud: number;
   ocurridoEn: string;
+  actaInstalacionUrl: string;
+  actaEscrutinioUrl: string;
 }
 
 export interface SalidaRecintoResponse {
@@ -539,6 +541,8 @@ export interface CdaEstadoDto {
   estado: EstadoOperadorCda;
   ubicacion: CdaUbicacion | null;
   tieneFotoMilitar: boolean;
+  tieneActaInstalacion: boolean;
+  tieneActaEscrutinio: boolean;
 }
 
 export interface RecintoDificilAccesoDto {

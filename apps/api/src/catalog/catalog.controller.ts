@@ -32,7 +32,7 @@ export class CatalogController {
   ) {}
 
   @Get('recintos')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Listar recintos (paginado, búsqueda y filtros)' })
   listRecintos(
     @Query('page') page?: string,
@@ -64,7 +64,7 @@ export class CatalogController {
   }
 
   @Get('recintos/:id')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   getRecinto(@Param('id', ParseUUIDPipe) id: string) {
     return this.recintos.getRecinto(id);
   }
@@ -89,7 +89,7 @@ export class CatalogController {
   }
 
   @Get('cantones')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Listar cantones de Imbabura' })
   listCantones() {
     return this.recintos.listCantones();
@@ -98,14 +98,14 @@ export class CatalogController {
   // --- Tipos de evento electoral ---
 
   @Get('tipos-evento')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'OPERADOR_CDA')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'OPERADOR_CDA', 'LECTOR')
   @ApiOperation({ summary: 'Listar tipos de evento activos' })
   listTiposEvento() {
     return this.tiposEvento.list();
   }
 
   @Get('tipos-evento/admin')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'LECTOR')
   @ApiOperation({ summary: 'Listar todos los tipos de evento (incluye inactivos)' })
   listTiposEventoAdmin() {
     return this.tiposEvento.listAll();

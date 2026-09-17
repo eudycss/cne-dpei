@@ -31,3 +31,17 @@ export async function getFotoMilitar(recintoId: string): Promise<Blob> {
   });
   return data;
 }
+
+/**
+ * Foto del acta de instalación o de escrutinio (descifrada), subida por el
+ * operador antes de la salida del recinto de ese CDA.
+ */
+export async function getFotoActa(
+  recintoId: string,
+  tipo: 'instalacion' | 'escrutinio',
+): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/tracking/estado-cdas/${recintoId}/foto-acta/${tipo}`, {
+    responseType: 'blob',
+  });
+  return data;
+}

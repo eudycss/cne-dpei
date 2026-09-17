@@ -347,6 +347,26 @@ export class TrackingService {
   }
 
   /**
+   * Evidencia obligatoria antes de la salida del recinto: foto del acta de
+   * instalación o del acta de escrutinio. Al igual que guardarFotoMilitar, es
+   * un endpoint sin estado (no escribe en BD) — la URL se persiste recién
+   * cuando el operador confirma la salida del recinto con ambas URLs.
+   */
+  async guardarFotoActa(file: Express.Multer.File): Promise<{ url: string }> {
+    if (!file) {
+      throw new BadRequestException('Archivo de foto requerido');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('El archivo debe ser una imagen');
+    }
+    const url = await this.storage.saveEncrypted({
+      categoria: 'actas',
+      buffer: file.buffer,
+    });
+    return { url };
+  }
+
+  /**
    * HU3-CA5: valida que el código (escaneado o ingresado manualmente)
    * corresponda a un kit asignado al operador autenticado en el evento activo.
    */
@@ -563,7 +583,7 @@ export class TrackingService {
     });
     if (!evento) return { total: 0, items: [] };
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     let operadorIds: string[] | undefined;
     if (!esAdmin) {
       const asignados = await this.prisma.asignacionSupervisor.findMany({
@@ -625,7 +645,7 @@ export class TrackingService {
     roles: RoleName[],
     operadorId: string,
   ): Promise<void> {
-    if (roles.includes('ADMINISTRADOR')) return;
+    if (roles.includes('ADMINISTRADOR') || roles.includes('LECTOR')) return;
     const asignado = await this.prisma.asignacionSupervisor.findFirst({
       where: { eventoId, supervisorId, operadorId },
       select: { id: true },
@@ -983,6 +1003,17 @@ export class TrackingService {
       );
     }
 
+    const [instalacionExiste, escrutinioExiste] = await Promise.all([
+      this.storage.exists(parsed.actaInstalacionUrl),
+      this.storage.exists(parsed.actaEscrutinioUrl),
+    ]);
+    if (!instalacionExiste) {
+      throw new BadRequestException('Acta de instalación no encontrada. Vuelve a subirla.');
+    }
+    if (!escrutinioExiste) {
+      throw new BadRequestException('Acta de escrutinio no encontrada. Vuelve a subirla.');
+    }
+
     const kit = await this.prisma.kitElectoral.findFirst({
       where: { eventoId: evento.id, operadorId },
       select: { recintoId: true },
@@ -991,7 +1022,7 @@ export class TrackingService {
     const ocurridoEn = new Date(parsed.ocurridoEn);
 
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, acta_instalacion_url, acta_escrutinio_url)
       VALUES (
         uuid_generate_v4(),
         ${evento.id}::uuid,
@@ -1001,7 +1032,9 @@ export class TrackingService {
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${ocurridoEn}::timestamptz,
         false,
-        now()
+        now(),
+        ${parsed.actaInstalacionUrl},
+        ${parsed.actaEscrutinioUrl}
       )
       RETURNING id;
     `)[0].id;
@@ -1098,7 +1131,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id },
@@ -1191,7 +1224,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1249,6 +1282,17 @@ export class TrackingService {
     });
     const operadoresConFoto = new Set(recepcionesConFoto.map((r) => r.operadorId));
 
+    const salidasRecinto = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id, operadorId: { in: operadorIds }, tipo: 'SALIDA_RECINTO' },
+      select: { operadorId: true, actaInstalacionUrl: true, actaEscrutinioUrl: true },
+    });
+    const actasPorOperador = new Map<string, { instalacion: boolean; escrutinio: boolean }>(
+      salidasRecinto.map((s) => [
+        s.operadorId,
+        { instalacion: !!s.actaInstalacionUrl, escrutinio: !!s.actaEscrutinioUrl },
+      ]),
+    );
+
     const ultimasGps = await this.prisma.$queryRaw<
       { operador_id: string; lat: number; lng: number; capturado_en: Date }[]
     >`
@@ -1300,6 +1344,8 @@ export class TrackingService {
         estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
         ubicacion,
         tieneFotoMilitar: operadoresConFoto.has(operadorId),
+        tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
+        tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
       };
     });
   }
@@ -1326,7 +1372,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1574,7 +1620,7 @@ export class TrackingService {
     });
     if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     if (!esAdmin) {
       const asignado = await this.prisma.asignacionSupervisor.findFirst({
         where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
@@ -1593,6 +1639,56 @@ export class TrackingService {
     }
 
     const buffer = await this.storage.readDecrypted(recepcion.fotoMilitarUrl);
+    return { buffer, contentType: detectarContentTypeImagen(buffer) };
+  }
+
+  /**
+   * Devuelve el acta de instalación o de escrutinio (cifrada en disco,
+   * subida antes de la salida del recinto) descifrada para el CDA del
+   * recinto indicado. Mismo control de acceso que obtenerFotoMilitar.
+   */
+  async obtenerFotoActa(
+    recintoId: string,
+    viewerId: string,
+    roles: RoleName[],
+    tipo: 'instalacion' | 'escrutinio',
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const kit = await this.prisma.kitElectoral.findFirst({
+      where: { eventoId: evento.id, recintoId, operadorId: { not: null } },
+      select: { operadorId: true },
+    });
+    if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
+
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    if (!esAdmin) {
+      const asignado = await this.prisma.asignacionSupervisor.findFirst({
+        where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
+        select: { id: true },
+      });
+      if (!asignado) throw new NotFoundException('CDA no encontrado');
+    }
+
+    const salidaRecinto = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId: kit.operadorId, tipo: 'SALIDA_RECINTO' },
+      select: { actaInstalacionUrl: true, actaEscrutinioUrl: true },
+    });
+    const url =
+      tipo === 'instalacion' ? salidaRecinto?.actaInstalacionUrl : salidaRecinto?.actaEscrutinioUrl;
+    if (!url) {
+      throw new NotFoundException(
+        tipo === 'instalacion'
+          ? 'No hay acta de instalación registrada para este CDA'
+          : 'No hay acta de escrutinio registrada para este CDA',
+      );
+    }
+
+    const buffer = await this.storage.readDecrypted(url);
     return { buffer, contentType: detectarContentTypeImagen(buffer) };
   }
 

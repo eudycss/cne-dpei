@@ -357,6 +357,8 @@ export const salidaRecintoSchema = z.object({
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  actaInstalacionUrl: z.string().min(1, 'Acta de instalación requerida'),
+  actaEscrutinioUrl: z.string().min(1, 'Acta de escrutinio requerida'),
 });
 
 export const ingestaPosicionesSchema = z.object({

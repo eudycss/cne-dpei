@@ -44,7 +44,7 @@ export class KitsController {
   constructor(private readonly kits: KitsService) {}
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU11: listar kits electorales de un evento' })
   list(
     @Query('eventoId') eventoId: string,

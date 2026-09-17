@@ -32,21 +32,21 @@ export class EventosController {
   constructor(private readonly eventos: EventosService) {}
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU20: listar eventos electorales' })
   list() {
     return this.eventos.list();
   }
 
   @Get('active')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Evento electoral activo actual' })
   active() {
     return this.eventos.getActive();
   }
 
   @Get(':id')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.eventos.get(id);
   }
