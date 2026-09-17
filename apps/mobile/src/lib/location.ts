@@ -104,8 +104,8 @@ export async function iniciarRastreo(): Promise<void> {
 
   await Location.startLocationUpdatesAsync(TRACKING_TASK, {
     accuracy: Location.Accuracy.High,
-    timeInterval: 15000,
-    distanceInterval: 25,
+    timeInterval: 30000,
+    distanceInterval: 60,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'Rastreo activo',
