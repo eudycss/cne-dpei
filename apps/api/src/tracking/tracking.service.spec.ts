@@ -295,10 +295,16 @@ describe('TrackingService', () => {
   });
 
   describe('registrarSalidaRecinto', () => {
+    const conActas = {
+      ...geo,
+      actaInstalacionUrl: 'actas/instalacion.bin',
+      actaEscrutinioUrl: 'actas/escrutinio.bin',
+    };
+
     it('lanza ConflictException si ya registró la salida del recinto', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'tk1' });
-      await expect(service.registrarSalidaRecinto(operadorId, geo as any)).rejects.toThrow(
+      await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).rejects.toThrow(
         ConflictException,
       );
     });
@@ -308,9 +314,61 @@ describe('TrackingService', () => {
       prisma.eventoTracking.findFirst
         .mockResolvedValueOnce(null) // sin salida previa
         .mockResolvedValueOnce(null); // sin llegada al recinto
-      await expect(service.registrarSalidaRecinto(operadorId, geo as any)).rejects.toThrow(
+      await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('lanza ZodError si faltan las actas obligatorias (instalación/escrutinio)', async () => {
+      await expect(service.registrarSalidaRecinto(operadorId, geo as any)).rejects.toThrow();
+      expect(prisma.eventoElectoral.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si el acta de instalación no existe en storage', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null) // sin salida previa
+        .mockResolvedValueOnce({ id: 'tk-llegada' }); // llegada al recinto ok
+      storage.exists.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+      await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si el acta de escrutinio no existe en storage', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+      await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('registra la salida del recinto con ambas actas verificadas', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-recinto-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'Perez' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      const result = await service.registrarSalidaRecinto(operadorId, conActas as any);
+
+      expect(result.id).toBe('salida-recinto-id');
+      expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+        where: { eventoId, operadorId, estado: 'EN_RECINTO' },
+        data: { estado: 'EN_RETORNO' },
+      });
+      expect(notifications.encolarSalidaRecinto).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -573,6 +631,44 @@ describe('TrackingService', () => {
     });
   });
 
+  describe('estadoCdas', () => {
+    it('un LECTOR ve todos los CDAs sin filtrar por asignación (igual que un admin)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        {
+          id: recintoId,
+          codigoRecinto: 'C01',
+          nombre: 'Recinto 1',
+          cantonId: 1,
+          canton: { nombre: 'IBARRA' },
+        },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+      prisma.eventoTracking.findMany
+        .mockResolvedValueOnce([]) // trackingRows (estado)
+        .mockResolvedValueOnce([
+          { operadorId, actaInstalacionUrl: 'actas/inst.bin', actaEscrutinioUrl: null },
+        ]); // salidasRecinto (flags de actas)
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const result = await service.estadoCdas(operadorId, ['LECTOR']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        expect.objectContaining({
+          recintoId,
+          operadorId,
+          tieneActaInstalacion: true,
+          tieneActaEscrutinio: false,
+        }),
+      ]);
+    });
+  });
+
   describe('recintosDificilAcceso', () => {
     it('un LECTOR ve todos los recintos de difícil acceso sin filtrar por asignación', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
@@ -624,6 +720,77 @@ describe('TrackingService', () => {
       expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
       expect(result.total).toBe(1);
       expect(result.items[0]).toEqual(expect.objectContaining({ kitId, operadorId }));
+    });
+  });
+
+  describe('guardarFotoActa', () => {
+    it('lanza BadRequestException si el archivo no es una imagen', async () => {
+      const file = { mimetype: 'application/pdf', buffer: Buffer.from('x') } as Express.Multer.File;
+      await expect(service.guardarFotoActa(file)).rejects.toThrow(BadRequestException);
+      expect(storage.saveEncrypted).not.toHaveBeenCalled();
+    });
+
+    it('guarda la foto en la categoría "actas" y devuelve la url', async () => {
+      const file = { mimetype: 'image/jpeg', buffer: Buffer.from('foto') } as Express.Multer.File;
+      storage.saveEncrypted.mockResolvedValueOnce('actas/abc123.bin');
+
+      const result = await service.guardarFotoActa(file);
+
+      expect(storage.saveEncrypted).toHaveBeenCalledWith({
+        categoria: 'actas',
+        buffer: file.buffer,
+      });
+      expect(result).toEqual({ url: 'actas/abc123.bin' });
+    });
+  });
+
+  describe('obtenerFotoActa', () => {
+    it('lanza NotFoundException si el CDA no existe', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'instalacion'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza NotFoundException si el operador aún no registró su salida del recinto', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'instalacion'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza NotFoundException si no hay acta de ese tipo registrada', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({
+        actaInstalacionUrl: null,
+        actaEscrutinioUrl: 'actas/escrutinio.bin',
+      });
+
+      await expect(
+        service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'instalacion'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('un LECTOR obtiene el acta de escrutinio sin verificar asignación de supervisor', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({
+        actaInstalacionUrl: 'actas/instalacion.bin',
+        actaEscrutinioUrl: 'actas/escrutinio.bin',
+      });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      const result = await service.obtenerFotoActa(recintoId, operadorId, ['LECTOR'], 'escrutinio');
+
+      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(storage.readDecrypted).toHaveBeenCalledWith('actas/escrutinio.bin');
+      expect(result.contentType).toBe('image/jpeg');
     });
   });
 });

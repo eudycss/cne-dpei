@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -108,6 +109,33 @@ export class TrackingController {
     file: Express.Multer.File,
   ) {
     return this.tracking.guardarFotoMilitar(file);
+  }
+
+  @Post('foto-acta')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({
+    summary: 'Evidencia obligatoria previa a la salida del recinto: sube la foto del acta (instalación o escrutinio) cifrada',
+  })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  subirFotoActa(
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /^image\// })
+        .addMaxSizeValidator({ maxSize: 8 * 1024 * 1024 })
+        .build({ errorHttpStatusCode: HttpStatus.BAD_REQUEST }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tracking.guardarFotoActa(file);
   }
 
   @Post('validar-kit')
@@ -257,6 +285,32 @@ export class TrackingController {
       recintoId,
       user.sub,
       user.roles,
+    );
+    res.set({ 'Content-Type': contentType });
+    return new StreamableFile(buffer);
+  }
+
+  @Get('estado-cdas/:recintoId/foto-acta/:tipo')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
+  @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
+  @ApiParam({ name: 'tipo', description: 'instalacion | escrutinio' })
+  @ApiOperation({
+    summary: 'Foto del acta (instalación o escrutinio, descifrada) subida antes de la salida del recinto de ese CDA',
+  })
+  async fotoActa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('recintoId') recintoId: string,
+    @Param('tipo') tipo: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    if (tipo !== 'instalacion' && tipo !== 'escrutinio') {
+      throw new BadRequestException('tipo debe ser "instalacion" o "escrutinio"');
+    }
+    const { buffer, contentType } = await this.tracking.obtenerFotoActa(
+      recintoId,
+      user.sub,
+      user.roles,
+      tipo,
     );
     res.set({ 'Content-Type': contentType });
     return new StreamableFile(buffer);

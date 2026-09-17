@@ -350,6 +350,10 @@ model EventoTracking {
   ocurridoEn   DateTime     @map("ocurrido_en") @db.Timestamptz(6)
   desdeOffline Boolean      @default(false) @map("desde_offline")
   registradoEn DateTime     @default(now()) @map("registrado_en") @db.Timestamptz(6)
+  // Solo se llenan en la fila tipo=SALIDA_RECINTO: evidencia obligatoria de
+  // las actas antes de poder registrar la salida del recinto.
+  actaInstalacionUrl String? @map("acta_instalacion_url") @db.VarChar(512)
+  actaEscrutinioUrl  String? @map("acta_escrutinio_url") @db.VarChar(512)
 
   @@index([operadorId, eventoId], map: "idx_tracking_operador")
   @@index([tipo], map: "idx_tracking_tipo")

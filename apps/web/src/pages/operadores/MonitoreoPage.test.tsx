@@ -5,12 +5,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 
 import { MonitoreoPage } from './MonitoreoPage';
-import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
+import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 
 vi.mock('../../lib/queries/monitoreo', () => ({
   getOperadoresEnRetorno: vi.fn(),
   getEstadoCdas: vi.fn(),
   getFotoMilitar: vi.fn(),
+  getFotoActa: vi.fn(),
 }));
 
 vi.mock('../../components/map', () => ({
@@ -26,6 +27,7 @@ vi.mock('slot-text/react', () => ({
 const getOperadoresMock = getOperadoresEnRetorno as unknown as ReturnType<typeof vi.fn>;
 const getEstadoCdasMock = getEstadoCdas as unknown as ReturnType<typeof vi.fn>;
 const getFotoMilitarMock = getFotoMilitar as unknown as ReturnType<typeof vi.fn>;
+const getFotoActaMock = getFotoActa as unknown as ReturnType<typeof vi.fn>;
 
 const operadorRetorno: OperadorEnRetorno = {
   operadorId: 'op1',
@@ -58,6 +60,8 @@ const cdaConUbicacionYFoto: CdaEstadoDto = {
   estado: 'EN_RETORNO',
   ubicacion: { latitud: 0.35, longitud: -78.12, capturadoEn: '2026-07-01T10:00:00.000Z' },
   tieneFotoMilitar: true,
+  tieneActaInstalacion: true,
+  tieneActaEscrutinio: false,
 };
 
 const cdaSinUbicacionNiFoto: CdaEstadoDto = {
@@ -71,6 +75,8 @@ const cdaSinUbicacionNiFoto: CdaEstadoDto = {
   estado: 'RETORNADO',
   ubicacion: null,
   tieneFotoMilitar: false,
+  tieneActaInstalacion: false,
+  tieneActaEscrutinio: false,
 };
 
 function renderPage() {
@@ -195,5 +201,44 @@ describe('MonitoreoPage', () => {
 
     expect(await screen.findByAltText('Foto del militar')).toBeInTheDocument();
     expect(getFotoMilitarMock).toHaveBeenCalledWith('r1');
+  });
+
+  it('los botones "Ver acta" respetan tieneActaInstalacion/tieneActaEscrutinio, y cargan la imagen correcta', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    getFotoActaMock.mockResolvedValue(new Blob(['fake'], { type: 'image/png' }));
+    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    global.URL.revokeObjectURL = vi.fn();
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText('Escuela Manuela Cañizares');
+
+    const filaConActas = screen.getByText('Escuela Manuela Cañizares').closest('tr')!;
+    const filaSinActas = screen.getByText('Colegio Otavalo').closest('tr')!;
+
+    // Escuela Manuela Cañizares: solo tiene acta de instalación (fixture).
+    // Cada botón tiene un aria-label distinto para que sea identificable con lector de pantalla.
+    const botonInstalacion1 = within(filaConActas).getByRole('button', {
+      name: 'Ver acta de instalación — Escuela Manuela Cañizares',
+    });
+    const botonEscrutinio1 = within(filaConActas).getByRole('button', {
+      name: 'Ver acta de escrutinio — Escuela Manuela Cañizares',
+    });
+    expect(botonInstalacion1).toBeEnabled();
+    expect(botonEscrutinio1).toBeDisabled();
+
+    // Colegio Otavalo: no tiene ninguna de las dos.
+    expect(
+      within(filaSinActas).getByRole('button', { name: 'Ver acta de instalación — Colegio Otavalo' }),
+    ).toBeDisabled();
+    expect(
+      within(filaSinActas).getByRole('button', { name: 'Ver acta de escrutinio — Colegio Otavalo' }),
+    ).toBeDisabled();
+
+    await user.click(botonInstalacion1);
+
+    expect(await screen.findByRole('heading', { name: 'Acta de instalación' })).toBeInTheDocument();
+    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'instalacion');
   });
 });
