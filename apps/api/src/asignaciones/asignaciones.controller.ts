@@ -35,7 +35,7 @@ export class AsignacionesController {
   constructor(private readonly asignaciones: AsignacionesService) {}
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU10: listar asignaciones operador↔supervisor por evento' })
   list(@Query('eventoId', ParseUUIDPipe) eventoId: string) {
     return this.asignaciones.list(eventoId);

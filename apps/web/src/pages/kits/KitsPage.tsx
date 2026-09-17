@@ -6,6 +6,7 @@ import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 import { SearchableSelect } from '../../components/SearchableSelect';
+import { useAuth } from '../../auth/AuthContext';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ function EstadoBadge({ estado }: { estado: string }) {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export function KitsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const [eventoId, setEventoId] = useState('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -255,40 +258,44 @@ export function KitsPage() {
               />
               Mostrar kits de prueba
             </label>
-            <button className="btn" onClick={() => setShowCreate(true)}>
-              + Nuevo kit
-            </button>
-            <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
-              ↓ Plantilla
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              style={{ display: 'none' }}
-              onChange={handleImport}
-            />
-            <button
-              className="btn secondary"
-              disabled={importing}
-              onClick={() => importInputRef.current?.click()}
-              title="Carga masiva de kits (Excel/CSV)"
-            >
-              {importing ? 'Importando…' : '↑ Importar'}
-            </button>
-            <button
-              className="btn secondary"
-              disabled={selected.size === 0 || downloading}
-              onClick={downloadPdf}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            >
-              {/* Icono PDF/QR */}
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01M12 12h.01" strokeWidth="2.5" />
-              </svg>
-              {downloading ? 'Generando…' : `PDF QR${selected.size > 0 ? ` (${selected.size})` : ''}`}
-            </button>
+            {isAdmin && (
+              <>
+                <button className="btn" onClick={() => setShowCreate(true)}>
+                  + Nuevo kit
+                </button>
+                <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
+                  ↓ Plantilla
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  style={{ display: 'none' }}
+                  onChange={handleImport}
+                />
+                <button
+                  className="btn secondary"
+                  disabled={importing}
+                  onClick={() => importInputRef.current?.click()}
+                  title="Carga masiva de kits (Excel/CSV)"
+                >
+                  {importing ? 'Importando…' : '↑ Importar'}
+                </button>
+                <button
+                  className="btn secondary"
+                  disabled={selected.size === 0 || downloading}
+                  onClick={downloadPdf}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  {/* Icono PDF/QR */}
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01M12 12h.01" strokeWidth="2.5" />
+                  </svg>
+                  {downloading ? 'Generando…' : `PDF QR${selected.size > 0 ? ` (${selected.size})` : ''}`}
+                </button>
+              </>
+            )}
           </div>
 
           {isLoading ? (
@@ -298,33 +305,37 @@ export function KitsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: 36 }}>
-                      <input
-                        type="checkbox"
-                        checked={allPageSelected}
-                        onChange={toggleAll}
-                        title="Seleccionar todos en esta página"
-                      />
-                    </th>
+                    {isAdmin && (
+                      <th style={{ width: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          onChange={toggleAll}
+                          title="Seleccionar todos en esta página"
+                        />
+                      </th>
+                    )}
                     <th>Código</th>
                     <th>Nombre</th>
                     <th>Contenidos</th>
                     <th>Operador</th>
                     <th>Recinto</th>
                     <th>Estado</th>
-                    <th></th>
+                    {isAdmin && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {kitsData?.items.map((kit) => (
                     <tr key={kit.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(kit.id)}
-                          onChange={() => toggleSelect(kit.id)}
-                        />
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(kit.id)}
+                            onChange={() => toggleSelect(kit.id)}
+                          />
+                        </td>
+                      )}
                       <td>
                         <code style={{ fontFamily: 'monospace', fontSize: '0.9rem', letterSpacing: '0.05em' }}>
                           {kit.codigoUnico}
@@ -361,6 +372,7 @@ export function KitsPage() {
                       <td>
                         <EstadoBadge estado={kit.estado} />
                       </td>
+                      {isAdmin && (
                       <td>
                         {kit.operadorId || kit.recintoId ? (
                           <button
@@ -404,11 +416,12 @@ export function KitsPage() {
                           </button>
                         )}
                       </td>
+                      )}
                     </tr>
                   ))}
                   {kitsData?.items.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      <td colSpan={isAdmin ? 8 : 6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                         {debounced ? 'No hay kits que coincidan con la búsqueda.' : 'No hay kits creados para este evento.'}
                       </td>
                     </tr>

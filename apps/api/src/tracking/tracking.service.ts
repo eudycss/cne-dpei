@@ -563,7 +563,7 @@ export class TrackingService {
     });
     if (!evento) return { total: 0, items: [] };
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     let operadorIds: string[] | undefined;
     if (!esAdmin) {
       const asignados = await this.prisma.asignacionSupervisor.findMany({
@@ -625,7 +625,7 @@ export class TrackingService {
     roles: RoleName[],
     operadorId: string,
   ): Promise<void> {
-    if (roles.includes('ADMINISTRADOR')) return;
+    if (roles.includes('ADMINISTRADOR') || roles.includes('LECTOR')) return;
     const asignado = await this.prisma.asignacionSupervisor.findFirst({
       where: { eventoId, supervisorId, operadorId },
       select: { id: true },
@@ -1098,7 +1098,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id },
@@ -1191,7 +1191,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1326,7 +1326,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1574,7 +1574,7 @@ export class TrackingService {
     });
     if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
 
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     if (!esAdmin) {
       const asignado = await this.prisma.asignacionSupervisor.findFirst({
         where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },

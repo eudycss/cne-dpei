@@ -23,7 +23,7 @@ describe('TrackingService', () => {
     militar: { findFirst: jest.fn() },
     eventoTracking: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
-    recepcionDpiKit: { findFirst: jest.fn(), create: jest.fn() },
+    recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn() },
     asignacionSupervisor: { findFirst: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
@@ -493,6 +493,32 @@ describe('TrackingService', () => {
       ]);
     });
 
+    it('un LECTOR ve operadores en ambos tramos igual que un admin (sin filtrar por asignación)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorIdA, nombres: 'Ana', apellidos: 'Perez' },
+        { id: operadorIdB, nombres: 'Beto', apellidos: 'Gomez' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce(ultimaPosicion)
+        .mockResolvedValueOnce(ultimaPosicion);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['LECTOR']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        expect.objectContaining({ operadorId: operadorIdA, estado: 'EN_TRANSITO' }),
+        expect.objectContaining({ operadorId: operadorIdB, estado: 'EN_RETORNO' }),
+      ]);
+    });
+
     it('un supervisor solo ve a sus operadores asignados', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
@@ -544,6 +570,60 @@ describe('TrackingService', () => {
       const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('recintosDificilAcceso', () => {
+    it('un LECTOR ve todos los recintos de difícil acceso sin filtrar por asignación', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]);
+
+      const result = await service.recintosDificilAcceso(operadorId, ['LECTOR']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual([expect.objectContaining({ recintoId, operadorId })]);
+    });
+  });
+
+  describe('obtenerFotoMilitar', () => {
+    it('un LECTOR obtiene la foto sin verificar asignación de supervisor', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce({ fotoMilitarUrl: 'militares/foto.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      const result = await service.obtenerFotoMilitar(recintoId, operadorId, ['LECTOR']);
+
+      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(result.contentType).toBe('image/jpeg');
+    });
+  });
+
+  describe('kitsVerificadosRetorno', () => {
+    it('un LECTOR ve todos los kits verificados sin filtrar por asignación', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: kitId, codigoUnico: 'K01', nombre: 'Kit 1', operadorId },
+      ]);
+      prisma.recepcionDpiKit.findMany.mockResolvedValueOnce([
+        { kitId, confirmadoEn: new Date(ocurridoEn) },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+
+      const result = await service.kitsVerificadosRetorno(operadorId, ['LECTOR']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toEqual(expect.objectContaining({ kitId, operadorId }));
     });
   });
 });

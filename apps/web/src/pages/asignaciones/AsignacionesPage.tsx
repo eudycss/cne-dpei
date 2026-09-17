@@ -4,10 +4,13 @@ import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-t
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
+import { useAuth } from '../../auth/AuthContext';
 
 const SIN_ASIGNAR = '';
 
 export function AsignacionesPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const [eventoId, setEventoId] = useState<string>('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -206,24 +209,28 @@ export function AsignacionesPage() {
                   onChange={(v) => setSearch(v)}
                   style={{ flex: 1 }}
                 />
-                <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
-                  ↓ Plantilla
-                </button>
-                <input
-                  ref={importInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  style={{ display: 'none' }}
-                  onChange={handleImport}
-                />
-                <button
-                  className="btn secondary"
-                  disabled={importing}
-                  onClick={() => importInputRef.current?.click()}
-                  title="Carga masiva de asignaciones (Excel/CSV)"
-                >
-                  {importing ? 'Importando…' : '↑ Importar'}
-                </button>
+                {isAdmin && (
+                  <>
+                    <button className="btn secondary" onClick={downloadTemplate} title="Descargar plantilla Excel">
+                      ↓ Plantilla
+                    </button>
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      style={{ display: 'none' }}
+                      onChange={handleImport}
+                    />
+                    <button
+                      className="btn secondary"
+                      disabled={importing}
+                      onClick={() => importInputRef.current?.click()}
+                      title="Carga masiva de asignaciones (Excel/CSV)"
+                    >
+                      {importing ? 'Importando…' : '↑ Importar'}
+                    </button>
+                  </>
+                )}
               </div>
 
               <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem' }}>
@@ -261,6 +268,7 @@ export function AsignacionesPage() {
                         supervisores={supervisores}
                         supervisorId={asigByOperador.get(op.id)?.supervisorId ?? SIN_ASIGNAR}
                         onChange={(svId) => handleChange(op.id, svId)}
+                        readOnly={!isAdmin}
                       />
                     ))}
                   </tbody>
@@ -315,11 +323,13 @@ function OperadorRow({
   supervisores,
   supervisorId,
   onChange,
+  readOnly,
 }: {
   operador: User;
   supervisores: User[];
   supervisorId: string;
   onChange: (supervisorId: string) => void;
+  readOnly: boolean;
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -343,7 +353,7 @@ function OperadorRow({
           <select
             value={supervisorId}
             onChange={handleChange}
-            disabled={saving}
+            disabled={saving || readOnly}
             style={{
               padding: '0.35rem 0.5rem',
               border: '1px solid #d1d5db',

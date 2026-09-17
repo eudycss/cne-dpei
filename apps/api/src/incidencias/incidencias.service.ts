@@ -171,7 +171,7 @@ export class IncidenciasService {
     if (opts.estado) where.estado = opts.estado;
     if (opts.eventoId) where.eventoId = opts.eventoId;
 
-    const esAdmin = opts.roles.includes('ADMINISTRADOR');
+    const esAdmin = opts.roles.includes('ADMINISTRADOR') || opts.roles.includes('LECTOR');
     if (!esAdmin) {
       // Supervisor: solo ve incidencias de sus operadores asignados en todos los eventos
       const asignaciones = await this.prisma.asignacionSupervisor.findMany({
@@ -488,7 +488,7 @@ export class IncidenciasService {
 
   /** Verifica que el viewer tenga acceso a la incidencia. */
   private async checkAccess(id: string, viewerId: string, roles: RoleName[]): Promise<void> {
-    const esAdmin = roles.includes('ADMINISTRADOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     if (esAdmin) return;
 
     const incidencia = await this.prisma.incidencia.findUnique({

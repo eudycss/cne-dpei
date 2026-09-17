@@ -185,7 +185,7 @@ export class TrackingController {
   }
 
   @Get('operadores-en-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'HU4-CA4 / HU6: operadores en tránsito (ida o retorno) con su última posición GPS',
   })
@@ -194,7 +194,7 @@ export class TrackingController {
   }
 
   @Get('estado-cdas')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Estado en vivo de los CDAs del evento activo (operador, estado del flujo, última ubicación)',
   })
@@ -203,7 +203,7 @@ export class TrackingController {
   }
 
   @Get('recintos-dificil-acceso')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'HU13 Parte B: CDAs esDificilAcceso del evento activo con el estado de su operador',
   })
@@ -225,7 +225,7 @@ export class TrackingController {
   }
 
   @Get('reporte-no-cda')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Reporte admin: NO-CDAs visitados vs. pendientes por CDA del evento activo',
   })
@@ -234,7 +234,7 @@ export class TrackingController {
   }
 
   @Get('reporte-flujo')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Reporte admin: hitos del flujo (Salida DPI/Llegada Recinto/Salida Recinto/Llegada DPI) por CDA',
   })
@@ -243,7 +243,7 @@ export class TrackingController {
   }
 
   @Get('estado-cdas/:recintoId/foto-militar')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
   @ApiOperation({
     summary: 'HU3-CA2: foto del militar (descifrada) recibida al entregar el kit de ese CDA',
@@ -302,7 +302,7 @@ export class TrackingController {
   }
 
   @Get('kits-verificados-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Verificación retorno DPI: kits ya verificados con el total',
   })

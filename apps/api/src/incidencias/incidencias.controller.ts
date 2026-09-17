@@ -51,7 +51,7 @@ export class IncidenciasController {
   }
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU14-CA2: listar incidencias con filtros opcionales (estado, eventoId)' })
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -88,7 +88,7 @@ export class IncidenciasController {
   }
 
   @Get(':id')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU14-CA3: detalle de una incidencia con comentarios' })
   findOne(
     @CurrentUser() user: AuthenticatedUser,
@@ -109,7 +109,7 @@ export class IncidenciasController {
   }
 
   @Get(':id/foto')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU14: foto adjunta a la incidencia (descifrada)' })
   async foto(
     @CurrentUser() user: AuthenticatedUser,
@@ -122,7 +122,7 @@ export class IncidenciasController {
   }
 
   @Get(':id/comentarios')
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU14-CA5: listar comentarios de una incidencia' })
   listComentarios(
     @CurrentUser() user: AuthenticatedUser,

@@ -19,7 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const prisma = new PrismaClient();
 
-const ROLES = ['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'OPERADOR_CDA'] as const;
+const ROLES = ['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'OPERADOR_CDA', 'LECTOR'] as const;
 
 const CANTONES = [
   { codigo: '30', nombre: 'IBARRA' },

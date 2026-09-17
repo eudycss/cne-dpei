@@ -1,4 +1,4 @@
-export type RoleName = 'ADMINISTRADOR' | 'TECNICO_SUPERVISOR' | 'OPERADOR_CDA';
+export type RoleName = 'ADMINISTRADOR' | 'TECNICO_SUPERVISOR' | 'OPERADOR_CDA' | 'LECTOR';
 
 export interface Role {
   id: string;

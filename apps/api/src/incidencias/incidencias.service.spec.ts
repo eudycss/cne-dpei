@@ -150,6 +150,40 @@ describe('IncidenciasService', () => {
     });
   });
 
+  describe('list', () => {
+    it('un LECTOR ve todas las incidencias sin filtrar por asignación (igual que un admin)', async () => {
+      const incidenciaId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+      const operadorId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+      prisma.incidencia.count.mockResolvedValueOnce(1);
+      prisma.incidencia.findMany.mockResolvedValueOnce([
+        {
+          id: incidenciaId,
+          eventoId: 'evt-1',
+          operadorId,
+          recintoId: null,
+          kitId: null,
+          tipo: 'OTRO',
+          descripcion: 'Descripción de prueba',
+          fotoUrl: null,
+          estado: 'ABIERTA',
+          reportadoEn: new Date('2026-06-19T10:00:00Z'),
+          desdeOffline: false,
+        },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+      prisma.$queryRaw.mockResolvedValueOnce([]); // ubicaciones
+
+      const result = await service.list({ viewerId: 'viewer-1', roles: ['LECTOR'] as any });
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result.total).toBe(1);
+      expect(result.items[0].id).toBe(incidenciaId);
+    });
+  });
+
   describe('findOne', () => {
     const id = '66666666-6666-6666-6666-666666666666';
     const viewerId = '77777777-7777-7777-7777-777777777777';
@@ -171,6 +205,36 @@ describe('IncidenciasService', () => {
       });
       // no debió continuar a leer la incidencia completa
       expect(prisma.incidencia.findMany).not.toHaveBeenCalled();
+    });
+
+    it('un LECTOR accede sin verificar asignación (ve todo, igual que un admin)', async () => {
+      prisma.incidencia.findMany.mockResolvedValueOnce([
+        {
+          id,
+          eventoId: 'evt-1',
+          operadorId,
+          recintoId: null,
+          kitId: null,
+          tipo: 'OTRO',
+          descripcion: 'Descripción de prueba',
+          fotoUrl: null,
+          estado: 'ABIERTA',
+          reportadoEn: new Date('2026-06-19T10:00:00Z'),
+          desdeOffline: false,
+        },
+      ]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Juan', apellidos: 'Pérez' });
+      prisma.$queryRaw.mockResolvedValueOnce([]); // ubicación
+      prisma.incidenciaComentario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.findMany.mockResolvedValueOnce([]); // autores de comentarios
+
+      const result = await service.findOne(id, viewerId, ['LECTOR'] as any);
+
+      expect(result.id).toBe(id);
+      // checkAccess trata a LECTOR como admin: nunca consulta la incidencia por separado
+      // ni busca la asignación supervisor->operador.
+      expect(prisma.incidencia.findUnique).not.toHaveBeenCalled();
+      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
     });
   });
 

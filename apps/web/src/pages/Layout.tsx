@@ -10,7 +10,10 @@ export function Layout() {
   const { theme, toggle } = useTheme();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
-  const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const puedeVerAlertas =
+    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+  const puedeVerReportes =
+    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR') ?? false;
 
   return (
     <div className="app-shell">
@@ -43,10 +46,12 @@ export function Layout() {
         <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
           Incidencias
         </NavLink>
-        <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-          Alertas
-        </NavLink>
-        {esAdmin && (
+        {puedeVerAlertas && (
+          <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Alertas
+          </NavLink>
+        )}
+        {puedeVerReportes && (
           <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
             Reportes
           </NavLink>

@@ -31,7 +31,7 @@ export class MilitaresController {
   constructor(private readonly militares: MilitaresService) {}
 
   @Get()
-  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   list(
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
