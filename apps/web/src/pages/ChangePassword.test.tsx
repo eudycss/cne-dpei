@@ -5,7 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 import { AuthProvider } from '../auth/AuthContext';
 import { ChangePassword } from './ChangePassword';
-import { api } from '../lib/api';
+import { api, tokenStore } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
   api: { post: vi.fn() },
@@ -13,6 +13,7 @@ vi.mock('../lib/api', () => ({
 }));
 
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+const tokenStoreSetMock = tokenStore.set as unknown as ReturnType<typeof vi.fn>;
 const USER_KEY = 'cne.user';
 
 function setSessionUser(overrides: Partial<{ debeCambiarPwd: boolean }> = {}) {
@@ -96,7 +97,9 @@ describe('ChangePassword', () => {
   });
 
   it('cambia la contraseña, marca al usuario como al día y navega a /users', async () => {
-    postMock.mockResolvedValueOnce({ data: {} });
+    postMock.mockResolvedValueOnce({
+      data: { accessToken: 'access-nuevo', refreshToken: 'refresh-nuevo' },
+    });
     const { container } = renderChangePassword();
 
     await fillAndSubmit(container, 'Actual1!', 'Nueva12!', 'Nueva12!');
@@ -105,6 +108,10 @@ describe('ChangePassword', () => {
       currentPassword: 'Actual1!',
       newPassword: 'Nueva12!',
     });
+    // El access token viejo sigue firmado con debeCambiarPwd=true hasta que
+    // expire — sin adoptar los tokens nuevos, la navegación a /users que
+    // sigue quedaría rechazada con 403 por el servidor.
+    expect(tokenStoreSetMock).toHaveBeenCalledWith('access-nuevo', 'refresh-nuevo');
     expect(await screen.findByText('Contraseña actualizada')).toBeInTheDocument();
 
     const stored = JSON.parse(localStorage.getItem(USER_KEY) ?? '{}');

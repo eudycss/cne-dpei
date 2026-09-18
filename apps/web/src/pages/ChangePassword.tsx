@@ -1,7 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { ChangePasswordResponse } from '@cne/shared-types';
 import { strongPasswordSchema } from '@cne/shared-validation';
-import { api } from '../lib/api';
+import { api, tokenStore } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
@@ -28,7 +29,14 @@ export function ChangePassword() {
       return;
     }
     try {
-      await api.post('/auth/change-password', { currentPassword, newPassword });
+      const { data } = await api.post<ChangePasswordResponse>('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      // El access token viejo sigue firmado con debeCambiarPwd=true hasta
+      // que expire — sin adoptar los tokens nuevos acá, la siguiente
+      // petición (navegar a /users) sería rechazada con 403.
+      tokenStore.set(data.accessToken, data.refreshToken);
       markPasswordChanged();
       setOk(true);
       setTimeout(() => navigate('/users', { replace: true }), 800);

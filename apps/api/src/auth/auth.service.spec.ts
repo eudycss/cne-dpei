@@ -237,6 +237,23 @@ describe('AuthService', () => {
         data: { revocadoEn: expect.any(Date) },
       });
     });
+
+    // El access token con el que llegó la request sigue firmado con
+    // debeCambiarPwd=true hasta que expire — sin reemitir tokens acá,
+    // JwtAuthGuard seguiría rechazando al usuario justo después de un
+    // cambio de contraseña exitoso (ver jwt-auth.guard.ts).
+    it('reemite tokens frescos con debeCambiarPwd=false', async () => {
+      prisma.usuario.findUniqueOrThrow.mockResolvedValueOnce(userRow());
+      verifyMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+      const result = await service.changePassword(userId, 'actual', 'Nueva1*');
+
+      expect(result).toEqual({ accessToken: 'signed.jwt.token', refreshToken: 'signed.jwt.token' });
+      expect(jwt.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: userId, debeCambiarPwd: false, roles: ['OPERADOR_CDA'] }),
+        expect.anything(),
+      );
+    });
   });
 
   describe('forgotPassword', () => {
