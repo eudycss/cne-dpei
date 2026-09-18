@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import type { LoginResponse, RoleName } from '@cne/shared-types';
+import type { ChangePasswordResponse, LoginResponse, RoleName } from '@cne/shared-types';
 
 import { PrismaService } from '../db/prisma.service';
 import type { JwtPayload } from './jwt.strategy';
@@ -110,8 +110,11 @@ export class AuthService {
     userId: string,
     currentPassword: string,
     newPassword: string,
-  ): Promise<void> {
-    const user = await this.prisma.usuario.findUniqueOrThrow({ where: { id: userId } });
+  ): Promise<ChangePasswordResponse> {
+    const user = await this.prisma.usuario.findUniqueOrThrow({
+      where: { id: userId },
+      include: { roles: { include: { rol: true } } },
+    });
     const ok = await argon2.verify(user.passwordHash, currentPassword);
     if (!ok) {
       throw new BadRequestException('Contraseña actual incorrecta');
@@ -129,6 +132,13 @@ export class AuthService {
       where: { usuarioId: userId, revocadoEn: null },
       data: { revocadoEn: new Date() },
     });
+
+    // El access token con el que llegó esta request sigue firmado con
+    // debeCambiarPwd=true hasta que expire (hasta 15 min) — JwtAuthGuard lo
+    // seguiría rechazando en cualquier ruta no exenta. Reemitimos tokens acá
+    // (igual que login/refresh) para que el cliente los adopte de inmediato.
+    const roles = user.roles.map((r) => r.rol.nombre as RoleName);
+    return this.issueTokens({ sub: user.id, email: user.email, roles, debeCambiarPwd: false });
   }
 
   /** HU16: emite token de recuperación. No revela si el email existe. */

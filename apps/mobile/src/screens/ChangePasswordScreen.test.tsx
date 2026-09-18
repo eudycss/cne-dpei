@@ -5,6 +5,7 @@ jest.setTimeout(30000);
 
 const mockMarkPasswordChanged = jest.fn();
 const mockApiPost = jest.fn();
+const mockTokenStoreSet = jest.fn();
 const mockGuardarVerificadorOffline = jest.fn();
 
 const sessionUser = {
@@ -24,6 +25,7 @@ jest.mock('../auth/AuthContext', () => ({
 
 jest.mock('../lib/api', () => ({
   api: { post: (...args: any[]) => mockApiPost(...args) },
+  tokenStore: { set: (...args: any[]) => mockTokenStoreSet(...args) },
 }));
 
 jest.mock('../lib/offlineAuth', () => ({
@@ -66,7 +68,10 @@ describe('ChangePasswordScreen — guarda el verificador offline tras cambiar la
   beforeEach(() => {
     jest.clearAllMocks();
     mockUser = sessionUser;
-    mockApiPost.mockResolvedValue({});
+    mockApiPost.mockResolvedValue({
+      data: { accessToken: 'access-nuevo', refreshToken: 'refresh-nuevo' },
+    });
+    mockTokenStoreSet.mockResolvedValue(undefined);
     mockGuardarVerificadorOffline.mockResolvedValue(undefined);
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
@@ -83,6 +88,10 @@ describe('ChangePasswordScreen — guarda el verificador offline tras cambiar la
 
     await llenarYEnviar(renderer, 'Actual1!', NUEVA_PASSWORD, NUEVA_PASSWORD);
 
+    // El access token viejo sigue firmado con debeCambiarPwd=true hasta que
+    // expire — sin adoptar los tokens nuevos, la app quedaría bloqueada con
+    // errores 403 hasta por 15 minutos tras un cambio exitoso.
+    expect(mockTokenStoreSet).toHaveBeenCalledWith('access-nuevo', 'refresh-nuevo');
     expect(mockMarkPasswordChanged).toHaveBeenCalled();
     expect(mockGuardarVerificadorOffline).toHaveBeenCalledWith(NUEVA_PASSWORD, {
       ...sessionUser,

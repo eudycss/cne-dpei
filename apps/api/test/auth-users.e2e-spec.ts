@@ -127,11 +127,33 @@ describe('Auth + Users (e2e)', () => {
       .post('/auth/login')
       .send({ email: newUserEmail, password: initialPassword })
       .expect(200);
-    await request(app.getHttpServer())
+    const oldAccessToken = login.body.accessToken;
+
+    const cambio = await request(app.getHttpServer())
       .post('/auth/change-password')
-      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .set('Authorization', `Bearer ${oldAccessToken}`)
       .send({ currentPassword: initialPassword, newPassword: 'Nueva*26' })
-      .expect(204);
+      .expect(200);
+    expect(cambio.body.accessToken).toBeDefined();
+    expect(cambio.body.accessToken).not.toBe(oldAccessToken);
+
+    // El access token con el que se hizo login sigue firmado con
+    // debeCambiarPwd=true hasta que expire: el servidor lo sigue rechazando
+    // en cualquier ruta no exenta, aunque la contraseña ya se haya cambiado.
+    // Se usa /tipos-evento porque OPERADOR_CDA (único rol de este
+    // usuario) tiene acceso — así el 403 se debe solo a debeCambiarPwd, no
+    // a RolesGuard.
+    await request(app.getHttpServer())
+      .get('/tipos-evento')
+      .set('Authorization', `Bearer ${oldAccessToken}`)
+      .expect(403);
+
+    // Con el token fresco que devuelve change-password, el usuario ya puede
+    // seguir usando la app de inmediato sin esperar a que el viejo expire.
+    await request(app.getHttpServer())
+      .get('/tipos-evento')
+      .set('Authorization', `Bearer ${cambio.body.accessToken}`)
+      .expect(200);
   });
 
   it('6. login con nueva contraseña → debeCambiarPwd false', async () => {

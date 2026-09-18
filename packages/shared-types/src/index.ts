@@ -51,6 +51,15 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+// Tokens frescos (ya con debeCambiarPwd=false) para reemplazar los que el
+// cliente tenía guardados — sin esto, el access token viejo sigue firmado
+// con debeCambiarPwd=true hasta que expire y el servidor rechaza al usuario
+// justo después de haber cambiado su contraseña con éxito.
+export interface ChangePasswordResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
 export interface ForgotPasswordRequest {
   email: string;
 }

@@ -17,7 +17,7 @@ import {
 
 import { AuthService } from './auth.service';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
-import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
+import { AllowPasswordChangePending, JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { CurrentUser, AuthenticatedUser } from '../common/current-user.decorator';
 
 @ApiTags('auth')
@@ -61,6 +61,7 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  @AllowPasswordChangePending()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   logout(@CurrentUser() user: AuthenticatedUser) {
@@ -68,9 +69,13 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  @AllowPasswordChangePending()
   @Post('change-password')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'HU1-CA3: Cambio obligatorio de contraseña' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'HU1-CA3: Cambio obligatorio de contraseña. Devuelve tokens frescos (ya con debeCambiarPwd=false) que el cliente debe adoptar de inmediato.',
+  })
   @ApiBody({
     schema: {
       type: 'object',

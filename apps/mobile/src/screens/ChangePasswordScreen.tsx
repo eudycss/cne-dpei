@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ChangePasswordResponse } from '@cne/shared-types';
 import { strongPasswordSchema } from '@cne/shared-validation';
-import { api } from '../lib/api';
+import { api, tokenStore } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { guardarVerificadorOffline } from '../lib/offlineAuth';
 import { useTheme } from '../theme/ThemeContext';
@@ -31,7 +32,14 @@ export function ChangePasswordScreen() {
     }
     setLoading(true);
     try {
-      await api.post('/auth/change-password', { currentPassword: current, newPassword: next });
+      const { data } = await api.post<ChangePasswordResponse>('/auth/change-password', {
+        currentPassword: current,
+        newPassword: next,
+      });
+      // El access token viejo sigue firmado con debeCambiarPwd=true hasta
+      // que expire — sin adoptar los tokens nuevos acá, la app quedaría
+      // bloqueada con errores 403 hasta por 15 minutos.
+      await tokenStore.set(data.accessToken, data.refreshToken);
       markPasswordChanged();
       // El gate de cambio obligatorio ya se cumplió: recién ahora tiene
       // sentido habilitar el login offline (login() no lo guardó porque
