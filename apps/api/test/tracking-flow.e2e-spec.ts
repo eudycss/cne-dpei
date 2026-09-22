@@ -40,7 +40,8 @@ function iso(offsetMs = 0): string {
  * Flujo end-to-end del operador (HU2-HU5) con coordenadas GPS fijas, sin
  * depender de un dispositivo/Expo Go:
  *   salida-dpi -> foto-militar -> validar-kit -> recepcion-kit ->
- *   llegada-recinto -> salida-recinto -> posiciones -> llegada-dpi
+ *   llegada-recinto -> foto-acta (instalación y escrutinio) ->
+ *   salida-recinto -> posiciones -> llegada-dpi
  * Reutiliza el operador/kit de prueba `...a1` / TEST-KIT-A del evento
  * TEST E2E (00000000-0000-0000-0000-00000000e001). Verifica al final que
  * GET /tracking/estado-cdas refleje RETORNADO para ese recinto.
@@ -152,16 +153,39 @@ describe('Tracking flow (e2e)', () => {
     expect(res.body.id).toBeDefined();
   });
 
-  it('8. registra salida del recinto', async () => {
+  it('8. sube las actas de instalación y escrutinio', async () => {
+    const instalacion = await request(app.getHttpServer())
+      .post('/tracking/foto-acta')
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .attach('file', MIN_PNG, 'acta-instalacion.png')
+      .expect(201);
+    expect(instalacion.body.url).toBeDefined();
+    (global as any).__actaInstalacionUrl = instalacion.body.url;
+
+    const escrutinio = await request(app.getHttpServer())
+      .post('/tracking/foto-acta')
+      .set('Authorization', `Bearer ${operadorToken}`)
+      .attach('file', MIN_PNG, 'acta-escrutinio.png')
+      .expect(201);
+    expect(escrutinio.body.url).toBeDefined();
+    (global as any).__actaEscrutinioUrl = escrutinio.body.url;
+  });
+
+  it('9. registra salida del recinto', async () => {
     const res = await request(app.getHttpServer())
       .post('/tracking/salida-recinto')
       .set('Authorization', `Bearer ${operadorToken}`)
-      .send({ ...RECINTO, ocurridoEn: iso() })
+      .send({
+        ...RECINTO,
+        ocurridoEn: iso(),
+        actaInstalacionUrl: (global as any).__actaInstalacionUrl,
+        actaEscrutinioUrl: (global as any).__actaEscrutinioUrl,
+      })
       .expect(201);
     expect(res.body.id).toBeDefined();
   });
 
-  it('9. ingesta posiciones GPS del retorno', async () => {
+  it('10. ingesta posiciones GPS del retorno', async () => {
     const res = await request(app.getHttpServer())
       .post('/tracking/posiciones')
       .set('Authorization', `Bearer ${operadorToken}`)
@@ -175,7 +199,7 @@ describe('Tracking flow (e2e)', () => {
     expect(res.body.recibidas).toBe(2);
   });
 
-  it('10. registra llegada al DPI', async () => {
+  it('11. registra llegada al DPI', async () => {
     const res = await request(app.getHttpServer())
       .post('/tracking/llegada-dpi')
       .set('Authorization', `Bearer ${operadorToken}`)
@@ -184,7 +208,7 @@ describe('Tracking flow (e2e)', () => {
     expect(res.body.id).toBeDefined();
   });
 
-  it('11. estado-cdas refleja RETORNADO', async () => {
+  it('12. estado-cdas refleja RETORNADO y las actas subidas', async () => {
     // Se llama al servicio directo (en vez de vía HTTP con un admin logueado)
     // porque la contraseña del admin sembrado puede haber sido cambiada en
     // sesiones previas; con rol ADMINISTRADOR el viewerId no filtra resultados.
@@ -196,5 +220,7 @@ describe('Tracking flow (e2e)', () => {
     expect(cda?.estado).toBe('RETORNADO');
     expect(cda?.ubicacion?.latitud).toBeCloseTo(ULTIMA_POSICION.latitud, 4);
     expect(cda?.ubicacion?.longitud).toBeCloseTo(ULTIMA_POSICION.longitud, 4);
+    expect(cda?.tieneActaInstalacion).toBe(true);
+    expect(cda?.tieneActaEscrutinio).toBe(true);
   });
 });
