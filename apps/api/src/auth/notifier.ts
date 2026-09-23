@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 export interface INotifier {
   sendPasswordResetLink(email: string, link: string): Promise<void>;
   sendInitialPassword(email: string, password: string): Promise<void>;
+  sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void>;
 }
 
 export const NOTIFIER = 'NOTIFIER';
@@ -17,6 +18,10 @@ export class ConsoleNotifier implements INotifier {
 
   async sendInitialPassword(email: string, password: string): Promise<void> {
     this.log.warn(`[INITIAL PASSWORD] ${email}  →  ${password}`);
+  }
+
+  async sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void> {
+    this.log.warn(`[ENLACE CAIDO] ${codigoRecinto} - ${nombreRecinto} → ${destinatarios.join(', ')}`);
   }
 }
 
@@ -76,6 +81,21 @@ export class BrevoNotifier implements INotifier {
       `,
     );
     this.log.log(`[INITIAL PASSWORD] correo enviado a ${email}`);
+  }
+
+  async sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void> {
+    for (const to of destinatarios) {
+      await this.send(
+        to,
+        `Enlace caído: ${codigoRecinto} - ${nombreRecinto}`,
+        `
+          <h2>CNE Imbabura — Enlace caído</h2>
+          <p>El enlace del siguiente recinto pasó a estado <strong>FALLO</strong>:</p>
+          <p><strong>Código:</strong> ${codigoRecinto}<br/><strong>Recinto:</strong> ${nombreRecinto}</p>
+        `,
+      );
+    }
+    this.log.log(`[ENLACE CAIDO] correo enviado a ${destinatarios.length} destinatario(s)`);
   }
 }
 
