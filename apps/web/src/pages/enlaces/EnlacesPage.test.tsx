@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
@@ -164,6 +164,25 @@ describe('EnlacesPage', () => {
     expect(btnFallidos).toHaveAttribute('aria-pressed', 'true');
     expect(btnTodos).toHaveAttribute('aria-pressed', 'false');
     expect(btnActivos).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('vuelve a pedir los enlaces automáticamente sin recargar la página', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPage();
+
+    await vi.waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/enlaces'));
+    const llamadasIniciales = apiGetMock.mock.calls.filter((c) => c[0] === '/enlaces').length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    await vi.waitFor(() => {
+      const llamadas = apiGetMock.mock.calls.filter((c) => c[0] === '/enlaces').length;
+      expect(llamadas).toBeGreaterThan(llamadasIniciales);
+    });
+
+    vi.useRealTimers();
   });
 
   it('muestra un mensaje cuando el filtro no tiene resultados', async () => {

@@ -26,6 +26,7 @@ export function EnlacesPage() {
   const { data: enlaces = [], isLoading } = useQuery({
     queryKey: ['enlaces'],
     queryFn: getEnlaces,
+    refetchInterval: 30_000,
   });
 
   const { data: config } = useQuery({
