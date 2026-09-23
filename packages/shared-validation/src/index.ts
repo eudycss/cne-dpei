@@ -457,3 +457,8 @@ export type UpdateEstadoIncidenciaInput = z.infer<typeof updateEstadoIncidenciaS
 export const updateEstadoAlertaSchema = z.object({
   estado: z.enum(['VISTA', 'ATENDIDA']),
 });
+
+// --- Alertas de enlaces caídos (CDAs Imbabura) ---
+export const addCorreoEnlaceSchema = z.object({
+  correo: emailSchema,
+});
