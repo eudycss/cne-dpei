@@ -59,3 +59,6 @@ CLAUDE.local.md
 
 # Datos de trabajo locales (plantillas con info sensible, no van al repo)
 plantilla/
+
+# Credenciales locales (claves de servicio, IDs sensibles) - nunca al repo
+docs/nogithub/
