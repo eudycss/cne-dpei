@@ -117,4 +117,67 @@ describe('EnlacesPage', () => {
       expect(sileoErrorMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'no se pudo quitar' }));
     });
   });
+
+  it('filtra la tabla por estado activo o fallido', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Fallidos/ }));
+    expect(screen.getByText('Escuela Central')).toBeInTheDocument();
+    expect(screen.queryByText('Unidad Educativa Zaldumbide')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Activos/ }));
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Todos/ }));
+    expect(screen.getByText('Escuela Central')).toBeInTheDocument();
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+  });
+
+  it('muestra la cantidad de enlaces junto a cada filtro', async () => {
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    expect(screen.getByRole('button', { name: 'Todos (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Activos (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fallidos (1)' })).toBeInTheDocument();
+  });
+
+  it('marca aria-pressed en el botón de filtro activo y lo quita de los demás', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    const btnTodos = screen.getByRole('button', { name: /^Todos/ });
+    const btnActivos = screen.getByRole('button', { name: /^Activos/ });
+    const btnFallidos = screen.getByRole('button', { name: /^Fallidos/ });
+
+    expect(btnTodos).toHaveAttribute('aria-pressed', 'true');
+    expect(btnActivos).toHaveAttribute('aria-pressed', 'false');
+    expect(btnFallidos).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(btnFallidos);
+    expect(btnFallidos).toHaveAttribute('aria-pressed', 'true');
+    expect(btnTodos).toHaveAttribute('aria-pressed', 'false');
+    expect(btnActivos).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('muestra un mensaje cuando el filtro no tiene resultados', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/enlaces') return Promise.resolve({ data: [enlaces[1]] });
+      if (url === '/enlaces/config') return Promise.resolve({ data: config() });
+      return Promise.resolve({ data: [] });
+    });
+    renderPage();
+
+    await screen.findByText('Unidad Educativa Zaldumbide');
+    await user.click(screen.getByRole('button', { name: /^Fallidos/ }));
+
+    expect(await screen.findByText('No hay enlaces con ese estado.')).toBeInTheDocument();
+  });
 });

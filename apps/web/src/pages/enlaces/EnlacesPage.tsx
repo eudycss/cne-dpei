@@ -10,9 +10,18 @@ const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
   FALLO: '#ef4444',
 };
 
+type FiltroEstado = 'TODOS' | EnlaceRecinto['estado'];
+
+const FILTROS: { valor: FiltroEstado; etiqueta: string }[] = [
+  { valor: 'TODOS', etiqueta: 'Todos' },
+  { valor: 'ACTIVO', etiqueta: 'Activos' },
+  { valor: 'FALLO', etiqueta: 'Fallidos' },
+];
+
 export function EnlacesPage() {
   const qc = useQueryClient();
   const [nuevoCorreo, setNuevoCorreo] = useState('');
+  const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
 
   const { data: enlaces = [], isLoading } = useQuery({
     queryKey: ['enlaces'],
@@ -46,6 +55,14 @@ export function EnlacesPage() {
       sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar el correo' });
     },
   });
+
+  const enlacesFiltrados = filtro === 'TODOS' ? enlaces : enlaces.filter((e) => e.estado === filtro);
+
+  const conteos: Record<FiltroEstado, number> = {
+    TODOS: enlaces.length,
+    ACTIVO: enlaces.filter((e) => e.estado === 'ACTIVO').length,
+    FALLO: enlaces.filter((e) => e.estado === 'FALLO').length,
+  };
 
   return (
     <>
@@ -89,11 +106,31 @@ export function EnlacesPage() {
         </div>
       </div>
 
+      {enlaces.length > 0 && (
+        <div role="group" aria-label="Filtrar por estado" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          {FILTROS.map((f) => (
+            <button
+              key={f.valor}
+              type="button"
+              className={filtro === f.valor ? 'btn' : 'btn secondary'}
+              aria-pressed={filtro === f.valor}
+              onClick={() => setFiltro(f.valor)}
+            >
+              {f.etiqueta} ({conteos[f.valor]})
+            </button>
+          ))}
+        </div>
+      )}
+
       {isLoading ? (
         <p className="muted">Cargando enlaces…</p>
       ) : enlaces.length === 0 ? (
         <p className="muted" style={{ textAlign: 'center', padding: '2rem 0' }}>
           No hay enlaces registrados todavía. Se completan en la primera revisión automática.
+        </p>
+      ) : enlacesFiltrados.length === 0 ? (
+        <p className="muted" role="status" aria-live="polite" style={{ textAlign: 'center', padding: '2rem 0' }}>
+          No hay enlaces con ese estado.
         </p>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -107,7 +144,7 @@ export function EnlacesPage() {
               </tr>
             </thead>
             <tbody>
-              {enlaces.map((e) => (
+              {enlacesFiltrados.map((e) => (
                 <tr key={e.codigoRecinto}>
                   <td style={{ whiteSpace: 'nowrap' }}>{e.codigoRecinto}</td>
                   <td>{e.nombreRecinto}</td>
