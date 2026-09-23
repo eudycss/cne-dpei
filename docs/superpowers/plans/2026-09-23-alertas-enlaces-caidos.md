@@ -14,7 +14,7 @@
 
 - Solo enlaces con `PROVINCIA = 'IMBABURA'` (filtrado en el cliente de lectura, nunca se procesan las otras 23 provincias).
 - Revisión cada 5 minutos (`@Cron(CronExpression.EVERY_5_MINUTES)`), igual que `AlertasService.evaluarAnomalias`.
-- Solo se notifica en la transición `ACTIVO → FALLO`, nunca en `FALLO → FALLO` ni en la primera carga si ya estaba `FALLO`.
+- Se notifica en la transición `ACTIVO → FALLO` y también en la primera carga de un recinto que ya llega en `FALLO` (sin `estadoAnterior` registrado) — actualizado 2026-09-23, ver spec. Nunca se renotifica en `FALLO → FALLO`.
 - El aviso in-app (web/móvil) es visible solo para `ADMINISTRADOR` y `TECNICO_SUPERVISOR` — nunca `OPERADOR_CDA` ni `LECTOR`.
 - Un error de lectura de la hoja de Google mantiene el último estado conocido en la base — nunca se generan alertas falsas de "todo cayó" por un fallo de lectura.
 - Un fallo de un canal de notificación (Brevo, Telegram) nunca bloquea a los demás canales ni al resto del ciclo del cron.
@@ -990,6 +990,19 @@ Expected: PASS (9/9).
 ```bash
 git add apps/api/src/enlaces/enlaces.service.ts apps/api/src/enlaces/enlaces.service.spec.ts
 git commit -m "feat(api): EnlacesService - cron, deteccion de transicion y notificacion"
+```
+
+**Addendum 2026-09-23 (post-implementación):** se detectó en producción que 7
+de 55 recintos llevaban caídos desde antes del primer ciclo de monitoreo y
+nunca dispararon alerta, porque el test "NO notifica en la primera carga de
+un enlace ya FALLO" (Step 1 arriba) codificaba esa omisión a propósito. Se
+decidió revertir esa regla: ver spec actualizado
+(`docs/superpowers/specs/2026-09-23-alertas-enlaces-caidos-design.md`) y el
+test renombrado a "SÍ notifica en la primera carga...". Condición nueva en
+`enlaces.service.ts`:
+
+```ts
+const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
 ```
 
 ---

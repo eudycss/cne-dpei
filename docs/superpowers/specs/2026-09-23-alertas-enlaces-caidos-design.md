@@ -27,6 +27,17 @@ implementar").
   (`AlertasService.evaluarAnomalias`).
 - Solo se notifica en la **transición** ACTIVO→FALLO (no en cada revisión
   mientras sigue caído), para no saturar correo/Telegram/campanita.
+- **Excepción, agregada el 2026-09-23 tras hallazgo en producción:** la
+  primera vez que se ve un recinto (sin `estadoAnterior` registrado, es
+  decir la fila aún no existe en `enlaces_recinto`) y ya llega en `FALLO`,
+  **sí se notifica**. Sin esto, un enlace que ya estaba caído antes de que
+  arrancara el monitoreo (o tras un reset de base) queda mudo para siempre
+  — nunca pasa por ACTIVO, así que nunca hay transición que detectar. Se
+  comprobó el caso real: 7 de 55 recintos de Imbabura llevaban caídos desde
+  antes del primer ciclo y jamás dispararon alerta. El costo de notificar
+  también en este caso es acotado (dispara una sola vez por recinto, no en
+  cada ciclo) y el riesgo de quedarse callado es peor que el de una alerta
+  de más.
 - El aviso emergente en web/móvil es visible solo para roles
   `ADMINISTRADOR` y `TECNICO_SUPERVISOR` (no `OPERADOR_CDA`).
 - Fuera de alcance explícitamente: leer color de celda, cubrir provincias
@@ -89,8 +100,9 @@ model ConfigEnlaces {
    - Filtra filas con `PROVINCIA = 'IMBABURA'`.
    - Para cada fila, upsert en `enlaces_recinto` por `codigoRecinto`,
      guardando `estadoAnterior` = valor previo antes de sobrescribir.
-   - Si `estadoAnterior = ACTIVO` y `estado nuevo = FALLO` → dispara
-     `notificarCaida(codigoRecinto, nombreRecinto)`.
+   - Si `estado nuevo = FALLO` y `estadoAnterior !== FALLO` (incluye el caso
+     `estadoAnterior` inexistente, primera vez que se ve el recinto) →
+     dispara `notificarCaida(codigoRecinto, nombreRecinto)`.
 2. `notificarCaida()`:
    - Envía correo (Brevo) a cada dirección de `ConfigEnlaces.correos`.
    - Envía mensaje a Telegram (`TelegramNotifier.sendMensaje`) si
@@ -182,10 +194,11 @@ refrescar la app (no se repite si ya se mostró esa notificación).
 ## Testing
 
 - `enlaces.service.spec.ts`: mock de `sheets-enlaces.client.ts` — verifica
-  que solo notifica en la transición ACTIVO→FALLO (no en FALLO→FALLO ni en
-  la primera carga si ya estaba FALLO desde antes), que filtra correctamente
-  por `PROVINCIA = 'IMBABURA'`, y que un error de lectura no borra el estado
-  existente.
+  que notifica en la transición ACTIVO→FALLO y también en la primera carga
+  de un recinto que ya llega en FALLO (sin `estadoAnterior`), que NO
+  renotifica en FALLO→FALLO (ya estaba caído y sigue caído), que filtra
+  correctamente por `PROVINCIA = 'IMBABURA'`, y que un error de lectura no
+  borra el estado existente.
 - `telegram-notifier.spec.ts`: verifica el payload enviado y que un fallo de
   red no lanza excepción no controlada.
 - Extensión de los tests de `notifier.ts` para el nuevo método
