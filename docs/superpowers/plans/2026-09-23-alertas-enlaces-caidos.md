@@ -1008,7 +1008,7 @@ git commit -m "feat(api): EnlacesService - cron, deteccion de transicion y notif
 
 No hay test unitario dedicado para el controller — en este proyecto los controllers son delgados y se prueban a través del service (mismo patrón que `AlertasController`, `TrackingController`, etc., ninguno tiene spec propio).
 
-- [ ] **Step 1: Crear el controller**
+- [x] **Step 1: Crear el controller**
 
 Crear `apps/api/src/enlaces/enlaces.controller.ts`:
 
@@ -1060,7 +1060,7 @@ export class EnlacesController {
 }
 ```
 
-- [ ] **Step 2: Crear el módulo**
+- [x] **Step 2: Crear el módulo**
 
 Crear `apps/api/src/enlaces/enlaces.module.ts`:
 
@@ -1081,7 +1081,7 @@ import { TelegramNotifier } from './telegram-notifier';
 export class EnlacesModule {}
 ```
 
-- [ ] **Step 3: Registrar el módulo en `app.module.ts`**
+- [x] **Step 3: Registrar el módulo en `app.module.ts`**
 
 En `apps/api/src/app.module.ts`, agregar el import junto a `import { AlertasModule } from './alertas/alertas.module';` (línea 23):
 
@@ -1096,7 +1096,7 @@ Y agregar `EnlacesModule` al arreglo `imports`, justo después de `AlertasModule
     EnlacesModule,
 ```
 
-- [ ] **Step 4: Documentar las variables de entorno nuevas**
+- [x] **Step 4: Documentar las variables de entorno nuevas**
 
 En `.env.example`, al final del archivo, agregar:
 
@@ -1118,7 +1118,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
-- [ ] **Step 5: Verificar que el proyecto compila y los tests existentes siguen en verde**
+- [x] **Step 5: Verificar que el proyecto compila y los tests existentes siguen en verde**
 
 Run: `pnpm --filter @cne/api build`
 Expected: sin errores nuevos.
@@ -1126,7 +1126,7 @@ Expected: sin errores nuevos.
 Run: `pnpm --filter @cne/api test`
 Expected: todos los tests en verde, incluidos los de `enlaces/*` y `notifications.service.spec.ts`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/enlaces/enlaces.controller.ts apps/api/src/enlaces/enlaces.module.ts apps/api/src/app.module.ts .env.example
@@ -1144,7 +1144,7 @@ git commit -m "feat(api): endpoints de enlaces caidos y registro del modulo"
 - Consumes: `api` (axios instance, `apps/web/src/lib/api.ts`), tipos `EnlaceRecinto`, `ConfigEnlacesResponse`, `AddCorreoEnlaceRequest` (`@cne/shared-types`, Task 1).
 - Produces: `getEnlaces()`, `getConfigEnlaces()`, `addCorreoEnlace(correo: string)`, `removeCorreoEnlace(correo: string)`. Consumido por `EnlacesPage.tsx` (Task 10).
 
-- [ ] **Step 1: Crear el archivo de queries**
+- [x] **Step 1: Crear el archivo de queries**
 
 Crear `apps/web/src/lib/queries/enlaces.ts`:
 
@@ -1173,12 +1173,12 @@ export async function removeCorreoEnlace(correo: string): Promise<ConfigEnlacesR
 }
 ```
 
-- [ ] **Step 2: Verificar que compila**
+- [x] **Step 2: Verificar que compila**
 
 Run: `pnpm --filter @cne/web build`
 Expected: sin errores.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/src/lib/queries/enlaces.ts
@@ -1198,7 +1198,7 @@ git commit -m "feat(web): cliente de queries para enlaces caidos"
 **Interfaces:**
 - Consumes: `getEnlaces`, `getConfigEnlaces`, `addCorreoEnlace`, `removeCorreoEnlace` (Task 9).
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 Crear `apps/web/src/pages/enlaces/EnlacesPage.test.tsx`:
 
@@ -1226,7 +1226,8 @@ const enlaces: EnlaceRecinto[] = [
   { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'ACTIVO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
 ];
 
-const config: ConfigEnlacesResponse = { correos: ['admin@cne.gob.ec'], chatIdTelegram: null };
+let correosActuales: string[];
+const config = (): ConfigEnlacesResponse => ({ correos: correosActuales, chatIdTelegram: null });
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1240,9 +1241,10 @@ function renderPage() {
 describe('EnlacesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    correosActuales = ['admin@cne.gob.ec'];
     apiGetMock.mockImplementation((url: string) => {
       if (url === '/enlaces') return Promise.resolve({ data: enlaces });
-      if (url === '/enlaces/config') return Promise.resolve({ data: config });
+      if (url === '/enlaces/config') return Promise.resolve({ data: config() });
       return Promise.resolve({ data: [] });
     });
   });
@@ -1258,7 +1260,10 @@ describe('EnlacesPage', () => {
 
   it('lista los correos configurados y permite agregar uno nuevo', async () => {
     const user = userEvent.setup();
-    apiPostMock.mockResolvedValue({ data: { correos: ['admin@cne.gob.ec', 'nuevo@cne.gob.ec'], chatIdTelegram: null } });
+    apiPostMock.mockImplementation((_url: string, body: { correo: string }) => {
+      correosActuales = [...correosActuales, body.correo];
+      return Promise.resolve({ data: config() });
+    });
     renderPage();
 
     expect(await screen.findByText('admin@cne.gob.ec')).toBeInTheDocument();
@@ -1272,12 +1277,12 @@ describe('EnlacesPage', () => {
 });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/web test -- EnlacesPage.test.tsx`
 Expected: FAIL — `./EnlacesPage` no existe.
 
-- [ ] **Step 3: Implementar `EnlacesPage.tsx`**
+- [x] **Step 3: Implementar `EnlacesPage.tsx`**
 
 Crear `apps/web/src/pages/enlaces/EnlacesPage.tsx`:
 
@@ -1412,12 +1417,12 @@ export function EnlacesPage() {
 }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/web test -- EnlacesPage.test.tsx`
 Expected: PASS (2/2).
 
-- [ ] **Step 5: Agregar la ruta**
+- [x] **Step 5: Agregar la ruta**
 
 En `apps/web/src/App.tsx`, agregar el import junto a `import { AlertasPage } from './pages/alertas/AlertasPage';` (línea 19):
 
@@ -1440,7 +1445,7 @@ Y agregar la ruta después del bloque de `/alertas` (después de línea 102, ant
         />
 ```
 
-- [ ] **Step 6: Agregar el enlace de navegación**
+- [x] **Step 6: Agregar el enlace de navegación**
 
 En `apps/web/src/pages/Layout.tsx`, agregar después de `puedeVerAlertas` (línea 14):
 
@@ -1458,7 +1463,7 @@ Y agregar el `NavLink` después del bloque de `/alertas` (después de línea 53,
         )}
 ```
 
-- [ ] **Step 7: Verificar que el proyecto compila y los tests existentes siguen en verde**
+- [x] **Step 7: Verificar que el proyecto compila y los tests existentes siguen en verde**
 
 Run: `pnpm --filter @cne/web build`
 Expected: sin errores.
@@ -1466,7 +1471,7 @@ Expected: sin errores.
 Run: `pnpm --filter @cne/web test`
 Expected: todos los tests en verde, incluido `Layout.test.tsx` y `App.test.tsx`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/web/src/pages/enlaces apps/web/src/App.tsx apps/web/src/pages/Layout.tsx
