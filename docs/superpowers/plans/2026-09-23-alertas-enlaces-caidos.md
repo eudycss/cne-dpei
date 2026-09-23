@@ -1899,6 +1899,10 @@ Cerrados (commit `f7981b0`):
 - Tests de regresión agregados para los 2 bugs y para "Quitar"/toasts de error en `EnlacesPage`.
 Descartado sin cambio: ninguno — los 6 hallazgos reales listados por el revisor se cerraron todos.
 
+**Hallazgo adicional durante la prueba manual end-to-end (commit `1941afe`):** al probar contra la hoja real de Imbabura con las credenciales del usuario, el cron falló con "no tiene las columnas esperadas" — la pestaña "INF" real tiene una fila de resumen/totales antes del encabezado, así que asumir `rows[0]` como encabezado era incorrecto. Se corrigió `SheetsEnlacesClient` para buscar dinámicamente la fila de encabezados (busca la que contiene `PROVINCIA` y `CODIGO DE RECINTO`) en vez de asumir la primera fila, con 2 tests de regresión nuevos. Verificado después contra la hoja real: 56 enlaces de Imbabura leídos correctamente (42 activos, 14 en fallo), sin errores.
+
+También se detectó y corrigió una contaminación de datos de prueba: varios reinicios fallidos del servidor local (bug de `nest start --watch` en Windows con `EADDRINUSE`, no relacionado al código de esta tarea) dejaron 3 instancias del backend corriendo en paralelo, generando una condición de carrera que disparó 29 notificaciones `ENLACE_CAIDO` duplicadas/falsas en la primera carga real. Se identificó la causa (múltiples procesos, no un bug de `EnlacesService`), se mataron los procesos zombis, se limpiaron los datos de prueba (`DELETE` en `enlaces_recinto`/`notificaciones` locales), y se reverificó con una sola instancia: 0 notificaciones falsas, exactamente como exige el diseño.
+
 ---
 
 ## Pasos manuales que le corresponden al usuario (fuera del código)
