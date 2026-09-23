@@ -3,6 +3,7 @@ import { Bell } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { SlotText } from 'slot-text/react';
 import 'slot-text/style.css';
+import { sileo } from 'sileo';
 import type { NotificacionItem } from '@cne/shared-types';
 import {
   describirNotificacion,
@@ -35,6 +36,8 @@ export function NotificationsBell() {
     openRef.current = open;
   }, [open]);
 
+  const avisadasRef = useRef<Set<string>>(new Set());
+
   const { data } = useQuery({
     queryKey: ['notificaciones-mias'],
     queryFn: () => getMisNotificaciones({ pageSize: PAGE_SIZE }),
@@ -48,6 +51,15 @@ export function NotificationsBell() {
     setNoLeidas(data.noLeidas);
     setTotal(data.total);
     setPage(1);
+  }, [data]);
+
+  useEffect(() => {
+    if (!data) return;
+    for (const n of data.items) {
+      if (n.tipoEvento !== 'ENLACE_CAIDO' || n.leidaEn || avisadasRef.current.has(n.id)) continue;
+      avisadasRef.current.add(n.id);
+      sileo.error({ title: describirNotificacion(n) });
+    }
   }, [data]);
 
   const markRead = useMutation({

@@ -6,13 +6,17 @@ import type { NotificacionItem } from '@cne/shared-types';
 
 import { NotificationsBell } from './NotificationsBell';
 import { api } from '../lib/api';
+import { sileo } from 'sileo';
 
 vi.mock('../lib/api', () => ({
   api: { get: vi.fn(), patch: vi.fn() },
 }));
 
+vi.mock('sileo', () => ({ sileo: { error: vi.fn() } }));
+
 const apiGetMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const apiPatchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
+const sileoErrorMock = sileo.error as unknown as ReturnType<typeof vi.fn>;
 
 function item(id: string, creadoEn: string): NotificacionItem {
   return {
@@ -145,5 +149,53 @@ describe('NotificationsBell — paginación', () => {
     await screen.findByText('1 sin leer');
 
     expect(screen.queryByText('Cargar más')).not.toBeInTheDocument();
+  });
+});
+
+describe('NotificationsBell — aviso de enlace caído', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function enlaceCaidoItem() {
+    return {
+      id: 'n1',
+      tipoEvento: 'ENLACE_CAIDO',
+      canal: 'PUSH' as const,
+      payload: { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      creadoEn: '2026-09-23T11:00:00.000Z',
+      leidaEn: null,
+    };
+  }
+
+  it('muestra un toast la primera vez que llega una notificación ENLACE_CAIDO no leída', async () => {
+    apiGetMock.mockResolvedValue({
+      data: { items: [enlaceCaidoItem()], total: 1, noLeidas: 1 },
+    });
+
+    renderBell();
+
+    await waitFor(() => {
+      expect(sileoErrorMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining('978') }),
+      );
+    });
+  });
+
+  it('no repite el toast en un segundo polling de la misma notificación', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockResolvedValue({
+      data: { items: [enlaceCaidoItem()], total: 1, noLeidas: 1 },
+    });
+
+    renderBell();
+    await waitFor(() => expect(sileoErrorMock).toHaveBeenCalledTimes(1));
+
+    // Abrir y cerrar el dropdown no debe disparar un refetch que repita el toast.
+    const boton = screen.getByRole('button', { name: 'Notificaciones' });
+    await user.click(boton);
+    await user.click(boton);
+
+    expect(sileoErrorMock).toHaveBeenCalledTimes(1);
   });
 });
