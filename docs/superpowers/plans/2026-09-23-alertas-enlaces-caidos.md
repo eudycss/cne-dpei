@@ -1873,23 +1873,31 @@ git commit -m "feat(mobile): aviso emergente al recibir una notificacion de enla
 
 **Files:** ninguno nuevo — solo verificación.
 
-- [ ] **Step 1: Suite completa de los 3 paquetes**
+- [x] **Step 1: Suite completa de los 3 paquetes**
 
 Run: `pnpm --filter @cne/api test && pnpm --filter @cne/web test && pnpm --filter @cne/mobile test`
 Expected: todo en verde.
 
-- [ ] **Step 2: Build completo**
+- [x] **Step 2: Build completo**
 
 Run: `pnpm --filter @cne/api build && pnpm --filter @cne/web build && pnpm --filter @cne/mobile build`
 Expected: sin errores nuevos (los 2 errores preexistentes de `MonitoreoScreen.test.tsx` en móvil, si siguen ahí, son de una tarea anterior, no de esta).
 
-- [ ] **Step 3: Invocar `revisor-calidad`**
+- [x] **Step 3: Invocar `revisor-calidad`**
 
 Por instrucción del CLAUDE.md global del usuario: invocar el subagente `revisor-calidad` sobre todos los archivos tocados en este plan (backend `enlaces/*`, `notifier.ts`, `notifications.service.ts`; web `enlaces/*`, `NotificationsBell.tsx`, `notifications.ts`; móvil `AppBar.tsx`, `notifications.ts`) antes de dar la tarea por terminada — revisa especialmente: manejo seguro de la credencial de Google (`GOOGLE_SHEETS_CREDENTIALS_JSON` nunca debe loguearse ni exponerse en respuestas), que el endpoint de configuración de correos solo sea accesible a `ADMINISTRADOR`, y accesibilidad del formulario nuevo de `EnlacesPage.tsx`.
 
-- [ ] **Step 4: Triar los hallazgos y cerrar los reales**
+- [x] **Step 4: Triar los hallazgos y cerrar los reales**
 
-Aplicar las correcciones que el revisor marque como reales antes de considerar la tarea terminada (mismo criterio usado en HU13: cerrar gaps reales, documentar los descartados con su razón).
+Veredicto: APROBADO CON OBSERVACIONES. Sin hallazgos de seguridad bloqueantes.
+Cerrados (commit `f7981b0`):
+- Bug real: `BrevoNotifier.sendEnlaceCaido` cortaba el envío al primer destinatario que fallaba — ahora continúa con el resto (try/catch por destinatario) y sigue reportando el fallo agregado al final.
+- Bug real: si la hoja renombra/mueve una columna esperada, `SheetsEnlacesClient` degradaba silenciosamente todo a FALLO (alarma masiva falsa) — ahora lanza si falta alguna columna requerida.
+- `addCorreo`/`removeCorreo` normalizan mayúsculas/espacios.
+- Botón "Quitar" con `aria-label` distintivo por correo.
+- Se retiró `ConfigEnlaces.chatIdTelegram` (código muerto: nunca tuvo endpoint para setearlo).
+- Tests de regresión agregados para los 2 bugs y para "Quitar"/toasts de error en `EnlacesPage`.
+Descartado sin cambio: ninguno — los 6 hallazgos reales listados por el revisor se cerraron todos.
 
 ---
 
