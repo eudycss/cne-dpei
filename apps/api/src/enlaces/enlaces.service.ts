@@ -53,7 +53,10 @@ export class EnlacesService {
         },
       });
 
-      const cayoAhora = anterior?.estado === 'ACTIVO' && fila.estado === 'FALLO';
+      // anterior === null (primera vez que se ve este recinto) cuenta como caída:
+      // si no se notifica aquí, un enlace ya caído antes de que arranque el
+      // monitoreo (o tras un reset de base) queda mudo para siempre.
+      const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
       if (cayoAhora) {
         caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
         await this.notificarCaida(fila.codigoRecinto, fila.nombreRecinto);

@@ -117,16 +117,49 @@ describe('EnlacesService', () => {
       expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
     });
 
-    it('NO notifica en la primera carga de un enlace ya FALLO (sin estado anterior)', async () => {
+    it('SÍ notifica en la primera carga de un enlace ya FALLO (sin estado anterior) — evita quedar mudo si ya estaba caído', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
       prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarEnlaceCaido).not.toHaveBeenCalled();
-      expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('978', 'Escuela Central');
+      expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
+        codigoRecinto: '978',
+        nombreRecinto: 'Escuela Central',
+      });
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+      );
+    });
+
+    it('vuelve a notificar en una caída posterior a una recuperación (null→FALLO→ACTIVO→FALLO)', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+      const fila = { codigoRecinto: '978', nombreRecinto: 'Escuela Central' };
+
+      // Ciclo 1: primera vez que se ve, ya llega en FALLO → notifica.
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      await service.revisarEnlaces();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
+
+      // Ciclo 2: se recupera a ACTIVO → no notifica.
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'ACTIVO' }]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'FALLO' });
+      await service.revisarEnlaces();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
+
+      // Ciclo 3: vuelve a caer (ACTIVO→FALLO) → notifica de nuevo.
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'ACTIVO' });
+      await service.revisarEnlaces();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(2);
+
+      expect(sendEnlaceCaido).toHaveBeenCalledTimes(2);
     });
 
     it('si falla la lectura de la hoja, no toca la tabla ni notifica', async () => {
