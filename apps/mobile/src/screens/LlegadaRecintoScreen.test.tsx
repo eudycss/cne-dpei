@@ -1,5 +1,5 @@
 import { act, create, ReactTestRenderer, TestInstance } from 'react-test-renderer';
-import { Pressable } from 'react-native';
+import { Alert, Pressable } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 
 // react-native-testing-library no está instalado en este proyecto; se usa
@@ -94,6 +94,7 @@ describe('LlegadaRecintoScreen', () => {
     (getMiAsignacion as jest.Mock).mockResolvedValue(asignacionFixture);
     (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 1, longitud: 2, precisionMetros: 5 });
     (registrarLlegadaRecinto as jest.Mock).mockResolvedValue({ id: 'llegada-1' });
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
   it('tras registrar la llegada exitosamente, detiene el rastreo GPS', async () => {
@@ -111,6 +112,26 @@ describe('LlegadaRecintoScreen', () => {
     });
 
     expect(registrarLlegadaRecinto).toHaveBeenCalledTimes(1);
+    expect(detenerRastreo).toHaveBeenCalledTimes(1);
+    expect(onLlegadaRegistrada).toHaveBeenCalledTimes(1);
+  });
+
+  it('si registrarLlegadaRecinto devuelve null (sin señal), avisa y detiene el rastreo igual', async () => {
+    (registrarLlegadaRecinto as jest.Mock).mockResolvedValue(null);
+    const onLlegadaRegistrada = jest.fn();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<LlegadaRecintoScreen onLlegadaRegistrada={onLlegadaRegistrada} />);
+      await flushPromises();
+    });
+
+    const boton = renderer.root.findByProps({ children: 'Confirmar Llegada al Recinto' });
+    await act(async () => {
+      pressableAncestor(boton).props.onPress();
+      await flushPromises();
+    });
+
+    expect(Alert.alert).toHaveBeenCalledWith('Sin señal', expect.stringContaining('sincronizará'));
     expect(detenerRastreo).toHaveBeenCalledTimes(1);
     expect(onLlegadaRegistrada).toHaveBeenCalledTimes(1);
   });

@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LocationSubscription } from 'expo-location';
-import type { MiAsignacionResponse } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { UbicacionCard } from '../components/UbicacionCard';
+import { OfflineNotice } from '../components/OfflineNotice';
 import { fontFamily } from '../theme/typography';
 import { iniciarRastreoPrimerPlano } from '../lib/location';
-import { getMiAsignacion } from '../lib/queries/tracking';
+import { useMiAsignacion } from '../lib/useMiAsignacion';
 import { useProximidad } from '../lib/useProximidad';
 
 interface Props {
@@ -20,7 +20,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
+  const { asignacion, sinConexion } = useMiAsignacion();
 
   useEffect(() => {
     let sub: LocationSubscription | null = null;
@@ -34,12 +34,6 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
       cancelled = true;
       sub?.remove();
     };
-  }, []);
-
-  useEffect(() => {
-    getMiAsignacion()
-      .then(setAsignacion)
-      .catch(() => setAsignacion(null));
   }, []);
 
   // Memoizado por si en el futuro se reconstruye a partir de campos sueltos
@@ -89,6 +83,8 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
             destinoLabel="la Delegación"
           />
         ) : null}
+
+        {sinConexion ? <OfflineNotice /> : null}
 
         <Pressable
           style={[styles.btnPrimary, !puedeContinuar && styles.btnDisabled]}
