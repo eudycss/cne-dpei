@@ -79,7 +79,7 @@
 **Interfaces:**
 - Produces: modelo Prisma `EnlaceRecinto` (`codigoRecinto`, `nombreRecinto`, `estado: EstadoEnlace`, `estadoAnterior: EstadoEnlace | null`, `actualizadoEn`), enum `EstadoEnlace` (`ACTIVO`/`FALLO`), modelo `ConfigEnlaces` (`id`, `correos: string[]`, `chatIdTelegram: string | null`). Tipos TS: `EnlaceRecinto`, `ConfigEnlacesResponse`, `AddCorreoEnlaceRequest`.
 
-- [ ] **Step 1: Agregar los modelos a `schema.prisma`**
+- [x] **Step 1: Agregar los modelos a `schema.prisma`**
 
 Al final de `apps/api/prisma/schema.prisma`, después del modelo `Notificacion` (línea 481), agregar:
 
@@ -114,12 +114,12 @@ model ConfigEnlaces {
 }
 ```
 
-- [ ] **Step 2: Generar y aplicar la migración**
+- [x] **Step 2: Generar y aplicar la migración** (nota: `prisma migrate dev` no funciona en shell no interactivo; se creó la carpeta de migración a mano `20260923120000_add_enlaces` y se aplicó con `db:migrate:deploy`, luego `db:generate`)
 
 Run: `pnpm --filter @cne/api db:migrate -- --name add_enlaces`
 Expected: crea `apps/api/prisma/migrations/<timestamp>_add_enlaces/migration.sql`, la aplica contra la base local, y corre `prisma generate` automáticamente.
 
-- [ ] **Step 3: Agregar los tipos compartidos**
+- [x] **Step 3: Agregar los tipos compartidos**
 
 Al final de `packages/shared-types/src/index.ts` (después de `UpdateEstadoAlertaRequest`, línea 717), agregar:
 
@@ -148,12 +148,12 @@ export interface AddCorreoEnlaceRequest {
 }
 ```
 
-- [ ] **Step 4: Rebuild de shared-types**
+- [x] **Step 4: Rebuild de shared-types**
 
 Run: `pnpm --filter @cne/shared-types build`
 Expected: compila sin errores.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** — hecho en `b43c224`
 
 ```bash
 git add apps/api/prisma/schema.prisma apps/api/prisma/migrations packages/shared-types/src/index.ts
@@ -171,7 +171,7 @@ git commit -m "feat(api): modelo de datos para enlaces caidos de CDAs Imbabura"
 - Consumes: `emailSchema` (ya existe en el mismo archivo, línea 57).
 - Produces: `addCorreoEnlaceSchema` (zod), usado por `ZodValidationPipe` en el controller (Task 8) y por el tipo `AddCorreoEnlaceRequest` (Task 1).
 
-- [ ] **Step 1: Agregar el schema**
+- [x] **Step 1: Agregar el schema**
 
 Al final de `packages/shared-validation/src/index.ts`, agregar:
 
@@ -182,12 +182,12 @@ export const addCorreoEnlaceSchema = z.object({
 });
 ```
 
-- [ ] **Step 2: Rebuild**
+- [x] **Step 2: Rebuild**
 
 Run: `pnpm --filter @cne/shared-validation build`
 Expected: compila sin errores.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** — hecho en `c78d73b`
 
 ```bash
 git add packages/shared-validation/src/index.ts
@@ -205,7 +205,7 @@ git commit -m "feat(shared-validation): schema para agregar correo de enlaces"
 **Interfaces:**
 - Produces: `INotifier.sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void>` — implementado en `ConsoleNotifier` y `BrevoNotifier`. Consumido por `EnlacesService` (Task 7).
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 Crear `apps/api/src/auth/notifier.spec.ts`:
 
@@ -259,12 +259,12 @@ describe('BrevoNotifier', () => {
 });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/api test -- notifier.spec.ts`
 Expected: FAIL — `sendEnlaceCaido` no existe en `INotifier`/`ConsoleNotifier`/`BrevoNotifier`.
 
-- [ ] **Step 3: Implementar `sendEnlaceCaido`**
+- [x] **Step 3: Implementar `sendEnlaceCaido`**
 
 En `apps/api/src/auth/notifier.ts`, modificar la interfaz (línea 3-6):
 
@@ -305,12 +305,12 @@ En `BrevoNotifier` (después de `sendInitialPassword`, línea 79), agregar:
   }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/api test -- notifier.spec.ts`
 Expected: PASS (3/3).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/auth/notifier.ts apps/api/src/auth/notifier.spec.ts
@@ -328,7 +328,7 @@ git commit -m "feat(api): agregar sendEnlaceCaido a ConsoleNotifier y BrevoNotif
 **Interfaces:**
 - Produces: `TelegramNotifier.enviarEnlaceCaido(codigoRecinto: string, nombreRecinto: string): Promise<void>` (nunca lanza). Consumido por `EnlacesService` (Task 7).
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 Crear `apps/api/src/enlaces/telegram-notifier.spec.ts`:
 
@@ -383,12 +383,12 @@ describe('TelegramNotifier', () => {
 });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/api test -- telegram-notifier.spec.ts`
 Expected: FAIL — el módulo `./telegram-notifier` no existe.
 
-- [ ] **Step 3: Implementar `TelegramNotifier`**
+- [x] **Step 3: Implementar `TelegramNotifier`**
 
 Crear `apps/api/src/enlaces/telegram-notifier.ts`:
 
@@ -427,12 +427,12 @@ export class TelegramNotifier {
 }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/api test -- telegram-notifier.spec.ts`
 Expected: PASS (3/3).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/enlaces/telegram-notifier.ts apps/api/src/enlaces/telegram-notifier.spec.ts
@@ -451,12 +451,12 @@ git commit -m "feat(api): notificador de Telegram para enlaces caidos"
 **Interfaces:**
 - Produces: `interface SheetEnlaceRow { codigoRecinto: string; nombreRecinto: string; estado: 'ACTIVO' | 'FALLO' }`, `SheetsEnlacesClient.leerEnlacesImbabura(): Promise<SheetEnlaceRow[]>`. Consumido por `EnlacesService` (Task 7).
 
-- [ ] **Step 1: Instalar `googleapis`**
+- [x] **Step 1: Instalar `googleapis`**
 
 Run: `pnpm --filter @cne/api add googleapis`
 Expected: se agrega a `dependencies` en `apps/api/package.json` y se instala.
 
-- [ ] **Step 2: Escribir el test que falla**
+- [x] **Step 2: Escribir el test que falla**
 
 Crear `apps/api/src/enlaces/sheets-enlaces.client.spec.ts`:
 
@@ -529,12 +529,12 @@ describe('SheetsEnlacesClient', () => {
 });
 ```
 
-- [ ] **Step 3: Correr el test para verificar que falla**
+- [x] **Step 3: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/api test -- sheets-enlaces.client.spec.ts`
 Expected: FAIL — el módulo `./sheets-enlaces.client` no existe.
 
-- [ ] **Step 4: Implementar `SheetsEnlacesClient`**
+- [x] **Step 4: Implementar `SheetsEnlacesClient`**
 
 Crear `apps/api/src/enlaces/sheets-enlaces.client.ts`:
 
@@ -593,12 +593,12 @@ export class SheetsEnlacesClient {
 }
 ```
 
-- [ ] **Step 5: Correr el test para verificar que pasa**
+- [x] **Step 5: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/api test -- sheets-enlaces.client.spec.ts`
 Expected: PASS (3/3).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/package.json pnpm-lock.yaml apps/api/src/enlaces/sheets-enlaces.client.ts apps/api/src/enlaces/sheets-enlaces.client.spec.ts
@@ -617,7 +617,7 @@ git commit -m "feat(api): cliente de lectura de la hoja de enlaces (Google Sheet
 - Consumes: `this.prisma.usuario.findMany`, `this.prisma.notificacion.createMany` (ya usados en el archivo).
 - Produces: `NotificationsService.encolarEnlaceCaido(opts: { codigoRecinto: string; nombreRecinto: string }): Promise<void>`. Consumido por `EnlacesService` (Task 7).
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 En `apps/api/src/notifications/notifications.service.spec.ts`, agregar (después del bloque `describe('encolar* (supervisor + admins)', ...)`, antes de `describe('listMine', ...)`):
 
@@ -654,12 +654,12 @@ En `apps/api/src/notifications/notifications.service.spec.ts`, agregar (después
   });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/api test -- notifications.service.spec.ts`
 Expected: FAIL — `encolarEnlaceCaido` no existe en `NotificationsService`.
 
-- [ ] **Step 3: Implementar el método**
+- [x] **Step 3: Implementar el método**
 
 En `apps/api/src/notifications/notifications.service.ts`, agregar después de `encolarAlerta` (línea 112, antes de `private async encolarParaSupervisorYAdmins`):
 
@@ -687,12 +687,12 @@ En `apps/api/src/notifications/notifications.service.ts`, agregar después de `e
   }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/api test -- notifications.service.spec.ts`
 Expected: PASS (todos los tests, incluidos los 2 nuevos).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/notifications/notifications.service.ts apps/api/src/notifications/notifications.service.spec.ts
@@ -711,7 +711,7 @@ git commit -m "feat(api): encolar aviso in-app de enlace caido para admin y supe
 - Consumes: `SheetsEnlacesClient.leerEnlacesImbabura()` (Task 5), `INotifier.sendEnlaceCaido()` (Task 3, vía `resolveNotifier()` de `../auth/notifier`), `TelegramNotifier.enviarEnlaceCaido()` (Task 4), `NotificationsService.encolarEnlaceCaido()` (Task 6).
 - Produces: `EnlacesService.revisarEnlaces(): Promise<void>` (cron), `list(): Promise<EnlaceRecinto[]>`, `getConfig(): Promise<ConfigEnlacesResponse>`, `addCorreo(correo: string): Promise<ConfigEnlacesResponse>`, `removeCorreo(correo: string): Promise<ConfigEnlacesResponse>`. Consumido por `EnlacesController` (Task 8).
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `apps/api/src/enlaces/enlaces.service.spec.ts`:
 
@@ -826,7 +826,7 @@ describe('EnlacesService', () => {
 
       expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          create: expect.objectContaining({ correos: ['c@d.com'] }),
+          create: expect.objectContaining({ correos: ['a@b.com', 'c@d.com'] }),
           update: expect.objectContaining({ correos: ['a@b.com', 'c@d.com'] }),
         }),
       );
@@ -848,12 +848,12 @@ describe('EnlacesService', () => {
 });
 ```
 
-- [ ] **Step 2: Correr los tests para verificar que fallan**
+- [x] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `pnpm --filter @cne/api test -- enlaces.service.spec.ts`
 Expected: FAIL — el módulo `./enlaces.service` no existe.
 
-- [ ] **Step 3: Implementar `EnlacesService`**
+- [x] **Step 3: Implementar `EnlacesService`**
 
 Crear `apps/api/src/enlaces/enlaces.service.ts`:
 
@@ -980,12 +980,12 @@ export class EnlacesService {
 }
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pnpm --filter @cne/api test -- enlaces.service.spec.ts`
 Expected: PASS (9/9).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/enlaces/enlaces.service.ts apps/api/src/enlaces/enlaces.service.spec.ts
