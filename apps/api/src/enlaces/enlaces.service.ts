@@ -8,6 +8,15 @@ import { TelegramNotifier } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const CONFIG_ID = 1;
+const CANTON_MAX_LEN = 100;
+
+/** La hoja se edita a mano y puede traer mayúsculas inconsistentes (COTACACHI vs Cotacachi); se normaliza para que el filtro/dropdown de la web no los trate como cantones distintos. */
+function normalizarCanton(valor: string | null | undefined): string | null {
+  const limpio = (valor ?? '').trim();
+  if (!limpio) return null;
+  const tituloCase = limpio.toLowerCase().replace(/(^|\s)\p{L}/gu, (letra) => letra.toUpperCase());
+  return tituloCase.slice(0, CANTON_MAX_LEN);
+}
 
 @Injectable()
 export class EnlacesService {
@@ -34,32 +43,41 @@ export class EnlacesService {
     const caidas: EnlaceCaido[] = [];
 
     for (const fila of filas) {
-      const anterior = await this.prisma.enlaceRecinto.findUnique({
-        where: { codigoRecinto: fila.codigoRecinto },
-      });
+      try {
+        const anterior = await this.prisma.enlaceRecinto.findUnique({
+          where: { codigoRecinto: fila.codigoRecinto },
+        });
 
-      await this.prisma.enlaceRecinto.upsert({
-        where: { codigoRecinto: fila.codigoRecinto },
-        create: {
-          codigoRecinto: fila.codigoRecinto,
-          nombreRecinto: fila.nombreRecinto,
-          estado: fila.estado,
-          estadoAnterior: null,
-        },
-        update: {
-          nombreRecinto: fila.nombreRecinto,
-          estado: fila.estado,
-          estadoAnterior: anterior?.estado ?? null,
-        },
-      });
+        const canton = normalizarCanton(fila.canton);
+        await this.prisma.enlaceRecinto.upsert({
+          where: { codigoRecinto: fila.codigoRecinto },
+          create: {
+            codigoRecinto: fila.codigoRecinto,
+            nombreRecinto: fila.nombreRecinto,
+            canton,
+            estado: fila.estado,
+            estadoAnterior: null,
+          },
+          update: {
+            nombreRecinto: fila.nombreRecinto,
+            canton,
+            estado: fila.estado,
+            estadoAnterior: anterior?.estado ?? null,
+          },
+        });
 
-      // anterior === null (primera vez que se ve este recinto) cuenta como caída:
-      // si no se notifica aquí, un enlace ya caído antes de que arranque el
-      // monitoreo (o tras un reset de base) queda mudo para siempre.
-      const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
-      if (cayoAhora) {
-        caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
-        await this.notificarCaida(fila.codigoRecinto, fila.nombreRecinto);
+        // anterior === null (primera vez que se ve este recinto) cuenta como caída:
+        // si no se notifica aquí, un enlace ya caído antes de que arranque el
+        // monitoreo (o tras un reset de base) queda mudo para siempre.
+        const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
+        if (cayoAhora) {
+          caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
+          await this.notificarCaida(fila.codigoRecinto, fila.nombreRecinto);
+        }
+      } catch (e) {
+        // Un error puntual (ej. dato inválido de una sola fila) no debe tumbar
+        // el resto del ciclo ni perder las notificaciones ya acumuladas.
+        this.log.error(`Error procesando el recinto ${fila.codigoRecinto}: ${e}`);
       }
     }
 
@@ -101,6 +119,7 @@ export class EnlacesService {
     return rows.map((r: any) => ({
       codigoRecinto: r.codigoRecinto,
       nombreRecinto: r.nombreRecinto,
+      canton: r.canton ?? '',
       estado: r.estado,
       actualizadoEn: r.actualizadoEn.toISOString(),
     }));

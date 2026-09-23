@@ -183,6 +183,102 @@ describe('EnlacesService', () => {
 
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
     });
+
+    it('persiste el canton leido de la hoja (create y update)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Cotacachi', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ canton: 'Cotacachi' }),
+          update: expect.objectContaining({ canton: 'Cotacachi' }),
+        }),
+      );
+    });
+
+    it('guarda canton null si la hoja no trae la columna (en vez de string vacio)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: '', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ canton: null }),
+        }),
+      );
+    });
+
+    it('normaliza la capitalizacion del canton (COTACACHI y cotacachi guardan igual)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela A', canton: 'COTACACHI', estado: 'ACTIVO' },
+        { codigoRecinto: '982', nombreRecinto: 'Escuela B', canton: 'san miguel de urcuquí', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.upsert).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ create: expect.objectContaining({ canton: 'Cotacachi' }) }),
+      );
+      expect(prisma.enlaceRecinto.upsert).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ create: expect.objectContaining({ canton: 'San Miguel De Urcuquí' }) }),
+      );
+    });
+
+    it('un error al procesar una fila no interrumpe el resto del ciclo ni las notificaciones ya acumuladas', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Rota', estado: 'FALLO' },
+        { codigoRecinto: '982', nombreRecinto: 'Escuela Sana', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      prisma.enlaceRecinto.upsert.mockRejectedValueOnce(new Error('violates constraint'));
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+
+      await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('982', 'Escuela Sana');
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '982', nombreRecinto: 'Escuela Sana' }],
+      );
+    });
+  });
+
+  describe('list', () => {
+    it('devuelve el canton de cada recinto', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        {
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          canton: 'Cotacachi',
+          estado: 'ACTIVO',
+          actualizadoEn: new Date('2026-09-23T11:00:00.000Z'),
+        },
+        {
+          codigoRecinto: '982',
+          nombreRecinto: 'Otra Escuela',
+          canton: null,
+          estado: 'FALLO',
+          actualizadoEn: new Date('2026-09-23T11:00:00.000Z'),
+        },
+      ]);
+
+      const result = await service.list();
+
+      expect(result[0].canton).toBe('Cotacachi');
+      expect(result[1].canton).toBe('');
+    });
   });
 
   describe('config de correos', () => {

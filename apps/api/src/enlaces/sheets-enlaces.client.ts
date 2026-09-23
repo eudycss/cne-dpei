@@ -4,6 +4,7 @@ import { google } from 'googleapis';
 export interface SheetEnlaceRow {
   codigoRecinto: string;
   nombreRecinto: string;
+  canton: string;
   estado: 'ACTIVO' | 'FALLO';
 }
 
@@ -44,6 +45,9 @@ export class SheetsEnlacesClient {
     const idxCodigo = header.indexOf('CODIGO DE RECINTO');
     const idxLocalidad = header.indexOf('LOCALIDAD');
     const idxEstado = header.indexOf('FALLO');
+    // CANTON es opcional (solo alimenta un filtro en la web): si la hoja no
+    // la tiene o le cambian el nombre, no debe tumbar el resto del cron.
+    const idxCanton = header.indexOf('CANTON');
 
     const columnasFaltantes = [
       ['PROVINCIA', idxProvincia],
@@ -71,6 +75,7 @@ export class SheetsEnlacesClient {
       out.push({
         codigoRecinto,
         nombreRecinto: (row[idxLocalidad] ?? '').toString().trim(),
+        canton: idxCanton === -1 ? '' : (row[idxCanton] ?? '').toString().trim(),
         estado: estadoTexto === 'ACTIVO' ? 'ACTIVO' : 'FALLO',
       });
     }

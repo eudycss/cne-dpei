@@ -725,6 +725,7 @@ export type EstadoEnlace = 'ACTIVO' | 'FALLO';
 export interface EnlaceRecinto {
   codigoRecinto: string;
   nombreRecinto: string;
+  canton: string;
   estado: EstadoEnlace;
   actualizadoEn: string;
 }

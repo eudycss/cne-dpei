@@ -20,8 +20,8 @@ const apiDeleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
 const sileoErrorMock = sileo.error as unknown as ReturnType<typeof vi.fn>;
 
 const enlaces: EnlaceRecinto[] = [
-  { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
-  { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'ACTIVO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
+  { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Otavalo', estado: 'FALLO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
+  { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: 'Cotacachi', estado: 'ACTIVO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
 ];
 
 let correosActuales: string[];
@@ -138,6 +138,48 @@ describe('EnlacesPage', () => {
     expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
   });
 
+  it('filtra la tabla por nombre o código buscado', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    await user.type(screen.getByLabelText('Buscar por nombre o código'), 'zaldumbide');
+
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('Buscar por nombre o código'));
+    await user.type(screen.getByLabelText('Buscar por nombre o código'), '978');
+
+    expect(screen.getByText('Escuela Central')).toBeInTheDocument();
+    expect(screen.queryByText('Unidad Educativa Zaldumbide')).not.toBeInTheDocument();
+  });
+
+  it('filtra la tabla por cantón', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    await user.selectOptions(screen.getByLabelText('Filtrar por cantón'), 'Cotacachi');
+
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Filtrar por cantón'), 'Todos los cantones');
+    expect(screen.getByText('Escuela Central')).toBeInTheDocument();
+  });
+
+  it('anuncia por aria-live cuántos enlaces quedan tras filtrar', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    expect(screen.getByText('Mostrando 2 de 2 enlaces.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Fallidos/ }));
+    expect(screen.getByText('Mostrando 1 de 2 enlaces.')).toBeInTheDocument();
+  });
+
   it('muestra la cantidad de enlaces junto a cada filtro', async () => {
     renderPage();
 
@@ -197,6 +239,6 @@ describe('EnlacesPage', () => {
     await screen.findByText('Unidad Educativa Zaldumbide');
     await user.click(screen.getByRole('button', { name: /^Fallidos/ }));
 
-    expect(await screen.findByText('No hay enlaces con ese estado.')).toBeInTheDocument();
+    expect(await screen.findByText('No hay enlaces que coincidan con los filtros.')).toBeInTheDocument();
   });
 });

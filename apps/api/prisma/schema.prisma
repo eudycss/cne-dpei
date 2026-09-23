@@ -494,6 +494,7 @@ enum EstadoEnlace {
 model EnlaceRecinto {
   codigoRecinto  String        @id @map("codigo_recinto") @db.VarChar(20)
   nombreRecinto  String        @map("nombre_recinto") @db.VarChar(255)
+  canton         String?       @db.VarChar(100)
   estado         EstadoEnlace  @default(ACTIVO)
   estadoAnterior EstadoEnlace? @map("estado_anterior")
   actualizadoEn  DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(6)

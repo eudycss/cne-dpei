@@ -39,8 +39,27 @@ describe('SheetsEnlacesClient', () => {
     const rows = await client.leerEnlacesImbabura();
 
     expect(rows).toEqual([
-      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', estado: 'FALLO' },
-      { codigoRecinto: '983', nombreRecinto: 'Otra Escuela Imbabura', estado: 'ACTIVO' },
+      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', canton: '', estado: 'FALLO' },
+      { codigoRecinto: '983', nombreRecinto: 'Otra Escuela Imbabura', canton: '', estado: 'ACTIVO' },
+    ]);
+  });
+
+  it('mapea la columna CANTON cuando existe en el encabezado', async () => {
+    const headerConCanton = ['PROVINCIA', 'CODIGO DE RECINTO', 'LOCALIDAD', 'CANTON', 'FALLO'];
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          headerConCanton,
+          ['IMBABURA', '982', 'Unidad Educativa Gonzalo Zaldumbide', 'Cotacachi', 'FALLO'],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows).toEqual([
+      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', canton: 'Cotacachi', estado: 'FALLO' },
     ]);
   });
 
@@ -90,7 +109,7 @@ describe('SheetsEnlacesClient', () => {
     const rows = await client.leerEnlacesImbabura();
 
     expect(rows).toEqual([
-      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', estado: 'FALLO' },
+      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', canton: '', estado: 'FALLO' },
     ]);
   });
 
