@@ -1492,7 +1492,7 @@ git commit -m "feat(web): pagina de enlaces caidos, ruta y navegacion"
 - Consumes: `sileo` (ya usado en `AlertasPage.tsx`).
 - Produces: `describirNotificacion` reconoce `ENLACE_CAIDO`; `NotificationsBell` dispara `sileo.error` una sola vez por notificación nueva de ese tipo.
 
-- [ ] **Step 1: Escribir el test que falla para `describirNotificacion`**
+- [x] **Step 1: Escribir el test que falla para `describirNotificacion`**
 
 En `apps/web/src/lib/notifications.test.ts`, agregar un caso para `ENLACE_CAIDO` (seguir el patrón de los casos existentes de `SALIDA_DPI`/`LLEGADA_RECINTO` en ese archivo — mismo `describe`, agregar):
 
@@ -1511,12 +1511,12 @@ En `apps/web/src/lib/notifications.test.ts`, agregar un caso para `ENLACE_CAIDO`
   });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/web test -- notifications.test.ts`
 Expected: FAIL — el `case 'ENLACE_CAIDO'` no existe, cae al `default` y devuelve `'ENLACE_CAIDO'` en vez del texto esperado.
 
-- [ ] **Step 3: Implementar el caso en `describirNotificacion`**
+- [x] **Step 3: Implementar el caso en `describirNotificacion`**
 
 En `apps/web/src/lib/notifications.ts`, agregar un `case` al `switch` de `describirNotificacion` (después de `case 'LLEGADA_DPI':`, línea 49-50):
 
@@ -1529,12 +1529,12 @@ En `apps/web/src/lib/notifications.ts`, agregar un `case` al `switch` de `descri
     }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/web test -- notifications.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Escribir el test que falla para el toast**
+- [x] **Step 5: Escribir el test que falla para el toast**
 
 `apps/web/src/components/NotificationsBell.test.tsx` ya mockea `../lib/api` con `apiGetMock` (línea 10-14) y tiene un helper `item(id, creadoEn)` (línea 17-26) y `renderBell()` (línea 28-35) — no mockea `sileo` todavía. Agregar el mock de `sileo` junto al mock existente de `../lib/api` (línea 10-12):
 
@@ -1623,8 +1623,9 @@ describe('NotificationsBell — aviso de enlace caído', () => {
         noLeidas: 1,
       },
     });
-    await user.click(screen.getByLabelText('Notificaciones'));
-    await user.click(screen.getByLabelText('Notificaciones'));
+    const boton = screen.getByRole('button', { name: 'Notificaciones' });
+    await user.click(boton);
+    await user.click(boton);
 
     expect(sileoErrorMock).toHaveBeenCalledTimes(1);
   });
@@ -1633,12 +1634,12 @@ describe('NotificationsBell — aviso de enlace caído', () => {
 
 En el segundo test, agregar `const user = userEvent.setup();` como primera línea del `it` (ya que `userEvent` se importa al inicio del archivo, línea 3).
 
-- [ ] **Step 6: Correr el test para verificar que falla**
+- [x] **Step 6: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/web test -- NotificationsBell.test.tsx`
 Expected: FAIL — no se llama a `sileo.error`.
 
-- [ ] **Step 7: Implementar el disparo del toast**
+- [x] **Step 7: Implementar el disparo del toast**
 
 En `apps/web/src/components/NotificationsBell.tsx`, agregar el import (línea 1-12, junto a los demás imports):
 
@@ -1667,17 +1668,17 @@ Y agregar un nuevo `useEffect` después del `useEffect` que sincroniza `data` en
   }, [data]);
 ```
 
-- [ ] **Step 8: Correr el test para verificar que pasa**
+- [x] **Step 8: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/web test -- NotificationsBell.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 9: Correr toda la suite de web**
+- [x] **Step 9: Correr toda la suite de web**
 
 Run: `pnpm --filter @cne/web test`
 Expected: todos los tests en verde.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add apps/web/src/lib/notifications.ts apps/web/src/lib/notifications.test.ts apps/web/src/components/NotificationsBell.tsx apps/web/src/components/NotificationsBell.test.tsx
