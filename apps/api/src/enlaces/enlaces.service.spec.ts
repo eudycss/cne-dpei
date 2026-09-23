@@ -101,8 +101,8 @@ describe('EnlacesService', () => {
 
   describe('config de correos', () => {
     it('addCorreo agrega un correo sin duplicar', async () => {
-      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'], chatIdTelegram: null });
-      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'c@d.com'], chatIdTelegram: null });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'c@d.com'] });
 
       const result = await service.addCorreo('c@d.com');
 
@@ -116,8 +116,8 @@ describe('EnlacesService', () => {
     });
 
     it('removeCorreo quita un correo existente', async () => {
-      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com', 'c@d.com'], chatIdTelegram: null });
-      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['c@d.com'], chatIdTelegram: null });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com', 'c@d.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['c@d.com'] });
 
       const result = await service.removeCorreo('a@b.com');
 
@@ -125,6 +125,28 @@ describe('EnlacesService', () => {
         expect.objectContaining({ update: expect.objectContaining({ correos: ['c@d.com'] }) }),
       );
       expect(result.correos).toEqual(['c@d.com']);
+    });
+
+    it('addCorreo normaliza mayúsculas/espacios para no duplicar el mismo correo', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+
+      await service.addCorreo('  A@B.com  ');
+
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ correos: ['a@b.com'] }) }),
+      );
+    });
+
+    it('removeCorreo normaliza mayúsculas/espacios al comparar', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: [] });
+
+      await service.removeCorreo('A@B.com');
+
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ correos: [] }) }),
+      );
     });
   });
 });

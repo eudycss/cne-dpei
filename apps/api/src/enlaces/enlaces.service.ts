@@ -94,18 +94,20 @@ export class EnlacesService {
 
   async getConfig(): Promise<ConfigEnlacesResponse> {
     const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
-    return { correos: config?.correos ?? [], chatIdTelegram: config?.chatIdTelegram ?? null };
+    return { correos: config?.correos ?? [] };
   }
 
   async addCorreo(correo: string): Promise<ConfigEnlacesResponse> {
+    const normalizado = correo.trim().toLowerCase();
     const actual = await this.getConfig();
-    const correos = actual.correos.includes(correo) ? actual.correos : [...actual.correos, correo];
+    const correos = actual.correos.includes(normalizado) ? actual.correos : [...actual.correos, normalizado];
     return this.guardarCorreos(correos);
   }
 
   async removeCorreo(correo: string): Promise<ConfigEnlacesResponse> {
+    const normalizado = correo.trim().toLowerCase();
     const actual = await this.getConfig();
-    const correos = actual.correos.filter((c) => c !== correo);
+    const correos = actual.correos.filter((c) => c !== normalizado);
     return this.guardarCorreos(correos);
   }
 
@@ -115,6 +117,6 @@ export class EnlacesService {
       create: { id: CONFIG_ID, correos },
       update: { correos },
     });
-    return { correos: saved.correos, chatIdTelegram: saved.chatIdTelegram ?? null };
+    return { correos: saved.correos };
   }
 }

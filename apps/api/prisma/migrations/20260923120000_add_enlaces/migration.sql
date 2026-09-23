@@ -16,7 +16,6 @@ CREATE TABLE "enlaces_recinto" (
 CREATE TABLE "config_enlaces" (
     "id" INTEGER NOT NULL,
     "correos" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-    "chat_id_telegram" TEXT,
 
     CONSTRAINT "config_enlaces_pkey" PRIMARY KEY ("id")
 );

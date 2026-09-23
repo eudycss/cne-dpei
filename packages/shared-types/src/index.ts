@@ -731,7 +731,6 @@ export interface EnlaceRecinto {
 
 export interface ConfigEnlacesResponse {
   correos: string[];
-  chatIdTelegram: string | null;
 }
 
 export interface AddCorreoEnlaceRequest {

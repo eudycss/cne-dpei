@@ -84,18 +84,28 @@ export class BrevoNotifier implements INotifier {
   }
 
   async sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void> {
+    const fallidos: string[] = [];
     for (const to of destinatarios) {
-      await this.send(
-        to,
-        `Enlace caído: ${codigoRecinto} - ${nombreRecinto}`,
-        `
-          <h2>CNE Imbabura — Enlace caído</h2>
-          <p>El enlace del siguiente recinto pasó a estado <strong>FALLO</strong>:</p>
-          <p><strong>Código:</strong> ${codigoRecinto}<br/><strong>Recinto:</strong> ${nombreRecinto}</p>
-        `,
-      );
+      try {
+        await this.send(
+          to,
+          `Enlace caído: ${codigoRecinto} - ${nombreRecinto}`,
+          `
+            <h2>CNE Imbabura — Enlace caído</h2>
+            <p>El enlace del siguiente recinto pasó a estado <strong>FALLO</strong>:</p>
+            <p><strong>Código:</strong> ${codigoRecinto}<br/><strong>Recinto:</strong> ${nombreRecinto}</p>
+          `,
+        );
+      } catch (e) {
+        fallidos.push(to);
+        this.log.error(`Error enviando correo de enlace caído a ${to}: ${e}`);
+      }
     }
-    this.log.log(`[ENLACE CAIDO] correo enviado a ${destinatarios.length} destinatario(s)`);
+    const enviados = destinatarios.length - fallidos.length;
+    this.log.log(`[ENLACE CAIDO] correo enviado a ${enviados}/${destinatarios.length} destinatario(s)`);
+    if (fallidos.length > 0) {
+      throw new Error(`No se pudo enviar el correo de enlace caído a: ${fallidos.join(', ')}`);
+    }
   }
 }
 

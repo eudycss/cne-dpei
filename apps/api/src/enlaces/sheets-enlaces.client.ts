@@ -32,6 +32,20 @@ export class SheetsEnlacesClient {
     const idxLocalidad = header.indexOf('LOCALIDAD');
     const idxEstado = header.indexOf('FALLO');
 
+    const columnasFaltantes = [
+      ['PROVINCIA', idxProvincia],
+      ['CODIGO DE RECINTO', idxCodigo],
+      ['LOCALIDAD', idxLocalidad],
+      ['FALLO', idxEstado],
+    ]
+      .filter(([, idx]) => idx === -1)
+      .map(([nombre]) => nombre);
+    if (columnasFaltantes.length > 0) {
+      throw new Error(
+        `La pestaña "${tab}" no tiene la(s) columna(s) esperada(s): ${columnasFaltantes.join(', ')}`,
+      );
+    }
+
     const out: SheetEnlaceRow[] = [];
     for (const row of rows.slice(1)) {
       const provincia = (row[idxProvincia] ?? '').toString().trim().toUpperCase();

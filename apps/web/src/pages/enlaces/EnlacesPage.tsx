@@ -59,6 +59,7 @@ export function EnlacesPage() {
               {correo}
               <button
                 className="btn secondary"
+                aria-label={`Quitar ${correo}`}
                 disabled={quitar.isPending}
                 onClick={() => quitar.mutate(correo)}
               >

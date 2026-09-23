@@ -63,4 +63,14 @@ describe('SheetsEnlacesClient', () => {
 
     expect(rows).toEqual([]);
   });
+
+  it('lanza si falta alguna columna requerida en el encabezado (en vez de tratar todo como FALLO)', async () => {
+    const headerSinColumnaEstado = ['PROVINCIA', 'CODIGO DE RECINTO', 'LOCALIDAD'];
+    valuesGetMock.mockResolvedValue({
+      data: { values: [headerSinColumnaEstado, ['IMBABURA', '982', 'Unidad Educativa Gonzalo Zaldumbide']] },
+    });
+    const client = new SheetsEnlacesClient();
+
+    await expect(client.leerEnlacesImbabura()).rejects.toThrow(/columna/i);
+  });
 });

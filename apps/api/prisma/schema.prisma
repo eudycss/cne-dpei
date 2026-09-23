@@ -502,9 +502,8 @@ model EnlaceRecinto {
 }
 
 model ConfigEnlaces {
-  id             Int      @id @default(1)
-  correos        String[] @default([])
-  chatIdTelegram String?  @map("chat_id_telegram")
+  id      Int      @id @default(1)
+  correos String[] @default([])
 
   @@map("config_enlaces")
 }

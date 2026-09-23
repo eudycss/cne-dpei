@@ -42,6 +42,22 @@ describe('BrevoNotifier', () => {
 
     await expect(
       notifier.sendEnlaceCaido(['a@b.com'], '978', 'Escuela Central'),
-    ).rejects.toThrow('Brevo 500: boom');
+    ).rejects.toThrow('a@b.com');
+  });
+
+  it('sendEnlaceCaido sigue con el resto de destinatarios aunque uno falle', async () => {
+    (global.fetch as jest.Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ ok: true });
+    const notifier = new BrevoNotifier();
+
+    await expect(
+      notifier.sendEnlaceCaido(['falla@b.com', 'ok@d.com'], '978', 'Escuela Central'),
+    ).rejects.toThrow('falla@b.com');
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const [, opts] = (global.fetch as jest.Mock).mock.calls[1];
+    const body = JSON.parse(opts.body);
+    expect(body.to).toEqual([{ email: 'ok@d.com' }]);
   });
 });
