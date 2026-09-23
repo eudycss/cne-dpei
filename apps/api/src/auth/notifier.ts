@@ -1,12 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+export interface EnlaceCaido {
+  codigoRecinto: string;
+  nombreRecinto: string;
+}
+
 export interface INotifier {
   sendPasswordResetLink(email: string, link: string): Promise<void>;
   sendInitialPassword(email: string, password: string): Promise<void>;
-  sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void>;
+  sendEnlaceCaido(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void>;
 }
 
 export const NOTIFIER = 'NOTIFIER';
+
+function escapeHtml(valor: string): string {
+  return valor
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 @Injectable()
 export class ConsoleNotifier implements INotifier {
@@ -20,8 +34,9 @@ export class ConsoleNotifier implements INotifier {
     this.log.warn(`[INITIAL PASSWORD] ${email}  →  ${password}`);
   }
 
-  async sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void> {
-    this.log.warn(`[ENLACE CAIDO] ${codigoRecinto} - ${nombreRecinto} → ${destinatarios.join(', ')}`);
+  async sendEnlaceCaido(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void> {
+    const detalle = enlaces.map((e) => `${e.codigoRecinto} - ${e.nombreRecinto}`).join('; ');
+    this.log.warn(`[ENLACE CAIDO] ${detalle} → ${destinatarios.join(', ')}`);
   }
 }
 
@@ -83,22 +98,27 @@ export class BrevoNotifier implements INotifier {
     this.log.log(`[INITIAL PASSWORD] correo enviado a ${email}`);
   }
 
-  async sendEnlaceCaido(destinatarios: string[], codigoRecinto: string, nombreRecinto: string): Promise<void> {
+  async sendEnlaceCaido(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void> {
+    const esPlural = enlaces.length > 1;
+    const asunto = esPlural
+      ? `${enlaces.length} enlaces caídos - CNE Imbabura`
+      : `Enlace caído: ${escapeHtml(enlaces[0].codigoRecinto)} - ${escapeHtml(enlaces[0].nombreRecinto)}`;
+    const filas = enlaces
+      .map((e) => `<li><strong>${escapeHtml(e.codigoRecinto)}</strong> — ${escapeHtml(e.nombreRecinto)}</li>`)
+      .join('');
+    const html = `
+      <h2>CNE Imbabura — Enlace${esPlural ? 's' : ''} caído${esPlural ? 's' : ''}</h2>
+      <p>${esPlural ? 'Los siguientes recintos pasaron' : 'El siguiente recinto pasó'} a estado <strong>FALLO</strong>:</p>
+      <ul>${filas}</ul>
+    `;
+
     const fallidos: string[] = [];
     for (const to of destinatarios) {
       try {
-        await this.send(
-          to,
-          `Enlace caído: ${codigoRecinto} - ${nombreRecinto}`,
-          `
-            <h2>CNE Imbabura — Enlace caído</h2>
-            <p>El enlace del siguiente recinto pasó a estado <strong>FALLO</strong>:</p>
-            <p><strong>Código:</strong> ${codigoRecinto}<br/><strong>Recinto:</strong> ${nombreRecinto}</p>
-          `,
-        );
+        await this.send(to, asunto, html);
       } catch (e) {
         fallidos.push(to);
-        this.log.error(`Error enviando correo de enlace caído a ${to}: ${e}`);
+        this.log.error(`Error enviando correo de enlaces caídos a ${to}: ${e}`);
       }
     }
     const enviados = destinatarios.length - fallidos.length;

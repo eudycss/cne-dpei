@@ -5,8 +5,10 @@ import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import { TelegramNotifier } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
+const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
+
 jest.mock('../auth/notifier', () => ({
-  resolveNotifier: () => ({ sendEnlaceCaido: jest.fn().mockResolvedValue(undefined) }),
+  resolveNotifier: () => ({ sendEnlaceCaido }),
 }));
 
 describe('EnlacesService', () => {
@@ -50,6 +52,57 @@ describe('EnlacesService', () => {
         codigoRecinto: '978',
         nombreRecinto: 'Escuela Central',
       });
+      expect(sendEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+      );
+    });
+
+    it('agrupa todas las caídas del mismo ciclo en un solo correo', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+        ],
+      );
+    });
+
+    it('un fallo en el envío del correo batcheado no interrumpe el ciclo ni relanza', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+      sendEnlaceCaido.mockRejectedValueOnce(new Error('Brevo caído'));
+
+      await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalled();
+      expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
+    });
+
+    it('no envía correo si nadie está registrado, aunque sí notifica Telegram e in-app', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceCaido).not.toHaveBeenCalled();
+      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('978', 'Escuela Central');
     });
 
     it('NO notifica si el enlace sigue FALLO (ya estaba caído)', async () => {

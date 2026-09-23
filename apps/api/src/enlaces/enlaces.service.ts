@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { resolveNotifier } from '../auth/notifier';
+import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import { TelegramNotifier } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -31,6 +31,8 @@ export class EnlacesService {
       return;
     }
 
+    const caidas: EnlaceCaido[] = [];
+
     for (const fila of filas) {
       const anterior = await this.prisma.enlaceRecinto.findUnique({
         where: { codigoRecinto: fila.codigoRecinto },
@@ -53,22 +55,31 @@ export class EnlacesService {
 
       const cayoAhora = anterior?.estado === 'ACTIVO' && fila.estado === 'FALLO';
       if (cayoAhora) {
+        caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
         await this.notificarCaida(fila.codigoRecinto, fila.nombreRecinto);
       }
+    }
+
+    await this.notificarCaidasPorCorreo(caidas);
+  }
+
+  /** Un solo correo con todos los recintos caídos en este ciclo, en vez de uno por recinto. */
+  private async notificarCaidasPorCorreo(caidas: EnlaceCaido[]): Promise<void> {
+    if (caidas.length === 0) return;
+
+    const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
+    const correos = config?.correos ?? [];
+    if (correos.length === 0) return;
+
+    try {
+      await this.notifier.sendEnlaceCaido(correos, caidas);
+    } catch (e) {
+      const codigos = caidas.map((c) => c.codigoRecinto).join(', ');
+      this.log.error(`Error enviando correo de enlaces caídos (${codigos}): ${e}`);
     }
   }
 
   private async notificarCaida(codigoRecinto: string, nombreRecinto: string): Promise<void> {
-    const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
-    const correos = config?.correos ?? [];
-    if (correos.length > 0) {
-      try {
-        await this.notifier.sendEnlaceCaido(correos, codigoRecinto, nombreRecinto);
-      } catch (e) {
-        this.log.error(`Error enviando correo de enlace caído (${codigoRecinto}): ${e}`);
-      }
-    }
-
     try {
       await this.telegram.enviarEnlaceCaido(codigoRecinto, nombreRecinto);
     } catch (e) {
