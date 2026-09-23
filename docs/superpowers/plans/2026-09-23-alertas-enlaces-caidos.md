@@ -1698,7 +1698,7 @@ git commit -m "feat(web): aviso emergente al recibir una notificacion de enlace 
 **Interfaces:**
 - Produces: `describirNotificacion` (móvil) reconoce `ENLACE_CAIDO` igual que la versión web; `AppBar` dispara `Alert.alert` una sola vez por notificación nueva de ese tipo.
 
-- [ ] **Step 1: Escribir el test que falla para `describirNotificacion`**
+- [x] **Step 1: Escribir el test que falla para `describirNotificacion`**
 
 En `apps/mobile/src/lib/notifications.test.ts`, agregar (mismo caso que en Task 11, adaptado al `describe` existente de ese archivo):
 
@@ -1717,12 +1717,12 @@ En `apps/mobile/src/lib/notifications.test.ts`, agregar (mismo caso que en Task 
   });
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/mobile test -- notifications.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar el caso (idéntico a Task 11, Step 3)**
+- [x] **Step 3: Implementar el caso (idéntico a Task 11, Step 3)**
 
 En `apps/mobile/src/lib/notifications.ts`, agregar el mismo `case` que en la web, después de `case 'LLEGADA_DPI':` (línea 49-50):
 
@@ -1735,12 +1735,12 @@ En `apps/mobile/src/lib/notifications.ts`, agregar el mismo `case` que en la web
     }
 ```
 
-- [ ] **Step 4: Correr el test para verificar que pasa**
+- [x] **Step 4: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/mobile test -- notifications.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Verificar si existe test de `AppBar` y escribir el caso que falla**
+- [x] **Step 5: Verificar si existe test de `AppBar` y escribir el caso que falla**
 
 Run: `ls apps/mobile/src/components/AppBar.test.tsx`
 
@@ -1814,12 +1814,12 @@ describe('AppBar — aviso de enlace caído', () => {
 });
 ```
 
-- [ ] **Step 6: Correr el test para verificar que falla**
+- [x] **Step 6: Correr el test para verificar que falla**
 
 Run: `pnpm --filter @cne/mobile test -- AppBar.test.tsx`
 Expected: FAIL — `Alert.alert` no se llama.
 
-- [ ] **Step 7: Implementar el disparo de `Alert.alert`**
+- [x] **Step 7: Implementar el disparo de `Alert.alert`**
 
 En `apps/mobile/src/components/AppBar.tsx`, agregar `Alert` al import de `react-native` (línea 2):
 
@@ -1850,17 +1850,17 @@ Y en el `useEffect` de polling (línea 43-67), dentro del `.then((d) => { ... })
           }
 ```
 
-- [ ] **Step 8: Correr el test para verificar que pasa**
+- [x] **Step 8: Correr el test para verificar que pasa**
 
 Run: `pnpm --filter @cne/mobile test -- AppBar.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 9: Correr toda la suite de móvil**
+- [x] **Step 9: Correr toda la suite de móvil**
 
 Run: `pnpm --filter @cne/mobile test`
 Expected: todos los tests en verde.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add apps/mobile/src/lib/notifications.ts apps/mobile/src/lib/notifications.test.ts apps/mobile/src/components/AppBar.tsx apps/mobile/src/components/AppBar.test.tsx
