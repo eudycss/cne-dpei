@@ -26,7 +26,20 @@ export class SheetsEnlacesClient {
     const rows = (res.data.values ?? []) as string[][];
     if (rows.length < 2) return [];
 
-    const header = rows[0].map((h) => String(h ?? '').trim().toUpperCase());
+    // Algunas hojas tienen una fila de resumen/totales antes del encabezado
+    // real (ej. la de enlaces de CDAs), así que se busca la fila que de
+    // verdad contiene los encabezados en vez de asumir que es la primera.
+    const headerRowIndex = rows.findIndex((row) => {
+      const normalizada = row.map((h) => String(h ?? '').trim().toUpperCase());
+      return normalizada.includes('PROVINCIA') && normalizada.includes('CODIGO DE RECINTO');
+    });
+    if (headerRowIndex === -1) {
+      throw new Error(
+        `La pestaña "${tab}" no tiene una fila de encabezados reconocible (se esperaba, entre otras, PROVINCIA y CODIGO DE RECINTO)`,
+      );
+    }
+
+    const header = rows[headerRowIndex].map((h) => String(h ?? '').trim().toUpperCase());
     const idxProvincia = header.indexOf('PROVINCIA');
     const idxCodigo = header.indexOf('CODIGO DE RECINTO');
     const idxLocalidad = header.indexOf('LOCALIDAD');
@@ -47,7 +60,7 @@ export class SheetsEnlacesClient {
     }
 
     const out: SheetEnlaceRow[] = [];
-    for (const row of rows.slice(1)) {
+    for (const row of rows.slice(headerRowIndex + 1)) {
       const provincia = (row[idxProvincia] ?? '').toString().trim().toUpperCase();
       if (provincia !== 'IMBABURA') continue;
 

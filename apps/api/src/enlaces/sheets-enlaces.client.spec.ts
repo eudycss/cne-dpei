@@ -73,4 +73,33 @@ describe('SheetsEnlacesClient', () => {
 
     await expect(client.leerEnlacesImbabura()).rejects.toThrow(/columna/i);
   });
+
+  it('encuentra el encabezado real aunque haya una fila de resumen/totales antes (caso real de la hoja)', async () => {
+    const filaResumen = ['1780', '1780', 'ACTUALIZADO 14:10 23-09-2026', '0'];
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          filaResumen,
+          HEADER,
+          ['IMBABURA', '982', 'Unidad Educativa Gonzalo Zaldumbide', 'FALLO'],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows).toEqual([
+      { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Gonzalo Zaldumbide', estado: 'FALLO' },
+    ]);
+  });
+
+  it('lanza si ninguna fila parece un encabezado válido', async () => {
+    valuesGetMock.mockResolvedValue({
+      data: { values: [['1780', '1780'], ['a', 'b', 'c']] },
+    });
+    const client = new SheetsEnlacesClient();
+
+    await expect(client.leerEnlacesImbabura()).rejects.toThrow(/encabezado/i);
+  });
 });
