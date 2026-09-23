@@ -12,6 +12,7 @@ export function Layout() {
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
   const puedeVerAlertas =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+  const puedeVerEnlaces = user?.roles.includes('ADMINISTRADOR') ?? false;
   const puedeVerReportes =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR') ?? false;
 
@@ -49,6 +50,11 @@ export function Layout() {
         {puedeVerAlertas && (
           <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
             Alertas
+          </NavLink>
+        )}
+        {puedeVerEnlaces && (
+          <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Enlaces
           </NavLink>
         )}
         {puedeVerReportes && (
