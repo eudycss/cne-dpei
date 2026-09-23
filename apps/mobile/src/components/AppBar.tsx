@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NotificacionItem } from '@cne/shared-types';
@@ -7,7 +7,7 @@ import { Logo } from './Logo';
 import { MiRecintoModal } from './MiRecintoModal';
 import { ReportarIncidenciaModal } from './ReportarIncidenciaModal';
 import { NotificacionesModal } from './NotificacionesModal';
-import { getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
+import { describirNotificacion, getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
 import { usePendingCount } from '../lib/offline-queue';
 import { fontFamily } from '../theme/typography';
 import { useTheme } from '../theme/ThemeContext';
@@ -39,6 +39,7 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const recibeNotif = !!user && !esOperador;
   const pendientes = usePendingCount();
   const spin = useRef(new Animated.Value(0)).current;
+  const avisadasRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!recibeNotif) return;
@@ -55,6 +56,12 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           setNoLeidas(d.noLeidas);
           setTotalNotifs(d.total);
           setPageNotifs(1);
+
+          for (const n of d.items) {
+            if (n.tipoEvento !== 'ENLACE_CAIDO' || n.leidaEn || avisadasRef.current.has(n.id)) continue;
+            avisadasRef.current.add(n.id);
+            Alert.alert('Enlace caído', describirNotificacion(n));
+          }
         })
         .catch(() => {});
     };
