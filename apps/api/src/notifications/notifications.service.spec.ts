@@ -70,6 +70,36 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('encolarEnlaceCaido', () => {
+    it('encola PUSH para cada usuario activo con rol ADMINISTRADOR o TECNICO_SUPERVISOR', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: adminId }, { id: supervisorId }]);
+
+      await service.encolarEnlaceCaido({ codigoRecinto: '978', nombreRecinto: 'Escuela Central' });
+
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            activo: true,
+            roles: { some: { rol: { nombre: { in: ['ADMINISTRADOR', 'TECNICO_SUPERVISOR'] } } } },
+          },
+        }),
+      );
+      expect(prisma.notificacion.createMany).toHaveBeenCalledTimes(1);
+      const filas = prisma.notificacion.createMany.mock.calls[0][0].data;
+      expect(filas).toHaveLength(2);
+      expect(filas.every((f: any) => f.tipoEvento === 'ENLACE_CAIDO' && f.canal === 'PUSH')).toBe(true);
+      expect(filas[0].payload).toEqual({ codigoRecinto: '978', nombreRecinto: 'Escuela Central' });
+    });
+
+    it('no encola nada si no hay destinatarios', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+
+      await service.encolarEnlaceCaido({ codigoRecinto: '978', nombreRecinto: 'Escuela Central' });
+
+      expect(prisma.notificacion.createMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listMine', () => {
     it('devuelve items mapeados con total y noLeidas', async () => {
       prisma.notificacion.count
