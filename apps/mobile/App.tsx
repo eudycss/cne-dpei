@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
@@ -168,7 +169,9 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <ThemedApp />
+          <ErrorBoundary>
+            <ThemedApp />
+          </ErrorBoundary>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -133,4 +133,19 @@ describe('SalidaDpiScreen', () => {
     // Best-effort: la salida ya registrada permite continuar el flujo igual.
     expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
   });
+
+  it('si postSalidaDpi devuelve null (sin señal), avisa y permite continuar sin bloquear', async () => {
+    (postSalidaDpi as jest.Mock).mockResolvedValue(null);
+    const onSalidaRegistrada = jest.fn();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaDpiScreen onSalidaRegistrada={onSalidaRegistrada} />);
+      await flushPromises();
+    });
+
+    await presionarRegistrarSalida(renderer);
+
+    expect(Alert.alert).toHaveBeenCalledWith('Sin señal', expect.stringContaining('sincronizará'));
+    expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
+  });
 });

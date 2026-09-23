@@ -199,4 +199,32 @@ describe('EnTransitoScreen', () => {
     expect(boton.props.disabled).toBe(false);
     expect(obtenerUbicacionPuntual).not.toHaveBeenCalled();
   });
+
+  it('muestra un aviso discreto (no bloqueante) cuando getMiAsignacion falla por red', async () => {
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (getMiAsignacion as jest.Mock).mockRejectedValue({ isAxiosError: true, response: undefined });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    expect(renderer.root.findByProps({ children: 'Sin conexión, reintentando…' })).toBeTruthy();
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
+    expect(boton.props.disabled).toBe(false);
+  });
+
+  it('no muestra el aviso de sin conexión cuando la falla de getMiAsignacion no es por red', async () => {
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (getMiAsignacion as jest.Mock).mockRejectedValue({ isAxiosError: true, response: { status: 500 } });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    expect(renderer.root.findAllByProps({ children: 'Sin conexión, reintentando…' })).toHaveLength(0);
+  });
 });
