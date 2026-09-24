@@ -72,7 +72,7 @@ export class EnlacesService {
         const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
         if (cayoAhora) {
           caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
-          await this.notificarCaida(fila.codigoRecinto, fila.nombreRecinto);
+          await this.encolarAvisoInApp(fila.codigoRecinto, fila.nombreRecinto);
         }
       } catch (e) {
         // Un error puntual (ej. dato inválido de una sola fila) no debe tumbar
@@ -82,6 +82,7 @@ export class EnlacesService {
     }
 
     await this.notificarCaidasPorCorreo(caidas);
+    await this.notificarCaidasPorTelegram(caidas, filas);
   }
 
   /** Un solo correo con todos los recintos caídos en este ciclo, en vez de uno por recinto. */
@@ -100,17 +101,32 @@ export class EnlacesService {
     }
   }
 
-  private async notificarCaida(codigoRecinto: string, nombreRecinto: string): Promise<void> {
-    try {
-      await this.telegram.enviarEnlaceCaido(codigoRecinto, nombreRecinto);
-    } catch (e) {
-      this.log.error(`Error enviando Telegram de enlace caído (${codigoRecinto}): ${e}`);
-    }
-
+  private async encolarAvisoInApp(codigoRecinto: string, nombreRecinto: string): Promise<void> {
     try {
       await this.notifications.encolarEnlaceCaido({ codigoRecinto, nombreRecinto });
     } catch (e) {
       this.log.error(`Error encolando aviso in-app de enlace caído (${codigoRecinto}): ${e}`);
+    }
+  }
+
+  /** Manda a Telegram la lista COMPLETA de recintos caídos en este momento (no solo los
+   * nuevos), marcando los que acaban de caer — un mensaje con solo el/los nuevo(s) haría
+   * pensar al grupo que el resto ya se recuperó, cuando en realidad sigue caído. */
+  private async notificarCaidasPorTelegram(
+    nuevasCaidas: EnlaceCaido[],
+    filas: { codigoRecinto: string; nombreRecinto: string; estado: string }[],
+  ): Promise<void> {
+    if (nuevasCaidas.length === 0) return;
+
+    try {
+      const todasCaidas: EnlaceCaido[] = filas
+        .filter((f) => f.estado === 'FALLO')
+        .map((f) => ({ codigoRecinto: f.codigoRecinto, nombreRecinto: f.nombreRecinto }));
+      const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
+      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos);
+    } catch (e) {
+      const codigos = nuevasCaidas.map((c) => c.codigoRecinto).join(', ');
+      this.log.error(`Error enviando Telegram de enlaces caídos (${codigos}): ${e}`);
     }
   }
 

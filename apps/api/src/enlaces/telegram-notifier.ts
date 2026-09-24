@@ -5,22 +5,20 @@ import type { EnlaceCaido } from '../auth/notifier';
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
 
-  async enviarEnlaceCaido(codigoRecinto: string, nombreRecinto: string): Promise<void> {
-    await this.enviarMensaje(
-      `🔴 Enlace caído: ${codigoRecinto} — ${nombreRecinto}`,
-      'aviso de enlace caído',
-    );
-  }
-
-  /** Reenvía bajo demanda el estado actual completo (a diferencia de enviarEnlaceCaido,
-   * que solo avisa de transiciones nuevas) — para cuando se reconfigura el bot/grupo o
-   * se agrega gente y hay que ponerlos al día con lo que ya está caído. */
-  async enviarListaActual(enlaces: EnlaceCaido[]): Promise<void> {
+  /** Manda siempre el estado COMPLETO de recintos caídos, marcando con 🆕 los que
+   * pasaron de ACTIVO a FALLO en este ciclo (si los hay) — nunca un mensaje aislado
+   * de un solo recinto, para que el grupo no crea que los demás ya se recuperaron. */
+  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>): Promise<void> {
     const texto =
       enlaces.length === 0
         ? '✅ No hay enlaces caídos en este momento.'
-        : `📋 Enlaces caídos ahora mismo (${enlaces.length}):\n` +
-          enlaces.map((e) => `🔴 ${e.codigoRecinto} — ${e.nombreRecinto}`).join('\n');
+        : `🔴 Enlaces caídos ahora mismo (${enlaces.length}):\n` +
+          enlaces
+            .map((e) => {
+              const prefijo = nuevosCodigos?.has(e.codigoRecinto) ? '🆕 ' : '';
+              return `${prefijo}${e.codigoRecinto} — ${e.nombreRecinto}`;
+            })
+            .join('\n');
     await this.enviarMensaje(texto, 'la lista de enlaces caídos');
   }
 
