@@ -20,7 +20,6 @@ describe('EnlacesService', () => {
   };
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
   const telegram = {
-    enviarEnlaceCaido: jest.fn().mockResolvedValue(undefined),
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
@@ -50,7 +49,10 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledTimes(1);
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('978', 'Escuela Central');
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        new Set(['978']),
+      );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
         nombreRecinto: 'Escuela Central',
@@ -80,6 +82,34 @@ describe('EnlacesService', () => {
           { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
         ],
       );
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+        ],
+        new Set(['978', '982']),
+      );
+    });
+
+    it('incluye recintos ya caídos de ciclos anteriores (sin 🆕) junto con el que recién cae (con 🆕) — el caso que motivó este mensaje agrupado', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '111', nombreRecinto: 'Ya caído', estado: 'FALLO' },
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique
+        .mockResolvedValueOnce({ estado: 'FALLO' }) // 111 ya estaba caído
+        .mockResolvedValueOnce({ estado: 'ACTIVO' }); // 222 acaba de caer
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '111', nombreRecinto: 'Ya caído' },
+          { codigoRecinto: '222', nombreRecinto: 'Recién cae' },
+        ],
+        new Set(['222']),
+      );
     });
 
     it('un fallo en el envío del correo batcheado no interrumpe el ciclo ni relanza', async () => {
@@ -91,7 +121,7 @@ describe('EnlacesService', () => {
       sendEnlaceCaido.mockRejectedValueOnce(new Error('Brevo caído'));
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalled();
+      expect(telegram.enviarListaActual).toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
     });
 
@@ -105,7 +135,10 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(sendEnlaceCaido).not.toHaveBeenCalled();
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('978', 'Escuela Central');
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        new Set(['978']),
+      );
     });
 
     it('NO notifica si el enlace sigue FALLO (ya estaba caído)', async () => {
@@ -116,7 +149,7 @@ describe('EnlacesService', () => {
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarEnlaceCaido).not.toHaveBeenCalled();
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
     });
 
@@ -129,7 +162,10 @@ describe('EnlacesService', () => {
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('978', 'Escuela Central');
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        new Set(['978']),
+      );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
         nombreRecinto: 'Escuela Central',
@@ -148,19 +184,19 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
       prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
       await service.revisarEnlaces();
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
 
       // Ciclo 2: se recupera a ACTIVO → no notifica.
       sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'ACTIVO' }]);
       prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'FALLO' });
       await service.revisarEnlaces();
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
 
       // Ciclo 3: vuelve a caer (ACTIVO→FALLO) → notifica de nuevo.
       sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
       prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'ACTIVO' });
       await service.revisarEnlaces();
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(2);
+      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(2);
 
       expect(sendEnlaceCaido).toHaveBeenCalledTimes(2);
     });
@@ -171,7 +207,7 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
-      expect(telegram.enviarEnlaceCaido).not.toHaveBeenCalled();
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
     });
 
     it('un fallo en Telegram no impide encolar el aviso in-app', async () => {
@@ -180,9 +216,9 @@ describe('EnlacesService', () => {
       ]);
       prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
-      telegram.enviarEnlaceCaido.mockRejectedValueOnce(new Error('telegram caído'));
+      telegram.enviarListaActual.mockRejectedValueOnce(new Error('telegram caído'));
 
-      await service.revisarEnlaces();
+      await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
     });
@@ -249,8 +285,14 @@ describe('EnlacesService', () => {
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledTimes(1);
-      expect(telegram.enviarEnlaceCaido).toHaveBeenCalledWith('982', 'Escuela Sana');
+      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Rota' },
+          { codigoRecinto: '982', nombreRecinto: 'Escuela Sana' },
+        ],
+        new Set(['982']),
+      );
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
         [{ codigoRecinto: '982', nombreRecinto: 'Escuela Sana' }],
