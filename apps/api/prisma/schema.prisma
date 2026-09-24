@@ -132,6 +132,7 @@ model Usuario {
   passwordResetTokens PasswordResetToken[]
   refreshTokens       RefreshToken[]
   dispositivos        Dispositivo[]
+  kitsAsignados       KitElectoral[]
 
   @@map("usuarios")
 }
@@ -235,10 +236,11 @@ model Recinto {
   juntasMasculinas   Int?        @map("juntas_masculinas")
   esDificilAcceso    Boolean     @default(false) @map("es_dificil_acceso")
 
-  canton     Canton    @relation(fields: [cantonId], references: [id])
-  cdaDestino Recinto?  @relation("CdaDestino", fields: [cdaDestinoId], references: [id])
-  origenes   Recinto[] @relation("CdaDestino")
+  canton     Canton         @relation(fields: [cantonId], references: [id])
+  cdaDestino Recinto?       @relation("CdaDestino", fields: [cdaDestinoId], references: [id])
+  origenes   Recinto[]      @relation("CdaDestino")
   militares  Militar[]
+  kits       KitElectoral[]
 
   @@index([cantonId], map: "idx_recintos_canton")
   @@index([tipo], map: "idx_recintos_tipo")
@@ -315,6 +317,12 @@ model KitElectoral {
   estado       EstadoKit @default(EN_BODEGA)
   esPrueba     Boolean   @default(false) @map("es_prueba")
   creadoEn     DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  // SetNull: si se borra el recinto/operador, el kit queda sin asignar en vez
+  // de bloquear el delete o borrarse en cascada. Un recinto puede tener varios
+  // kits (y por lo tanto varios operadores, ej. los 2 operadores por CDA).
+  recinto  Recinto? @relation(fields: [recintoId], references: [id], onDelete: SetNull)
+  operador Usuario? @relation(fields: [operadorId], references: [id], onDelete: SetNull)
 
   @@unique([eventoId, codigoUnico])
   @@index([eventoId], map: "idx_kits_evento")

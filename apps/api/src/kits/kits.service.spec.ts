@@ -251,11 +251,70 @@ describe('KitsService', () => {
       );
     });
 
+    it('busca los kits con el include de recinto/operador (una sola consulta, sin N+1)', async () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow({ recinto: null, operador: null })]);
+      await service.generatePdfQr({ kitIds: [kitId] } as any);
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { recinto: true, operador: true } }),
+      );
+      // Con la relación real de Prisma ya no hace falta resolver aparte.
+      expect(prisma.recinto.findMany).not.toHaveBeenCalled();
+      expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+    });
+
     it('genera un PDF (Buffer no vacío) con las etiquetas QR', async () => {
-      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow()]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow({ recinto: null, operador: null })]);
       const pdf = await service.generatePdfQr({ kitIds: [kitId] } as any);
       expect(Buffer.isBuffer(pdf)).toBe(true);
       expect(pdf.length).toBeGreaterThan(0);
+    });
+
+    it('genera el PDF cuando el kit trae recinto y operador incluidos', async () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        kitRow({
+          recintoId,
+          operadorId,
+          estado: 'ASIGNADO',
+          recinto: { id: recintoId, codigoRecinto: '28', nombre: 'Escuela Central' },
+          operador: { id: operadorId, nombres: 'Juan', apellidos: 'Pérez' },
+        }),
+      ]);
+
+      const pdf = await service.generatePdfQr({ kitIds: [kitId] } as any);
+
+      expect(Buffer.isBuffer(pdf)).toBe(true);
+      expect(pdf.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('mapKitsConDatos (etiquetas del PDF)', () => {
+    function mapKitsConDatos(kits: any[]) {
+      return (service as any).mapKitsConDatos(kits);
+    }
+
+    it('arma "código — nombre" para recinto y "nombres apellidos" para operador', () => {
+      const [resultado] = mapKitsConDatos([
+        kitRow({
+          recinto: { id: recintoId, codigoRecinto: '28', nombre: 'Escuela Central' },
+          operador: { id: operadorId, nombres: 'Juan', apellidos: 'Pérez' },
+        }),
+      ]);
+      expect(resultado.recintoLabel).toBe('28 — Escuela Central');
+      expect(resultado.operadorLabel).toBe('Juan Pérez');
+    });
+
+    it('usa null cuando el kit no tiene recinto/operador asignado', () => {
+      const [resultado] = mapKitsConDatos([kitRow({ recinto: null, operador: null })]);
+      expect(resultado.recintoLabel).toBeNull();
+      expect(resultado.operadorLabel).toBeNull();
+    });
+
+    it('usa null (sin explotar) si el kit referencia un recinto/operador que ya no existe (FK huérfana)', () => {
+      // Con la FK real (onDelete: SetNull) esto ya no puede pasar en la base —
+      // pero se prueba igual como red de seguridad ante datos inesperados.
+      const [resultado] = mapKitsConDatos([kitRow({ recinto: undefined, operador: undefined })]);
+      expect(resultado.recintoLabel).toBeNull();
+      expect(resultado.operadorLabel).toBeNull();
     });
   });
 

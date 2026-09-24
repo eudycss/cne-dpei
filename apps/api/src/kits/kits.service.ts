@@ -164,10 +164,26 @@ export class KitsService {
     const kits = await this.prisma.kitElectoral.findMany({
       where: { id: { in: parsed.kitIds } },
       orderBy: { codigoUnico: 'asc' },
+      include: { recinto: true, operador: true },
     });
     if (kits.length === 0) throw new BadRequestException('No se encontraron kits con esos IDs');
 
-    return this.buildPdf(kits);
+    return this.buildPdf(this.mapKitsConDatos(kits));
+  }
+
+  /**
+   * Adjunta recintoLabel/operadorLabel a cada kit a partir de las relaciones
+   * ya incluidas por Prisma (kit.recinto / kit.operador, con onDelete: SetNull
+   * — si se borra el recinto u operador, quedan en null en vez de romper la
+   * referencia). Extraído como método puro para poder testear el formato de
+   * las etiquetas sin generar un PDF real.
+   */
+  private mapKitsConDatos(kits: any[]): any[] {
+    return kits.map((k) => ({
+      ...k,
+      recintoLabel: k.recinto ? `${k.recinto.codigoRecinto} — ${k.recinto.nombre}` : null,
+      operadorLabel: k.operador ? `${k.operador.nombres} ${k.operador.apellidos}` : null,
+    }));
   }
 
   /**
@@ -340,7 +356,7 @@ export class KitsService {
     const rows = 5;
     const marginX = (595 - cols * labelW) / 2;
     const marginY = (842 - rows * labelH) / 2;
-    const qrSize = 34 * MM; // imagen QR en puntos
+    const qrSize = 28 * MM; // imagen QR en puntos (reducido para dejar espacio a recinto/operador)
 
     const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: true });
     const chunks: Buffer[] = [];
@@ -375,18 +391,35 @@ export class KitsService {
         .font('Courier-Bold')
         .fontSize(9)
         .fillColor('#1f2937')
-        .text(kit.codigoUnico, x, qrY + qrSize + 2 * MM, {
+        .text(kit.codigoUnico, x, qrY + qrSize + 1.5 * MM, {
           width: labelW,
           align: 'center',
         });
 
       // Nombre del kit (truncado si es muy largo)
-      const nombre = kit.nombre.length > 32 ? kit.nombre.slice(0, 30) + '…' : kit.nombre;
+      const truncar = (s: string, max: number) => (s.length > max ? s.slice(0, max - 2) + '…' : s);
+      const nombre = truncar(kit.nombre, 34);
       doc
         .font('Helvetica')
-        .fontSize(7)
+        .fontSize(6.5)
         .fillColor('#6b7280')
-        .text(nombre, x, qrY + qrSize + 6.5 * MM, { width: labelW, align: 'center' });
+        .text(nombre, x, qrY + qrSize + 5.5 * MM, { width: labelW, align: 'center' });
+
+      // Recinto y operador asignados (CA: identificar de un vistazo a quién
+      // pertenece la etiqueta, sin tener que escanear el QR)
+      const recintoTexto = truncar(kit.recintoLabel ?? 'Sin recinto asignado', 42);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor('#1f2937')
+        .text(recintoTexto, x, qrY + qrSize + 8.5 * MM, { width: labelW, align: 'center' });
+
+      const operadorTexto = truncar(kit.operadorLabel ?? 'Sin operador asignado', 42);
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor('#6b7280')
+        .text(operadorTexto, x, qrY + qrSize + 11.5 * MM, { width: labelW, align: 'center' });
 
       idx++;
     }
