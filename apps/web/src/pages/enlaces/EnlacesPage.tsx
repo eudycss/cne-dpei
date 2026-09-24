@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { EnlaceRecinto } from '@cne/shared-types';
-import { addCorreoEnlace, getConfigEnlaces, getEnlaces, removeCorreoEnlace } from '../../lib/queries/enlaces';
+import {
+  addCorreoEnlace,
+  getConfigEnlaces,
+  getEnlaces,
+  reenviarListaTelegram,
+  removeCorreoEnlace,
+} from '../../lib/queries/enlaces';
 import { formatearFechaHora } from '../../lib/notifications';
 
 const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
@@ -56,6 +62,18 @@ export function EnlacesPage() {
     },
     onError: (e: any) => {
       sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar el correo' });
+    },
+  });
+
+  const reenviarTelegram = useMutation({
+    mutationFn: reenviarListaTelegram,
+    onSuccess: ({ enviados }) => {
+      sileo.success({
+        title: enviados > 0 ? `Lista reenviada a Telegram (${enviados} caídos)` : 'Reenviado: no hay enlaces caídos',
+      });
+    },
+    onError: (e: any) => {
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo reenviar la lista a Telegram' });
     },
   });
 
@@ -121,6 +139,18 @@ export function EnlacesPage() {
           >
             Agregar
           </button>
+        </div>
+        <div style={{ marginTop: '0.75rem' }}>
+          <button
+            className="btn secondary"
+            disabled={reenviarTelegram.isPending}
+            onClick={() => reenviarTelegram.mutate()}
+          >
+            Reenviar lista a Telegram
+          </button>
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+            Manda al grupo de Telegram configurado el estado actual completo — útil después de agregar gente nueva al grupo.
+          </p>
         </div>
       </div>
 

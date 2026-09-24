@@ -42,4 +42,11 @@ export class EnlacesController {
   removeCorreo(@Body(new ZodValidationPipe(addCorreoEnlaceSchema)) body: AddCorreoEnlaceRequest) {
     return this.enlaces.removeCorreo(body.correo);
   }
+
+  @Post('telegram/reenviar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Reenviar a Telegram la lista actual de enlaces caídos' })
+  reenviarListaTelegram() {
+    return this.enlaces.reenviarListaTelegram();
+  }
 }

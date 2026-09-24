@@ -19,7 +19,10 @@ describe('EnlacesService', () => {
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
   };
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
-  const telegram = { enviarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
+  const telegram = {
+    enviarEnlaceCaido: jest.fn().mockResolvedValue(undefined),
+    enviarListaActual: jest.fn().mockResolvedValue(undefined),
+  };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(async () => {
@@ -407,6 +410,33 @@ describe('EnlacesService', () => {
         expect.objectContaining({ update: expect.objectContaining({ correos: ['a@b.com', 'nuevo@x.com'] }) }),
       );
       expect(result.correos).toEqual(['a@b.com', 'nuevo@x.com']);
+    });
+  });
+
+  describe('reenviarListaTelegram', () => {
+    it('lee los recintos en FALLO y se los pasa al notifier de Telegram', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'FALLO' },
+      ]);
+
+      const result = await service.reenviarListaTelegram();
+
+      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: 'FALLO' } });
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+      ]);
+      expect(result).toEqual({ enviados: 2 });
+    });
+
+    it('sin recintos en FALLO igual llama al notifier (avisa "sin caídos") y devuelve 0', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+
+      const result = await service.reenviarListaTelegram();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([]);
+      expect(result).toEqual({ enviados: 0 });
     });
   });
 });
