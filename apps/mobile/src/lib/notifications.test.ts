@@ -45,6 +45,11 @@ describe('describirNotificacion', () => {
   it('usa valores por defecto si falta operadorNombre/recintoNombre', () => {
     expect(describirNotificacion(item('SALIDA_DPI'))).toBe('Un operador salió del DPI hacia su recinto');
   });
+
+  it('describe ENLACE_CAIDO con codigo y nombre del recinto', () => {
+    expect(describirNotificacion(item('ENLACE_CAIDO', { codigoRecinto: '978', nombreRecinto: 'Escuela Central' })))
+      .toBe('Enlace caído: 978 — Escuela Central');
+  });
 });
 
 describe('formatearFechaHora', () => {

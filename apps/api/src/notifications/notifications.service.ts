@@ -111,6 +111,27 @@ export class NotificationsService {
     });
   }
 
+  /** Enlaces caídos: avisa a todos los ADMINISTRADOR y TECNICO_SUPERVISOR activos. */
+  async encolarEnlaceCaido(opts: { codigoRecinto: string; nombreRecinto: string }): Promise<void> {
+    const usuarios = await this.prisma.usuario.findMany({
+      where: {
+        activo: true,
+        roles: { some: { rol: { nombre: { in: ['ADMINISTRADOR', 'TECNICO_SUPERVISOR'] } } } },
+      },
+      select: { id: true },
+    });
+    if (usuarios.length === 0) return;
+
+    await this.prisma.notificacion.createMany({
+      data: usuarios.map((u) => ({
+        usuarioId: u.id,
+        tipoEvento: 'ENLACE_CAIDO',
+        canal: 'PUSH' as const,
+        payload: { codigoRecinto: opts.codigoRecinto, nombreRecinto: opts.nombreRecinto } as any,
+      })),
+    });
+  }
+
   private async encolarParaSupervisorYAdmins(opts: {
     operadorId: string;
     eventoId: string;

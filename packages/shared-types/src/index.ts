@@ -715,3 +715,25 @@ export interface Alerta {
 export interface UpdateEstadoAlertaRequest {
   estado: 'VISTA' | 'ATENDIDA';
 }
+
+// ===================================================================
+// Alertas de enlaces caídos (CDAs Imbabura)
+// ===================================================================
+
+export type EstadoEnlace = 'ACTIVO' | 'FALLO';
+
+export interface EnlaceRecinto {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  canton: string;
+  estado: EstadoEnlace;
+  actualizadoEn: string;
+}
+
+export interface ConfigEnlacesResponse {
+  correos: string[];
+}
+
+export interface AddCorreoEnlaceRequest {
+  correo: string;
+}

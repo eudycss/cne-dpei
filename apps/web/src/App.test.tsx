@@ -1,15 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { RoleName } from '@cne/shared-types';
 
 import { AuthProvider } from './auth/AuthContext';
+import { api } from './lib/api';
 import App from './App';
 
 vi.mock('./lib/api', () => ({
-  api: { post: vi.fn(), get: vi.fn() },
+  api: { post: vi.fn(), get: vi.fn(), patch: vi.fn() },
   tokenStore: { set: vi.fn(), clear: vi.fn() },
 }));
+
+const apiGetMock = api.get as unknown as ReturnType<typeof vi.fn>;
 
 vi.mock('./components/NotificationsBell', () => ({
   NotificationsBell: () => <div>campanita</div>,
@@ -50,18 +54,23 @@ function setSessionUser(roles: RoleName[]) {
 }
 
 function renderAppAt(path: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthProvider>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </AuthProvider>,
+    <QueryClientProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>
+      </AuthProvider>
+    </QueryClientProvider>,
   );
 }
 
 describe('App — guards de ruta para el rol LECTOR', () => {
   beforeEach(() => {
     localStorage.clear();
+    apiGetMock.mockReset();
+    apiGetMock.mockResolvedValue({ data: { items: [], total: 0, noLeidas: 0 } });
   });
 
   it('LECTOR entra a /users (dentro de su alcance)', () => {

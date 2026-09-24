@@ -481,6 +481,35 @@ model Notificacion {
 }
 
 // =====================================================================
+// ENLACES CDAs (monitoreo de conectividad, independiente de eventoId)
+// =====================================================================
+
+enum EstadoEnlace {
+  ACTIVO
+  FALLO
+
+  @@map("estado_enlace")
+}
+
+model EnlaceRecinto {
+  codigoRecinto  String        @id @map("codigo_recinto") @db.VarChar(20)
+  nombreRecinto  String        @map("nombre_recinto") @db.VarChar(255)
+  canton         String?       @db.VarChar(100)
+  estado         EstadoEnlace  @default(ACTIVO)
+  estadoAnterior EstadoEnlace? @map("estado_anterior")
+  actualizadoEn  DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("enlaces_recinto")
+}
+
+model ConfigEnlaces {
+  id      Int      @id @default(1)
+  correos String[] @default([])
+
+  @@map("config_enlaces")
+}
+
+// =====================================================================
 // BITÁCORA DE AUDITORÍA (HU17) — append-only
 // =====================================================================
 model BitacoraAuditoria {

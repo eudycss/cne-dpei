@@ -48,6 +48,11 @@ export function describirNotificacion(n: NotificacionItem): string {
       return `${operador} salió de ${recinto} e inició el retorno al DPI`;
     case 'LLEGADA_DPI':
       return `${operador} llegó al DPI y completó su jornada`;
+    case 'ENLACE_CAIDO': {
+      const codigo = (p.codigoRecinto as string) ?? '';
+      const nombre = (p.nombreRecinto as string) ?? recinto;
+      return `Enlace caído: ${codigo} — ${nombre}`;
+    }
     default:
       return n.tipoEvento;
   }

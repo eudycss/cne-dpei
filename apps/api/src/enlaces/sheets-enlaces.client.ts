@@ -1,0 +1,84 @@
+import { Injectable } from '@nestjs/common';
+import { google } from 'googleapis';
+
+export interface SheetEnlaceRow {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  canton: string;
+  estado: 'ACTIVO' | 'FALLO';
+}
+
+@Injectable()
+export class SheetsEnlacesClient {
+  async leerEnlacesImbabura(): Promise<SheetEnlaceRow[]> {
+    const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS_JSON ?? '{}');
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+    const sheets = google.sheets({ version: 'v4', auth: auth as any });
+    const spreadsheetId = process.env.GOOGLE_SHEETS_ID!;
+    const tab = process.env.GOOGLE_SHEETS_TAB_INF ?? 'INF';
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${tab}!A:AF`,
+    });
+    const rows = (res.data.values ?? []) as string[][];
+    if (rows.length < 2) return [];
+
+    // Algunas hojas tienen una fila de resumen/totales antes del encabezado
+    // real (ej. la de enlaces de CDAs), así que se busca la fila que de
+    // verdad contiene los encabezados en vez de asumir que es la primera.
+    const headerRowIndex = rows.findIndex((row) => {
+      const normalizada = row.map((h) => String(h ?? '').trim().toUpperCase());
+      return normalizada.includes('PROVINCIA') && normalizada.includes('CODIGO DE RECINTO');
+    });
+    if (headerRowIndex === -1) {
+      throw new Error(
+        `La pestaña "${tab}" no tiene una fila de encabezados reconocible (se esperaba, entre otras, PROVINCIA y CODIGO DE RECINTO)`,
+      );
+    }
+
+    const header = rows[headerRowIndex].map((h) => String(h ?? '').trim().toUpperCase());
+    const idxProvincia = header.indexOf('PROVINCIA');
+    const idxCodigo = header.indexOf('CODIGO DE RECINTO');
+    const idxLocalidad = header.indexOf('LOCALIDAD');
+    const idxEstado = header.indexOf('FALLO');
+    // CANTON es opcional (solo alimenta un filtro en la web): si la hoja no
+    // la tiene o le cambian el nombre, no debe tumbar el resto del cron.
+    const idxCanton = header.indexOf('CANTON');
+
+    const columnasFaltantes = [
+      ['PROVINCIA', idxProvincia],
+      ['CODIGO DE RECINTO', idxCodigo],
+      ['LOCALIDAD', idxLocalidad],
+      ['FALLO', idxEstado],
+    ]
+      .filter(([, idx]) => idx === -1)
+      .map(([nombre]) => nombre);
+    if (columnasFaltantes.length > 0) {
+      throw new Error(
+        `La pestaña "${tab}" no tiene la(s) columna(s) esperada(s): ${columnasFaltantes.join(', ')}`,
+      );
+    }
+
+    const out: SheetEnlaceRow[] = [];
+    for (const row of rows.slice(headerRowIndex + 1)) {
+      const provincia = (row[idxProvincia] ?? '').toString().trim().toUpperCase();
+      if (provincia !== 'IMBABURA') continue;
+
+      const codigoRecinto = (row[idxCodigo] ?? '').toString().trim();
+      if (!codigoRecinto) continue;
+
+      const estadoTexto = (row[idxEstado] ?? '').toString().trim().toUpperCase();
+      out.push({
+        codigoRecinto,
+        nombreRecinto: (row[idxLocalidad] ?? '').toString().trim(),
+        canton: idxCanton === -1 ? '' : (row[idxCanton] ?? '').toString().trim(),
+        estado: estadoTexto === 'ACTIVO' ? 'ACTIVO' : 'FALLO',
+      });
+    }
+    return out;
+  }
+}

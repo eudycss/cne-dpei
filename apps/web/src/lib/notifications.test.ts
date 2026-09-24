@@ -64,6 +64,14 @@ describe('describirNotificacion', () => {
     const n = notif({ tipoEvento: 'INCIDENCIA' as NotificacionItem['tipoEvento'] });
     expect(describirNotificacion(n)).toBe('INCIDENCIA');
   });
+
+  it('describe ENLACE_CAIDO con codigo y nombre del recinto', () => {
+    const n = notif({
+      tipoEvento: 'ENLACE_CAIDO',
+      payload: { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+    });
+    expect(describirNotificacion(n)).toBe('Enlace caído: 978 — Escuela Central');
+  });
 });
 
 describe('formatearFechaHora', () => {

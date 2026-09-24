@@ -21,6 +21,7 @@ import { TrackingModule } from './tracking/tracking.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { IncidenciasModule } from './incidencias/incidencias.module';
 import { AlertasModule } from './alertas/alertas.module';
+import { EnlacesModule } from './enlaces/enlaces.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { AlertasModule } from './alertas/alertas.module';
     TrackingModule,
     IncidenciasModule,
     AlertasModule,
+    EnlacesModule,
   ],
   providers: [
     {

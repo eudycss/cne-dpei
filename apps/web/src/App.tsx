@@ -17,6 +17,7 @@ import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
+import { EnlacesPage } from './pages/enlaces/EnlacesPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
@@ -97,6 +98,16 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']}>
               <AlertasPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Enlaces caídos (CDAs Imbabura) — solo Administrador */}
+        <Route
+          path="/enlaces"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR']}>
+              <EnlacesPage />
             </ProtectedRoute>
           }
         />
