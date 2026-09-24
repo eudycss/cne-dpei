@@ -1005,6 +1005,20 @@ test renombrado a "SÍ notifica en la primera carga...". Condición nueva en
 const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
 ```
 
+**Addendum 2026-09-24 (post-implementación):** se detectó que un correo
+agregado a `ConfigEnlaces.correos` mientras un recinto ya está en `FALLO`
+desde antes de esa alta no recibe ningún aviso sobre ese recinto hasta que
+se recupere (`ACTIVO`) y vuelva a caer — el cron solo notifica en la
+transición. Se agregó un catch-up en `EnlacesService.addCorreo`: cuando el
+correo es efectivamente nuevo (no en altas idempotentes), se consulta
+`enlaceRecinto.findMany({ where: { estado: 'FALLO' } })` y, si hay al menos
+un recinto caído, se llama a `this.notifier.sendEnlaceCaido([correoNuevo],
+caidasActuales)` — mismo notifier y misma forma `EnlaceCaido[]` que usa el
+cron, sin canal ni formato nuevo. Un fallo en este envío se loguea (try/catch,
+no relanza) y nunca afecta la persistencia del correo, que ya quedó guardada
+antes del intento de envío. Tests nuevos en `enlaces.service.spec.ts`, dentro
+de `describe('config de correos', ...)`.
+
 ---
 
 ### Task 8: `EnlacesController`, `EnlacesModule` y registro en `app.module.ts`

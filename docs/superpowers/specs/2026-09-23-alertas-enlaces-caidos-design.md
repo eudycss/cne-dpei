@@ -38,6 +38,23 @@ implementar").
   también en este caso es acotado (dispara una sola vez por recinto, no en
   cada ciclo) y el riesgo de quedarse callado es peor que el de una alerta
   de más.
+- **Catch-up al agregar destinatario, agregado el 2026-09-24:** cuando se
+  agrega un correo nuevo a `ConfigEnlaces.correos` (`POST
+  /enlaces/config/correos`), y solo si el correo es efectivamente nuevo (no
+  en altas idempotentes de un correo que ya estaba en la lista), se le envía
+  de una vez el listado de recintos que están en `FALLO` en ese momento,
+  como "primera notificación". Sin esto, un correo agregado mientras un
+  recinto ya está caído desde antes no se entera de nada hasta que ese
+  recinto se recupere (`ACTIVO`) y vuelva a caer — y si nunca se recupera,
+  nunca se entera por este canal. Reutiliza el mismo `INotifier` y la misma
+  forma `EnlaceCaido[]` que ya usa el cron, sin introducir un canal ni un
+  formato de correo nuevo. Ningún fallo en esta ruta (ni la lectura de
+  recintos caídos ni el envío) bloquea el alta del correo, que ya queda
+  persistida antes de intentar el catch-up. Limitación conocida y aceptada:
+  si el cron corre en la misma ventana en que se agrega el correo, el nuevo
+  destinatario podría recibir el aviso duplicado (uno del catch-up, otro del
+  ciclo del cron) — inofensivo, solo ruido, no se considera necesario
+  deduplicar para un caso tan acotado en el tiempo.
 - El aviso emergente en web/móvil es visible solo para roles
   `ADMINISTRADOR` y `TECNICO_SUPERVISOR` (no `OPERADOR_CDA`).
 - Fuera de alcance explícitamente: leer color de celda, cubrir provincias
