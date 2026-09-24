@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NotificacionItem } from '@cne/shared-types';
@@ -7,7 +7,8 @@ import { Logo } from './Logo';
 import { MiRecintoModal } from './MiRecintoModal';
 import { ReportarIncidenciaModal } from './ReportarIncidenciaModal';
 import { NotificacionesModal } from './NotificacionesModal';
-import { describirNotificacion, getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
+import { EnlaceCaidoBanner } from './EnlaceCaidoBanner';
+import { getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
 import { usePendingCount } from '../lib/offline-queue';
 import { fontFamily } from '../theme/typography';
 import { useTheme } from '../theme/ThemeContext';
@@ -39,7 +40,15 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const recibeNotif = !!user && !esOperador;
   const pendientes = usePendingCount();
   const spin = useRef(new Animated.Value(0)).current;
-  const avisadasRef = useRef<Set<string>>(new Set());
+  const [enlacesPendientes, setEnlacesPendientes] = useState<NotificacionItem[]>([]);
+
+  // `enlacesPendientes` NO sale de `notifs` (que solo trae la página 1 de 10
+  // notificaciones, la más reciente primero): si el usuario acumula 10+
+  // notificaciones más nuevas que un enlace caído sin leer, este quedaría
+  // fuera de esa página y el modal jamás lo mostraría. Se pide aparte con
+  // `soloNoLeidas` y un pageSize amplio, con su propio polling (no se pausa
+  // con `showNotif`, porque es independiente de la lista manual).
+  const pendientesEnlace = enlacesPendientes.filter((n) => !n.leidaEn);
 
   useEffect(() => {
     if (!recibeNotif) return;
@@ -56,12 +65,6 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           setNoLeidas(d.noLeidas);
           setTotalNotifs(d.total);
           setPageNotifs(1);
-
-          for (const n of d.items) {
-            if (n.tipoEvento !== 'ENLACE_CAIDO' || n.leidaEn || avisadasRef.current.has(n.id)) continue;
-            avisadasRef.current.add(n.id);
-            Alert.alert('Enlace caído', describirNotificacion(n));
-          }
         })
         .catch(() => {});
     };
@@ -72,6 +75,46 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
       clearInterval(id);
     };
   }, [recibeNotif, showNotif]);
+
+  useEffect(() => {
+    if (!recibeNotif) return;
+    let activo = true;
+    const cargarPendientesEnlace = () => {
+      getMisNotificaciones({ soloNoLeidas: true, pageSize: 100 })
+        .then((d) => {
+          if (!activo) return;
+          setEnlacesPendientes(d.items.filter((n) => n.tipoEvento === 'ENLACE_CAIDO'));
+        })
+        .catch(() => {});
+    };
+    cargarPendientesEnlace();
+    const id = setInterval(cargarPendientesEnlace, 30_000);
+    return () => {
+      activo = false;
+      clearInterval(id);
+    };
+  }, [recibeNotif]);
+
+  const confirmarEnlacesCaidos = async () => {
+    const objetivo = pendientesEnlace;
+    // allSettled (no all): si un PATCH falla no debe perderse la confirmación
+    // de los demás — las que sí se confirman se cierran, las que fallan
+    // siguen en el modal (nunca se descartan silenciosamente).
+    const resultados = await Promise.allSettled(
+      objetivo.map((n) => marcarNotificacionLeida(n.id).then(() => n.id)),
+    );
+    const confirmadas = new Set(
+      resultados
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map((r) => r.value),
+    );
+    const marcarComoLeida = (n: NotificacionItem) =>
+      confirmadas.has(n.id) ? { ...n, leidaEn: new Date().toISOString() } : n;
+
+    setEnlacesPendientes((prev) => prev.map(marcarComoLeida));
+    setNotifs((prev) => prev.map(marcarComoLeida));
+    setNoLeidas((prev) => Math.max(0, prev - confirmadas.size));
+  };
 
   const cargarMasNotifs = async () => {
     if (cargandoMasNotifs || notifs.length >= totalNotifs) return;
@@ -114,54 +157,61 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + 10 }]}>
-      <Logo height={32} />
-      <View style={styles.textWrap}>
-        <Text style={styles.title}>CNE Imbabura</Text>
-        <Text style={styles.subtitle}>{subtitle ?? 'Trazabilidad Electoral'}</Text>
-      </View>
-      {onRefresh && (
-        <Pressable onPress={onRefresh} disabled={refreshing} hitSlop={8} accessibilityLabel="Actualizar">
-          <Animated.View style={{ transform: [{ rotate }] }}>
-            <Ionicons name="refresh-circle" size={28} color={colors.primary} />
-          </Animated.View>
-        </Pressable>
-      )}
-      {esOperador && (
-        <Pressable onPress={() => setShowMiRecinto(true)} hitSlop={8} accessibilityLabel="Mi recinto">
-          <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
-        </Pressable>
-      )}
-      {esOperador && (
-        <Pressable onPress={() => setShowIncidencia(true)} hitSlop={8} accessibilityLabel="Reportar incidencia">
-          <Ionicons name="warning-outline" size={22} color={colors.textSecondary} />
-        </Pressable>
-      )}
-      {esOperador && pendientes > 0 && (
-        <View style={styles.syncBadge}>
-          <Ionicons name="cloud-upload-outline" size={16} color={colors.warningText} />
-          <Text style={styles.syncBadgeText}>{pendientes}</Text>
+    <Fragment>
+      <View style={[styles.wrap, { paddingTop: insets.top + 10 }]}>
+        <Logo height={32} />
+        <View style={styles.textWrap}>
+          <Text style={styles.title}>CNE Imbabura</Text>
+          <Text style={styles.subtitle}>{subtitle ?? 'Trazabilidad Electoral'}</Text>
         </View>
-      )}
-      {recibeNotif && (
-        <Pressable onPress={() => setShowNotif(true)} hitSlop={8} accessibilityLabel="Notificaciones">
-          <View>
-            <Ionicons name="notifications-outline" size={22} color={colors.textSecondary} />
-            {noLeidas > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{noLeidas > 99 ? '99+' : noLeidas}</Text>
-              </View>
-            )}
+        {onRefresh && (
+          <Pressable onPress={onRefresh} disabled={refreshing} hitSlop={8} accessibilityLabel="Actualizar">
+            <Animated.View style={{ transform: [{ rotate }] }}>
+              <Ionicons name="refresh-circle" size={28} color={colors.primary} />
+            </Animated.View>
+          </Pressable>
+        )}
+        {esOperador && (
+          <Pressable onPress={() => setShowMiRecinto(true)} hitSlop={8} accessibilityLabel="Mi recinto">
+            <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+          </Pressable>
+        )}
+        {esOperador && (
+          <Pressable onPress={() => setShowIncidencia(true)} hitSlop={8} accessibilityLabel="Reportar incidencia">
+            <Ionicons name="warning-outline" size={22} color={colors.textSecondary} />
+          </Pressable>
+        )}
+        {esOperador && pendientes > 0 && (
+          <View style={styles.syncBadge}>
+            <Ionicons name="cloud-upload-outline" size={16} color={colors.warningText} />
+            <Text style={styles.syncBadgeText}>{pendientes}</Text>
           </View>
+        )}
+        {recibeNotif && (
+          <Pressable onPress={() => setShowNotif(true)} hitSlop={8} accessibilityLabel="Notificaciones">
+            <View>
+              <Ionicons name="notifications-outline" size={22} color={colors.textSecondary} />
+              {noLeidas > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{noLeidas > 99 ? '99+' : noLeidas}</Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        )}
+        <Pressable onPress={toggle} hitSlop={8} accessibilityLabel={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
+          <Ionicons
+            name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'}
+            size={22}
+            color={colors.textSecondary}
+          />
         </Pressable>
+      </View>
+
+      {pendientesEnlace.length > 0 && (
+        <EnlaceCaidoBanner items={pendientesEnlace} onConfirmar={confirmarEnlacesCaidos} />
       )}
-      <Pressable onPress={toggle} hitSlop={8} accessibilityLabel={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
-        <Ionicons
-          name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'}
-          size={22}
-          color={colors.textSecondary}
-        />
-      </Pressable>
+
       {esOperador && <MiRecintoModal visible={showMiRecinto} onClose={() => setShowMiRecinto(false)} />}
       {esOperador && (
         <ReportarIncidenciaModal visible={showIncidencia} onClose={() => setShowIncidencia(false)} />
@@ -178,7 +228,7 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           onCargarMas={cargarMasNotifs}
         />
       )}
-    </View>
+    </Fragment>
   );
 }
 
