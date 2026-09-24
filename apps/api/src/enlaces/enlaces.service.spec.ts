@@ -282,6 +282,13 @@ describe('EnlacesService', () => {
   });
 
   describe('config de correos', () => {
+    beforeEach(() => {
+      // Por defecto, sin recintos caídos, para que los tests de esta sección
+      // que no ejercitan el catch-up no dependan del estado que haya dejado
+      // otro describe (ej. 'list') en prisma.enlaceRecinto.findMany.
+      prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+    });
+
     it('addCorreo agrega un correo sin duplicar', async () => {
       prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
       prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'c@d.com'] });
@@ -329,6 +336,77 @@ describe('EnlacesService', () => {
       expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ update: expect.objectContaining({ correos: [] }) }),
       );
+    });
+
+    it('agrega un correo nuevo con recintos en FALLO y envía el catch-up solo a ese correo', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'nuevo@x.com'] });
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'FALLO' },
+      ]);
+
+      await service.addCorreo('nuevo@x.com');
+
+      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: 'FALLO' } });
+      expect(sendEnlaceCaido).toHaveBeenCalledTimes(1);
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['nuevo@x.com'],
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+        ],
+      );
+    });
+
+    it('agrega un correo nuevo sin recintos en FALLO y no envía ningún catch-up', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'nuevo@x.com'] });
+      prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+
+      await service.addCorreo('nuevo@x.com');
+
+      expect(sendEnlaceCaido).not.toHaveBeenCalled();
+    });
+
+    it('agrega un correo que ya existía y no reenvía el catch-up (dedup)', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+
+      await service.addCorreo('a@b.com');
+
+      expect(prisma.enlaceRecinto.findMany).not.toHaveBeenCalled();
+      expect(sendEnlaceCaido).not.toHaveBeenCalled();
+    });
+
+    it('un fallo en el envío del catch-up no impide que addCorreo persista el correo ni devuelva éxito', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'nuevo@x.com'] });
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+      sendEnlaceCaido.mockRejectedValueOnce(new Error('Brevo caído'));
+
+      const result = await service.addCorreo('nuevo@x.com');
+
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ correos: ['a@b.com', 'nuevo@x.com'] }) }),
+      );
+      expect(result.correos).toEqual(['a@b.com', 'nuevo@x.com']);
+    });
+
+    it('un fallo al consultar los recintos caídos para el catch-up no impide que addCorreo persista el correo ni devuelva éxito', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ id: 1, correos: ['a@b.com'] });
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com', 'nuevo@x.com'] });
+      prisma.enlaceRecinto.findMany.mockRejectedValueOnce(new Error('timeout de base de datos'));
+
+      const result = await service.addCorreo('nuevo@x.com');
+
+      expect(sendEnlaceCaido).not.toHaveBeenCalled();
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ correos: ['a@b.com', 'nuevo@x.com'] }) }),
+      );
+      expect(result.correos).toEqual(['a@b.com', 'nuevo@x.com']);
     });
   });
 });

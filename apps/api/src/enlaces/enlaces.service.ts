@@ -133,8 +133,39 @@ export class EnlacesService {
   async addCorreo(correo: string): Promise<ConfigEnlacesResponse> {
     const normalizado = correo.trim().toLowerCase();
     const actual = await this.getConfig();
-    const correos = actual.correos.includes(normalizado) ? actual.correos : [...actual.correos, normalizado];
-    return this.guardarCorreos(correos);
+    const yaExistia = actual.correos.includes(normalizado);
+    const correos = yaExistia ? actual.correos : [...actual.correos, normalizado];
+    const resultado = await this.guardarCorreos(correos);
+
+    // Solo para altas reales: el cron solo notifica en la transición
+    // ACTIVO→FALLO, así que sin este catch-up un correo agregado hoy queda
+    // mudo sobre recintos que ya estaban caídos antes del alta, hasta que
+    // se recuperen y vuelvan a caer (o para siempre si nunca se recuperan).
+    if (!yaExistia) {
+      await this.notificarCatchUpCaidasActuales(normalizado);
+    }
+
+    return resultado;
+  }
+
+  /** Envía al correo recién agregado el listado de recintos ya caídos EN ESE
+   * MOMENTO, como "primera notificación". Ningún fallo de esta función (ni
+   * la lectura de recintos caídos ni el envío) debe afectar el alta del
+   * correo, que ya quedó persistida antes de llegar aquí. */
+  private async notificarCatchUpCaidasActuales(correoNuevo: string): Promise<void> {
+    try {
+      const recintosCaidos = await this.prisma.enlaceRecinto.findMany({ where: { estado: 'FALLO' } });
+      if (recintosCaidos.length === 0) return;
+
+      const caidas: EnlaceCaido[] = recintosCaidos.map((r: any) => ({
+        codigoRecinto: r.codigoRecinto,
+        nombreRecinto: r.nombreRecinto,
+      }));
+
+      await this.notifier.sendEnlaceCaido([correoNuevo], caidas);
+    } catch (e) {
+      this.log.error(`Error enviando correo de catch-up de enlaces caídos a ${correoNuevo}: ${e}`);
+    }
   }
 
   async removeCorreo(correo: string): Promise<ConfigEnlacesResponse> {
