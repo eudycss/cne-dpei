@@ -18,6 +18,7 @@ const apiGetMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const apiPostMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const apiDeleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
 const sileoErrorMock = sileo.error as unknown as ReturnType<typeof vi.fn>;
+const sileoSuccessMock = sileo.success as unknown as ReturnType<typeof vi.fn>;
 
 const enlaces: EnlaceRecinto[] = [
   { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Otavalo', estado: 'FALLO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
@@ -115,6 +116,43 @@ describe('EnlacesPage', () => {
 
     await waitFor(() => {
       expect(sileoErrorMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'no se pudo quitar' }));
+    });
+  });
+
+  it('reenvía la lista actual a Telegram y muestra cuántos enlaces caídos había', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockImplementation((url: string) => {
+      if (url === '/enlaces/telegram/reenviar') return Promise.resolve({ data: { enviados: 3 } });
+      return Promise.resolve({ data: config() });
+    });
+    renderPage();
+
+    await screen.findByText('admin@cne.gob.ec');
+    await user.click(screen.getByText('Reenviar lista a Telegram'));
+
+    expect(apiPostMock).toHaveBeenCalledWith('/enlaces/telegram/reenviar');
+    await waitFor(() => {
+      expect(sileoSuccessMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining('3') }),
+      );
+    });
+  });
+
+  it('muestra un toast de error si el reenvío a Telegram falla', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockImplementation((url: string) => {
+      if (url === '/enlaces/telegram/reenviar') {
+        return Promise.reject({ response: { data: { message: 'Telegram no configurado' } } });
+      }
+      return Promise.resolve({ data: config() });
+    });
+    renderPage();
+
+    await screen.findByText('admin@cne.gob.ec');
+    await user.click(screen.getByText('Reenviar lista a Telegram'));
+
+    await waitFor(() => {
+      expect(sileoErrorMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'Telegram no configurado' }));
     });
   });
 

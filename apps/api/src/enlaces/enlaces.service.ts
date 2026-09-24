@@ -168,6 +168,20 @@ export class EnlacesService {
     }
   }
 
+  /** Reenvía a Telegram, bajo demanda, la lista completa de recintos caídos EN ESE
+   * MOMENTO — para cuando se reconfigura el bot/grupo o se agrega gente nueva y hay
+   * que ponerlos al día (Telegram no tiene el catch-up automático que sí tiene el
+   * correo al agregar un destinatario). */
+  async reenviarListaTelegram(): Promise<{ enviados: number }> {
+    const recintosCaidos = await this.prisma.enlaceRecinto.findMany({ where: { estado: 'FALLO' } });
+    const caidas: EnlaceCaido[] = recintosCaidos.map((r: any) => ({
+      codigoRecinto: r.codigoRecinto,
+      nombreRecinto: r.nombreRecinto,
+    }));
+    await this.telegram.enviarListaActual(caidas);
+    return { enviados: caidas.length };
+  }
+
   async removeCorreo(correo: string): Promise<ConfigEnlacesResponse> {
     const normalizado = correo.trim().toLowerCase();
     const actual = await this.getConfig();

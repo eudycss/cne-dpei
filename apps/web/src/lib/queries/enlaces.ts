@@ -20,3 +20,8 @@ export async function removeCorreoEnlace(correo: string): Promise<ConfigEnlacesR
   const { data } = await api.delete<ConfigEnlacesResponse>('/enlaces/config/correos', { data: { correo } });
   return data;
 }
+
+export async function reenviarListaTelegram(): Promise<{ enviados: number }> {
+  const { data } = await api.post<{ enviados: number }>('/enlaces/telegram/reenviar');
+  return data;
+}
