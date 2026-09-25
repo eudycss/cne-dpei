@@ -1,12 +1,12 @@
-import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AddCorreoEnlaceRequest } from '@cne/shared-types';
 import { addCorreoEnlaceSchema } from '@cne/shared-validation';
-import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
-import { EnlacesService } from './enlaces.service';
+import { EnlacesService, type TelegramUpdate } from './enlaces.service';
 
 @ApiTags('enlaces')
 @ApiBearerAuth()
@@ -48,5 +48,16 @@ export class EnlacesController {
   @ApiOperation({ summary: 'Reenviar a Telegram la lista actual de enlaces caídos' })
   reenviarListaTelegram() {
     return this.enlaces.reenviarListaTelegram();
+  }
+
+  @Post('telegram/webhook')
+  @Public()
+  @ApiOperation({ summary: 'Webhook de Telegram: procesa comandos entrantes (ej. /caidos)' })
+  async telegramWebhook(
+    @Headers('x-telegram-bot-api-secret-token') secretToken: string | undefined,
+    @Body() update: TelegramUpdate,
+  ): Promise<{ ok: true }> {
+    await this.enlaces.procesarComandoTelegram(secretToken, update);
+    return { ok: true };
   }
 }

@@ -10,6 +10,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
 
+/** Subconjunto mínimo del payload de un Telegram Update que necesita el webhook. */
+export interface TelegramUpdate {
+  message?: {
+    text?: string;
+    chat?: { id: number | string };
+  };
+}
+
 /** La hoja se edita a mano y puede traer mayúsculas inconsistentes (COTACACHI vs Cotacachi); se normaliza para que el filtro/dropdown de la web no los trate como cantones distintos. */
 function normalizarCanton(valor: string | null | undefined): string | null {
   const limpio = (valor ?? '').trim();
@@ -41,6 +49,7 @@ export class EnlacesService {
     }
 
     const caidas: EnlaceCaido[] = [];
+    const recuperados: EnlaceCaido[] = [];
 
     for (const fila of filas) {
       try {
@@ -74,6 +83,11 @@ export class EnlacesService {
           caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
           await this.encolarAvisoInApp(fila.codigoRecinto, fila.nombreRecinto);
         }
+
+        const seRecuperoAhora = fila.estado === 'ACTIVO' && anterior?.estado === 'FALLO';
+        if (seRecuperoAhora) {
+          recuperados.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
+        }
       } catch (e) {
         // Un error puntual (ej. dato inválido de una sola fila) no debe tumbar
         // el resto del ciclo ni perder las notificaciones ya acumuladas.
@@ -83,6 +97,8 @@ export class EnlacesService {
 
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarCaidasPorTelegram(caidas, filas);
+    await this.notificarRecuperadosPorCorreo(recuperados);
+    await this.notificarRecuperadosPorTelegram(recuperados);
   }
 
   /** Un solo correo con todos los recintos caídos en este ciclo, en vez de uno por recinto. */
@@ -98,6 +114,33 @@ export class EnlacesService {
     } catch (e) {
       const codigos = caidas.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando correo de enlaces caídos (${codigos}): ${e}`);
+    }
+  }
+
+  /** Un solo correo con todos los recintos que volvieron a ACTIVO en este ciclo. */
+  private async notificarRecuperadosPorCorreo(recuperados: EnlaceCaido[]): Promise<void> {
+    if (recuperados.length === 0) return;
+
+    const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
+    const correos = config?.correos ?? [];
+    if (correos.length === 0) return;
+
+    try {
+      await this.notifier.sendEnlaceRecuperado(correos, recuperados);
+    } catch (e) {
+      const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
+      this.log.error(`Error enviando correo de enlaces recuperados (${codigos}): ${e}`);
+    }
+  }
+
+  private async notificarRecuperadosPorTelegram(recuperados: EnlaceCaido[]): Promise<void> {
+    if (recuperados.length === 0) return;
+
+    try {
+      await this.telegram.enviarRecuperados(recuperados);
+    } catch (e) {
+      const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
+      this.log.error(`Error enviando Telegram de enlaces recuperados (${codigos}): ${e}`);
     }
   }
 
@@ -196,6 +239,31 @@ export class EnlacesService {
     }));
     await this.telegram.enviarListaActual(caidas);
     return { enviados: caidas.length };
+  }
+
+  /** Procesa un update entrante del webhook de Telegram: si es el comando
+   * `/caidos` escrito en el grupo configurado, responde con la lista actual
+   * de recintos caídos. Cualquier otra cosa (secreto inválido, chat distinto
+   * al configurado, texto que no es el comando) se ignora en silencio — este
+   * endpoint es público, así que nunca debe reaccionar a tráfico no confiable. */
+  async procesarComandoTelegram(secretRecibido: string | undefined, update: TelegramUpdate): Promise<void> {
+    const secretEsperado = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (!secretEsperado || secretRecibido !== secretEsperado) {
+      this.log.warn('Webhook de Telegram: secreto ausente o inválido — se ignora el update');
+      return;
+    }
+
+    const texto = update.message?.text?.trim().toLowerCase();
+    const chatId = update.message?.chat?.id;
+    if (!texto || chatId === undefined || !texto.startsWith('/caidos')) return;
+
+    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
+    if (!chatConfigurado || String(chatId) !== chatConfigurado) {
+      this.log.warn(`Webhook de Telegram: comando /caidos desde un chat no autorizado (${chatId}) — se ignora`);
+      return;
+    }
+
+    await this.reenviarListaTelegram();
   }
 
   async removeCorreo(correo: string): Promise<ConfigEnlacesResponse> {

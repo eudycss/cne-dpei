@@ -88,4 +88,46 @@ describe('TelegramNotifier', () => {
       await expect(notifier.enviarListaActual([])).resolves.not.toThrow();
     });
   });
+
+  describe('enviarRecuperados', () => {
+    it('no llama a fetch si la lista de recuperados está vacía', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn();
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarRecuperados([]);
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('manda un mensaje con los recintos que volvieron a ACTIVO', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarRecuperados([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      ]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.text).toContain('✅');
+      expect(body.text).toContain('978');
+      expect(body.text).toContain('Escuela Central');
+    });
+
+    it('no lanza si fetch rechaza (error de red)', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      const notifier = new TelegramNotifier();
+
+      await expect(
+        notifier.enviarRecuperados([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }]),
+      ).resolves.not.toThrow();
+    });
+  });
 });

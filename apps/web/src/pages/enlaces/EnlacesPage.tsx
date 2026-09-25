@@ -1,15 +1,9 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { sileo } from 'sileo';
+import { useQuery } from '@tanstack/react-query';
 import type { EnlaceRecinto } from '@cne/shared-types';
-import {
-  addCorreoEnlace,
-  getConfigEnlaces,
-  getEnlaces,
-  reenviarListaTelegram,
-  removeCorreoEnlace,
-} from '../../lib/queries/enlaces';
+import { getConfigEnlaces, getEnlaces } from '../../lib/queries/enlaces';
 import { formatearFechaHora } from '../../lib/notifications';
+import { CorreosAvisoModal } from './CorreosAvisoModal';
 
 const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
   ACTIVO: '#16a34a',
@@ -25,11 +19,10 @@ const FILTROS: { valor: FiltroEstado; etiqueta: string }[] = [
 ];
 
 export function EnlacesPage() {
-  const qc = useQueryClient();
-  const [nuevoCorreo, setNuevoCorreo] = useState('');
   const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [cantonFiltro, setCantonFiltro] = useState('');
+  const [mostrarCorreos, setMostrarCorreos] = useState(false);
 
   const { data: enlaces = [], isLoading } = useQuery({
     queryKey: ['enlaces'],
@@ -40,41 +33,6 @@ export function EnlacesPage() {
   const { data: config } = useQuery({
     queryKey: ['enlaces-config'],
     queryFn: getConfigEnlaces,
-  });
-
-  const agregar = useMutation({
-    mutationFn: (correo: string) => addCorreoEnlace(correo),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['enlaces-config'] });
-      setNuevoCorreo('');
-      sileo.success({ title: 'Correo agregado' });
-    },
-    onError: (e: any) => {
-      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo agregar el correo' });
-    },
-  });
-
-  const quitar = useMutation({
-    mutationFn: (correo: string) => removeCorreoEnlace(correo),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['enlaces-config'] });
-      sileo.success({ title: 'Correo eliminado' });
-    },
-    onError: (e: any) => {
-      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo eliminar el correo' });
-    },
-  });
-
-  const reenviarTelegram = useMutation({
-    mutationFn: reenviarListaTelegram,
-    onSuccess: ({ enviados }) => {
-      sileo.success({
-        title: enviados > 0 ? `Lista reenviada a Telegram (${enviados} caídos)` : 'Reenviado: no hay enlaces caídos',
-      });
-    },
-    onError: (e: any) => {
-      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo reenviar la lista a Telegram' });
-    },
   });
 
   const cantones = useMemo(() => {
@@ -102,57 +60,14 @@ export function EnlacesPage() {
 
   return (
     <>
-      <h2>Enlaces (CDAs Imbabura)</h2>
-
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Correos que reciben el aviso de enlace caído</h3>
-        <ul style={{ paddingLeft: '1.1rem' }}>
-          {(config?.correos ?? []).map((correo) => (
-            <li key={correo} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              {correo}
-              <button
-                className="btn secondary"
-                aria-label={`Quitar ${correo}`}
-                disabled={quitar.isPending}
-                onClick={() => quitar.mutate(correo)}
-              >
-                Quitar
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <label style={{ display: 'none' }} htmlFor="nuevo-correo-enlace">Nuevo correo</label>
-          <input
-            id="nuevo-correo-enlace"
-            aria-label="Nuevo correo"
-            type="email"
-            value={nuevoCorreo}
-            onChange={(e) => setNuevoCorreo(e.target.value)}
-            placeholder="correo@cne.gob.ec"
-            style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem', flex: 1 }}
-          />
-          <button
-            className="btn"
-            disabled={!nuevoCorreo || agregar.isPending}
-            onClick={() => agregar.mutate(nuevoCorreo)}
-          >
-            Agregar
-          </button>
-        </div>
-        <div style={{ marginTop: '0.75rem' }}>
-          <button
-            className="btn secondary"
-            disabled={reenviarTelegram.isPending}
-            onClick={() => reenviarTelegram.mutate()}
-          >
-            Reenviar lista a Telegram
-          </button>
-          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-            Manda al grupo de Telegram configurado el estado actual completo — útil después de agregar gente nueva al grupo.
-          </p>
-        </div>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h2 style={{ margin: 0 }}>Enlaces (CDAs Imbabura)</h2>
+        <button className="btn secondary" onClick={() => setMostrarCorreos(true)}>
+          Correos de aviso ({(config?.correos ?? []).length})
+        </button>
       </div>
+
+      {mostrarCorreos && <CorreosAvisoModal onClose={() => setMostrarCorreos(false)} />}
 
       {enlaces.length > 0 && (
         <>

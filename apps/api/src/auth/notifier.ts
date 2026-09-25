@@ -9,6 +9,7 @@ export interface INotifier {
   sendPasswordResetLink(email: string, link: string): Promise<void>;
   sendInitialPassword(email: string, password: string): Promise<void>;
   sendEnlaceCaido(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void>;
+  sendEnlaceRecuperado(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void>;
 }
 
 export const NOTIFIER = 'NOTIFIER';
@@ -37,6 +38,11 @@ export class ConsoleNotifier implements INotifier {
   async sendEnlaceCaido(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void> {
     const detalle = enlaces.map((e) => `${e.codigoRecinto} - ${e.nombreRecinto}`).join('; ');
     this.log.warn(`[ENLACE CAIDO] ${detalle} → ${destinatarios.join(', ')}`);
+  }
+
+  async sendEnlaceRecuperado(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void> {
+    const detalle = enlaces.map((e) => `${e.codigoRecinto} - ${e.nombreRecinto}`).join('; ');
+    this.log.warn(`[ENLACE RECUPERADO] ${detalle} → ${destinatarios.join(', ')}`);
   }
 }
 
@@ -125,6 +131,36 @@ export class BrevoNotifier implements INotifier {
     this.log.log(`[ENLACE CAIDO] correo enviado a ${enviados}/${destinatarios.length} destinatario(s)`);
     if (fallidos.length > 0) {
       throw new Error(`No se pudo enviar el correo de enlace caído a: ${fallidos.join(', ')}`);
+    }
+  }
+
+  async sendEnlaceRecuperado(destinatarios: string[], enlaces: EnlaceCaido[]): Promise<void> {
+    const esPlural = enlaces.length > 1;
+    const asunto = esPlural
+      ? `${enlaces.length} enlaces recuperados - CNE Imbabura`
+      : `Enlace recuperado: ${escapeHtml(enlaces[0].codigoRecinto)} - ${escapeHtml(enlaces[0].nombreRecinto)}`;
+    const filas = enlaces
+      .map((e) => `<li><strong>${escapeHtml(e.codigoRecinto)}</strong> — ${escapeHtml(e.nombreRecinto)}</li>`)
+      .join('');
+    const html = `
+      <h2>CNE Imbabura — Enlace${esPlural ? 's' : ''} recuperado${esPlural ? 's' : ''}</h2>
+      <p>${esPlural ? 'Los siguientes recintos volvieron' : 'El siguiente recinto volvió'} a estado <strong>ACTIVO</strong>:</p>
+      <ul>${filas}</ul>
+    `;
+
+    const fallidos: string[] = [];
+    for (const to of destinatarios) {
+      try {
+        await this.send(to, asunto, html);
+      } catch (e) {
+        fallidos.push(to);
+        this.log.error(`Error enviando correo de enlace recuperado a ${to}: ${e}`);
+      }
+    }
+    const enviados = destinatarios.length - fallidos.length;
+    this.log.log(`[ENLACE RECUPERADO] correo enviado a ${enviados}/${destinatarios.length} destinatario(s)`);
+    if (fallidos.length > 0) {
+      throw new Error(`No se pudo enviar el correo de enlace recuperado a: ${fallidos.join(', ')}`);
     }
   }
 }

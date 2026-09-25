@@ -22,6 +22,17 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, 'la lista de enlaces caídos');
   }
 
+  /** Avisa qué recintos volvieron a ACTIVO tras haber estado en FALLO — sin esto,
+   * el grupo solo se entera de las caídas y tiene que revisar la web para saber
+   * cuándo se recupera un recinto. */
+  async enviarRecuperados(enlaces: EnlaceCaido[]): Promise<void> {
+    if (enlaces.length === 0) return;
+    const texto =
+      `✅ Enlaces recuperados (${enlaces.length}):\n` +
+      enlaces.map((e) => `${e.codigoRecinto} — ${e.nombreRecinto}`).join('\n');
+    await this.enviarMensaje(texto, 'la lista de enlaces recuperados');
+  }
+
   private async enviarMensaje(text: string, descripcion: string): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
