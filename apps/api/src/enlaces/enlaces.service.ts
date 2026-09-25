@@ -4,7 +4,7 @@ import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
-import { TelegramNotifier } from './telegram-notifier';
+import { TelegramNotifier, TEXTO_BOTON_CAIDOS } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const CONFIG_ID = 1;
@@ -255,7 +255,10 @@ export class EnlacesService {
 
     const texto = update.message?.text?.trim().toLowerCase();
     const chatId = update.message?.chat?.id;
-    if (!texto || chatId === undefined || !texto.startsWith('/caidos')) return;
+    // El botón fijo del teclado manda su propio texto como un mensaje normal
+    // (no como comando), así que hay que tratarlo igual que /caidos.
+    const esComandoCaidos = texto?.startsWith('/caidos') || texto === TEXTO_BOTON_CAIDOS.toLowerCase();
+    if (!texto || chatId === undefined || !esComandoCaidos) return;
 
     const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
     if (!chatConfigurado || String(chatId) !== chatConfigurado) {

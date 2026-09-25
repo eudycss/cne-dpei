@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { EnlaceCaido } from '../auth/notifier';
 
+/** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
+export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
+
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
@@ -46,7 +49,17 @@ export class TelegramNotifier {
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          // Se manda en cada mensaje (no solo en /start) para que el botón nunca
+          // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
+          // lo cierre manualmente en su propio cliente.
+          reply_markup: {
+            keyboard: [[{ text: TEXTO_BOTON_CAIDOS }]],
+            resize_keyboard: true,
+          },
+        }),
       });
       if (!res.ok) {
         this.log.error(`Telegram respondió ${res.status} al enviar ${descripcion}`);

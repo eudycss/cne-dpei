@@ -1,4 +1,4 @@
-import { TelegramNotifier } from './telegram-notifier';
+import { TelegramNotifier, TEXTO_BOTON_CAIDOS } from './telegram-notifier';
 
 describe('TelegramNotifier', () => {
   const originalFetch = global.fetch;
@@ -77,6 +77,22 @@ describe('TelegramNotifier', () => {
       const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(opts.body);
       expect(body.text).toMatch(/no hay enlaces caídos/i);
+    });
+
+    it('adjunta el botón fijo de "Caídos" en el teclado del mensaje', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarListaActual([]);
+
+      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.reply_markup).toEqual({
+        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }]],
+        resize_keyboard: true,
+      });
     });
 
     it('no lanza si fetch rechaza (error de red)', async () => {
