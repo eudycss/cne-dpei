@@ -26,6 +26,9 @@ describe('KitsService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
+    itemKitCatalog: {
+      count: jest.fn(),
+    },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
   };
 
@@ -47,6 +50,7 @@ describe('KitsService', () => {
       estado: 'EN_BODEGA',
       esPrueba: false,
       creadoEn: new Date('2026-06-19T10:00:00Z'),
+      itemsContenido: [],
       ...overrides,
     };
   }
@@ -91,28 +95,107 @@ describe('KitsService', () => {
   describe('create', () => {
     it('lanza NotFoundException si el evento no existe', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(null);
-      await expect(service.create({ eventoId, nombre: 'Kit 1' } as any)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.create({ eventoId, nombre: 'Kit 1', recintoId } as any),
+      ).rejects.toThrow(NotFoundException);
       expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
-    it('crea el kit con un código único y estado EN_BODEGA', async () => {
+    it('lanza NotFoundException si el recinto elegido no existe', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.create({ eventoId, nombre: 'Kit 1', recintoId } as any),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
+    it('crea el kit con un código único, ya ASIGNADO al recinto elegido', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(null); // sin colisión de código
-      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow());
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId, estado: 'ASIGNADO' }));
 
-      const result = await service.create({ eventoId, nombre: 'Kit 1' } as any);
+      const result = await service.create({ eventoId, nombre: 'Kit 1', recintoId } as any);
 
-      expect(result.estado).toBe('EN_BODEGA');
+      expect(result.estado).toBe('ASIGNADO');
       expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ eventoId, estado: 'EN_BODEGA' }),
+          data: expect.objectContaining({ eventoId, recintoId, estado: 'ASIGNADO' }),
         }),
       );
       const data = prisma.kitElectoral.create.mock.calls[0][0].data;
       expect(data.codigoUnico).toHaveLength(8);
       expect(data.qrPayload).toBe(data.codigoUnico); // CA2: el QR codifica el código único
+    });
+
+    it('lanza BadRequestException si algún itemId no existe o está inactivo', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.count.mockResolvedValueOnce(1); // pidió 2, solo 1 válido/activo
+      await expect(
+        service.create({
+          eventoId,
+          nombre: 'Kit 1',
+          recintoId,
+          itemIds: [operadorId, kitId],
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
+    it('deduplica itemIds repetidos antes de validar y de armar itemsContenido.create', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.count.mockResolvedValueOnce(1); // 1 id único tras deduplicar
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(
+        kitRow({ recintoId, estado: 'ASIGNADO', itemsContenido: [{ item: { etiqueta: 'Computador' } }] }),
+      );
+
+      await service.create({
+        eventoId,
+        nombre: 'Kit 1',
+        recintoId,
+        itemIds: [operadorId, operadorId],
+      } as any);
+
+      expect(prisma.itemKitCatalog.count).toHaveBeenCalledWith({
+        where: { id: { in: [operadorId] }, activo: true },
+      });
+      expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemsContenido: { create: [{ item: { connect: { id: operadorId } } }] },
+          }),
+        }),
+      );
+    });
+
+    it('con itemIds válidos, arma itemsContenido.create y expone items en el DTO', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(
+        kitRow({ recintoId, estado: 'ASIGNADO', itemsContenido: [{ item: { etiqueta: 'Computador' } }] }),
+      );
+
+      const result = await service.create({
+        eventoId,
+        nombre: 'Kit 1',
+        recintoId,
+        itemIds: [operadorId],
+      } as any);
+
+      expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemsContenido: { create: [{ item: { connect: { id: operadorId } } }] },
+          }),
+        }),
+      );
+      expect(result.items).toEqual(['Computador']);
     });
   });
 

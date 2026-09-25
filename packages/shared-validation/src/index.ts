@@ -268,6 +268,18 @@ export const createKitSchema = z.object({
   nombre: z.string().min(1, 'Requerido').max(160),
   contenidos: z.string().max(1000).nullable().optional(),
   esPrueba: z.boolean().optional(),
+  itemIds: z.array(z.string().uuid()).optional().default([]),
+  recintoId: z.string().uuid('Selecciona un recinto'),
+});
+
+// --- Catálogo de ítems de kit ---
+export const createItemKitSchema = z.object({
+  codigo: z.string().min(1, 'Requerido').max(50),
+  etiqueta: z.string().min(1, 'Requerido').max(120),
+});
+export const updateItemKitSchema = z.object({
+  etiqueta: z.string().min(1, 'Requerido').max(120).optional(),
+  activo: z.boolean().optional(),
 });
 
 export const pdfQrSchema = z.object({
@@ -310,6 +322,8 @@ export type CreateKitInput = z.infer<typeof createKitSchema>;
 export type AsignarKitInput = z.infer<typeof asignarKitSchema>;
 export type DesasignarKitInput = z.infer<typeof desasignarKitSchema>;
 export type BulkKitRow = z.infer<typeof bulkKitRowSchema>;
+export type CreateItemKitInput = z.infer<typeof createItemKitSchema>;
+export type UpdateItemKitInput = z.infer<typeof updateItemKitSchema>;
 
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)

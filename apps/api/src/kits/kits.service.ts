@@ -59,6 +59,7 @@ export class KitsService {
         orderBy: { creadoEn: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { itemsContenido: { include: { item: true } } },
       }),
     ]);
     return { items: items.map(toKitDto), total, page, pageSize };
@@ -70,6 +71,21 @@ export class KitsService {
       where: { id: parsed.eventoId },
     });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+
+    const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
+    if (!recinto) throw new NotFoundException('Recinto no encontrado');
+
+    // Set: un mismo id repetido en itemIds no debe crear dos filas para el
+    // mismo (kitId, itemId) — violaría la PK compuesta de KitItemContenido.
+    const itemIds = [...new Set(parsed.itemIds)];
+    if (itemIds.length > 0) {
+      const activos = await this.prisma.itemKitCatalog.count({
+        where: { id: { in: itemIds }, activo: true },
+      });
+      if (activos !== itemIds.length) {
+        throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
+      }
+    }
 
     // CA1 + CA5: generar codigoUnico único por evento (reintento ante colisión)
     const codigoUnico = await this.generarCodigoUnico(parsed.eventoId);
@@ -83,9 +99,14 @@ export class KitsService {
         qrPayload,
         nombre: parsed.nombre,
         contenidos: parsed.contenidos ?? null,
-        estado: 'EN_BODEGA',
+        recintoId: parsed.recintoId,
+        estado: 'ASIGNADO',
         esPrueba: parsed.esPrueba ?? false,
+        itemsContenido: {
+          create: itemIds.map((itemId) => ({ item: { connect: { id: itemId } } })),
+        },
       },
+      include: { itemsContenido: { include: { item: true } } },
     });
     return toKitDto(kit);
   }
@@ -356,7 +377,7 @@ export class KitsService {
     const rows = 5;
     const marginX = (595 - cols * labelW) / 2;
     const marginY = (842 - rows * labelH) / 2;
-    const qrSize = 28 * MM; // imagen QR en puntos (reducido para dejar espacio a recinto/operador)
+    const qrSize = 31 * MM; // imagen QR en puntos
 
     const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: true });
     const chunks: Buffer[] = [];
@@ -396,30 +417,23 @@ export class KitsService {
           align: 'center',
         });
 
-      // Nombre del kit (truncado si es muy largo)
-      const truncar = (s: string, max: number) => (s.length > max ? s.slice(0, max - 2) + '…' : s);
-      const nombre = truncar(kit.nombre, 34);
-      doc
-        .font('Helvetica')
-        .fontSize(6.5)
-        .fillColor('#6b7280')
-        .text(nombre, x, qrY + qrSize + 5.5 * MM, { width: labelW, align: 'center' });
-
       // Recinto y operador asignados (CA: identificar de un vistazo a quién
-      // pertenece la etiqueta, sin tener que escanear el QR)
+      // pertenece la etiqueta, sin tener que escanear el QR — ya no se repite
+      // el nombre del kit, redundante con el recinto)
+      const truncar = (s: string, max: number) => (s.length > max ? s.slice(0, max - 2) + '…' : s);
       const recintoTexto = truncar(kit.recintoLabel ?? 'Sin recinto asignado', 42);
       doc
         .font('Helvetica-Bold')
-        .fontSize(6.5)
+        .fontSize(7)
         .fillColor('#1f2937')
-        .text(recintoTexto, x, qrY + qrSize + 8.5 * MM, { width: labelW, align: 'center' });
+        .text(recintoTexto, x, qrY + qrSize + 6 * MM, { width: labelW, align: 'center' });
 
       const operadorTexto = truncar(kit.operadorLabel ?? 'Sin operador asignado', 42);
       doc
         .font('Helvetica')
-        .fontSize(6.5)
+        .fontSize(7)
         .fillColor('#6b7280')
-        .text(operadorTexto, x, qrY + qrSize + 11.5 * MM, { width: labelW, align: 'center' });
+        .text(operadorTexto, x, qrY + qrSize + 9.5 * MM, { width: labelW, align: 'center' });
 
       idx++;
     }
@@ -440,6 +454,7 @@ function toKitDto(k: any): Kit {
     qrPayload: k.qrPayload,
     nombre: k.nombre,
     contenidos: k.contenidos ?? null,
+    items: (k.itemsContenido ?? []).map((ic: any) => ic.item.etiqueta),
     recintoId: k.recintoId ?? null,
     operadorId: k.operadorId ?? null,
     estado: k.estado,

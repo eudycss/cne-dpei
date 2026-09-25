@@ -123,6 +123,29 @@ describe('TrackingService', () => {
       expect(result.margenLlegadaMetros).toBe(120);
     });
 
+    it('expone items con las etiquetas del catálogo vinculadas al kit', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        {
+          id: kitId,
+          recintoId,
+          codigoUnico: 'K001',
+          contenidos: null,
+          itemsContenido: [{ item: { etiqueta: 'Computador' } }, { item: { etiqueta: 'Mouse' } }],
+        },
+      ]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.militar.findFirst.mockResolvedValueOnce(null);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+
+      const result = await service.miAsignacion(operadorId);
+
+      expect(result.kits[0].items).toEqual(['Computador', 'Mouse']);
+    });
+
     it('devuelve delegacion=null y el margen por defecto si aún no hay coordenada configurada', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
@@ -201,6 +224,71 @@ describe('TrackingService', () => {
 
       expect(result.yaRecibido).toBe(true);
       expect(result.id).toBe(kitId);
+    });
+
+    it('expone items con las etiquetas del catálogo vinculadas al kit', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId,
+        operadorId,
+        codigoUnico: 'ABCD2345',
+        nombre: 'Kit 1',
+        contenidos: null,
+        itemsContenido: [{ item: { etiqueta: 'Computador' } }],
+      });
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKit(operadorId, 'ABCD2345');
+
+      expect(result.items).toEqual(['Computador']);
+    });
+  });
+
+  describe('validarKitRetorno', () => {
+    const adminRoles = ['ADMINISTRADOR'] as any;
+
+    it('usa las etiquetas de la relación cuando el kit las tiene', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId,
+        codigoUnico: 'ABCD2345',
+        nombre: 'Kit 1',
+        operadorId,
+        estado: 'EN_RETORNO',
+        contenidos: 'Acta, sobres', // legacy, no debería usarse porque hay relación
+        itemsContenido: [{ item: { etiqueta: 'Computador' } }, { item: { etiqueta: 'Mouse' } }],
+      });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKitRetorno('sup1', adminRoles, 'ABCD2345');
+
+      expect(result.items).toEqual([
+        { texto: 'Computador', marcado: true },
+        { texto: 'Mouse', marcado: true },
+      ]);
+    });
+
+    it('sin relación, cae al parseo del texto legacy de contenidos (sin regresión)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId,
+        codigoUnico: 'ABCD2345',
+        nombre: 'Kit 1',
+        operadorId,
+        estado: 'RETORNADO',
+        contenidos: 'Acta, sobres',
+        itemsContenido: [],
+      });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKitRetorno('sup1', adminRoles, 'ABCD2345');
+
+      expect(result.items).toEqual([
+        { texto: 'Acta', marcado: true },
+        { texto: 'sobres', marcado: true },
+      ]);
     });
   });
 

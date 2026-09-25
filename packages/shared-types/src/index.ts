@@ -211,6 +211,13 @@ export interface TipoEventoCatalog {
   activo: boolean;
 }
 
+export interface ItemKitCatalog {
+  id: string;
+  codigo: string;
+  etiqueta: string;
+  activo: boolean;
+}
+
 export type EstadoEvento = 'BORRADOR' | 'ACTIVO' | 'CERRADO';
 
 export interface ConfigAlertas {
@@ -290,7 +297,8 @@ export interface Kit {
   codigoUnico: string;
   qrPayload: string;
   nombre: string;
-  contenidos: string | null;
+  contenidos: string | null; // legacy: solo tiene valor en kits creados antes del catálogo de ítems
+  items: string[]; // etiquetas de ItemKitCatalog vinculadas al kit vía KitItemContenido
   recintoId: string | null;
   operadorId: string | null;
   estado: EstadoKit;
@@ -303,6 +311,8 @@ export interface CreateKitRequest {
   nombre: string;
   contenidos?: string | null;
   esPrueba?: boolean;
+  itemIds?: string[];
+  recintoId: string;
 }
 
 export interface PdfQrRequest {
@@ -348,7 +358,8 @@ export interface MiAsignacionKit {
   id: string;
   codigoUnico: string;
   nombre: string;
-  contenidos: string | null;
+  contenidos: string | null; // legacy
+  items: string[];
   recibido: boolean;
 }
 
@@ -383,7 +394,8 @@ export interface ValidarKitResponse {
   id: string;
   codigoUnico: string;
   nombre: string;
-  contenidos: string | null;
+  contenidos: string | null; // legacy
+  items: string[];
   yaRecibido: boolean;
 }
 

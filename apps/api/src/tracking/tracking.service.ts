@@ -94,6 +94,7 @@ export class TrackingService {
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, operadorId },
       orderBy: { codigoUnico: 'asc' },
+      include: { itemsContenido: { include: { item: true } } },
     });
     if (kits.length === 0) {
       throw new NotFoundException(
@@ -244,6 +245,7 @@ export class TrackingService {
         codigoUnico: k.codigoUnico,
         nombre: k.nombre,
         contenidos: k.contenidos ?? null,
+        items: (k.itemsContenido ?? []).map((ic) => ic.item.etiqueta),
         recibido: recibidosSet.has(k.id),
       })),
       yaRegistroSalida: !!salidaPrevia,
@@ -379,6 +381,7 @@ export class TrackingService {
 
     const kit = await this.prisma.kitElectoral.findUnique({
       where: { eventoId_codigoUnico: { eventoId: evento.id, codigoUnico: codigo.trim() } },
+      include: { itemsContenido: { include: { item: true } } },
     });
     if (!kit) {
       throw new NotFoundException('Kit no encontrado en el evento activo');
@@ -398,6 +401,7 @@ export class TrackingService {
       codigoUnico: kit.codigoUnico,
       nombre: kit.nombre,
       contenidos: kit.contenidos ?? null,
+      items: (kit.itemsContenido ?? []).map((ic) => ic.item.etiqueta),
       yaRecibido,
     };
   }
@@ -498,6 +502,7 @@ export class TrackingService {
 
     const kit = await this.prisma.kitElectoral.findUnique({
       where: { eventoId_codigoUnico: { eventoId: evento.id, codigoUnico: codigo.trim() } },
+      include: { itemsContenido: { include: { item: true } } },
     });
     if (!kit) throw new NotFoundException('Kit no encontrado en el evento activo');
     if (!kit.operadorId) {
@@ -519,12 +524,19 @@ export class TrackingService {
       select: { id: true },
     }));
 
+    // Kits nuevos traen el checklist de la relación real; los creados antes de
+    // esa migración caen al parseo de texto libre legacy.
+    const itemsContenido = kit.itemsContenido ?? [];
+    const itemLabels = itemsContenido.length > 0
+      ? itemsContenido.map((ic) => ic.item.etiqueta)
+      : parseContenidos(kit.contenidos);
+
     return {
       id: kit.id,
       codigoUnico: kit.codigoUnico,
       nombre: kit.nombre,
       operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : 'Operador',
-      items: parseContenidos(kit.contenidos).map((texto) => ({ texto, marcado: true })),
+      items: itemLabels.map((texto) => ({ texto, marcado: true })),
       yaVerificado,
     };
   }

@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EventoElectoral, Kit, Paginated, Recinto, User } from '@cne/shared-types';
+import type { EventoElectoral, ItemKitCatalog, Kit, Paginated, Recinto, User } from '@cne/shared-types';
 import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useAuth } from '../../auth/AuthContext';
+import { ItemsKitPage } from '../items-kit/ItemsKitPage';
+import { getItemsKit, createItemKit } from '../../lib/queries/items-kit';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,7 @@ function EstadoBadge({ estado }: { estado: string }) {
 export function KitsPage() {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const [tab, setTab] = useState<'kits' | 'items'>('kits');
   const [eventoId, setEventoId] = useState('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -105,6 +108,10 @@ export function KitsPage() {
     queryKey: ['recintos', { tipo: 'CDA' }],
     queryFn: async () =>
       (await api.get<Paginated<Recinto>>('/recintos?tipo=CDA&pageSize=200')).data.items,
+  });
+  const { data: itemsCatalog } = useQuery({
+    queryKey: ['items-kit'],
+    queryFn: async () => (await getItemsKit()).data,
   });
   const operadoresById = useMemo(
     () => new Map((operadores ?? []).map((u) => [u.id, `${u.nombres} ${u.apellidos}`])),
@@ -201,10 +208,31 @@ export function KitsPage() {
   const pageIds = kitsData?.items.map((k) => k.id) ?? [];
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '0.55rem 1.1rem',
+    border: 'none',
+    borderBottom: active ? '2px solid #4338ca' : '2px solid transparent',
+    background: 'transparent',
+    fontWeight: active ? 700 : 500,
+    color: active ? '#4338ca' : '#6b7280',
+    cursor: 'pointer',
+  });
+
   return (
     <>
       <h2>Kits Electorales</h2>
 
+      {isAdmin && (
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+          <button style={tabStyle(tab === 'kits')} onClick={() => setTab('kits')}>Kits</button>
+          <button style={tabStyle(tab === 'items')} onClick={() => setTab('items')}>Ítems de Kit</button>
+        </div>
+      )}
+
+      {tab === 'items' ? (
+        <ItemsKitPage />
+      ) : (
+      <>
       {/* Selector de evento */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="row" style={{ alignItems: 'center', margin: 0 }}>
@@ -361,7 +389,7 @@ export function KitsPage() {
                         )}
                       </td>
                       <td className="muted" style={{ fontSize: '0.82rem' }}>
-                        {kit.contenidos ?? '—'}
+                        {kit.items.length > 0 ? kit.items.join(', ') : kit.contenidos ?? '—'}
                       </td>
                       <td className={kit.operadorId ? '' : 'muted'}>
                         {kit.operadorId ? operadoresById.get(kit.operadorId) ?? kit.operadorId : '—'}
@@ -453,6 +481,9 @@ export function KitsPage() {
       {showCreate && eventoId && (
         <CreateKitModal
           eventoId={eventoId}
+          recintos={recintos ?? []}
+          itemsCatalog={itemsCatalog ?? []}
+          onCatalogChanged={() => qc.invalidateQueries({ queryKey: ['items-kit'] })}
           onClose={() => setShowCreate(false)}
           onDone={() => {
             setShowCreate(false);
@@ -473,6 +504,8 @@ export function KitsPage() {
           }}
         />
       )}
+      </>
+      )}
     </>
   );
 }
@@ -481,31 +514,97 @@ export function KitsPage() {
 
 function CreateKitModal({
   eventoId,
+  recintos,
+  itemsCatalog,
+  onCatalogChanged,
   onClose,
   onDone,
 }: {
   eventoId: string;
+  recintos: Recinto[];
+  itemsCatalog: ItemKitCatalog[];
+  onCatalogChanged: () => void;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [form, setForm] = useState({ nombre: '', contenidos: '' });
+  const [recintoId, setRecintoId] = useState('');
   const [esPrueba, setEsPrueba] = useState(false);
+  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(
+    () => new Set(itemsCatalog.map((i) => i.id)),
+  );
+  const [newItemLabel, setNewItemLabel] = useState('');
+  const [addingItem, setAddingItem] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  function field(k: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
+  const recintoOptions = useMemo(
+    () =>
+      recintos.map((r) => ({
+        value: r.id,
+        label: `${r.codigoRecinto} — ${r.nombre}`,
+      })),
+    [recintos],
+  );
+
+  // Cuando el catálogo crece (ej. por "+ Agregar otro"), el ítem nuevo entra marcado.
+  useEffect(() => {
+    setCheckedItemIds((prev) => {
+      const next = new Set(prev);
+      for (const it of itemsCatalog) if (!prev.has(it.id)) next.add(it.id);
+      return next;
+    });
+  }, [itemsCatalog]);
+
+  function toggleItem(id: string) {
+    setCheckedItemIds((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  async function handleAddItem() {
+    const etiqueta = newItemLabel.trim();
+    if (!etiqueta) return;
+    setAddingItem(true);
+    setError(null);
+    try {
+      const codigo = etiqueta
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const res = await createItemKit({ codigo, etiqueta });
+      onCatalogChanged();
+      setCheckedItemIds((s) => new Set(s).add(res.data.id));
+      setNewItemLabel('');
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'No se pudo agregar el ítem');
+    } finally {
+      setAddingItem(false);
+    }
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!recintoId) {
+      setError('Selecciona un recinto');
+      return;
+    }
+    const recinto = recintos.find((r) => r.id === recintoId);
+    if (!recinto) {
+      setError('Recinto inválido');
+      return;
+    }
     const parsed = createKitSchema.safeParse({
       eventoId,
-      nombre: form.nombre,
-      contenidos: form.contenidos || null,
+      nombre: `${recinto.codigoRecinto} — ${recinto.nombre}`,
+      contenidos: null,
       esPrueba,
+      itemIds: [...checkedItemIds],
+      recintoId,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
@@ -531,33 +630,52 @@ function CreateKitModal({
         </p>
 
         <div className="field">
-          <label>Nombre del kit</label>
-          <input
-            value={form.nombre}
-            onChange={field('nombre')}
+          <label>Recinto (CDA)</label>
+          <SearchableSelect
+            options={recintoOptions}
+            value={recintoId}
+            onChange={setRecintoId}
+            placeholder="— Selecciona un recinto —"
+            searchPlaceholder="Busca por nombre o código…"
             required
-            maxLength={160}
-            placeholder="Ej.: Kit Electoral Ibarra Norte 01"
           />
         </div>
 
         <div className="field">
-          <label>Contenidos (opcional)</label>
-          <textarea
-            value={form.contenidos}
-            onChange={field('contenidos')}
-            rows={3}
-            maxLength={1000}
-            placeholder="Lista de materiales incluidos…"
-            style={{
-              width: '100%',
-              padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: '0.9rem',
-              resize: 'vertical',
-            }}
-          />
+          <label>Contenidos del kit</label>
+          {itemsCatalog.length === 0 && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
+          )}
+          {itemsCatalog.map((item) => (
+            <label
+              key={item.id}
+              className="row"
+              style={{ gap: '0.4rem', alignItems: 'center', margin: '0.2rem 0' }}
+            >
+              <input
+                type="checkbox"
+                checked={checkedItemIds.has(item.id)}
+                onChange={() => toggleItem(item.id)}
+              />
+              {item.etiqueta}
+            </label>
+          ))}
+          <div className="row" style={{ marginTop: '0.5rem', gap: '0.4rem' }}>
+            <input
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              placeholder="Otro ítem…"
+              maxLength={120}
+            />
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={addingItem || !newItemLabel.trim()}
+              onClick={handleAddItem}
+            >
+              {addingItem ? 'Agregando…' : '+ Agregar otro'}
+            </button>
+          </div>
         </div>
 
         <label className="row" style={{ margin: '0.5rem 0 0', gap: '0.35rem', alignItems: 'center' }}>

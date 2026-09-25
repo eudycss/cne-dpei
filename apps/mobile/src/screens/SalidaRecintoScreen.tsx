@@ -357,8 +357,10 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
                     <View style={styles.kitInfo}>
                       <Text style={styles.kitNombre}>{k.nombre}</Text>
                       <Text style={styles.kitCodigo}>{k.codigoUnico}</Text>
-                      {k.contenidos ? (
-                        <Text style={styles.kitContenidos}>{k.contenidos}</Text>
+                      {k.items.length > 0 || k.contenidos ? (
+                        <Text style={styles.kitContenidos}>
+                          {k.items.length > 0 ? k.items.join(', ') : k.contenidos}
+                        </Text>
                       ) : null}
                     </View>
                   </Pressable>
