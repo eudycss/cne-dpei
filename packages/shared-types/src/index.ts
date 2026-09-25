@@ -299,6 +299,7 @@ export interface Kit {
   nombre: string;
   contenidos: string | null; // legacy: solo tiene valor en kits creados antes del catálogo de ítems
   items: string[]; // etiquetas de ItemKitCatalog vinculadas al kit vía KitItemContenido
+  itemIds: string[]; // ids de ItemKitCatalog vinculados al kit vía KitItemContenido
   recintoId: string | null;
   operadorId: string | null;
   estado: EstadoKit;
@@ -315,13 +316,18 @@ export interface CreateKitRequest {
   recintoId: string;
 }
 
+export interface EditKitRequest {
+  recintoId?: string;
+  itemIds?: string[];
+  justificacion?: string;
+}
+
 export interface PdfQrRequest {
   kitIds: string[];
 }
 
 export interface AsignarKitRequest {
   operadorId: string;
-  recintoId: string;
   justificacion?: string;
 }
 

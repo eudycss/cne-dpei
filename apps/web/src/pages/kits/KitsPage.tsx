@@ -1,7 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EventoElectoral, ItemKitCatalog, Kit, Paginated, Recinto, User } from '@cne/shared-types';
-import { asignarKitSchema, createKitSchema } from '@cne/shared-validation';
+import type {
+  BulkUploadResult,
+  EventoElectoral,
+  ItemKitCatalog,
+  Kit,
+  Paginated,
+  Recinto,
+  User,
+} from '@cne/shared-types';
+import { asignarKitSchema, createKitSchema, editKitSchema } from '@cne/shared-validation';
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
@@ -9,6 +17,14 @@ import { SearchableSelect } from '../../components/SearchableSelect';
 import { useAuth } from '../../auth/AuthContext';
 import { ItemsKitPage } from '../items-kit/ItemsKitPage';
 import { getItemsKit, createItemKit } from '../../lib/queries/items-kit';
+import {
+  bulkUploadKits,
+  downloadKitsPdfQr,
+  downloadKitsTemplate,
+  editKit,
+  getKits,
+  getRecintosOcupados,
+} from '../../lib/queries/kits';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,9 +78,15 @@ export function KitsPage() {
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [assigning, setAssigning] = useState<Kit | null>(null);
+  const [editing, setEditing] = useState<Kit | null>(null);
+  const [importResult, setImportResult] = useState<BulkUploadResult | null>(null);
   const [incluirPrueba, setIncluirPrueba] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+  const invalidateKits = () => {
+    qc.invalidateQueries({ queryKey: ['kits'] });
+    qc.invalidateQueries({ queryKey: ['kits-recintos-ocupados'] });
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 300);
@@ -93,7 +115,7 @@ export function KitsPage() {
       const params = new URLSearchParams({ eventoId, page: String(page), pageSize: '20' });
       if (debounced) params.set('search', debounced);
       if (incluirPrueba) params.set('incluirPrueba', 'true');
-      return (await api.get<Paginated<Kit>>(`/kits?${params}`)).data;
+      return (await getKits(params)).data;
     },
     enabled: !!eventoId,
   });
@@ -113,12 +135,19 @@ export function KitsPage() {
     queryKey: ['items-kit'],
     queryFn: async () => (await getItemsKit()).data,
   });
+  // Recintos que ya tienen un kit real en este evento — se excluyen del
+  // selector al crear/editar para no poder duplicar el kit de un recinto.
+  const { data: recintosOcupados } = useQuery({
+    queryKey: ['kits-recintos-ocupados', eventoId],
+    queryFn: async () => (await getRecintosOcupados(eventoId)).data,
+    enabled: !!eventoId,
+  });
   const operadoresById = useMemo(
     () => new Map((operadores ?? []).map((u) => [u.id, `${u.nombres} ${u.apellidos}`])),
     [operadores],
   );
   const recintosById = useMemo(
-    () => new Map((recintos ?? []).map((r) => [r.id, r.nombre])),
+    () => new Map((recintos ?? []).map((r) => [r.id, `${r.codigoRecinto} — ${r.nombre}`])),
     [recintos],
   );
 
@@ -148,7 +177,7 @@ export function KitsPage() {
     if (selected.size === 0) return;
     setDownloading(true);
     try {
-      const res = await api.post('/kits/pdf-qr', { kitIds: [...selected] }, { responseType: 'blob' });
+      const res = await downloadKitsPdfQr([...selected]);
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -164,7 +193,7 @@ export function KitsPage() {
 
   async function downloadTemplate() {
     try {
-      const res = await api.get('/kits/template.xlsx', { responseType: 'blob' });
+      const res = await downloadKitsTemplate();
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -180,22 +209,16 @@ export function KitsPage() {
     const file = e.target.files?.[0];
     if (!file || !eventoId) return;
     setImporting(true);
+    setImportResult(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.post<{ creados: number; errores: { fila: number; error: string }[] }>(
-        `/kits/bulk?eventoId=${eventoId}`,
-        fd,
-      );
+      const res = await bulkUploadKits(eventoId, file);
       const { creados, errores } = res.data;
+      setImportResult(res.data);
       sileo[errores.length > 0 ? 'warning' : 'success']({
         title: `Importación completa: ${creados} kit(s) creado(s).`,
-        description:
-          errores.length > 0
-            ? `${errores.length} error(es): ` + errores.map((er) => `Fila ${er.fila}: ${er.error}`).join(', ')
-            : undefined,
+        description: errores.length > 0 ? `${errores.length} fila(s) con error, revisa la tabla de resultados.` : undefined,
       });
-      qc.invalidateQueries({ queryKey: ['kits'] });
+      invalidateKits();
     } catch (err: any) {
       sileo.error({ title: 'Error al importar: ' + (err?.response?.data?.message ?? err?.message ?? 'desconocido') });
     } finally {
@@ -347,7 +370,6 @@ export function KitsPage() {
                     <th>Nombre</th>
                     <th>Contenidos</th>
                     <th>Operador</th>
-                    <th>Recinto</th>
                     <th>Estado</th>
                     {isAdmin && <th></th>}
                   </tr>
@@ -394,15 +416,13 @@ export function KitsPage() {
                       <td className={kit.operadorId ? '' : 'muted'}>
                         {kit.operadorId ? operadoresById.get(kit.operadorId) ?? kit.operadorId : '—'}
                       </td>
-                      <td className={kit.recintoId ? '' : 'muted'}>
-                        {kit.recintoId ? recintosById.get(kit.recintoId) ?? kit.recintoId : '—'}
-                      </td>
                       <td>
                         <EstadoBadge estado={kit.estado} />
                       </td>
                       {isAdmin && (
                       <td>
-                        {kit.operadorId || kit.recintoId ? (
+                        <div className="row" style={{ gap: '0.35rem', flexWrap: 'nowrap' }}>
+                        {kit.operadorId ? (
                           <button
                             className="btn secondary"
                             style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
@@ -410,7 +430,7 @@ export function KitsPage() {
                               if (!window.confirm('¿Quitar la asignación de este kit?')) return;
                               try {
                                 await api.patch(`/kits/${kit.id}/desasignar`, {});
-                                qc.invalidateQueries({ queryKey: ['kits'] });
+                                invalidateKits();
                               } catch (err: any) {
                                 const data = err?.response?.data;
                                 if (!data?.frozen) {
@@ -423,7 +443,7 @@ export function KitsPage() {
                                 if (!justificacion?.trim()) return;
                                 try {
                                   await api.patch(`/kits/${kit.id}/desasignar`, { justificacion });
-                                  qc.invalidateQueries({ queryKey: ['kits'] });
+                                  invalidateKits();
                                 } catch (err2: any) {
                                   sileo.error({
                                     title: err2?.response?.data?.message ?? 'No se pudo quitar la asignación',
@@ -438,18 +458,28 @@ export function KitsPage() {
                           <button
                             className="btn secondary"
                             style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                            disabled={!kit.recintoId}
+                            title={!kit.recintoId ? 'Este kit no tiene recinto. Usa "Editar" para asignarle uno primero.' : undefined}
                             onClick={() => setAssigning(kit)}
                           >
                             Asignar
                           </button>
                         )}
+                        <button
+                          className="btn secondary"
+                          style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                          onClick={() => setEditing(kit)}
+                        >
+                          Editar
+                        </button>
+                        </div>
                       </td>
                       )}
                     </tr>
                   ))}
                   {kitsData?.items.length === 0 && (
                     <tr>
-                      <td colSpan={isAdmin ? 8 : 6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      <td colSpan={isAdmin ? 7 : 5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                         {debounced ? 'No hay kits que coincidan con la búsqueda.' : 'No hay kits creados para este evento.'}
                       </td>
                     </tr>
@@ -475,6 +505,41 @@ export function KitsPage() {
               </div>
             </>
           )}
+
+          {importResult && (
+            <div className="card" style={{ marginTop: '1rem' }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Resultado de la última importación</h3>
+                <button className="btn secondary" onClick={() => setImportResult(null)}>Cerrar</button>
+              </div>
+              <p className="muted">
+                {importResult.creados} kit(s) creado(s)
+                {importResult.errores.length > 0 ? ` · ${importResult.errores.length} fila(s) con error` : ''}
+              </p>
+              {importResult.errores.length > 0 && (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fila</th>
+                      <th>Error</th>
+                      <th>Datos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importResult.errores.map((er, i) => (
+                      <tr key={i}>
+                        <td>{er.fila}</td>
+                        <td>{er.error}</td>
+                        <td className="muted" style={{ fontSize: '0.8rem' }}>
+                          {er.datos ? JSON.stringify(er.datos) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -482,12 +547,13 @@ export function KitsPage() {
         <CreateKitModal
           eventoId={eventoId}
           recintos={recintos ?? []}
+          recintosOcupados={recintosOcupados ?? []}
           itemsCatalog={itemsCatalog ?? []}
           onCatalogChanged={() => qc.invalidateQueries({ queryKey: ['items-kit'] })}
           onClose={() => setShowCreate(false)}
           onDone={() => {
             setShowCreate(false);
-            qc.invalidateQueries({ queryKey: ['kits'] });
+            invalidateKits();
           }}
         />
       )}
@@ -496,11 +562,26 @@ export function KitsPage() {
         <AsignarKitModal
           kit={assigning}
           operadores={operadores ?? []}
-          recintos={recintos ?? []}
+          recintoLabel={assigning.recintoId ? recintosById.get(assigning.recintoId) ?? null : null}
           onClose={() => setAssigning(null)}
           onDone={() => {
             setAssigning(null);
-            qc.invalidateQueries({ queryKey: ['kits'] });
+            invalidateKits();
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditKitModal
+          kit={editing}
+          recintos={recintos ?? []}
+          recintosOcupados={recintosOcupados ?? []}
+          itemsCatalog={itemsCatalog ?? []}
+          onCatalogChanged={() => qc.invalidateQueries({ queryKey: ['items-kit'] })}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
+            invalidateKits();
           }}
         />
       )}
@@ -515,6 +596,7 @@ export function KitsPage() {
 function CreateKitModal({
   eventoId,
   recintos,
+  recintosOcupados,
   itemsCatalog,
   onCatalogChanged,
   onClose,
@@ -522,6 +604,7 @@ function CreateKitModal({
 }: {
   eventoId: string;
   recintos: Recinto[];
+  recintosOcupados: string[];
   itemsCatalog: ItemKitCatalog[];
   onCatalogChanged: () => void;
   onClose: () => void;
@@ -537,14 +620,15 @@ function CreateKitModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const recintoOptions = useMemo(
-    () =>
-      recintos.map((r) => ({
+  const recintoOptions = useMemo(() => {
+    const ocupados = new Set(recintosOcupados);
+    return recintos
+      .filter((r) => !ocupados.has(r.id))
+      .map((r) => ({
         value: r.id,
         label: `${r.codigoRecinto} — ${r.nombre}`,
-      })),
-    [recintos],
-  );
+      }));
+  }, [recintos, recintosOcupados]);
 
   // Cuando el catálogo crece (ej. por "+ Agregar otro"), el ítem nuevo entra marcado.
   useEffect(() => {
@@ -639,6 +723,9 @@ function CreateKitModal({
             searchPlaceholder="Busca por nombre o código…"
             required
           />
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            Solo se muestran recintos sin kit asignado todavía.
+          </p>
         </div>
 
         <div className="field">
@@ -701,18 +788,17 @@ function CreateKitModal({
 function AsignarKitModal({
   kit,
   operadores,
-  recintos,
+  recintoLabel,
   onClose,
   onDone,
 }: {
   kit: Kit;
   operadores: User[];
-  recintos: Recinto[];
+  recintoLabel: string | null;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [operadorId, setOperadorId] = useState(kit.operadorId ?? '');
-  const [recintoId, setRecintoId] = useState(kit.recintoId ?? '');
   const [justificacion, setJustificacion] = useState('');
   const [frozen, setFrozen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -727,21 +813,12 @@ function AsignarKitModal({
       })),
     [operadores],
   );
-  const recintoOptions = useMemo(
-    () =>
-      recintos.map((r) => ({
-        value: r.id,
-        label: `${r.codigoRecinto} — ${r.nombre}`,
-      })),
-    [recintos],
-  );
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const parsed = asignarKitSchema.safeParse({
       operadorId,
-      recintoId,
       justificacion: justificacion.trim() || undefined,
     });
     if (!parsed.success) {
@@ -768,6 +845,9 @@ function AsignarKitModal({
         <p className="muted" style={{ marginTop: 0 }}>
           Kit <strong>{kit.codigoUnico}</strong> — {kit.nombre}
         </p>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Recinto: <strong>{recintoLabel ?? '—'}</strong>
+        </p>
 
         <div className="field">
           <label>Operador</label>
@@ -777,18 +857,6 @@ function AsignarKitModal({
             onChange={setOperadorId}
             placeholder="— Selecciona un operador —"
             searchPlaceholder="Busca por nombre o cédula…"
-            required
-          />
-        </div>
-
-        <div className="field">
-          <label>Recinto (CDA)</label>
-          <SearchableSelect
-            options={recintoOptions}
-            value={recintoId}
-            onChange={setRecintoId}
-            placeholder="— Selecciona un recinto —"
-            searchPlaceholder="Busca por nombre o código…"
             required
           />
         </div>
@@ -821,6 +889,201 @@ function AsignarKitModal({
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
             {saving ? 'Guardando…' : 'Asignar'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal editar kit ─────────────────────────────────────────────────────────
+
+function EditKitModal({
+  kit,
+  recintos,
+  recintosOcupados,
+  itemsCatalog,
+  onCatalogChanged,
+  onClose,
+  onDone,
+}: {
+  kit: Kit;
+  recintos: Recinto[];
+  recintosOcupados: string[];
+  itemsCatalog: ItemKitCatalog[];
+  onCatalogChanged: () => void;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [recintoId, setRecintoId] = useState(kit.recintoId ?? '');
+  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(() => new Set(kit.itemIds));
+  const [newItemLabel, setNewItemLabel] = useState('');
+  const [addingItem, setAddingItem] = useState(false);
+  const [justificacion, setJustificacion] = useState('');
+  const [frozen, setFrozen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const recintoOptions = useMemo(() => {
+    const ocupados = new Set(recintosOcupados);
+    return recintos
+      .filter((r) => r.id === kit.recintoId || !ocupados.has(r.id))
+      .map((r) => ({
+        value: r.id,
+        label: `${r.codigoRecinto} — ${r.nombre}`,
+      }));
+  }, [recintos, recintosOcupados, kit.recintoId]);
+
+  function toggleItem(id: string) {
+    setCheckedItemIds((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  async function handleAddItem() {
+    const etiqueta = newItemLabel.trim();
+    if (!etiqueta) return;
+    setAddingItem(true);
+    setError(null);
+    try {
+      const codigo = etiqueta
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const res = await createItemKit({ codigo, etiqueta });
+      onCatalogChanged();
+      setCheckedItemIds((s) => new Set(s).add(res.data.id));
+      setNewItemLabel('');
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'No se pudo agregar el ítem');
+    } finally {
+      setAddingItem(false);
+    }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    const payload: { recintoId?: string; itemIds?: string[]; justificacion?: string } = {
+      justificacion: justificacion.trim() || undefined,
+    };
+    if (recintoId && recintoId !== (kit.recintoId ?? '')) payload.recintoId = recintoId;
+    const itemsActuales = new Set(kit.itemIds);
+    const itemsCambiaron =
+      itemsActuales.size !== checkedItemIds.size ||
+      [...checkedItemIds].some((id) => !itemsActuales.has(id));
+    if (itemsCambiaron) payload.itemIds = [...checkedItemIds];
+
+    const parsed = editKitSchema.safeParse(payload);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
+      return;
+    }
+    setSaving(true);
+    try {
+      await editKit(kit.id, parsed.data);
+      onDone();
+    } catch (err: any) {
+      const data = err?.response?.data;
+      if (data?.frozen) setFrozen(true);
+      setError(data?.message ?? 'No se pudo editar el kit');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
+      <form className="login-card" style={{ maxWidth: 480, width: '100%' }} onSubmit={onSubmit}>
+        <h1>Editar kit</h1>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Kit <strong>{kit.codigoUnico}</strong> — {kit.nombre}
+        </p>
+
+        <div className="field">
+          <label>Recinto (CDA)</label>
+          <SearchableSelect
+            options={recintoOptions}
+            value={recintoId}
+            onChange={setRecintoId}
+            placeholder="— Selecciona un recinto —"
+            searchPlaceholder="Busca por nombre o código…"
+          />
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            Solo se muestran recintos sin otro kit asignado.
+          </p>
+        </div>
+
+        <div className="field">
+          <label>Contenidos del kit</label>
+          {itemsCatalog.length === 0 && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
+          )}
+          {itemsCatalog.map((item) => (
+            <label
+              key={item.id}
+              className="row"
+              style={{ gap: '0.4rem', alignItems: 'center', margin: '0.2rem 0' }}
+            >
+              <input
+                type="checkbox"
+                checked={checkedItemIds.has(item.id)}
+                onChange={() => toggleItem(item.id)}
+              />
+              {item.etiqueta}
+            </label>
+          ))}
+          <div className="row" style={{ marginTop: '0.5rem', gap: '0.4rem' }}>
+            <input
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              placeholder="Otro ítem…"
+              maxLength={120}
+            />
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={addingItem || !newItemLabel.trim()}
+              onClick={handleAddItem}
+            >
+              {addingItem ? 'Agregando…' : '+ Agregar otro'}
+            </button>
+          </div>
+        </div>
+
+        {frozen && (
+          <div className="field">
+            <label>Justificación (requerida)</label>
+            <textarea
+              value={justificacion}
+              onChange={(e) => setJustificacion(e.target.value)}
+              rows={3}
+              maxLength={500}
+              required
+              placeholder="La jornada electoral ya inició: explica por qué se necesita este cambio…"
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.65rem',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: '0.9rem',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+        )}
+
+        {error && <div className="banner error">{error}</div>}
+
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>
       </form>

@@ -13,6 +13,7 @@ import {
   bulkKitRowSchema,
   createKitSchema,
   desasignarKitSchema,
+  editKitSchema,
   pdfQrSchema,
 } from '@cne/shared-validation';
 import type {
@@ -21,6 +22,7 @@ import type {
   BulkUploadRow,
   CreateKitRequest,
   DesasignarKitRequest,
+  EditKitRequest,
   Kit,
   Paginated,
   PdfQrRequest,
@@ -65,6 +67,19 @@ export class KitsService {
     return { items: items.map(toKitDto), total, page, pageSize };
   }
 
+  /**
+   * Recintos que ya tienen un kit real (no de prueba) en este evento — usado
+   * para filtrarlos del selector de recinto al crear/editar un kit, así no se
+   * puede duplicar un kit para el mismo recinto.
+   */
+  async recintosOcupados(eventoId: string): Promise<string[]> {
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId, recintoId: { not: null }, esPrueba: false },
+      select: { recintoId: true },
+    });
+    return [...new Set(kits.map((k) => k.recintoId as string))];
+  }
+
   async create(input: CreateKitRequest): Promise<Kit> {
     const parsed = createKitSchema.parse(input);
     const evento = await this.prisma.eventoElectoral.findUnique({
@@ -74,6 +89,17 @@ export class KitsService {
 
     const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
     if (!recinto) throw new NotFoundException('Recinto no encontrado');
+
+    // Un recinto solo puede tener un kit real (no de prueba) por evento —
+    // los kits de prueba no cuentan como "ocupando" el recinto.
+    if (!parsed.esPrueba) {
+      const ocupado = await this.prisma.kitElectoral.findFirst({
+        where: { eventoId: parsed.eventoId, recintoId: parsed.recintoId, esPrueba: false },
+      });
+      if (ocupado) {
+        throw new ConflictException('Este recinto ya tiene un kit asignado en este evento');
+      }
+    }
 
     // Set: un mismo id repetido en itemIds no debe crear dos filas para el
     // mismo (kitId, itemId) — violaría la PK compuesta de KitItemContenido.
@@ -117,6 +143,14 @@ export class KitsService {
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
 
+    // El recinto ya queda fijo desde la creación (o desde una edición
+    // posterior) — asignar operador no puede fijarlo por su cuenta.
+    if (!kit.recintoId) {
+      throw new BadRequestException(
+        'El kit no tiene un recinto asignado. Edita el kit para asignarle uno antes de asignar un operador.',
+      );
+    }
+
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
     this.assertNoFrozen(evento, parsed.justificacion);
@@ -129,9 +163,6 @@ export class KitsService {
     });
     if (!operador) throw new BadRequestException('El usuario no tiene rol OPERADOR_CDA');
 
-    const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
-    if (!recinto) throw new NotFoundException('Recinto no encontrado');
-
     const otrosKits = await this.prisma.kitElectoral.findMany({
       where: {
         eventoId: kit.eventoId,
@@ -141,7 +172,7 @@ export class KitsService {
       },
       select: { recintoId: true },
     });
-    if (otrosKits.some((k) => k.recintoId !== parsed.recintoId)) {
+    if (otrosKits.some((k) => k.recintoId !== kit.recintoId)) {
       throw new ConflictException(
         'Este operador ya tiene kits asignados a otro recinto en este evento',
       );
@@ -151,9 +182,98 @@ export class KitsService {
       where: { id },
       data: {
         operadorId: parsed.operadorId,
-        recintoId: parsed.recintoId,
         estado: kit.estado === 'EN_BODEGA' ? 'ASIGNADO' : kit.estado,
       },
+    });
+    return toKitDto(updated);
+  }
+
+  /**
+   * Edita el recinto y/o el contenido (ítems del catálogo) de un kit ya
+   * creado. El recinto solo se puede cambiar, nunca quitar; si el kit no
+   * tenía uno (p.ej. venido de carga masiva sin código de recinto), editar es
+   * la vía para dárselo por primera vez. Si el kit ya tiene operador
+   * asignado, un cambio de recinto respeta la regla de 1 operador = 1 recinto
+   * por evento.
+   */
+  async editar(id: string, input: EditKitRequest): Promise<Kit> {
+    const parsed = editKitSchema.parse(input);
+
+    const kit = await this.prisma.kitElectoral.findUnique({
+      where: { id },
+      include: { itemsContenido: true },
+    });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    this.assertNoFrozen(evento, parsed.justificacion);
+
+    const data: any = {};
+
+    if (parsed.recintoId !== undefined) {
+      const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
+      if (!recinto) throw new NotFoundException('Recinto no encontrado');
+
+      if (!kit.esPrueba) {
+        const ocupado = await this.prisma.kitElectoral.findFirst({
+          where: {
+            eventoId: kit.eventoId,
+            recintoId: parsed.recintoId,
+            esPrueba: false,
+            id: { not: id },
+          },
+        });
+        if (ocupado) {
+          throw new ConflictException('Este recinto ya tiene un kit asignado en este evento');
+        }
+      }
+
+      if (kit.operadorId) {
+        const otrosKits = await this.prisma.kitElectoral.findMany({
+          where: {
+            eventoId: kit.eventoId,
+            operadorId: kit.operadorId,
+            id: { not: id },
+            recintoId: { not: null },
+          },
+          select: { recintoId: true },
+        });
+        if (otrosKits.some((k) => k.recintoId !== parsed.recintoId)) {
+          throw new ConflictException(
+            'Este operador ya tiene kits asignados a otro recinto en este evento',
+          );
+        }
+      }
+
+      data.recintoId = parsed.recintoId;
+      data.nombre = `${recinto.codigoRecinto} — ${recinto.nombre}`;
+    }
+
+    if (parsed.itemIds !== undefined) {
+      const itemIds = [...new Set(parsed.itemIds)];
+      if (itemIds.length > 0) {
+        const activos = await this.prisma.itemKitCatalog.count({
+          where: { id: { in: itemIds }, activo: true },
+        });
+        if (activos !== itemIds.length) {
+          throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
+        }
+      }
+      const actuales = new Set(kit.itemsContenido.map((ic) => ic.itemId));
+      const nuevos = new Set(itemIds);
+      const toRemove = [...actuales].filter((itemId) => !nuevos.has(itemId));
+      const toAdd = [...nuevos].filter((itemId) => !actuales.has(itemId));
+      data.itemsContenido = {
+        deleteMany: toRemove.length > 0 ? { itemId: { in: toRemove } } : undefined,
+        create: toAdd.map((itemId) => ({ item: { connect: { id: itemId } } })),
+      };
+    }
+
+    const updated = await this.prisma.kitElectoral.update({
+      where: { id },
+      data,
+      include: { itemsContenido: { include: { item: true } } },
     });
     return toKitDto(updated);
   }
@@ -236,6 +356,13 @@ export class KitsService {
     const recintoPorCodigo = new Map<string, string>(
       recintos.map((r): [string, string] => [r.codigoRecinto.toLowerCase().trim(), r.id]),
     );
+    const itemsCatalogActivos = await this.prisma.itemKitCatalog.findMany({
+      where: { activo: true },
+      select: { id: true, codigo: true },
+    });
+    const itemIdPorCodigo = new Map<string, string>(
+      itemsCatalogActivos.map((it): [string, string] => [it.codigo.toLowerCase().trim(), it.id]),
+    );
 
     // Regla 1 operador = 1 recinto por evento: arrancamos del estado actual en BD.
     const asignadosBd = await this.prisma.kitElectoral.findMany({
@@ -246,6 +373,13 @@ export class KitsService {
     for (const k of asignadosBd) {
       if (k.operadorId && k.recintoId) recintoPorOperador.set(k.operadorId, k.recintoId);
     }
+
+    // Un recinto solo puede tener un kit real (no de prueba) por evento.
+    const recintosUsadosBd = await this.prisma.kitElectoral.findMany({
+      where: { eventoId, recintoId: { not: null }, esPrueba: false },
+      select: { recintoId: true },
+    });
+    const recintosUsados = new Set(recintosUsadosBd.map((k) => k.recintoId as string));
 
     const errores: BulkUploadRow[] = [];
     let creados = 0;
@@ -279,6 +413,14 @@ export class KitsService {
           errores.push({ fila: filaNum, error: `Recinto no encontrado: ${codigoRecinto}`, datos: raw });
           continue;
         }
+        if (recintosUsados.has(recintoId)) {
+          errores.push({
+            fila: filaNum,
+            error: `Este recinto ya tiene un kit asignado en este evento: ${codigoRecinto}`,
+            datos: raw,
+          });
+          continue;
+        }
         const yaAsignado = recintoPorOperador.get(operadorId);
         if (yaAsignado && yaAsignado !== recintoId) {
           errores.push({
@@ -289,6 +431,30 @@ export class KitsService {
           continue;
         }
       }
+
+      const codigosItems = (d.items ?? '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c !== '');
+      const itemIds: string[] = [];
+      let itemInvalido: string | null = null;
+      for (const codigo of codigosItems) {
+        const itemId = itemIdPorCodigo.get(codigo.toLowerCase());
+        if (!itemId) {
+          itemInvalido = codigo;
+          break;
+        }
+        itemIds.push(itemId);
+      }
+      if (itemInvalido) {
+        errores.push({
+          fila: filaNum,
+          error: `Ítem de kit no encontrado o inactivo: ${itemInvalido}`,
+          datos: raw,
+        });
+        continue;
+      }
+      const itemIdsUnicos = [...new Set(itemIds)];
 
       try {
         const codigoUnico = await this.generarCodigoUnico(eventoId);
@@ -302,9 +468,15 @@ export class KitsService {
             operadorId,
             recintoId,
             estado: operadorId ? 'ASIGNADO' : 'EN_BODEGA',
+            itemsContenido: {
+              create: itemIdsUnicos.map((itemId) => ({ item: { connect: { id: itemId } } })),
+            },
           },
         });
-        if (operadorId && recintoId) recintoPorOperador.set(operadorId, recintoId);
+        if (operadorId && recintoId) {
+          recintoPorOperador.set(operadorId, recintoId);
+          recintosUsados.add(recintoId);
+        }
         creados++;
       } catch (e: any) {
         errores.push({ fila: filaNum, error: e?.message ?? 'Error desconocido', datos: raw });
@@ -320,16 +492,24 @@ export class KitsService {
     ws.columns = [
       { header: 'nombre', key: 'nombre', width: 28 },
       { header: 'contenidos', key: 'contenidos', width: 40 },
+      { header: 'items', key: 'items', width: 30 },
       { header: 'cedula_operador', key: 'cedula_operador', width: 16 },
       { header: 'codigo_recinto', key: 'codigo_recinto', width: 16 },
     ];
     ws.addRow({
       nombre: 'Kit Recinto 28',
       contenidos: 'Acta, sobres, sellos',
+      items: 'COMPUTADOR,MOUSE',
       cedula_operador: '1710034065',
       codigo_recinto: '28',
     });
-    ws.addRow({ nombre: 'Kit de reserva (sin asignar)', contenidos: '', cedula_operador: '', codigo_recinto: '' });
+    ws.addRow({
+      nombre: 'Kit de reserva (sin asignar)',
+      contenidos: '',
+      items: '',
+      cedula_operador: '',
+      codigo_recinto: '',
+    });
     ws.getRow(1).font = { bold: true };
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     return Buffer.from(buffer);
@@ -455,6 +635,7 @@ function toKitDto(k: any): Kit {
     nombre: k.nombre,
     contenidos: k.contenidos ?? null,
     items: (k.itemsContenido ?? []).map((ic: any) => ic.item.etiqueta),
+    itemIds: (k.itemsContenido ?? []).map((ic: any) => ic.itemId),
     recintoId: k.recintoId ?? null,
     operadorId: k.operadorId ?? null,
     estado: k.estado,
