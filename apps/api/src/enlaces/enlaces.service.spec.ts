@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { EnlacesService } from './enlaces.service';
 import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
-import { TelegramNotifier } from './telegram-notifier';
+import { TelegramNotifier, TEXTO_BOTON_CAIDOS } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -596,6 +596,33 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
       ]);
+    });
+
+    it('responde con la lista de caídos cuando se toca el botón fijo del teclado', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: TEXTO_BOTON_CAIDOS, chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      ]);
+    });
+
+    it('ignora el botón fijo si viene de un chat distinto al configurado', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: TEXTO_BOTON_CAIDOS, chat: { id: '-999888777' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
     });
 
     it('ignora el update si el secreto recibido no coincide con TELEGRAM_WEBHOOK_SECRET', async () => {

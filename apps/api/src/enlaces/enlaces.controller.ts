@@ -52,7 +52,9 @@ export class EnlacesController {
 
   @Post('telegram/webhook')
   @Public()
-  @ApiOperation({ summary: 'Webhook de Telegram: procesa comandos entrantes (ej. /caidos)' })
+  @ApiOperation({
+    summary: 'Webhook de Telegram: procesa comandos entrantes (/caidos o el botón fijo del teclado)',
+  })
   async telegramWebhook(
     @Headers('x-telegram-bot-api-secret-token') secretToken: string | undefined,
     @Body() update: TelegramUpdate,
