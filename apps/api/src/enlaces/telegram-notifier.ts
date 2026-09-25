@@ -4,6 +4,9 @@ import type { EnlaceCaido } from '../auth/notifier';
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
 export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
 
+/** Botón persistente que arranca el flujo de "mande el código y le respondo con su estado". */
+export const TEXTO_BOTON_INGRESAR_CODIGO = '🔍 Ingresar código';
+
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
@@ -36,6 +39,13 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados');
   }
 
+  /** Mensaje de texto libre (prompt del flujo de "ingresar código" o el resultado
+   * de la búsqueda) — a diferencia de enviarListaActual/enviarRecuperados, no tiene
+   * un formato fijo, lo arma quien llama. */
+  async enviarTexto(texto: string, descripcion: string): Promise<void> {
+    await this.enviarMensaje(texto, descripcion);
+  }
+
   private async enviarMensaje(text: string, descripcion: string): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -56,7 +66,7 @@ export class TelegramNotifier {
           // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
           // lo cierre manualmente en su propio cliente.
           reply_markup: {
-            keyboard: [[{ text: TEXTO_BOTON_CAIDOS }]],
+            keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
             resize_keyboard: true,
           },
         }),
