@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import * as path from 'node:path';
 
+import { AppController } from './app.controller';
 import { PrismaModule } from './db/prisma.module';
 import { AuditInterceptor } from './common/audit.interceptor';
 import { AuthModule } from './auth/auth.module';
@@ -70,6 +71,7 @@ import { EnlacesModule } from './enlaces/enlaces.module';
     AlertasModule,
     EnlacesModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,

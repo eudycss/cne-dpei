@@ -6,9 +6,10 @@ import { TelegramNotifier } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
+const sendEnlaceRecuperado = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../auth/notifier', () => ({
-  resolveNotifier: () => ({ sendEnlaceCaido }),
+  resolveNotifier: () => ({ sendEnlaceCaido, sendEnlaceRecuperado }),
 }));
 
 describe('EnlacesService', () => {
@@ -21,6 +22,7 @@ describe('EnlacesService', () => {
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
+    enviarRecuperados: jest.fn().mockResolvedValue(undefined),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
 
@@ -298,6 +300,97 @@ describe('EnlacesService', () => {
         [{ codigoRecinto: '982', nombreRecinto: 'Escuela Sana' }],
       );
     });
+
+    it('notifica por correo y Telegram cuando un enlace pasa de FALLO a ACTIVO', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'FALLO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceRecuperado).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+      );
+      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      ]);
+    });
+
+    it('NO notifica recuperación si el enlace sigue ACTIVO (no venía de FALLO)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
+      expect(telegram.enviarRecuperados).not.toHaveBeenCalled();
+    });
+
+    it('NO notifica recuperación en la primera carga de un enlace ya ACTIVO (sin estado anterior)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
+      expect(telegram.enviarRecuperados).not.toHaveBeenCalled();
+    });
+
+    it('no envía correo de recuperación si nadie está registrado, aunque sí notifica Telegram', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
+      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      ]);
+    });
+
+    it('un fallo en el correo o Telegram de recuperación no interrumpe el ciclo', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+      sendEnlaceRecuperado.mockRejectedValueOnce(new Error('Brevo caído'));
+      telegram.enviarRecuperados.mockRejectedValueOnce(new Error('telegram caído'));
+
+      await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+    });
+
+    it('agrupa caídas y recuperaciones del mismo ciclo en sus respectivas notificaciones', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '111', nombreRecinto: 'Se recupera', estado: 'ACTIVO' },
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique
+        .mockResolvedValueOnce({ estado: 'FALLO' }) // 111 se recupera
+        .mockResolvedValueOnce({ estado: 'ACTIVO' }); // 222 acaba de caer
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+
+      await service.revisarEnlaces();
+
+      expect(sendEnlaceCaido).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '222', nombreRecinto: 'Recién cae' }],
+      );
+      expect(sendEnlaceRecuperado).toHaveBeenCalledWith(
+        ['a@b.com'],
+        [{ codigoRecinto: '111', nombreRecinto: 'Se recupera' }],
+      );
+    });
   });
 
   describe('list', () => {
@@ -479,6 +572,82 @@ describe('EnlacesService', () => {
 
       expect(telegram.enviarListaActual).toHaveBeenCalledWith([]);
       expect(result).toEqual({ enviados: 0 });
+    });
+  });
+
+  describe('procesarComandoTelegram', () => {
+    afterEach(() => {
+      delete process.env.TELEGRAM_WEBHOOK_SECRET;
+      delete process.env.TELEGRAM_CHAT_ID;
+    });
+
+    it('responde con la lista de caídos cuando el secreto, el chat y el comando son correctos', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: '/caidos', chat: { id: '-100200300' } },
+      });
+
+      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: 'FALLO' } });
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+      ]);
+    });
+
+    it('ignora el update si el secreto recibido no coincide con TELEGRAM_WEBHOOK_SECRET', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('otro-secreto', {
+        message: { text: '/caidos', chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('ignora el update si TELEGRAM_WEBHOOK_SECRET no está configurado', async () => {
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: '/caidos', chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('ignora el comando si viene de un chat distinto al configurado', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: '/caidos', chat: { id: '-999888777' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('ignora texto que no es el comando /caidos', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: 'hola', chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('ignora un update sin mensaje de texto o sin chat', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {});
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
     });
   });
 });
