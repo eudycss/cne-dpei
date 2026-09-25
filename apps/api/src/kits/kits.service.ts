@@ -73,11 +73,12 @@ export class KitsService {
    * puede duplicar un kit para el mismo recinto.
    */
   async recintosOcupados(eventoId: string): Promise<string[]> {
-    const kits = await this.prisma.kitElectoral.findMany({
+    const kits: { recintoId: string | null }[] = await this.prisma.kitElectoral.findMany({
       where: { eventoId, recintoId: { not: null }, esPrueba: false },
       select: { recintoId: true },
     });
-    return [...new Set(kits.map((k) => k.recintoId as string))];
+    const ids: string[] = kits.map((k): string => k.recintoId as string);
+    return [...new Set(ids)];
   }
 
   async create(input: CreateKitRequest): Promise<Kit> {
@@ -260,10 +261,10 @@ export class KitsService {
           throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
         }
       }
-      const actuales = new Set(kit.itemsContenido.map((ic) => ic.itemId));
-      const nuevos = new Set(itemIds);
-      const toRemove = [...actuales].filter((itemId) => !nuevos.has(itemId));
-      const toAdd = [...nuevos].filter((itemId) => !actuales.has(itemId));
+      const actuales = new Set<string>(kit.itemsContenido.map((ic): string => ic.itemId));
+      const nuevos = new Set<string>(itemIds);
+      const toRemove: string[] = [...actuales].filter((itemId) => !nuevos.has(itemId));
+      const toAdd: string[] = [...nuevos].filter((itemId) => !actuales.has(itemId));
       data.itemsContenido = {
         deleteMany: toRemove.length > 0 ? { itemId: { in: toRemove } } : undefined,
         create: toAdd.map((itemId) => ({ item: { connect: { id: itemId } } })),
