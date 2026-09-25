@@ -132,6 +132,7 @@ model Usuario {
   passwordResetTokens PasswordResetToken[]
   refreshTokens       RefreshToken[]
   dispositivos        Dispositivo[]
+  kitsAsignados       KitElectoral[]
 
   @@map("usuarios")
 }
@@ -235,10 +236,11 @@ model Recinto {
   juntasMasculinas   Int?        @map("juntas_masculinas")
   esDificilAcceso    Boolean     @default(false) @map("es_dificil_acceso")
 
-  canton     Canton    @relation(fields: [cantonId], references: [id])
-  cdaDestino Recinto?  @relation("CdaDestino", fields: [cdaDestinoId], references: [id])
-  origenes   Recinto[] @relation("CdaDestino")
+  canton     Canton         @relation(fields: [cantonId], references: [id])
+  cdaDestino Recinto?       @relation("CdaDestino", fields: [cdaDestinoId], references: [id])
+  origenes   Recinto[]      @relation("CdaDestino")
   militares  Militar[]
+  kits       KitElectoral[]
 
   @@index([cantonId], map: "idx_recintos_canton")
   @@index([tipo], map: "idx_recintos_tipo")
@@ -316,11 +318,47 @@ model KitElectoral {
   esPrueba     Boolean   @default(false) @map("es_prueba")
   creadoEn     DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
 
+  // SetNull: si se borra el recinto/operador, el kit queda sin asignar en vez
+  // de bloquear el delete o borrarse en cascada. Un recinto puede tener varios
+  // kits (y por lo tanto varios operadores, ej. los 2 operadores por CDA).
+  recinto  Recinto? @relation(fields: [recintoId], references: [id], onDelete: SetNull)
+  operador Usuario? @relation(fields: [operadorId], references: [id], onDelete: SetNull)
+  // `contenidos` (texto libre) queda como legacy: kits creados antes de esta
+  // relación lo siguen mostrando tal cual. Los kits nuevos usan itemsContenido.
+  itemsContenido KitItemContenido[]
+
   @@unique([eventoId, codigoUnico])
   @@index([eventoId], map: "idx_kits_evento")
   @@index([recintoId], map: "idx_kits_recinto")
   @@index([operadorId], map: "idx_kits_operador")
   @@map("kits_electorales")
+}
+
+// Catálogo editable de tipos de ítem de kit (ej. Computador, Impresora) — CRUD
+// por ADMINISTRADOR, mismo patrón que TipoEventoCatalog.
+model ItemKitCatalog {
+  id       String  @id @default(uuid()) @db.Uuid
+  codigo   String  @unique @db.VarChar(50)
+  etiqueta String  @db.VarChar(120)
+  activo   Boolean @default(true)
+
+  kits KitItemContenido[]
+
+  @@map("items_kit_catalog")
+}
+
+// Relación kit↔item: qué ítems del catálogo trae cada kit. Sin id propio ni
+// campos extra (cantidad/orden) — la clave natural [kitId, itemId] alcanza.
+model KitItemContenido {
+  kitId  String @map("kit_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+
+  kit  KitElectoral   @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  item ItemKitCatalog @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@id([kitId, itemId])
+  @@index([itemId], map: "idx_kit_items_item")
+  @@map("kit_items_contenido")
 }
 
 // =====================================================================

@@ -206,8 +206,10 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
             >
               <Text style={styles.kitCode}>{kit.codigoUnico}</Text>
               <Text style={styles.kitNombre}>{kit.nombre}</Text>
-              {kit.contenidos ? (
-                <Text style={styles.kitContenidos}>{kit.contenidos}</Text>
+              {kit.items.length > 0 || kit.contenidos ? (
+                <Text style={styles.kitContenidos}>
+                  {kit.items.length > 0 ? kit.items.join(', ') : kit.contenidos}
+                </Text>
               ) : null}
             </View>
           ))}

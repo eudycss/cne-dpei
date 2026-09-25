@@ -84,7 +84,7 @@ const asignacionFixture: MiAsignacionResponse = {
   },
   noCdas: [],
   militar: null,
-  kits: [{ id: 'k1', codigoUnico: 'K001', nombre: 'Kit 1', contenidos: null, recibido: true }],
+  kits: [{ id: 'k1', codigoUnico: 'K001', nombre: 'Kit 1', contenidos: null, items: [], recibido: true }],
   yaRegistroSalida: true,
   yaRegistroLlegada: true,
   yaRegistroSalidaRecinto: false,

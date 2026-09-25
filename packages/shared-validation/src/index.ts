@@ -268,6 +268,18 @@ export const createKitSchema = z.object({
   nombre: z.string().min(1, 'Requerido').max(160),
   contenidos: z.string().max(1000).nullable().optional(),
   esPrueba: z.boolean().optional(),
+  itemIds: z.array(z.string().uuid()).optional().default([]),
+  recintoId: z.string().uuid('Selecciona un recinto'),
+});
+
+// --- Catálogo de ítems de kit ---
+export const createItemKitSchema = z.object({
+  codigo: z.string().min(1, 'Requerido').max(50),
+  etiqueta: z.string().min(1, 'Requerido').max(120),
+});
+export const updateItemKitSchema = z.object({
+  etiqueta: z.string().min(1, 'Requerido').max(120).optional(),
+  activo: z.boolean().optional(),
 });
 
 export const pdfQrSchema = z.object({
@@ -276,9 +288,22 @@ export const pdfQrSchema = z.object({
 
 export const asignarKitSchema = z.object({
   operadorId: z.string().uuid('Operador inválido'),
-  recintoId: z.string().uuid('Recinto inválido'),
   justificacion: z.string().max(500).optional(),
 });
+
+// Edición de un kit ya creado: permite cambiar el recinto y/o el contenido
+// (ítems del catálogo). Todo opcional — PATCH parcial. `justificacion` cubre
+// HU12-CA6 si el evento ya está congelado. El recinto solo se puede cambiar,
+// nunca quitar (para un kit sin recinto, editar es la vía para dárselo).
+export const editKitSchema = z
+  .object({
+    recintoId: z.string().uuid('Recinto inválido').optional(),
+    itemIds: z.array(z.string().uuid()).optional(),
+    justificacion: z.string().max(500).optional(),
+  })
+  .refine((v) => v.recintoId !== undefined || v.itemIds !== undefined, {
+    message: 'Debes indicar al menos recintoId o itemIds',
+  });
 
 // HU12-CA6: justificación excepcional para modificar asignaciones con el
 // evento ya congelado (jornada electoral iniciada).
@@ -287,12 +312,14 @@ export const desasignarKitSchema = z.object({
 });
 
 // Fila de Excel/CSV para carga masiva de kits. El código único se autogenera;
-// el operador se referencia por su cédula y el recinto por su código.
+// el operador se referencia por su cédula, el recinto por su código y el
+// contenido por los códigos de ítems del catálogo (separados por coma).
 // La asignación es opcional: si se omiten ambos, el kit queda en bodega.
 export const bulkKitRowSchema = z
   .object({
     nombre: z.string().min(1, 'Nombre requerido').max(160),
     contenidos: z.string().max(1000).optional(),
+    items: z.string().optional(),
     cedula_operador: z.string().optional(),
     codigo_recinto: z.string().optional(),
   })
@@ -308,8 +335,11 @@ export const bulkKitRowSchema = z
 
 export type CreateKitInput = z.infer<typeof createKitSchema>;
 export type AsignarKitInput = z.infer<typeof asignarKitSchema>;
+export type EditKitInput = z.infer<typeof editKitSchema>;
 export type DesasignarKitInput = z.infer<typeof desasignarKitSchema>;
 export type BulkKitRow = z.infer<typeof bulkKitRowSchema>;
+export type CreateItemKitInput = z.infer<typeof createItemKitSchema>;
+export type UpdateItemKitInput = z.infer<typeof updateItemKitSchema>;
 
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)

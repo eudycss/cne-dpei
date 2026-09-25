@@ -21,12 +21,14 @@ import type {
   AsignarKitRequest,
   CreateKitRequest,
   DesasignarKitRequest,
+  EditKitRequest,
   PdfQrRequest,
 } from '@cne/shared-types';
 import {
   asignarKitSchema,
   createKitSchema,
   desasignarKitSchema,
+  editKitSchema,
   pdfQrSchema,
 } from '@cne/shared-validation';
 
@@ -63,6 +65,14 @@ export class KitsController {
     });
   }
 
+  @Get('recintos-ocupados')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Recintos que ya tienen un kit real (no de prueba) en el evento' })
+  recintosOcupados(@Query('eventoId') eventoId: string) {
+    if (!eventoId) return [];
+    return this.kits.recintosOcupados(eventoId);
+  }
+
   @Get('template.xlsx')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'HU11: plantilla Excel de carga masiva de kits' })
@@ -89,6 +99,16 @@ export class KitsController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   bulk(@UploadedFile() file: Express.Multer.File, @Query('eventoId') eventoId: string) {
     return this.kits.bulkUpload(file, eventoId);
+  }
+
+  @Patch(':id')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Editar el recinto y/o el contenido (ítems) de un kit existente' })
+  editar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(editKitSchema)) body: EditKitRequest,
+  ) {
+    return this.kits.editar(id, body);
   }
 
   @Patch(':id/asignar')

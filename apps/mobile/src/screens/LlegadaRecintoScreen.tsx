@@ -363,8 +363,10 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
               <>
                 <Text style={styles.kitPreviewCode}>{kitPreview.codigoUnico}</Text>
                 <Text style={styles.kitPreviewName}>{kitPreview.nombre}</Text>
-                {kitPreview.contenidos ? (
-                  <Text style={styles.kitPreviewContenidos}>{kitPreview.contenidos}</Text>
+                {kitPreview.items.length > 0 || kitPreview.contenidos ? (
+                  <Text style={styles.kitPreviewContenidos}>
+                    {kitPreview.items.length > 0 ? kitPreview.items.join(', ') : kitPreview.contenidos}
+                  </Text>
                 ) : null}
               </>
             ) : null}
