@@ -1,4 +1,4 @@
-import { TelegramNotifier, TEXTO_BOTON_CAIDOS } from './telegram-notifier';
+import { TelegramNotifier, TEXTO_BOTON_CAIDOS, TEXTO_BOTON_INGRESAR_CODIGO } from './telegram-notifier';
 
 describe('TelegramNotifier', () => {
   const originalFetch = global.fetch;
@@ -79,7 +79,7 @@ describe('TelegramNotifier', () => {
       expect(body.text).toMatch(/no hay enlaces caídos/i);
     });
 
-    it('adjunta el botón fijo de "Caídos" en el teclado del mensaje', async () => {
+    it('adjunta los botones fijos de "Caídos" e "Ingresar código" en el teclado del mensaje', async () => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';
       process.env.TELEGRAM_CHAT_ID = '-100200300';
       global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -90,7 +90,7 @@ describe('TelegramNotifier', () => {
       const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(opts.body);
       expect(body.reply_markup).toEqual({
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }]],
+        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
         resize_keyboard: true,
       });
     });
@@ -144,6 +144,43 @@ describe('TelegramNotifier', () => {
       await expect(
         notifier.enviarRecuperados([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }]),
       ).resolves.not.toThrow();
+    });
+  });
+
+  describe('enviarTexto', () => {
+    it('manda el texto tal cual, con el mismo teclado fijo que los demás mensajes', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarTexto('📍 978 — Escuela Central\nEstado: 🔴 FALLO', 'el resultado de búsqueda');
+
+      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.text).toBe('📍 978 — Escuela Central\nEstado: 🔴 FALLO');
+      expect(body.reply_markup).toEqual({
+        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        resize_keyboard: true,
+      });
+    });
+
+    it('no llama a fetch si faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID', async () => {
+      global.fetch = jest.fn();
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarTexto('hola', 'un texto');
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('no lanza si fetch rechaza (error de red)', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      const notifier = new TelegramNotifier();
+
+      await expect(notifier.enviarTexto('hola', 'un texto')).resolves.not.toThrow();
     });
   });
 });

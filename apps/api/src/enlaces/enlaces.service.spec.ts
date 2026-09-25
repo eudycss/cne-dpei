@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { EnlacesService } from './enlaces.service';
 import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
-import { TelegramNotifier, TEXTO_BOTON_CAIDOS } from './telegram-notifier';
+import { TelegramNotifier, TEXTO_BOTON_CAIDOS, TEXTO_BOTON_INGRESAR_CODIGO } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -23,6 +23,7 @@ describe('EnlacesService', () => {
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
     enviarRecuperados: jest.fn().mockResolvedValue(undefined),
+    enviarTexto: jest.fn().mockResolvedValue(undefined),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
 
@@ -636,6 +637,17 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).not.toHaveBeenCalled();
     });
 
+    it('ignora el update si el secreto tiene la misma longitud pero no coincide', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto456', {
+        message: { text: '/caidos', chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
     it('ignora el update si TELEGRAM_WEBHOOK_SECRET no está configurado', async () => {
       process.env.TELEGRAM_CHAT_ID = '-100200300';
 
@@ -675,6 +687,221 @@ describe('EnlacesService', () => {
       await service.procesarComandoTelegram('secreto123', {});
 
       expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    describe('flujo de "Ingresar código"', () => {
+      it('al tocar el botón, manda el prompt y todavía no busca nada', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(telegram.enviarTexto).toHaveBeenCalledWith(
+          expect.stringMatching(/código/i),
+          expect.any(String),
+        );
+        expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('responde con código, nombre y estado cuando la persona manda el código tras tocar el botón', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          estado: 'FALLO',
+        });
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledWith({
+          where: { codigoRecinto: '978' },
+          select: { codigoRecinto: true, nombreRecinto: true, estado: true },
+        });
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringContaining('Escuela Central'),
+          expect.any(String),
+        );
+      });
+
+      it('avisa si el código no existe, en vez de quedarse callado', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '9999', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringMatching(/no se encontró/i),
+          expect.any(String),
+        );
+      });
+
+      it('no interpreta el mensaje de otra persona del grupo como el código', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: 'hola a todos', chat: { id: '-100200300' }, from: { id: 222 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('solo usa el mensaje inmediato siguiente — el segundo mensaje ya no se busca como código', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          estado: 'ACTIVO',
+        });
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '982', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledTimes(1);
+      });
+
+      it('ignora el botón de ingresar código si viene de un chat distinto al configurado', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-999888777' }, from: { id: 111 } },
+        });
+
+        expect(telegram.enviarTexto).not.toHaveBeenCalled();
+      });
+
+      it('ignora el botón si el mensaje no trae remitente identificable (from ausente)', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' } },
+        });
+
+        expect(telegram.enviarTexto).not.toHaveBeenCalled();
+      });
+
+      it('resuelve la espera de dos personas del mismo chat de forma independiente', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockImplementation(({ where }: { where: { codigoRecinto: string } }) =>
+          where.codigoRecinto === '978'
+            ? { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' }
+            : { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'ACTIVO' },
+        );
+
+        // Persona A y persona B tocan el botón antes de que cualquiera escriba su código.
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 222 } },
+        });
+
+        // A manda su código: no debe afectar la espera pendiente de B.
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringContaining('Escuela Central'),
+          expect.any(String),
+        );
+
+        // B manda el suyo después: se resuelve con su propio código, no con el de A.
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '982', chat: { id: '-100200300' }, from: { id: 222 } },
+        });
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringContaining('Unidad Educativa Zaldumbide'),
+          expect.any(String),
+        );
+        expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledTimes(2);
+      });
+
+      it('tocar el botón varias veces seguidas no acumula esperas para la misma persona', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect((service as any).esperandoCodigo.size).toBe(1);
+      });
+
+      it('una espera vieja (más de 10 minutos) expira y ya no se resuelve como código', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        const ahora = Date.now();
+        const spy = jest.spyOn(Date, 'now').mockReturnValue(ahora);
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        spy.mockReturnValue(ahora + 11 * 60 * 1000);
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+        spy.mockRestore();
+      });
+
+      it('un mensaje vacío o solo espacios no consume la espera de código', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          estado: 'FALLO',
+        });
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '   ', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledTimes(1);
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringContaining('Escuela Central'),
+          expect.any(String),
+        );
+      });
     });
   });
 });
