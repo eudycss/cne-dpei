@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { EnlaceRecinto } from '@cne/shared-types';
 import { getConfigEnlaces, getEnlaces } from '../../lib/queries/enlaces';
@@ -9,6 +9,27 @@ const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
   ACTIVO: '#16a34a',
   FALLO: '#ef4444',
 };
+
+/** El cron del API revisa la hoja cada 5 min; 15 min sin escribir (3 ciclos perdidos)
+ * indica que el servicio está dormido o el cron está fallando. */
+const UMBRAL_DESACTUALIZADO_MS = 15 * 60 * 1000;
+const INTERVALO_RELOJ_MS = 60_000;
+
+/** Devuelve la última actualización si ya pasó el umbral, o null si los datos están al día.
+ * Fechas inválidas se ignoran; si ninguna es válida no se puede afirmar que estén vencidos. */
+export function ultimaActualizacionVencida(enlaces: EnlaceRecinto[], ahora: number): string | null {
+  let ultima: string | null = null;
+  let ultimaMs = -Infinity;
+  for (const e of enlaces) {
+    const ms = Date.parse(e.actualizadoEn);
+    if (!Number.isNaN(ms) && ms > ultimaMs) {
+      ultimaMs = ms;
+      ultima = e.actualizadoEn;
+    }
+  }
+  if (ultima === null) return null;
+  return ahora - ultimaMs > UMBRAL_DESACTUALIZADO_MS ? ultima : null;
+}
 
 type FiltroEstado = 'TODOS' | EnlaceRecinto['estado'];
 
@@ -40,6 +61,15 @@ export function EnlacesPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [enlaces]);
 
+  // Reloj propio: si el cron está caído los datos no cambian y React Query no vuelve a
+  // renderizar tras el refetch, así que sin esto el banner nunca aparecería sin recargar.
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAhora(Date.now()), INTERVALO_RELOJ_MS);
+    return () => clearInterval(id);
+  }, []);
+  const ultimaActualizacion = ultimaActualizacionVencida(enlaces, ahora);
+
   const busquedaNormalizada = busqueda.trim().toLowerCase();
 
   const enlacesFiltrados = enlaces
@@ -68,6 +98,15 @@ export function EnlacesPage() {
       </div>
 
       {mostrarCorreos && <CorreosAvisoModal onClose={() => setMostrarCorreos(false)} />}
+
+      {ultimaActualizacion && (
+        <div className="banner" role="status">
+          <span aria-hidden="true">⚠️ </span>
+          Datos sin actualizar desde {formatearFechaHora(ultimaActualizacion)}. La revisión automática de la hoja
+          parece detenida: los estados pueden estar desfasados y los avisos por Telegram/correo podrían no estar
+          enviándose.
+        </div>
+      )}
 
       {enlaces.length > 0 && (
         <>
