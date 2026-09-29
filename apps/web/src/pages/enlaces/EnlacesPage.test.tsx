@@ -137,6 +137,35 @@ describe('EnlacesPage', () => {
     expect(screen.getByRole('button', { name: 'Fallidos (1)' })).toBeInTheDocument();
   });
 
+  it('los conteos por estado respetan el cantón y la búsqueda seleccionados', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/enlaces') {
+        return Promise.resolve({
+          data: [
+            ...enlaces,
+            { codigoRecinto: '990', nombreRecinto: 'Escuela Imantag', canton: 'Cotacachi', estado: 'FALLO', actualizadoEn: '2026-09-23T11:00:00.000Z' },
+          ],
+        });
+      }
+      if (url === '/enlaces/config') return Promise.resolve({ data: config() });
+      return Promise.resolve({ data: [] });
+    });
+    renderPage();
+
+    await screen.findByText('Escuela Central');
+    await user.selectOptions(screen.getByLabelText('Filtrar por cantón'), 'Cotacachi');
+
+    expect(screen.getByRole('button', { name: 'Todos (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Activos (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fallidos (1)' })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Buscar por nombre o código'), 'imantag');
+    expect(screen.getByRole('button', { name: 'Todos (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Activos (0)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fallidos (1)' })).toBeInTheDocument();
+  });
+
   it('marca aria-pressed en el botón de filtro activo y lo quita de los demás', async () => {
     const user = userEvent.setup();
     renderPage();

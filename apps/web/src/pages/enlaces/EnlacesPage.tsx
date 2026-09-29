@@ -72,8 +72,9 @@ export function EnlacesPage() {
 
   const busquedaNormalizada = busqueda.trim().toLowerCase();
 
-  const enlacesFiltrados = enlaces
-    .filter((e) => filtro === 'TODOS' || e.estado === filtro)
+  // Los conteos de cada botón de estado reflejan el cantón y la búsqueda activos,
+  // por eso se calculan sobre esta lista y no sobre `enlaces`.
+  const enlacesSinFiltroEstado = enlaces
     .filter((e) => !cantonFiltro || e.canton === cantonFiltro)
     .filter(
       (e) =>
@@ -82,10 +83,12 @@ export function EnlacesPage() {
         e.nombreRecinto.toLowerCase().includes(busquedaNormalizada),
     );
 
+  const enlacesFiltrados = enlacesSinFiltroEstado.filter((e) => filtro === 'TODOS' || e.estado === filtro);
+
   const conteos: Record<FiltroEstado, number> = {
-    TODOS: enlaces.length,
-    ACTIVO: enlaces.filter((e) => e.estado === 'ACTIVO').length,
-    FALLO: enlaces.filter((e) => e.estado === 'FALLO').length,
+    TODOS: enlacesSinFiltroEstado.length,
+    ACTIVO: enlacesSinFiltroEstado.filter((e) => e.estado === 'ACTIVO').length,
+    FALLO: enlacesSinFiltroEstado.filter((e) => e.estado === 'FALLO').length,
   };
 
   return (
