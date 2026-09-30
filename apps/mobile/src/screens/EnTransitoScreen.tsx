@@ -130,7 +130,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -155,7 +155,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     lineHeight: 20,
   },
   btnPrimary: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,

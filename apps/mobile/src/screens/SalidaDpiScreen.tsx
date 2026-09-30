@@ -257,7 +257,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary, marginTop: 2 },
   kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
   submitButton: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     borderRadius: 8,
     marginTop: 8,
@@ -267,7 +267,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   logoutLinkText: { color: c.textSecondary, fontFamily: fontFamily.medium, fontSize: 13 },
   errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, textAlign: 'center' },
   errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 8 },
-  retryButton: { backgroundColor: c.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
+  retryButton: { backgroundColor: c.primaryBg, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
   retryText: { color: '#fff', fontFamily: fontFamily.semiBold },
   logoutButton: { paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 },
   logoutText: { color: c.textSecondary, fontFamily: fontFamily.medium },

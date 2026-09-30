@@ -73,7 +73,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     marginTop: 12,
     minHeight: 44,
     borderRadius: 8,
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     alignItems: 'center',
     justifyContent: 'center',
   },

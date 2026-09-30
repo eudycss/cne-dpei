@@ -179,7 +179,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  btnPrimary: { backgroundColor: c.primary, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
+  btnPrimary: { backgroundColor: c.primaryBg, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
   btnDisabled: { backgroundColor: c.primaryDisabled },
   btnSecondary: {

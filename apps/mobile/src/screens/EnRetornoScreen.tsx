@@ -130,7 +130,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -140,7 +140,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textMeta, textAlign: 'center', marginTop: 12, lineHeight: 20 },
   message: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 16, marginBottom: 24, lineHeight: 20 },
   btnPrimary: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,

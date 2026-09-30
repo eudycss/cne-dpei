@@ -139,7 +139,7 @@ const makeStyles = (c: Colors) =>
     operador: { fontSize: 13, fontFamily: fontFamily.medium, color: c.primary, marginBottom: 4 },
     estado: { fontSize: 13, fontFamily: fontFamily.semiBold, marginBottom: 10 },
     btn: {
-      backgroundColor: c.primary,
+      backgroundColor: c.primaryBg,
       borderRadius: 8,
       paddingVertical: 8,
       alignItems: 'center',

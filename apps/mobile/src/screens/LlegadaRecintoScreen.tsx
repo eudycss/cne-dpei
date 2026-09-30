@@ -591,7 +591,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   stepBadgeWrap: { alignItems: 'center', minWidth: 80 },
   stepCircle: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   stepCircleIdle: { backgroundColor: c.border },
-  stepCircleActive: { backgroundColor: c.primary },
+  stepCircleActive: { backgroundColor: c.primaryBg },
   stepCircleDone: { backgroundColor: c.success },
   stepCircleText: { color: '#fff', fontFamily: fontFamily.bold, fontSize: 13 },
   stepLabel: { fontSize: 11, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 4, textAlign: 'center' },
@@ -662,7 +662,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   kitEstadoOk: { color: c.successText, backgroundColor: c.successBg },
   kitEstadoPend: { color: c.warningText, backgroundColor: c.warningBg },
 
-  btnPrimary: { backgroundColor: c.primary, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
+  btnPrimary: { backgroundColor: c.primaryBg, paddingVertical: 14, borderRadius: 8, marginBottom: 10 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
   btnSecondary: {
     backgroundColor: c.btnSecondaryBg,
