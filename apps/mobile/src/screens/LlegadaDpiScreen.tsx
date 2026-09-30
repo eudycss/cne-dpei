@@ -163,7 +163,14 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
           {kits.map((k) => {
             const checked = marcados.has(k.id);
             return (
-              <Pressable key={k.id} style={styles.kitRow} onPress={() => toggleKit(k.id)}>
+              <Pressable
+                key={k.id}
+                style={styles.kitRow}
+                onPress={() => toggleKit(k.id)}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`${k.nombre}, ${k.codigoUnico}`}
+                accessibilityState={{ checked }}
+              >
                 <View style={[styles.checkbox, checked && styles.checkboxOn]}>
                   {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
                 </View>
