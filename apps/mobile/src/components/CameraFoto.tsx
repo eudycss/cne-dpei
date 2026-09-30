@@ -31,7 +31,7 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
   if (!permission) {
     return (
       <View style={styles.permissionWrap}>
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color="#fff" accessibilityLabel="Cargando cámara" />
       </View>
     );
   }
@@ -42,15 +42,20 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
           Necesitamos acceso a la cámara para tomar la foto.
         </Text>
         {permission.canAskAgain ? (
-          <Pressable style={styles.primary} onPress={() => requestPermission()}>
+          <Pressable style={styles.primary} onPress={() => requestPermission()} accessibilityRole="button">
             <Text style={styles.primaryText}>Conceder permiso</Text>
           </Pressable>
         ) : (
-          <Pressable style={styles.primary} onPress={() => Linking.openSettings()}>
+          <Pressable
+            style={styles.primary}
+            onPress={() => Linking.openSettings()}
+            accessibilityRole="button"
+            accessibilityHint="Abre los ajustes del teléfono para permitir la cámara"
+          >
             <Text style={styles.primaryText}>Abrir ajustes</Text>
           </Pressable>
         )}
-        <Pressable style={styles.secondary} onPress={onCancel}>
+        <Pressable style={styles.secondary} onPress={onCancel} accessibilityRole="button">
           <Text style={styles.secondaryText}>Cancelar</Text>
         </Pressable>
       </View>
@@ -90,19 +95,33 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
       : { uri: capturedUri };
     return (
       <View style={styles.container}>
-        <Image source={previewSource} style={StyleSheet.absoluteFill} resizeMode="contain" />
+        <Image
+          source={previewSource}
+          style={StyleSheet.absoluteFill}
+          resizeMode="contain"
+          accessibilityLabel={`Vista previa: ${titulo}`}
+        />
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-          <Pressable onPress={onCancel} style={styles.topBtn}>
+          <Pressable onPress={onCancel} style={styles.topBtn} accessibilityRole="button">
             <Text style={styles.topBtnText}>Cancelar</Text>
           </Pressable>
-          <Text style={styles.topTitle}>¿Está bien la foto?</Text>
-          <View style={styles.topBtn} />
+          <Text style={styles.topTitle} accessibilityRole="header">¿Está bien la foto?</Text>
+          <View style={styles.topBtn} importantForAccessibility="no" accessibilityElementsHidden />
         </View>
         <View style={[styles.reviewBar, { paddingBottom: insets.bottom + 24 }]}>
-          <Pressable style={styles.btnRepetir} onPress={repetir}>
+          <Pressable
+            style={styles.btnRepetir}
+            onPress={repetir}
+            accessibilityRole="button"
+            accessibilityLabel="Repetir foto"
+          >
             <Text style={styles.btnRepetirText}>Repetir</Text>
           </Pressable>
-          <Pressable style={styles.btnUsar} onPress={() => onCapture(capturedUri, capturedBase64 ?? undefined)}>
+          <Pressable
+            style={styles.btnUsar}
+            onPress={() => onCapture(capturedUri, capturedBase64 ?? undefined)}
+            accessibilityRole="button"
+          >
             <Text style={styles.btnUsarText}>Usar esta foto</Text>
           </Pressable>
         </View>
@@ -121,11 +140,11 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
         onCameraReady={() => setCameraReady(true)}
       />
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={onCancel} style={styles.topBtn}>
+        <Pressable onPress={onCancel} style={styles.topBtn} accessibilityRole="button">
           <Text style={styles.topBtnText}>Cancelar</Text>
         </Pressable>
-        <Text style={styles.topTitle}>{titulo}</Text>
-        <View style={styles.topBtn} />
+        <Text style={styles.topTitle} accessibilityRole="header">{titulo}</Text>
+        <View style={styles.topBtn} importantForAccessibility="no" accessibilityElementsHidden />
       </View>
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
         {!cameraReady ? (
@@ -135,6 +154,10 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
           style={[styles.shutter, shutterDisabled && { opacity: 0.4 }]}
           onPress={tomarFoto}
           disabled={shutterDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="Tomar foto"
+          accessibilityHint={cameraReady ? undefined : 'La cámara se está iniciando'}
+          accessibilityState={{ disabled: shutterDisabled, busy }}
         >
           {busy ? <ActivityIndicator color="#1f2937" /> : <View style={styles.shutterInner} />}
         </Pressable>
@@ -157,7 +180,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  topBtn: { minWidth: 80 },
+  topBtn: { minWidth: 80, minHeight: 44, justifyContent: 'center' },
   topBtnText: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 },
   topTitle: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 },
   bottomBar: {
