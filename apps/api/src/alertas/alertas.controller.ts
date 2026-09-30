@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, UseGuards } 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { UpdateEstadoAlertaRequest } from '@cne/shared-types';
 import { updateEstadoAlertaSchema } from '@cne/shared-validation';
+import { CurrentUser } from '../common/current-user.decorator';
+import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
@@ -19,20 +21,22 @@ export class AlertasController {
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
   @ApiOperation({ summary: 'HU18: listar alertas de un evento' })
   list(
+    @CurrentUser() user: AuthenticatedUser,
     @Query('eventoId') eventoId: string,
     @Query('tipo') tipo?: string,
     @Query('estado') estado?: string,
   ) {
-    return this.alertas.list(eventoId, tipo, estado);
+    return this.alertas.list({ viewerId: user.sub, roles: user.roles, eventoId, tipo, estado });
   }
 
   @Patch(':id')
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
   @ApiOperation({ summary: 'HU18: marcar alerta como VISTA o ATENDIDA' })
   updateEstado(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateEstadoAlertaSchema)) body: UpdateEstadoAlertaRequest,
   ) {
-    return this.alertas.updateEstado(id, body);
+    return this.alertas.updateEstado(id, user.sub, user.roles, body);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { updateEstadoAlertaSchema } from '@cne/shared-validation';
-import type { Alerta, UpdateEstadoAlertaRequest } from '@cne/shared-types';
+import type { Alerta, RoleName, UpdateEstadoAlertaRequest } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -14,22 +14,60 @@ export class AlertasService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async list(eventoId: string, tipo?: string, estado?: string): Promise<Alerta[]> {
+  async list(opts: {
+    viewerId: string;
+    roles: RoleName[];
+    eventoId: string;
+    tipo?: string;
+    estado?: string;
+  }): Promise<Alerta[]> {
+    const where: any = {
+      eventoId: opts.eventoId,
+      ...(opts.tipo ? { tipo: opts.tipo as any } : {}),
+      ...(opts.estado ? { estado: opts.estado as any } : {}),
+    };
+
+    if (!esAdmin(opts.roles)) {
+      // Técnico: solo alertas de los operadores que tiene asignados en este evento
+      const asignados = await this.prisma.asignacionSupervisor.findMany({
+        where: { eventoId: opts.eventoId, supervisorId: opts.viewerId },
+        select: { operadorId: true },
+      });
+      const operadorIds = asignados.map((a) => a.operadorId);
+      if (operadorIds.length === 0) return [];
+      where.operadorId = { in: operadorIds };
+    }
+
     const rows = await this.prisma.alerta.findMany({
-      where: {
-        eventoId,
-        ...(tipo ? { tipo: tipo as any } : {}),
-        ...(estado ? { estado: estado as any } : {}),
-      },
+      where,
       orderBy: { generadaEn: 'desc' },
     });
     return this.enrichWithOperadorNombre(rows);
   }
 
-  async updateEstado(id: string, body: UpdateEstadoAlertaRequest): Promise<Alerta> {
+  async updateEstado(
+    id: string,
+    viewerId: string,
+    roles: RoleName[],
+    body: UpdateEstadoAlertaRequest,
+  ): Promise<Alerta> {
     const parsed = updateEstadoAlertaSchema.parse(body);
     const existing = await this.prisma.alerta.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Alerta no encontrada');
+    if (!esAdmin(roles)) {
+      // Misma respuesta que "no existe" para no revelar alertas de otros técnicos
+      const asignado = existing.operadorId
+        ? await this.prisma.asignacionSupervisor.findFirst({
+            where: {
+              eventoId: existing.eventoId,
+              supervisorId: viewerId,
+              operadorId: existing.operadorId,
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!asignado) throw new NotFoundException('Alerta no encontrada');
+    }
     const updated = await this.prisma.alerta.update({
       where: { id },
       data: { estado: parsed.estado },
@@ -231,6 +269,10 @@ export class AlertasService {
       });
     }
   }
+}
+
+function esAdmin(roles: RoleName[]): boolean {
+  return roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
 }
 
 function toDto(row: any, operadorNombre: string | null = null): Alerta {
