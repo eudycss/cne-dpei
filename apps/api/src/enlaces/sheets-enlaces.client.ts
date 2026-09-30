@@ -63,7 +63,12 @@ export class SheetsEnlacesClient {
       );
     }
 
-    const out: SheetEnlaceRow[] = [];
+    // Un mismo código puede venir en más de una fila (ej. el CPE aparece dos veces).
+    // Se devuelve una sola entrada por código: sin esto sale repetido en Telegram y,
+    // si las filas difieren de estado, el cron vería una caída y una recuperación
+    // falsas en cada ciclo. Basta con que una fila esté en FALLO para contar como
+    // caído — preferible una alerta de más que ocultar un enlace caído.
+    const porCodigo = new Map<string, SheetEnlaceRow>();
     for (const row of rows.slice(headerRowIndex + 1)) {
       const provincia = (row[idxProvincia] ?? '').toString().trim().toUpperCase();
       if (provincia !== 'IMBABURA') continue;
@@ -72,13 +77,19 @@ export class SheetsEnlacesClient {
       if (!codigoRecinto) continue;
 
       const estadoTexto = (row[idxEstado] ?? '').toString().trim().toUpperCase();
-      out.push({
+      const estado: SheetEnlaceRow['estado'] = estadoTexto === 'ACTIVO' ? 'ACTIVO' : 'FALLO';
+      const existente = porCodigo.get(codigoRecinto);
+      if (existente) {
+        if (estado === 'FALLO') existente.estado = 'FALLO';
+        continue;
+      }
+      porCodigo.set(codigoRecinto, {
         codigoRecinto,
         nombreRecinto: (row[idxLocalidad] ?? '').toString().trim(),
         canton: idxCanton === -1 ? '' : (row[idxCanton] ?? '').toString().trim(),
-        estado: estadoTexto === 'ACTIVO' ? 'ACTIVO' : 'FALLO',
+        estado,
       });
     }
-    return out;
+    return [...porCodigo.values()];
   }
 }
