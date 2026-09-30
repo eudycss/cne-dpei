@@ -30,7 +30,8 @@ export class AlertasService {
     if (!esAdmin(opts.roles)) {
       const visibles = await this.filtroVisiblesParaTecnico(opts.eventoId, opts.viewerId);
       if (!visibles) return [];
-      Object.assign(where, visibles);
+      // En AND para que un futuro OR en `where` no pise ni amplíe este filtro.
+      where.AND = [visibles];
     }
 
     const rows = await this.prisma.alerta.findMany({

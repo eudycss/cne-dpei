@@ -99,7 +99,8 @@ export function RecintosDificilAccesoScreen() {
                 </View>
                 <Text style={styles.nombre}>{r.nombreRecinto}</Text>
                 <Text style={styles.operador}>{r.operadorNombre}</Text>
-                <Text style={[styles.estado, { color: info.color }]}>{info.label}</Text>
+                {/* El color del estado va en el punto; el texto usa el del tema (varios estados no llegan a 4.5:1). */}
+                <Text style={styles.estado}>{info.label}</Text>
                 {!yaLlego && (
                   <Pressable
                     style={[styles.btn, registrando === r.recintoId && styles.btnDisabled]}
@@ -137,7 +138,7 @@ const makeStyles = (c: Colors) =>
     codigo: { fontSize: 14, fontFamily: fontFamily.semiBold, color: c.textPrimary, flex: 1 },
     nombre: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginBottom: 4 },
     operador: { fontSize: 13, fontFamily: fontFamily.medium, color: c.primary, marginBottom: 4 },
-    estado: { fontSize: 13, fontFamily: fontFamily.semiBold, marginBottom: 10 },
+    estado: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textMeta, marginBottom: 10 },
     btn: {
       backgroundColor: c.primaryBg,
       borderRadius: 8,

@@ -87,7 +87,26 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({
         eventoId,
         estado: 'GENERADA',
-        ...filtroEsperado([kitPropio]),
+        AND: [filtroEsperado([kitPropio])],
+      });
+    });
+
+    it('los filtros tipo/estado se combinan en AND con la visibilidad (no la amplían)', async () => {
+      prisma.alerta.findMany.mockResolvedValueOnce([]);
+
+      await service.list({
+        viewerId: tecnicoId,
+        roles: ['TECNICO_SUPERVISOR'],
+        eventoId,
+        tipo: 'KIT_NO_CORRESPONDE',
+        estado: 'VISTA',
+      });
+
+      expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({
+        eventoId,
+        tipo: 'KIT_NO_CORRESPONDE',
+        estado: 'VISTA',
+        AND: [filtroEsperado([kitPropio])],
       });
     });
 
@@ -97,7 +116,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
 
       await service.list({ viewerId: tecnicoId, roles: ['TECNICO_SUPERVISOR'], eventoId });
 
-      expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({ eventoId, ...filtroEsperado([]) });
+      expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({ eventoId, AND: [filtroEsperado([])] });
     });
 
     it('el técnico sin operadores asignados no ve ninguna alerta', async () => {
@@ -133,10 +152,20 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       );
       prisma.alerta.findFirst.mockResolvedValueOnce({ id: alertaId });
       prisma.alerta.update.mockResolvedValueOnce(filaAlerta({ estado: 'ATENDIDA' }));
+      const otroEvento = '66666666-6666-6666-6666-666666666666';
+      prisma.alerta.findUnique.mockReset();
+      prisma.alerta.findUnique.mockResolvedValueOnce(
+        filaAlerta({ eventoId: otroEvento, operadorId: 'otro-operador', tipo: 'KIT_NO_CORRESPONDE', kitId: kitPropio }),
+      );
 
       await service.updateEstado(alertaId, tecnicoId, ['TECNICO_SUPERVISOR'], { estado: 'ATENDIDA' });
 
       expect(prisma.alerta.update).toHaveBeenCalled();
+      // La visibilidad se calcula en el evento de la alerta, no en otro.
+      expect(prisma.asignacionSupervisor.findMany).toHaveBeenCalledWith({
+        where: { eventoId: otroEvento, supervisorId: tecnicoId },
+        select: { operadorId: true },
+      });
     });
 
     it('el técnico recibe 404 al tocar una alerta que no le corresponde (y no se modifica)', async () => {
