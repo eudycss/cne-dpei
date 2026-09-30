@@ -256,4 +256,42 @@ describe('SalidaRecintoScreen', () => {
     const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
     expect(continuar.props.disabled).toBe(true);
   });
+
+  it('la cámara se titula con el acta que se está fotografiando (no "Foto del militar")', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    for (const titulo of ['Acta de instalación', 'Acta de escrutinio']) {
+      const boton = pressableAncestor(cardPorTitulo(renderer, titulo).findByProps({ children: 'Tomar foto' }));
+      await act(async () => boton.props.onPress());
+      const camara = renderer.root.findByType(CameraFoto);
+      expect(camara.props.titulo).toBe(titulo);
+      await act(async () => camara.props.onCancel());
+    }
+  });
+
+  it('el kit del paso 2 se expone como checkbox con nombre y estado (WCAG 4.1.2)', async () => {
+    (capturarYSubirActa as jest.Mock).mockImplementation((_ctx: string, tipo: string, uri: string) =>
+      Promise.resolve({ uri, url: `actas/${tipo}.bin`, error: null }),
+    );
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+      await flushPromises();
+    });
+    await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
+    await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+    await act(async () => pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress());
+
+    const checkbox = () =>
+      renderer.root.find((n) => n.type === Pressable && n.props.accessibilityRole === 'checkbox');
+    expect(checkbox().props.accessibilityLabel).toBe('Kit 1, K001');
+    expect(checkbox().props.accessibilityState).toEqual({ checked: false });
+
+    await act(async () => checkbox().props.onPress());
+    expect(checkbox().props.accessibilityState).toEqual({ checked: true });
+  });
 });

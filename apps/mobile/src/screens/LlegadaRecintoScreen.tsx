@@ -370,14 +370,8 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
                 ) : null}
               </>
             ) : null}
-            <View style={styles.modalActions}>
-              <Pressable
-                style={styles.btnSecondary}
-                onPress={() => setKitPreview(null)}
-                disabled={confirmandoKit}
-              >
-                <Text style={styles.btnSecondaryText}>Cancelar</Text>
-              </Pressable>
+            {/* Apilados: la etiqueta larga no cabe junto a "Cancelar" en pantallas angostas. */}
+            <View style={styles.modalActionsApiladas}>
               <Pressable
                 style={[styles.btnPrimary, confirmandoKit && { opacity: 0.6 }]}
                 onPress={confirmarRecepcion}
@@ -386,6 +380,13 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
                 <Text style={styles.btnPrimaryText}>
                   {confirmandoKit ? 'Confirmando…' : 'Confirmar Recepción de Kit Electoral'}
                 </Text>
+              </Pressable>
+              <Pressable
+                style={styles.btnSecondary}
+                onPress={() => setKitPreview(null)}
+                disabled={confirmandoKit}
+              >
+                <Text style={styles.btnSecondaryText}>Cancelar</Text>
               </Pressable>
             </View>
           </View>
@@ -698,6 +699,8 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     letterSpacing: 1,
   },
   modalActions: { flexDirection: 'row', gap: 8 },
+  // Sin gap: btnPrimary/btnSecondary ya traen marginBottom.
+  modalActionsApiladas: { marginTop: 12 },
   kitPreviewCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1, marginTop: 6 },
   kitPreviewName: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 6 },
   kitPreviewContenidos: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 4, marginBottom: 8 },

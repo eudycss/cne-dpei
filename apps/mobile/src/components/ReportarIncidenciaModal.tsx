@@ -123,6 +123,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
             setMostrarCamara(false);
           }}
           onCancel={() => setMostrarCamara(false)}
+          titulo="Foto de la incidencia"
         />
       </Modal>
     );
