@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { activarRastreoSegundoPlano, asegurarRastreoSiHayPermiso } from './location';
+import {
+  activarRastreoSegundoPlano,
+  asegurarRastreoSiHayPermiso,
+  permisoSegundoPlanoConcedido,
+} from './location';
 
 export type EstadoRastreo = 'verificando' | 'activo' | 'inactivo';
 
@@ -14,10 +18,17 @@ export function useEstadoRastreo() {
   const [activando, setActivando] = useState(false);
   const [permisoDenegado, setPermisoDenegado] = useState(false);
   const montado = useRef(true);
+  // Solo aplica el resultado de la verificación más reciente: una lenta que
+  // termina tarde no debe volver a mostrar el aviso.
+  const ultimaVerificacion = useRef(0);
+  const activacionEnCurso = useRef(false);
 
   const refrescar = useCallback(async () => {
+    const id = ++ultimaVerificacion.current;
     const activo = await asegurarRastreoSiHayPermiso();
-    if (montado.current) setEstado(activo ? 'activo' : 'inactivo');
+    if (!montado.current || id !== ultimaVerificacion.current) return;
+    setEstado(activo ? 'activo' : 'inactivo');
+    if (activo) setPermisoDenegado(false);
   }, []);
 
   useEffect(() => {
@@ -33,12 +44,19 @@ export function useEstadoRastreo() {
   }, [refrescar]);
 
   const activar = useCallback(async () => {
+    // Guard síncrono: el estado `activando` tarda un render en deshabilitar el botón.
+    if (activacionEnCurso.current) return;
+    activacionEnCurso.current = true;
     setActivando(true);
     try {
       const resultado = await activarRastreoSegundoPlano();
-      if (montado.current) setPermisoDenegado(resultado === 'fallo');
+      // 'fallo' también ocurre con GPS apagado o error del servicio: solo se
+      // ofrece "Abrir ajustes" si de verdad falta el permiso.
+      const sinPermiso = resultado === 'fallo' && !(await permisoSegundoPlanoConcedido());
+      if (montado.current) setPermisoDenegado(sinPermiso);
       await refrescar();
     } finally {
+      activacionEnCurso.current = false;
       if (montado.current) setActivando(false);
     }
   }, [refrescar]);

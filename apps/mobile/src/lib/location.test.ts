@@ -31,6 +31,7 @@ import {
   activarRastreoSegundoPlano,
   asegurarRastreoSiHayPermiso,
   iniciarRastreo,
+  permisoSegundoPlanoConcedido,
   iniciarRastreoPrimerPlano,
 } from './location';
 
@@ -260,5 +261,22 @@ describe('asegurarRastreoSiHayPermiso', () => {
     (Location.startLocationUpdatesAsync as jest.Mock).mockRejectedValue(new Error('servicio no disponible'));
 
     await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(false);
+  });
+});
+
+describe('permisoSegundoPlanoConcedido', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('true solo con el permiso concedido, sin abrir el diálogo', async () => {
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
+    await expect(permisoSegundoPlanoConcedido()).resolves.toBe(true);
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'denied' });
+    await expect(permisoSegundoPlanoConcedido()).resolves.toBe(false);
+    expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('false si la consulta falla', async () => {
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockRejectedValueOnce(new Error('x'));
+    await expect(permisoSegundoPlanoConcedido()).resolves.toBe(false);
   });
 });

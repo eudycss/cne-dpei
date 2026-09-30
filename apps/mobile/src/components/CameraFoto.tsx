@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Image,
   Linking,
@@ -27,6 +28,13 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
   const [cameraReady, setCameraReady] = useState(false);
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [capturedBase64, setCapturedBase64] = useState<string | null>(null);
+
+  // Al pasar a la revisión el foco de TalkBack no se mueve solo: se anuncia el cambio.
+  useEffect(() => {
+    if (capturedUri) {
+      AccessibilityInfo.announceForAccessibility('Foto tomada. Elija usar esta foto o repetirla.');
+    }
+  }, [capturedUri]);
 
   if (!permission) {
     return (
@@ -99,6 +107,7 @@ export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }:
           source={previewSource}
           style={StyleSheet.absoluteFill}
           resizeMode="contain"
+          accessible
           accessibilityLabel={`Vista previa: ${titulo}`}
         />
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>

@@ -4,10 +4,15 @@ import { AppState, Text } from 'react-native';
 jest.mock('./location', () => ({
   asegurarRastreoSiHayPermiso: jest.fn(),
   activarRastreoSegundoPlano: jest.fn(),
+  permisoSegundoPlanoConcedido: jest.fn(),
 }));
 
 import { useEstadoRastreo } from './useEstadoRastreo';
-import { activarRastreoSegundoPlano, asegurarRastreoSiHayPermiso } from './location';
+import {
+  activarRastreoSegundoPlano,
+  asegurarRastreoSiHayPermiso,
+  permisoSegundoPlanoConcedido,
+} from './location';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -92,6 +97,7 @@ describe('useEstadoRastreo', () => {
   it("activar(): si el permiso se niega marca permisoDenegado y sigue 'inactivo'", async () => {
     (asegurarRastreoSiHayPermiso as jest.Mock).mockResolvedValue(false);
     (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('fallo');
+    (permisoSegundoPlanoConcedido as jest.Mock).mockResolvedValue(false);
     await montar();
 
     await act(async () => {
@@ -119,5 +125,79 @@ describe('useEstadoRastreo', () => {
     const renderer = await montar();
     act(() => renderer.unmount());
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("activar(): un 'fallo' con el permiso concedido (GPS apagado) NO ofrece Ajustes", async () => {
+    (asegurarRastreoSiHayPermiso as jest.Mock).mockResolvedValue(false);
+    (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('fallo');
+    (permisoSegundoPlanoConcedido as jest.Mock).mockResolvedValue(true);
+    await montar();
+
+    await act(async () => {
+      await ultimo!.activar();
+    });
+    expect(ultimo!.permisoDenegado).toBe(false);
+    expect(ultimo!.estado).toBe('inactivo');
+  });
+
+  it("activar(): con 'pendiente' no marca permiso denegado", async () => {
+    (asegurarRastreoSiHayPermiso as jest.Mock).mockResolvedValue(false);
+    (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('pendiente');
+    await montar();
+
+    await act(async () => {
+      await ultimo!.activar();
+    });
+    expect(ultimo!.permisoDenegado).toBe(false);
+    expect(permisoSegundoPlanoConcedido).not.toHaveBeenCalled();
+  });
+
+  it('activar(): un doble toque solo pide el permiso una vez', async () => {
+    (asegurarRastreoSiHayPermiso as jest.Mock).mockResolvedValue(false);
+    let resolver!: (v: string) => void;
+    (activarRastreoSegundoPlano as jest.Mock).mockReturnValue(new Promise((r) => (resolver = r)));
+    await montar();
+
+    await act(async () => {
+      ultimo!.activar();
+      ultimo!.activar();
+      resolver('activo');
+      await flushPromises();
+    });
+    expect(activarRastreoSegundoPlano).toHaveBeenCalledTimes(1);
+  });
+
+  it('una verificación vieja que termina tarde no pisa a la más reciente', async () => {
+    let resolverVieja!: (v: boolean) => void;
+    (asegurarRastreoSiHayPermiso as jest.Mock)
+      .mockReturnValueOnce(new Promise((r) => (resolverVieja = r))) // montaje, lenta
+      .mockResolvedValueOnce(true); // foreground, rápida
+    await montar();
+
+    await act(async () => {
+      listener?.('active');
+      await flushPromises();
+    });
+    expect(ultimo!.estado).toBe('activo');
+
+    await act(async () => {
+      resolverVieja(false);
+      await flushPromises();
+    });
+    expect(ultimo!.estado).toBe('activo');
+  });
+
+  it('desmontar con una verificación pendiente no actualiza estado', async () => {
+    let resolver!: (v: boolean) => void;
+    (asegurarRastreoSiHayPermiso as jest.Mock).mockReturnValue(new Promise((r) => (resolver = r)));
+    const errores = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const renderer = await montar();
+    act(() => renderer.unmount());
+
+    await act(async () => {
+      resolver(true);
+      await flushPromises();
+    });
+    expect(errores).not.toHaveBeenCalled();
   });
 });

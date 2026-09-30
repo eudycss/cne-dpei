@@ -174,6 +174,12 @@ export async function asegurarRastreoSiHayPermiso(): Promise<boolean> {
   }
 }
 
+/** Si el permiso "Permitir todo el tiempo" está concedido (sin abrir diálogos). */
+export async function permisoSegundoPlanoConcedido(): Promise<boolean> {
+  const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+  return bg?.status === 'granted';
+}
+
 export async function detenerRastreo(): Promise<void> {
   const yaActivo = await Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
   if (yaActivo) {

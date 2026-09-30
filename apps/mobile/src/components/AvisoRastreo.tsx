@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
@@ -14,6 +14,11 @@ interface Props {
 export function AvisoRastreo({ activando, permisoDenegado, onActivar }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // El contenedor no es 'accessible' (fusionaría el botón), así que el aviso se anuncia aparte.
+  useEffect(() => {
+    AccessibilityInfo.announceForAccessibility('Rastreo de ubicación detenido');
+  }, []);
 
   return (
     <View style={styles.card} accessibilityRole="alert" accessibilityLiveRegion="polite">
