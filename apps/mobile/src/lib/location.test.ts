@@ -9,6 +9,7 @@ jest.mock('expo-location', () => ({
   getForegroundPermissionsAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
   requestBackgroundPermissionsAsync: jest.fn(),
+  getBackgroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
   hasStartedLocationUpdatesAsync: jest.fn(),
   startLocationUpdatesAsync: jest.fn(),
@@ -26,7 +27,12 @@ jest.mock('./queries/retorno', () => ({ postPosiciones: jest.fn() }));
 
 import * as Location from 'expo-location';
 import { postPosiciones } from './queries/retorno';
-import { activarRastreoSegundoPlano, iniciarRastreo, iniciarRastreoPrimerPlano } from './location';
+import {
+  activarRastreoSegundoPlano,
+  asegurarRastreoSiHayPermiso,
+  iniciarRastreo,
+  iniciarRastreoPrimerPlano,
+} from './location';
 
 const fakeLocation = (lat: number, lon: number, timestamp = 1_700_000_000_000) => ({
   coords: { latitude: lat, longitude: lon },
@@ -207,5 +213,52 @@ describe('iniciarRastreoPrimerPlano', () => {
     await iniciarRastreoPrimerPlano();
 
     await expect(capturedCallback!(fakeLocation(-0.35, -78.12))).resolves.not.toThrow();
+  });
+});
+
+describe('asegurarRastreoSiHayPermiso', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (Location.hasServicesEnabledAsync as jest.Mock).mockResolvedValue(true);
+    (Location.hasStartedLocationUpdatesAsync as jest.Mock).mockResolvedValue(false);
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+    (Location.startLocationUpdatesAsync as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('true si el rastreo ya está corriendo (sin reiniciarlo)', async () => {
+    (Location.hasStartedLocationUpdatesAsync as jest.Mock).mockResolvedValue(true);
+
+    await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(true);
+    expect(Location.startLocationUpdatesAsync).not.toHaveBeenCalled();
+  });
+
+  it('false si el GPS del teléfono está apagado', async () => {
+    (Location.hasServicesEnabledAsync as jest.Mock).mockResolvedValue(false);
+
+    await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(false);
+  });
+
+  it('sin permiso en segundo plano devuelve false y NO abre el diálogo de permiso', async () => {
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' });
+
+    await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(false);
+    expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(Location.startLocationUpdatesAsync).not.toHaveBeenCalled();
+  });
+
+  it('con permiso concedido pero rastreo detenido, lo arranca solo', async () => {
+    (Location.hasStartedLocationUpdatesAsync as jest.Mock)
+      .mockResolvedValueOnce(false) // chequeo inicial
+      .mockResolvedValueOnce(false) // dentro de iniciarRastreo
+      .mockResolvedValueOnce(true); // verificación final
+
+    await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(true);
+    expect(Location.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('false si arrancar el rastreo falla', async () => {
+    (Location.startLocationUpdatesAsync as jest.Mock).mockRejectedValue(new Error('servicio no disponible'));
+
+    await expect(asegurarRastreoSiHayPermiso()).resolves.toBe(false);
   });
 });

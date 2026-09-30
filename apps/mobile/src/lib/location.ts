@@ -154,6 +154,26 @@ export async function activarRastreoSegundoPlano(
   }
 }
 
+/**
+ * Estado real del rastreo en segundo plano, para no anunciar "Rastreo activo"
+ * cuando nunca arrancó. Si el permiso "Permitir siempre" ya está concedido
+ * (p. ej. el operador lo dio en Ajustes después) lo arranca sin preguntar;
+ * nunca abre diálogos de permiso: eso queda para el botón del aviso.
+ */
+export async function asegurarRastreoSiHayPermiso(): Promise<boolean> {
+  const activo = () => Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
+  try {
+    if (!(await Location.hasServicesEnabledAsync())) return false;
+    if (await activo()) return true;
+    const bg = await Location.getBackgroundPermissionsAsync();
+    if (bg.status !== 'granted') return false;
+    await iniciarRastreo();
+    return await activo();
+  } catch {
+    return false;
+  }
+}
+
 export async function detenerRastreo(): Promise<void> {
   const yaActivo = await Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
   if (yaActivo) {

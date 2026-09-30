@@ -31,6 +31,14 @@ jest.mock('../theme/ThemeContext', () => ({
   useTheme: () => ({ colors: new Proxy({}, { get: () => '#000000' }) }),
 }));
 
+const mockRastreo = {
+  estado: 'activo' as 'verificando' | 'activo' | 'inactivo',
+  activando: false,
+  permisoDenegado: false,
+  activar: jest.fn(),
+};
+jest.mock('../lib/useEstadoRastreo', () => ({ useEstadoRastreo: () => mockRastreo }));
+
 jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 
 import { EnTransitoScreen } from './EnTransitoScreen';
@@ -226,5 +234,56 @@ describe('EnTransitoScreen', () => {
     });
 
     expect(renderer.root.findAllByProps({ children: 'Sin conexión, reintentando…' })).toHaveLength(0);
+  });
+});
+
+
+describe('EnTransitoScreen — estado del rastreo', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getMiAsignacion as jest.Mock).mockResolvedValue(asignacionFixture);
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (obtenerUbicacionPuntual as jest.Mock).mockRejectedValue(new LocationPermissionDeniedError());
+    Object.assign(mockRastreo, { estado: 'activo', activando: false, permisoDenegado: false });
+  });
+
+  async function montar() {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+    return renderer;
+  }
+
+  it('sin aviso cuando el rastreo está activo', async () => {
+    const renderer = await montar();
+    expect(renderer.root.findAllByProps({ children: 'Rastreo de ubicación detenido' })).toHaveLength(0);
+  });
+
+  it('avisa y permite reactivar cuando el rastreo no arrancó', async () => {
+    mockRastreo.estado = 'inactivo';
+    const renderer = await montar();
+
+    expect(renderer.root.findAllByProps({ children: 'Rastreo de ubicación detenido' }).length).toBeGreaterThan(0);
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Activar rastreo' }));
+    await act(async () => {
+      boton.props.onPress();
+    });
+    expect(mockRastreo.activar).toHaveBeenCalledTimes(1);
+  });
+
+  it('con el permiso denegado ofrece abrir los ajustes', async () => {
+    Object.assign(mockRastreo, { estado: 'inactivo', permisoDenegado: true });
+    const renderer = await montar();
+
+    expect(renderer.root.findAllByProps({ children: 'Abrir ajustes' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ children: 'Activar rastreo' })).toHaveLength(0);
+  });
+
+  it('mientras verifica no muestra el aviso (evita un parpadeo al abrir)', async () => {
+    mockRastreo.estado = 'verificando';
+    const renderer = await montar();
+    expect(renderer.root.findAllByProps({ children: 'Rastreo de ubicación detenido' })).toHaveLength(0);
   });
 });

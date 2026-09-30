@@ -7,10 +7,12 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { UbicacionCard } from '../components/UbicacionCard';
 import { OfflineNotice } from '../components/OfflineNotice';
+import { AvisoRastreo } from '../components/AvisoRastreo';
 import { fontFamily } from '../theme/typography';
 import { iniciarRastreoPrimerPlano } from '../lib/location';
 import { useMiAsignacion } from '../lib/useMiAsignacion';
 import { useProximidad } from '../lib/useProximidad';
+import { useEstadoRastreo } from '../lib/useEstadoRastreo';
 
 interface Props {
   onMarcarLlegada: () => void;
@@ -21,6 +23,7 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { asignacion, sinConexion } = useMiAsignacion();
+  const rastreo = useEstadoRastreo();
 
   useEffect(() => {
     let sub: LocationSubscription | null = null;
@@ -86,6 +89,14 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
             error={error}
             onActualizar={verificar}
             destinoLabel="el recinto"
+          />
+        ) : null}
+
+        {rastreo.estado === 'inactivo' ? (
+          <AvisoRastreo
+            activando={rastreo.activando}
+            permisoDenegado={rastreo.permisoDenegado}
+            onActivar={rastreo.activar}
           />
         ) : null}
 

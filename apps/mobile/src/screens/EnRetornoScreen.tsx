@@ -7,10 +7,12 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { UbicacionCard } from '../components/UbicacionCard';
 import { OfflineNotice } from '../components/OfflineNotice';
+import { AvisoRastreo } from '../components/AvisoRastreo';
 import { fontFamily } from '../theme/typography';
 import { iniciarRastreoPrimerPlano } from '../lib/location';
 import { useMiAsignacion } from '../lib/useMiAsignacion';
 import { useProximidad } from '../lib/useProximidad';
+import { useEstadoRastreo } from '../lib/useEstadoRastreo';
 
 interface Props {
   onMarcarLlegada: () => void;
@@ -21,6 +23,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { asignacion, sinConexion } = useMiAsignacion();
+  const rastreo = useEstadoRastreo();
 
   useEffect(() => {
     let sub: LocationSubscription | null = null;
@@ -56,6 +59,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
   // registrar la llegada en el paso siguiente.
   const bloqueadoPorLejania = info != null && !info.dentro;
   const puedeContinuar = !verificando && !bloqueadoPorLejania;
+  const rastreoActivo = rastreo.estado === 'activo';
 
   return (
     <View style={styles.container}>
@@ -64,10 +68,14 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
         <View style={styles.iconCircle}>
           <Text style={styles.icon}>📍</Text>
         </View>
-        <Text style={styles.title}>Rastreo activo</Text>
+        <Text style={styles.title}>
+          {rastreoActivo ? 'Rastreo activo' : 'Salida del recinto registrada'}
+        </Text>
         <Text style={styles.subtitle}>
-          Hola {user?.nombres}, tu salida del recinto está registrada y tu ubicación se está
-          compartiendo en tiempo real durante el retorno al DPI.
+          Hola {user?.nombres}, tu salida del recinto está registrada
+          {rastreoActivo
+            ? ' y tu ubicación se está compartiendo en tiempo real durante el retorno al DPI.'
+            : '.'}
         </Text>
         <Text style={styles.message}>
           Mantén la aplicación instalada y la ubicación activada. Cuando llegues a la
@@ -81,6 +89,14 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
             error={error}
             onActualizar={verificar}
             destinoLabel="la Delegación"
+          />
+        ) : null}
+
+        {rastreo.estado === 'inactivo' ? (
+          <AvisoRastreo
+            activando={rastreo.activando}
+            permisoDenegado={rastreo.permisoDenegado}
+            onActivar={rastreo.activar}
           />
         ) : null}
 
