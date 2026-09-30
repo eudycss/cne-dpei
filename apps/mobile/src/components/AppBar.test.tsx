@@ -12,7 +12,7 @@ jest.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ user: { roles: ['ADMINISTRADOR'] } }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => ({ top: 24, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('../theme/ThemeContext', () => ({
   useTheme: () => ({
@@ -29,7 +29,8 @@ jest.mock('./MiRecintoModal', () => ({ MiRecintoModal: () => null }));
 jest.mock('./ReportarIncidenciaModal', () => ({ ReportarIncidenciaModal: () => null }));
 jest.mock('./NotificacionesModal', () => ({ NotificacionesModal: () => null }));
 
-import { AppBar } from './AppBar';
+import { View } from 'react-native';
+import { AppBar, AppBarSinInsetSuperior } from './AppBar';
 import { getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
@@ -198,5 +199,40 @@ describe('AppBar — aviso persistente de enlace caído', () => {
     await act(async () => {
       renderer.unmount();
     });
+  }, 15000);
+});
+
+describe('AppBar — inset superior', () => {
+  const paddingTopBarra = (r: ReactTestRenderer) => {
+    const barra = r.root.findAllByType(View)[0];
+    return Object.assign({}, ...[barra.props.style].flat(Infinity).filter(Boolean)).paddingTop;
+  };
+
+  beforeEach(() => {
+    (getMisNotificaciones as jest.Mock).mockResolvedValue({ items: [], total: 0, noLeidas: 0 });
+  });
+
+  it('por defecto suma el inset superior del dispositivo (pantallas del operador)', async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(<AppBar />);
+      await flushPromises();
+    });
+    expect(paddingTopBarra(r)).toBe(24 + 10);
+    await act(async () => r.unmount());
+  }, 15000);
+
+  it('bajo AppBarSinInsetSuperior no lo vuelve a sumar (pestañas del supervisor)', async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(
+        <AppBarSinInsetSuperior.Provider value={true}>
+          <AppBar />
+        </AppBarSinInsetSuperior.Provider>,
+      );
+      await flushPromises();
+    });
+    expect(paddingTopBarra(r)).toBe(10);
+    await act(async () => r.unmount());
   }, 15000);
 });
