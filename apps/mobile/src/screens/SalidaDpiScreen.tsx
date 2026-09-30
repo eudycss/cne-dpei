@@ -17,11 +17,10 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
 import {
-  iniciarRastreo,
+  activarRastreoSegundoPlano,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
-  solicitarPermisoBackground,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 
@@ -84,11 +83,8 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 
       // HU4-CA3: iniciar rastreo continuo en segundo plano hacia el recinto. Es
       // "best-effort": la salida ya quedó registrada (o encolada), así que si esto
-      // falla el operador igual debe poder continuar.
-      try {
-        await solicitarPermisoBackground();
-        await iniciarRastreo();
-      } catch {
+      // falla o tarda demasiado el operador igual debe poder continuar.
+      if ((await activarRastreoSegundoPlano()) === 'fallo') {
         Alert.alert(
           'Rastreo en segundo plano no disponible',
           'Tu salida quedó registrada, pero no se pudo activar el rastreo de ubicación en segundo plano en este dispositivo.',
@@ -261,7 +257,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   kitNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary, marginTop: 2 },
   kitContenidos: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
   submitButton: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     borderRadius: 8,
     marginTop: 8,
@@ -271,7 +267,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   logoutLinkText: { color: c.textSecondary, fontFamily: fontFamily.medium, fontSize: 13 },
   errorTitle: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, textAlign: 'center' },
   errorMsg: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, textAlign: 'center', marginTop: 8 },
-  retryButton: { backgroundColor: c.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
+  retryButton: { backgroundColor: c.primaryBg, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6, marginTop: 18 },
   retryText: { color: '#fff', fontFamily: fontFamily.semiBold },
   logoutButton: { paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 },
   logoutText: { color: c.textSecondary, fontFamily: fontFamily.medium },

@@ -36,6 +36,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     marginTop: 8,
     marginBottom: 20,
   },
-  btnPrimary: { backgroundColor: c.primary, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 8, minWidth: 200 },
+  btnPrimary: { backgroundColor: c.primaryBg, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 8, minWidth: 200 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
 });

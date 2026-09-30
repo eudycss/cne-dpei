@@ -269,7 +269,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     marginBottom: 16,
   },
   btnPrimary: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,

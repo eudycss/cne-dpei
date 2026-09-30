@@ -7,6 +7,8 @@ export const lightColors = {
   textLabel: '#374151',
   textPlaceholder: '#9ca3af',
   primary: '#2563eb',
+  // Fondo de botones con texto blanco (>= 4.5:1, WCAG 1.4.3). 'primary' queda para texto/enlaces.
+  primaryBg: '#2563eb',
   primaryDisabled: '#9cb6ef',
   border: '#e5e7eb',
   borderInput: '#d1d5db',
@@ -31,7 +33,10 @@ export const darkColors = {
   textMeta: '#cbd5e1',
   textLabel: '#cbd5e1',
   textPlaceholder: '#475569',
-  primary: '#3b82f6',
+  // Texto/enlaces: #60a5fa da ~5.4:1 sobre bgCard y ~6.8:1 sobre bgPage (antes #3b82f6: ~3.9:1 sobre bgCard).
+  primary: '#60a5fa',
+  // Botones con texto blanco: #2563eb da ~5.2:1 (#3b82f6 daba ~3.7:1).
+  primaryBg: '#2563eb',
   primaryDisabled: '#1e3a5f',
   border: '#334155',
   borderInput: '#475569',

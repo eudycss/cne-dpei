@@ -86,7 +86,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     gap: 8,
   },
   tabBtn: { flex: 1, minHeight: 44, paddingVertical: 8, paddingHorizontal: 2, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  tabBtnActive: { backgroundColor: c.primary },
+  tabBtnActive: { backgroundColor: c.primaryBg },
   tabText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, textAlign: 'center' },
   tabTextActive: { color: '#fff' },
 });
