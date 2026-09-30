@@ -15,9 +15,10 @@ const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
 const UMBRAL_DESACTUALIZADO_MS = 15 * 60 * 1000;
 const INTERVALO_RELOJ_MS = 60_000;
 
-/** Devuelve la última actualización si ya pasó el umbral, o null si los datos están al día.
- * Fechas inválidas se ignoran; si ninguna es válida no se puede afirmar que estén vencidos. */
-export function ultimaActualizacionVencida(enlaces: EnlaceRecinto[], ahora: number): string | null {
+/** Devuelve la última actualización si, respecto a `referencia`, ya pasó el umbral, o null
+ * si los datos están al día. Fechas inválidas se ignoran; si ninguna es válida no se puede
+ * afirmar que estén vencidos. */
+export function ultimaActualizacionVencida(enlaces: EnlaceRecinto[], referencia: number): string | null {
   let ultima: string | null = null;
   let ultimaMs = -Infinity;
   for (const e of enlaces) {
@@ -28,7 +29,7 @@ export function ultimaActualizacionVencida(enlaces: EnlaceRecinto[], ahora: numb
     }
   }
   if (ultima === null) return null;
-  return ahora - ultimaMs > UMBRAL_DESACTUALIZADO_MS ? ultima : null;
+  return referencia - ultimaMs > UMBRAL_DESACTUALIZADO_MS ? ultima : null;
 }
 
 type FiltroEstado = 'TODOS' | EnlaceRecinto['estado'];
@@ -45,7 +46,7 @@ export function EnlacesPage() {
   const [cantonFiltro, setCantonFiltro] = useState('');
   const [mostrarCorreos, setMostrarCorreos] = useState(false);
 
-  const { data: enlaces = [], isLoading } = useQuery({
+  const { data: enlaces = [], isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['enlaces'],
     queryFn: getEnlaces,
     refetchInterval: 30_000,
@@ -61,14 +62,17 @@ export function EnlacesPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [enlaces]);
 
-  // Reloj propio: si el cron está caído los datos no cambian y React Query no vuelve a
-  // renderizar tras el refetch, así que sin esto el banner nunca aparecería sin recargar.
+  // La antigüedad se mide contra el momento en que el servidor respondió (dataUpdatedAt), no
+  // contra la hora actual: con la pestaña en segundo plano React Query deja de consultar, y al
+  // volver los datos viejos en memoria disparaban un falso aviso mientras llegaba el refetch.
+  // Si la API no responde, no hay respuesta reciente con la que comparar y se usa el reloj,
+  // que avanza aunque los datos no cambien (sin él el aviso no aparecería sin recargar).
   const [ahora, setAhora] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setAhora(Date.now()), INTERVALO_RELOJ_MS);
     return () => clearInterval(id);
   }, []);
-  const ultimaActualizacion = ultimaActualizacionVencida(enlaces, ahora);
+  const ultimaActualizacion = ultimaActualizacionVencida(enlaces, isError ? ahora : dataUpdatedAt);
 
   const busquedaNormalizada = busqueda.trim().toLowerCase();
 
