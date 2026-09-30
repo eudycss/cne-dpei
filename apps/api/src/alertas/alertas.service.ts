@@ -28,14 +28,9 @@ export class AlertasService {
     };
 
     if (!esAdmin(opts.roles)) {
-      // Técnico: solo alertas de los operadores que tiene asignados en este evento
-      const asignados = await this.prisma.asignacionSupervisor.findMany({
-        where: { eventoId: opts.eventoId, supervisorId: opts.viewerId },
-        select: { operadorId: true },
-      });
-      const operadorIds = asignados.map((a) => a.operadorId);
-      if (operadorIds.length === 0) return [];
-      where.operadorId = { in: operadorIds };
+      const visibles = await this.filtroVisiblesParaTecnico(opts.eventoId, opts.viewerId);
+      if (!visibles) return [];
+      Object.assign(where, visibles);
     }
 
     const rows = await this.prisma.alerta.findMany({
@@ -43,6 +38,36 @@ export class AlertasService {
       orderBy: { generadaEn: 'desc' },
     });
     return this.enrichWithOperadorNombre(rows);
+  }
+
+  /**
+   * Alertas que ve un técnico en un evento: las de sus operadores asignados y,
+   * si uno de sus operadores tenía asignado un kit que recibió otro operador
+   * (KIT_NO_CORRESPONDE), también esa — así la ven los técnicos de ambos.
+   * Devuelve null si el técnico no tiene operadores asignados.
+   */
+  private async filtroVisiblesParaTecnico(eventoId: string, tecnicoId: string) {
+    const asignados = await this.prisma.asignacionSupervisor.findMany({
+      where: { eventoId, supervisorId: tecnicoId },
+      select: { operadorId: true },
+    });
+    const operadorIds = asignados.map((a) => a.operadorId);
+    if (operadorIds.length === 0) return null;
+
+    const kitsPropios = await this.prisma.kitElectoral.findMany({
+      where: { eventoId, operadorId: { in: operadorIds } },
+      select: { id: true },
+    });
+    const kitIds = kitsPropios.map((k) => k.id);
+
+    return {
+      OR: [
+        { operadorId: { in: operadorIds } },
+        ...(kitIds.length > 0
+          ? [{ tipo: 'KIT_NO_CORRESPONDE' as const, kitId: { in: kitIds } }]
+          : []),
+      ],
+    };
   }
 
   async updateEstado(
@@ -55,18 +80,12 @@ export class AlertasService {
     const existing = await this.prisma.alerta.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Alerta no encontrada');
     if (!esAdmin(roles)) {
-      // Misma respuesta que "no existe" para no revelar alertas de otros técnicos
-      const asignado = existing.operadorId
-        ? await this.prisma.asignacionSupervisor.findFirst({
-            where: {
-              eventoId: existing.eventoId,
-              supervisorId: viewerId,
-              operadorId: existing.operadorId,
-            },
-            select: { id: true },
-          })
+      // Mismo criterio que list(); 404 igual que "no existe" para no revelar alertas ajenas
+      const visibles = await this.filtroVisiblesParaTecnico(existing.eventoId, viewerId);
+      const visible = visibles
+        ? await this.prisma.alerta.findFirst({ where: { id, ...visibles }, select: { id: true } })
         : null;
-      if (!asignado) throw new NotFoundException('Alerta no encontrada');
+      if (!visible) throw new NotFoundException('Alerta no encontrada');
     }
     const updated = await this.prisma.alerta.update({
       where: { id },

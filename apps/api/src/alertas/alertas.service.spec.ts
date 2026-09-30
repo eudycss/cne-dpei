@@ -12,10 +12,12 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
   const tecnicoId = '22222222-2222-2222-2222-222222222222';
   const operadorPropio = '33333333-3333-3333-3333-333333333333';
   const alertaId = '44444444-4444-4444-4444-444444444444';
+  const kitPropio = '55555555-5555-5555-5555-555555555555';
 
   const prisma = {
-    alerta: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-    asignacionSupervisor: { findMany: jest.fn(), findFirst: jest.fn() },
+    alerta: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    asignacionSupervisor: { findMany: jest.fn() },
+    kitElectoral: { findMany: jest.fn() },
     usuario: { findMany: jest.fn() },
   };
 
@@ -31,9 +33,18 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
     ...over,
   });
 
+  const filtroEsperado = (kitIds: string[]) => ({
+    OR: [
+      { operadorId: { in: [operadorPropio] } },
+      ...(kitIds.length ? [{ tipo: 'KIT_NO_CORRESPONDE', kitId: { in: kitIds } }] : []),
+    ],
+  });
+
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma.usuario.findMany.mockResolvedValue([]);
+    prisma.asignacionSupervisor.findMany.mockResolvedValue([{ operadorId: operadorPropio }]);
+    prisma.kitElectoral.findMany.mockResolvedValue([{ id: kitPropio }]);
     const moduleRef = await Test.createTestingModule({
       providers: [
         AlertasService,
@@ -55,8 +66,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({ eventoId });
     });
 
-    it('el técnico solo ve alertas de sus operadores asignados en ese evento', async () => {
-      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId: operadorPropio }]);
+    it('el técnico ve las alertas de sus operadores y los "kit no corresponde" de sus kits', async () => {
       prisma.alerta.findMany.mockResolvedValueOnce([filaAlerta()]);
 
       await service.list({
@@ -70,11 +80,24 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
         where: { eventoId, supervisorId: tecnicoId },
         select: { operadorId: true },
       });
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith({
+        where: { eventoId, operadorId: { in: [operadorPropio] } },
+        select: { id: true },
+      });
       expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({
         eventoId,
         estado: 'GENERADA',
-        operadorId: { in: [operadorPropio] },
+        ...filtroEsperado([kitPropio]),
       });
+    });
+
+    it('si sus operadores no tienen kits, solo filtra por operador', async () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.alerta.findMany.mockResolvedValueOnce([]);
+
+      await service.list({ viewerId: tecnicoId, roles: ['TECNICO_SUPERVISOR'], eventoId });
+
+      expect(prisma.alerta.findMany.mock.calls[0][0].where).toEqual({ eventoId, ...filtroEsperado([]) });
     });
 
     it('el técnico sin operadores asignados no ve ninguna alerta', async () => {
@@ -88,9 +111,9 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
   });
 
   describe('updateEstado', () => {
-    it('el técnico puede marcar una alerta de su operador asignado', async () => {
+    it('el técnico puede marcar una alerta visible para él (mismo filtro que list)', async () => {
       prisma.alerta.findUnique.mockResolvedValueOnce(filaAlerta());
-      prisma.asignacionSupervisor.findFirst.mockResolvedValueOnce({ id: 'asig' });
+      prisma.alerta.findFirst.mockResolvedValueOnce({ id: alertaId });
       prisma.alerta.update.mockResolvedValueOnce(filaAlerta({ estado: 'VISTA' }));
 
       const res = await service.updateEstado(alertaId, tecnicoId, ['TECNICO_SUPERVISOR'], {
@@ -98,15 +121,27 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       });
 
       expect(res.estado).toBe('VISTA');
-      expect(prisma.asignacionSupervisor.findFirst).toHaveBeenCalledWith({
-        where: { eventoId, supervisorId: tecnicoId, operadorId: operadorPropio },
+      expect(prisma.alerta.findFirst).toHaveBeenCalledWith({
+        where: { id: alertaId, ...filtroEsperado([kitPropio]) },
         select: { id: true },
       });
     });
 
-    it('el técnico recibe 404 al tocar una alerta de un operador ajeno (y no se modifica)', async () => {
+    it('el técnico del operador dueño del kit puede atender un "kit no corresponde"', async () => {
+      prisma.alerta.findUnique.mockResolvedValueOnce(
+        filaAlerta({ operadorId: 'otro-operador', tipo: 'KIT_NO_CORRESPONDE', kitId: kitPropio }),
+      );
+      prisma.alerta.findFirst.mockResolvedValueOnce({ id: alertaId });
+      prisma.alerta.update.mockResolvedValueOnce(filaAlerta({ estado: 'ATENDIDA' }));
+
+      await service.updateEstado(alertaId, tecnicoId, ['TECNICO_SUPERVISOR'], { estado: 'ATENDIDA' });
+
+      expect(prisma.alerta.update).toHaveBeenCalled();
+    });
+
+    it('el técnico recibe 404 al tocar una alerta que no le corresponde (y no se modifica)', async () => {
       prisma.alerta.findUnique.mockResolvedValueOnce(filaAlerta({ operadorId: 'ajeno' }));
-      prisma.asignacionSupervisor.findFirst.mockResolvedValueOnce(null);
+      prisma.alerta.findFirst.mockResolvedValueOnce(null);
 
       await expect(
         service.updateEstado(alertaId, tecnicoId, ['TECNICO_SUPERVISOR'], { estado: 'ATENDIDA' }),
@@ -114,12 +149,14 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       expect(prisma.alerta.update).not.toHaveBeenCalled();
     });
 
-    it('el técnico recibe 404 en alertas sin operador', async () => {
-      prisma.alerta.findUnique.mockResolvedValueOnce(filaAlerta({ operadorId: null }));
+    it('el técnico sin operadores en ese evento recibe 404', async () => {
+      prisma.alerta.findUnique.mockResolvedValueOnce(filaAlerta());
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([]);
 
       await expect(
         service.updateEstado(alertaId, tecnicoId, ['TECNICO_SUPERVISOR'], { estado: 'VISTA' }),
       ).rejects.toThrow(NotFoundException);
+      expect(prisma.alerta.findFirst).not.toHaveBeenCalled();
       expect(prisma.alerta.update).not.toHaveBeenCalled();
     });
 
@@ -129,7 +166,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
 
       await service.updateEstado(alertaId, 'admin', ['ADMINISTRADOR'], { estado: 'ATENDIDA' });
 
-      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
       expect(prisma.alerta.update).toHaveBeenCalled();
     });
   });
