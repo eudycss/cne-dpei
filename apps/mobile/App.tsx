@@ -13,7 +13,6 @@ import {
   DMSans_700Bold,
   DMSans_700Bold_Italic,
 } from '@expo-google-fonts/dm-sans';
-import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -29,7 +28,7 @@ import { EnRetornoScreen } from './src/screens/EnRetornoScreen';
 import { LlegadaDpiScreen } from './src/screens/LlegadaDpiScreen';
 import { RetornadoScreen } from './src/screens/RetornadoScreen';
 import { SupervisorFlow } from './src/screens/SupervisorFlow';
-import { getMiAsignacion } from './src/lib/queries/tracking';
+import { useEtapaOperador } from './src/lib/useEtapaOperador';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
 // tras un reinicio en frío aunque no se monte SalidaRecintoScreen.
@@ -43,37 +42,10 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-type OperadorEtapa =
-  | 'SALIDA'
-  | 'EN_TRANSITO'
-  | 'LLEGADA'
-  | 'EN_RECINTO'
-  | 'EN_RETORNO'
-  | 'LLEGADA_DPI'
-  | 'RETORNADO';
-
 function OperadorFlow() {
   // HU2 → HU5: el operador transita por estados durante la jornada electoral.
-  // Al iniciar consultamos mi-asignacion para arrancar en la etapa correcta;
-  // si el operador cerró la app y la vuelve a abrir no retrocede.
   const { colors } = useTheme();
-  const [etapa, setEtapa] = useState<OperadorEtapa | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await getMiAsignacion();
-        if (data.yaRegistroLlegadaDpi) setEtapa('RETORNADO');
-        else if (data.yaRegistroSalidaRecinto) setEtapa('EN_RETORNO');
-        else if (data.yaRegistroLlegada) setEtapa('EN_RECINTO');
-        else if (data.yaRegistroSalida) setEtapa('EN_TRANSITO');
-        else setEtapa('SALIDA');
-      } catch {
-        // Si falla la carga inicial, SalidaDpiScreen mostrará el error con reintento
-        setEtapa('SALIDA');
-      }
-    })();
-  }, []);
+  const { etapa, avanzarA } = useEtapaOperador();
 
   if (etapa === null) {
     return (
@@ -84,21 +56,21 @@ function OperadorFlow() {
   }
   if (etapa === 'RETORNADO') return <RetornadoScreen />;
   if (etapa === 'LLEGADA_DPI') {
-    return <LlegadaDpiScreen onLlegadaRegistrada={() => setEtapa('RETORNADO')} />;
+    return <LlegadaDpiScreen onLlegadaRegistrada={() => avanzarA('RETORNADO')} />;
   }
   if (etapa === 'EN_RETORNO') {
-    return <EnRetornoScreen onMarcarLlegada={() => setEtapa('LLEGADA_DPI')} />;
+    return <EnRetornoScreen onMarcarLlegada={() => avanzarA('LLEGADA_DPI')} />;
   }
   if (etapa === 'EN_RECINTO') {
-    return <SalidaRecintoScreen onSalidaRegistrada={() => setEtapa('EN_RETORNO')} />;
+    return <SalidaRecintoScreen onSalidaRegistrada={() => avanzarA('EN_RETORNO')} />;
   }
   if (etapa === 'LLEGADA') {
-    return <LlegadaRecintoScreen onLlegadaRegistrada={() => setEtapa('EN_RECINTO')} />;
+    return <LlegadaRecintoScreen onLlegadaRegistrada={() => avanzarA('EN_RECINTO')} />;
   }
   if (etapa === 'EN_TRANSITO') {
-    return <EnTransitoScreen onMarcarLlegada={() => setEtapa('LLEGADA')} />;
+    return <EnTransitoScreen onMarcarLlegada={() => avanzarA('LLEGADA')} />;
   }
-  return <SalidaDpiScreen onSalidaRegistrada={() => setEtapa('EN_TRANSITO')} />;
+  return <SalidaDpiScreen onSalidaRegistrada={() => avanzarA('EN_TRANSITO')} />;
 }
 
 function Navigator() {
