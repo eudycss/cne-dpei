@@ -411,6 +411,8 @@ export interface RecepcionKitRequest {
   militarId: string | null;
   latitud: number;
   longitud: number;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface RecepcionKitResponse {
@@ -465,6 +467,8 @@ export interface LlegadaRecintoRequest {
   longitud: number;
   ocurridoEn: string;
   precisionMetros?: number | null;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface LlegadaRecintoResponse {
@@ -474,6 +478,8 @@ export interface LlegadaRecintoResponse {
 
 export interface LlegadaNoCdaRequest {
   recintoId: string;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface LlegadaNoCdaResponse {
@@ -495,6 +501,8 @@ export interface SalidaDpiRequest {
   latitud: number;
   longitud: number;
   ocurridoEn: string;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface SalidaDpiResponse {
@@ -510,6 +518,8 @@ export interface SalidaRecintoRequest {
   ocurridoEn: string;
   actaInstalacionUrl: string;
   actaEscrutinioUrl: string;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface SalidaRecintoResponse {
@@ -588,6 +598,8 @@ export interface LlegadaDpiRequest {
   longitud: number;
   ocurridoEn: string;
   precisionMetros?: number | null;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
 }
 
 export interface LlegadaDpiResponse {

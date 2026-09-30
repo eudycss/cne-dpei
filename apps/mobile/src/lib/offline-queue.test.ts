@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
-import { enqueue, flushQueue, isNetworkError, withOffline } from './offline-queue';
+import {
+  enqueue,
+  flushQueue,
+  isNetworkError,
+  sincronizarPendientes,
+  withOffline,
+} from './offline-queue';
 
 jest.mock('./api', () => ({
   api: { post: jest.fn(), patch: jest.fn() },
@@ -108,6 +114,83 @@ describe('enqueue + flushQueue', () => {
     expect(api.post).toHaveBeenCalledTimes(2); // ninguna de las dos se perdió
     expect(api.post).toHaveBeenNthCalledWith(1, '/tracking/a', {});
     expect(api.post).toHaveBeenNthCalledWith(2, '/tracking/b', {});
+  });
+});
+
+describe('flushQueue con acciones encoladas durante el envío', () => {
+  it('no pierde una acción que se encola mientras el flush espera la respuesta del servidor', async () => {
+    let responder!: () => void;
+    (api.post as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { responder = () => resolve({ data: {} }); }),
+    );
+
+    await enqueue({ endpoint: '/tracking/a', method: 'post', payload: {} });
+    const flush = flushQueue();
+    await new Promise((r) => setImmediate(r)); // el flush ya está esperando el POST de /a
+    await enqueue({ endpoint: '/tracking/b', method: 'post', payload: {} });
+    responder();
+    await flush;
+
+    (api.post as jest.Mock).mockClear().mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/tracking/b', {}); // /b sigue en cola, /a no se repite
+  });
+});
+
+describe('enqueue concurrente', () => {
+  it('no pierde ninguna de dos acciones encoladas al mismo tiempo', async () => {
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+
+    await Promise.all([
+      enqueue({ endpoint: '/tracking/a', method: 'post', payload: {} }),
+      enqueue({ endpoint: '/tracking/b', method: 'post', payload: {} }),
+    ]);
+    await flushQueue();
+
+    expect(api.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('no descarta una acción encolada durante el flush aunque caiga en el mismo milisegundo', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    let responder!: () => void;
+    (api.post as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { responder = () => resolve({ data: {} }); }),
+    );
+
+    await enqueue({ endpoint: '/tracking/a', method: 'post', payload: {} });
+    const flush = flushQueue();
+    await new Promise((r) => setImmediate(r));
+    await enqueue({ endpoint: '/tracking/b', method: 'post', payload: {} });
+    responder();
+    await flush;
+    nowSpy.mockRestore();
+
+    (api.post as jest.Mock).mockClear().mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect(api.post).toHaveBeenCalledWith('/tracking/b', {});
+  });
+});
+
+describe('sincronizarPendientes', () => {
+  it('no llama al servidor y devuelve 0 si la cola está vacía', async () => {
+    await expect(sincronizarPendientes()).resolves.toBe(0);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('reenvía lo pendiente sin esperar otra acción del operador y devuelve 0 si se envió', async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({ data: {} });
+    await enqueue({ endpoint: '/tracking/llegada-dpi', method: 'post', payload: { desdeOffline: true } });
+
+    await expect(sincronizarPendientes()).resolves.toBe(0);
+    expect(api.post).toHaveBeenCalledWith('/tracking/llegada-dpi', { desdeOffline: true });
+  });
+
+  it('devuelve cuántas acciones siguen pendientes si todavía no hay red', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(networkError);
+    await enqueue({ endpoint: '/tracking/llegada-dpi', method: 'post', payload: {} });
+
+    await expect(sincronizarPendientes()).resolves.toBe(1);
   });
 });
 

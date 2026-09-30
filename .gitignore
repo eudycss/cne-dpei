@@ -62,3 +62,6 @@ plantilla/
 
 # Credenciales locales (claves de servicio, IDs sensibles) - nunca al repo
 docs/nogithub/
+
+# Notas locales de pruebas móviles (mobile-mcp)
+mobiletest.md

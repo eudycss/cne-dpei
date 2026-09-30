@@ -302,7 +302,7 @@ export class TrackingService {
         ${recintoId}::uuid,
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${ocurridoEn}::timestamptz,
-        false,
+        ${parsed.desdeOffline ?? false},
         now()
       )
       RETURNING id;
@@ -466,7 +466,7 @@ export class TrackingService {
         ${parsed.fotoMilitarUrl},
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         now(),
-        false
+        ${parsed.desdeOffline ?? false}
       )
       RETURNING id, confirmado_en;
     `;
@@ -681,6 +681,7 @@ export class TrackingService {
     ubicacion: { latitud: number; longitud: number } | null,
     ocurridoEn: Date,
     estadoKitsFiltro: any,
+    desdeOffline: boolean,
   ): Promise<string> {
     const rows = ubicacion
       ? await this.prisma.$queryRaw<{ id: string }[]>`
@@ -693,7 +694,7 @@ export class TrackingService {
             ${recintoId}::uuid,
             ST_SetSRID(ST_MakePoint(${ubicacion.longitud}, ${ubicacion.latitud}), 4326)::geography,
             ${ocurridoEn}::timestamptz,
-            false,
+            ${desdeOffline},
             now()
           )
           RETURNING id;
@@ -708,7 +709,7 @@ export class TrackingService {
             ${recintoId}::uuid,
             NULL,
             ${ocurridoEn}::timestamptz,
-            false,
+            ${desdeOffline},
             now()
           )
           RETURNING id;
@@ -810,6 +811,7 @@ export class TrackingService {
       { latitud: parsed.latitud, longitud: parsed.longitud },
       ocurridoEn,
       'ENTREGADO',
+      parsed.desdeOffline ?? false,
     );
 
     const operador = await this.prisma.usuario.findUnique({
@@ -895,6 +897,7 @@ export class TrackingService {
       null,
       ocurridoEn,
       { notIn: ['EN_RECINTO', 'EN_RETORNO', 'RETORNADO'] },
+      false, // lo registra el supervisor en línea, no viene de la cola del móvil
     );
 
     const operador = await this.prisma.usuario.findUnique({
@@ -973,7 +976,7 @@ export class TrackingService {
         ${parsed.recintoId}::uuid,
         NULL,
         ${ocurridoEn}::timestamptz,
-        false,
+        ${parsed.desdeOffline ?? false},
         now()
       )
       RETURNING id;
@@ -1043,7 +1046,7 @@ export class TrackingService {
         ${recintoId}::uuid,
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${ocurridoEn}::timestamptz,
-        false,
+        ${parsed.desdeOffline ?? false},
         now(),
         ${parsed.actaInstalacionUrl},
         ${parsed.actaEscrutinioUrl}
@@ -1784,7 +1787,7 @@ export class TrackingService {
         ${recintoId}::uuid,
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${ocurridoEn}::timestamptz,
-        false,
+        ${parsed.desdeOffline ?? false},
         now()
       )
       RETURNING id;
