@@ -5,7 +5,12 @@ import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
-import { TelegramNotifier, TEXTO_BOTON_CAIDOS, TEXTO_BOTON_INGRESAR_CODIGO } from './telegram-notifier';
+import {
+  abreviarCanton,
+  TelegramNotifier,
+  TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_INGRESAR_CODIGO,
+} from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const CONFIG_ID = 1;
@@ -103,13 +108,13 @@ export class EnlacesService {
         // monitoreo (o tras un reset de base) queda mudo para siempre.
         const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
         if (cayoAhora) {
-          caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
+          caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto, canton });
           await this.encolarAvisoInApp(fila.codigoRecinto, fila.nombreRecinto);
         }
 
         const seRecuperoAhora = fila.estado === 'ACTIVO' && anterior?.estado === 'FALLO';
         if (seRecuperoAhora) {
-          recuperados.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto });
+          recuperados.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto, canton });
         }
       } catch (e) {
         // Un error puntual (ej. dato inválido de una sola fila) no debe tumbar
@@ -180,14 +185,18 @@ export class EnlacesService {
    * pensar al grupo que el resto ya se recuperó, cuando en realidad sigue caído. */
   private async notificarCaidasPorTelegram(
     nuevasCaidas: EnlaceCaido[],
-    filas: { codigoRecinto: string; nombreRecinto: string; estado: string }[],
+    filas: { codigoRecinto: string; nombreRecinto: string; canton: string; estado: string }[],
   ): Promise<void> {
     if (nuevasCaidas.length === 0) return;
 
     try {
       const todasCaidas: EnlaceCaido[] = filas
         .filter((f) => f.estado === 'FALLO')
-        .map((f) => ({ codigoRecinto: f.codigoRecinto, nombreRecinto: f.nombreRecinto }));
+        .map((f) => ({
+          codigoRecinto: f.codigoRecinto,
+          nombreRecinto: f.nombreRecinto,
+          canton: normalizarCanton(f.canton),
+        }));
       const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
       await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos);
     } catch (e) {
@@ -259,6 +268,7 @@ export class EnlacesService {
     const caidas: EnlaceCaido[] = recintosCaidos.map((r: any) => ({
       codigoRecinto: r.codigoRecinto,
       nombreRecinto: r.nombreRecinto,
+      canton: r.canton,
     }));
     await this.telegram.enviarListaActual(caidas);
     return { enviados: caidas.length };
@@ -358,7 +368,7 @@ export class EnlacesService {
   private async responderCodigoRecinto(codigo: string): Promise<void> {
     const recinto = await this.prisma.enlaceRecinto.findUnique({
       where: { codigoRecinto: codigo },
-      select: { codigoRecinto: true, nombreRecinto: true, estado: true },
+      select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
     });
     if (!recinto) {
       await this.telegram.enviarTexto(
@@ -369,8 +379,10 @@ export class EnlacesService {
     }
 
     const emojiEstado = recinto.estado === 'FALLO' ? '🔴' : '✅';
+    const abreviatura = abreviarCanton(recinto.canton);
+    const sufijoCanton = abreviatura ? ` (${abreviatura})` : '';
     await this.telegram.enviarTexto(
-      `📍 ${recinto.codigoRecinto} — ${recinto.nombreRecinto}\nEstado: ${emojiEstado} ${recinto.estado}`,
+      `📍 ${recinto.codigoRecinto}${sufijoCanton} — ${recinto.nombreRecinto}\nEstado: ${emojiEstado} ${recinto.estado}`,
       'el resultado de búsqueda de recinto',
     );
   }

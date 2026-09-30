@@ -63,6 +63,64 @@ describe('SheetsEnlacesClient', () => {
     ]);
   });
 
+  it('devuelve una sola entrada por código aunque la hoja lo repita (caso real del CPE)', async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          HEADER,
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'FALLO'],
+          ['IMBABURA', '982', 'Escuela', 'ACTIVO'],
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'FALLO'],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows.map((r) => r.codigoRecinto)).toEqual(['CPE', '982']);
+  });
+
+  it.each([
+    ['ACTIVO', 'FALLO'],
+    ['FALLO', 'ACTIVO'],
+  ])('con filas repetidas %s y %s, cuenta como FALLO (no oculta un enlace caído)', async (primero, segundo) => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          HEADER,
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', primero],
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', segundo],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows).toEqual([
+      { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', canton: '', estado: 'FALLO' },
+    ]);
+  });
+
+  it('con filas repetidas ambas ACTIVO, queda ACTIVO', async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          HEADER,
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'ACTIVO'],
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'ACTIVO'],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].estado).toBe('ACTIVO');
+  });
+
   it('descarta filas sin código de recinto', async () => {
     valuesGetMock.mockResolvedValue({
       data: { values: [HEADER, ['IMBABURA', '', 'Sin código', 'FALLO']] },
