@@ -350,7 +350,14 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
               {kits.map((k) => {
                 const checked = marcados.has(k.id);
                 return (
-                  <Pressable key={k.id} style={styles.kitRow} onPress={() => toggleKit(k.id)}>
+                  <Pressable
+                    key={k.id}
+                    style={styles.kitRow}
+                    onPress={() => toggleKit(k.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`${k.nombre}, ${k.codigoUnico}`}
+                    accessibilityState={{ checked }}
+                  >
                     <View style={[styles.checkbox, checked && styles.checkboxOn]}>
                       {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
                     </View>
@@ -408,7 +415,11 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       </ScrollView>
 
       <Modal visible={mostrarCamara !== null} animationType="slide" presentationStyle="fullScreen">
-        <CameraFoto onCapture={onFotoCapturada} onCancel={() => setMostrarCamara(null)} />
+        <CameraFoto
+          onCapture={onFotoCapturada}
+          onCancel={() => setMostrarCamara(null)}
+          titulo={mostrarCamara === 'escrutinio' ? 'Acta de escrutinio' : 'Acta de instalación'}
+        />
       </Modal>
     </View>
   );

@@ -15,9 +15,11 @@ import { fontFamily } from '../theme/typography';
 interface Props {
   onCapture: (uri: string, base64?: string) => void;
   onCancel: () => void;
+  /** Qué se está fotografiando (actas, incidencia…). */
+  titulo?: string;
 }
 
-export function CameraFoto({ onCapture, onCancel }: Props) {
+export function CameraFoto({ onCapture, onCancel, titulo = 'Foto del militar' }: Props) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -37,7 +39,7 @@ export function CameraFoto({ onCapture, onCancel }: Props) {
     return (
       <View style={styles.permissionWrap}>
         <Text style={styles.permissionText}>
-          Necesitamos acceso a la cámara para tomar la foto del militar.
+          Necesitamos acceso a la cámara para tomar la foto.
         </Text>
         {permission.canAskAgain ? (
           <Pressable style={styles.primary} onPress={() => requestPermission()}>
@@ -122,7 +124,7 @@ export function CameraFoto({ onCapture, onCancel }: Props) {
         <Pressable onPress={onCancel} style={styles.topBtn}>
           <Text style={styles.topBtnText}>Cancelar</Text>
         </Pressable>
-        <Text style={styles.topTitle}>Foto del militar</Text>
+        <Text style={styles.topTitle}>{titulo}</Text>
         <View style={styles.topBtn} />
       </View>
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>

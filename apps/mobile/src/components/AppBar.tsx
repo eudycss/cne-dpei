@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,12 @@ import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 import { Colors } from '../theme/colors';
 
+// Para pantallas que se muestran bajo otra barra que ya consumió el inset
+// superior (p. ej. las pestañas del supervisor): evita sumarlo dos veces.
+// Solo afecta al AppBar; los modales a pantalla completa siguen usando el
+// inset real del dispositivo.
+export const AppBarSinInsetSuperior = createContext(false);
+
 interface AppBarProps {
   subtitle?: string;
   onRefresh?: () => void;
@@ -23,6 +29,7 @@ interface AppBarProps {
 
 export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const insets = useSafeAreaInsets();
+  const sinInsetSuperior = useContext(AppBarSinInsetSuperior);
   const { theme, colors, toggle } = useTheme();
   const { user } = useAuth();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -158,7 +165,7 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
 
   return (
     <Fragment>
-      <View style={[styles.wrap, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.wrap, { paddingTop: (sinInsetSuperior ? 0 : insets.top) + 10 }]}>
         <Logo height={32} />
         <View style={styles.textWrap}>
           <Text style={styles.title}>CNE Imbabura</Text>

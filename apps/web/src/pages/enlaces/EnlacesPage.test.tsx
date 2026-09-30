@@ -294,21 +294,66 @@ describe('EnlacesPage — aviso de datos sin actualizar', () => {
     expect(screen.queryByText(/Datos sin actualizar desde/)).not.toBeInTheDocument();
   });
 
-  it('el aviso aparece solo con el paso del tiempo, sin recargar ni cambiar los datos', async () => {
+  /** Arranca a las 11:10 con enlaces actualizados a las 11:00 (al día) y con el reloj y el
+   * polling de React Query bajo control del test. */
+  async function renderAlDiaConTimersFalsos() {
     // Re-instalar desde cero: llamar useFakeTimers sobre el del beforeEach no cambia `toFake`.
     vi.useRealTimers();
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(new Date('2026-09-23T11:10:00.000Z'));
-    mockEnlaces(enlaces); // actualizados 11:00 → al día a las 11:10
+    mockEnlaces(enlaces);
     renderPage();
-
     await screen.findByText('Escuela Central');
     expect(screen.queryByText(/Datos sin actualizar desde/)).not.toBeInTheDocument();
+  }
 
-    act(() => {
-      vi.advanceTimersByTime(6 * 60_000); // 11:16 → más de 15 min
+  it('el aviso aparece cuando el servidor sigue respondiendo pero la hoja ya no se actualiza', async () => {
+    await renderAlDiaConTimersFalsos();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6 * 60_000); // 11:16 → el polling trae los mismos datos de 11:00
     });
 
     expect(await screen.findByText(/Datos sin actualizar desde/)).toBeInTheDocument();
+  });
+
+  it('no muestra un falso aviso con datos viejos en memoria mientras llega el refetch (pestaña en segundo plano)', async () => {
+    await renderAlDiaConTimersFalsos();
+    // Al volver a la pestaña el refetch queda en vuelo (ej. renovando el token vencido).
+    apiGetMock.mockImplementation(() => new Promise(() => {}));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(90 * 60_000); // 12:40 sin respuesta nueva del servidor
+    });
+
+    expect(screen.getByText('Escuela Central')).toBeInTheDocument();
+    expect(screen.queryByText(/Datos sin actualizar desde/)).not.toBeInTheDocument();
+  });
+
+  it('muestra el aviso si la API deja de responder, aunque no haya datos nuevos con los que comparar', async () => {
+    await renderAlDiaConTimersFalsos();
+    apiGetMock.mockImplementation(() => Promise.reject(new Error('Network Error')));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+    });
+
+    expect(await screen.findByText(/Datos sin actualizar desde/)).toBeInTheDocument();
+  });
+
+  it('quita el aviso cuando la API vuelve a responder con datos frescos', async () => {
+    await renderAlDiaConTimersFalsos();
+    apiGetMock.mockImplementation(() => Promise.reject(new Error('Network Error')));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+    });
+    expect(await screen.findByText(/Datos sin actualizar desde/)).toBeInTheDocument();
+
+    mockEnlaces(enlaces.map((e) => ({ ...e, actualizadoEn: '2026-09-23T11:15:00.000Z' })));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    await vi.waitFor(() => expect(screen.queryByText(/Datos sin actualizar desde/)).not.toBeInTheDocument());
   });
 });
