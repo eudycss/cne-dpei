@@ -53,7 +53,7 @@ describe('EnlacesService', () => {
 
       expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledTimes(1);
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
@@ -63,7 +63,7 @@ describe('EnlacesService', () => {
       expect(sendEnlaceCaido).toHaveBeenCalledTimes(1);
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
       );
     });
 
@@ -81,14 +81,14 @@ describe('EnlacesService', () => {
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
       );
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
         new Set(['978', '982']),
       );
@@ -108,11 +108,32 @@ describe('EnlacesService', () => {
 
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '111', nombreRecinto: 'Ya caído' },
-          { codigoRecinto: '222', nombreRecinto: 'Recién cae' },
+          { codigoRecinto: '111', nombreRecinto: 'Ya caído', canton: null },
+          { codigoRecinto: '222', nombreRecinto: 'Recién cae', canton: null },
         ],
         new Set(['222']),
       );
+    });
+
+    it('pasa a Telegram el cantón normalizado de la hoja, tanto en caídos como en recuperados', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '111', nombreRecinto: 'Cae', canton: 'COTACACHI', estado: 'FALLO' },
+        { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'otavalo', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique
+        .mockResolvedValueOnce({ estado: 'ACTIVO' })
+        .mockResolvedValueOnce({ estado: 'FALLO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '111', nombreRecinto: 'Cae', canton: 'Cotacachi' }],
+        new Set(['111']),
+      );
+      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+        { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' },
+      ]);
     });
 
     it('un fallo en el envío del correo batcheado no interrumpe el ciclo ni relanza', async () => {
@@ -139,7 +160,7 @@ describe('EnlacesService', () => {
 
       expect(sendEnlaceCaido).not.toHaveBeenCalled();
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
       );
     });
@@ -166,7 +187,7 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
@@ -175,7 +196,7 @@ describe('EnlacesService', () => {
       });
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
       );
     });
 
@@ -291,14 +312,14 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Rota' },
-          { codigoRecinto: '982', nombreRecinto: 'Escuela Sana' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Rota', canton: null },
+          { codigoRecinto: '982', nombreRecinto: 'Escuela Sana', canton: null },
         ],
         new Set(['982']),
       );
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '982', nombreRecinto: 'Escuela Sana' }],
+        [{ codigoRecinto: '982', nombreRecinto: 'Escuela Sana', canton: null }],
       );
     });
 
@@ -313,10 +334,10 @@ describe('EnlacesService', () => {
 
       expect(sendEnlaceRecuperado).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
       );
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
       ]);
     });
 
@@ -355,7 +376,7 @@ describe('EnlacesService', () => {
 
       expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
       ]);
     });
 
@@ -385,11 +406,11 @@ describe('EnlacesService', () => {
 
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '222', nombreRecinto: 'Recién cae' }],
+        [{ codigoRecinto: '222', nombreRecinto: 'Recién cae', canton: null }],
       );
       expect(sendEnlaceRecuperado).toHaveBeenCalledWith(
         ['a@b.com'],
-        [{ codigoRecinto: '111', nombreRecinto: 'Se recupera' }],
+        [{ codigoRecinto: '111', nombreRecinto: 'Se recupera', canton: null }],
       );
     });
   });
@@ -566,6 +587,18 @@ describe('EnlacesService', () => {
       expect(result).toEqual({ enviados: 2 });
     });
 
+    it('pasa el cantón de cada recinto para que Telegram lo muestre abreviado', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '1207', nombreRecinto: 'Escuela Guallupe', canton: 'Cotacachi', estado: 'FALLO' },
+      ]);
+
+      await service.reenviarListaTelegram();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
+        { codigoRecinto: '1207', nombreRecinto: 'Escuela Guallupe', canton: 'Cotacachi' },
+      ]);
+    });
+
     it('sin recintos en FALLO igual llama al notifier (avisa "sin caídos") y devuelve 0', async () => {
       prisma.enlaceRecinto.findMany.mockResolvedValue([]);
 
@@ -723,13 +756,62 @@ describe('EnlacesService', () => {
 
         expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledWith({
           where: { codigoRecinto: '978' },
-          select: { codigoRecinto: true, nombreRecinto: true, estado: true },
+          select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
         });
         expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
           expect.stringContaining('Escuela Central'),
           expect.any(String),
         );
       });
+
+      it('incluye el cantón abreviado junto al código en la respuesta de la búsqueda', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          canton: 'Ibarra',
+          estado: 'ACTIVO',
+        });
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect.stringContaining('📍 978 (Iba) — Escuela Central'),
+          expect.any(String),
+        );
+      });
+
+      it.each([[null], ['Internet']])(
+        'sin abreviatura (cantón %p) la búsqueda no deja paréntesis vacíos',
+        async (canton) => {
+          process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+          process.env.TELEGRAM_CHAT_ID = '-100200300';
+          prisma.enlaceRecinto.findUnique.mockResolvedValue({
+            codigoRecinto: 'CPE',
+            nombreRecinto: 'CPE - IMBABURA',
+            canton,
+            estado: 'FALLO',
+          });
+
+          await service.procesarComandoTelegram('secreto123', {
+            message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+          });
+          await service.procesarComandoTelegram('secreto123', {
+            message: { text: 'CPE', chat: { id: '-100200300' }, from: { id: 111 } },
+          });
+
+          expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+            expect.stringContaining('📍 CPE — CPE - IMBABURA'),
+            expect.any(String),
+          );
+        },
+      );
 
       it('avisa si el código no existe, en vez de quedarse callado', async () => {
         process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';

@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 export interface EnlaceCaido {
   codigoRecinto: string;
   nombreRecinto: string;
+  /** Solo lo usa Telegram (abreviado, ej. "Cot"); el correo no lo muestra. */
+  canton?: string | null;
 }
 
 export interface INotifier {
@@ -14,7 +16,7 @@ export interface INotifier {
 
 export const NOTIFIER = 'NOTIFIER';
 
-function escapeHtml(valor: string): string {
+export function escapeHtml(valor: string): string {
   return valor
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
