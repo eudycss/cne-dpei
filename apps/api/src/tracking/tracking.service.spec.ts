@@ -16,6 +16,7 @@ describe('TrackingService', () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       findUnique: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     recinto: { findUnique: jest.fn(), findMany: jest.fn() },
@@ -73,6 +74,15 @@ describe('TrackingService', () => {
 
     service = moduleRef.get(TrackingService);
   });
+
+  /** Valores interpolados del INSERT sobre `tabla` ($queryRaw es un tagged template). */
+  function valoresInsert(tabla: string): unknown[] {
+    const llamada = prisma.$queryRaw.mock.calls.find(([sql]) =>
+      (sql as TemplateStringsArray).join('?').includes(`INSERT INTO ${tabla}`),
+    );
+    if (!llamada) throw new Error(`No hubo INSERT en ${tabla}`);
+    return llamada.slice(1);
+  }
 
   describe('miAsignacion', () => {
     it('lanza NotFoundException si no hay evento activo', async () => {
@@ -879,6 +889,145 @@ describe('TrackingService', () => {
       expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
       expect(storage.readDecrypted).toHaveBeenCalledWith('actas/escrutinio.bin');
       expect(result.contentType).toBe('image/jpeg');
+    });
+  });
+
+  // La cola offline del móvil reenvía con desdeOffline: true; antes el schema lo
+  // descartaba y los INSERT escribían false fijo, perdiendo el dato de auditoría.
+  describe('desde_offline en acciones sincronizadas desde la cola del móvil', () => {
+    const offline = { desdeOffline: true };
+
+    function mockSalidaDpiOk() {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-dpi-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+    }
+
+    it('salida del DPI: guarda desde_offline=true si llega desde la cola', async () => {
+      mockSalidaDpiOk();
+      await service.registrarSalidaDpi(operadorId, { ...geo, ...offline } as any);
+      expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    it('salida del DPI: guarda desde_offline=false si no viene el campo (registro en línea)', async () => {
+      mockSalidaDpiOk();
+      await service.registrarSalidaDpi(operadorId, geo as any);
+      const valores = valoresInsert('eventos_tracking');
+      expect(valores).toContain(false);
+      expect(valores).not.toContain(true);
+    });
+
+    it('recepción de kit: guarda desde_offline=true si llega desde la cola', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ id: kitId, operadorId, eventoId });
+      storage.exists.mockResolvedValueOnce(true);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'rk-id', confirmado_en: new Date(ocurridoEn) }]);
+
+      await service.confirmarRecepcionKit(operadorId, {
+        kitId,
+        fotoMilitarUrl: 'militares/foto.enc',
+        latitud: 0.35,
+        longitud: -78.11,
+        ...offline,
+      } as any);
+
+      expect(valoresInsert('recepciones_kit')).toContain(true);
+    });
+
+    it('llegada al recinto: guarda desde_offline=true si llega desde la cola', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida' });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1', recintoId }]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([{ kitId: 'k1' }]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ metros: 10 }]) // dentro de la geocerca
+        .mockResolvedValueOnce([{ id: 'llegada-recinto-id' }]); // INSERT
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      await service.registrarLlegadaRecinto(operadorId, { ...geo, ...offline } as any);
+
+      expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    it('llegada a un NO-CDA: guarda desde_offline=true si llega desde la cola', async () => {
+      const noCdaId = '55555555-5555-5555-5555-555555555555';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId }]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: noCdaId, cdaDestinoId: recintoId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'no-cda-id' }]);
+
+      await service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId, ...offline } as any);
+
+      expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    it('salida del recinto: guarda desde_offline=true si llega desde la cola', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-recinto-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'Perez' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      await service.registrarSalidaRecinto(operadorId, {
+        ...geo,
+        actaInstalacionUrl: 'actas/instalacion.bin',
+        actaEscrutinioUrl: 'actas/escrutinio.bin',
+        ...offline,
+      } as any);
+
+      expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    it('llegada al DPI: guarda desde_offline=true si llega desde la cola', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida-recinto' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // sin coordenada de Delegación: no bloquea
+        .mockResolvedValueOnce([{ id: 'llegada-dpi-id' }]); // INSERT
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      await service.registrarLlegadaDpi(operadorId, { ...geo, ...offline } as any);
+
+      expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    it('llegada manual del supervisor: guarda desde_offline=false aunque el body traiga desdeOffline', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce({
+        id: recintoId,
+        tipo: 'CDA',
+        esDificilAcceso: true,
+        nombre: 'CDA 1',
+      });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'llegada-manual-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+
+      await service.registrarLlegadaRecintoManual('supervisor-id', ['ADMINISTRADOR'], {
+        recintoId,
+        ...offline,
+      } as any);
+
+      const valores = valoresInsert('eventos_tracking');
+      expect(valores).toContain(false);
+      expect(valores).not.toContain(true);
     });
   });
 });

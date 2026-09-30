@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { cedulaSchema, isValidCedulaEcuatoriana, telefonoSchema } from './index';
+import {
+  cedulaSchema,
+  isValidCedulaEcuatoriana,
+  llegadaDpiSchema,
+  llegadaNoCdaSchema,
+  llegadaRecintoSchema,
+  recepcionKitSchema,
+  salidaDpiSchema,
+  salidaRecintoSchema,
+  telefonoSchema,
+} from './index';
 
 describe('isValidCedulaEcuatoriana / cedulaSchema', () => {
   // Cédulas construidas con el algoritmo módulo-10 oficial (coeficientes
@@ -83,5 +93,37 @@ describe('telefonoSchema', () => {
     if (resultado.success) {
       expect(resultado.data).toBe('0991234567');
     }
+  });
+});
+
+// Causa raíz del bug: Zod descartaba `desdeOffline` (la cola offline del móvil lo
+// envía) y el dato de auditoría nunca llegaba a la columna desde_offline.
+describe('desdeOffline en los schemas de tracking que pasan por la cola offline', () => {
+  const geo = { latitud: 0.35, longitud: -78.11, ocurridoEn: '2026-09-30T10:00:00.000Z' };
+  const casos: Array<[string, { safeParse: (v: unknown) => { success: boolean; data?: unknown } }, object]> = [
+    ['salidaDpi', salidaDpiSchema, geo],
+    ['llegadaRecinto', llegadaRecintoSchema, geo],
+    ['llegadaDpi', llegadaDpiSchema, geo],
+    ['salidaRecinto', salidaRecintoSchema, { ...geo, actaInstalacionUrl: 'a', actaEscrutinioUrl: 'b' }],
+    ['llegadaNoCda', llegadaNoCdaSchema, { recintoId: '55555555-5555-5555-5555-555555555555' }],
+    [
+      'recepcionKit',
+      recepcionKitSchema,
+      { kitId: '33333333-3333-3333-3333-333333333333', fotoMilitarUrl: 'f', latitud: 0.35, longitud: -78.11 },
+    ],
+  ];
+
+  it.each(casos)('%s conserva desdeOffline al parsear', (_nombre, schema, base) => {
+    const resultado = schema.safeParse({ ...base, desdeOffline: true });
+    expect(resultado.success).toBe(true);
+    expect(resultado.data).toMatchObject({ desdeOffline: true });
+  });
+
+  it.each(casos)('%s sigue aceptando el body sin desdeOffline (apps sin cola)', (_nombre, schema, base) => {
+    expect(schema.safeParse(base).success).toBe(true);
+  });
+
+  it.each(casos)('%s rechaza un desdeOffline no booleano', (_nombre, schema, base) => {
+    expect(schema.safeParse({ ...base, desdeOffline: 'true' }).success).toBe(false);
   });
 });

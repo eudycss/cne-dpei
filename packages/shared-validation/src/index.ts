@@ -344,12 +344,19 @@ export type UpdateItemKitInput = z.infer<typeof updateItemKitSchema>;
 // ===================================================================
 // FASE 4 — Tracking del operador (HU2)
 // ===================================================================
+// La cola offline del móvil reenvía con `desdeOffline: true`; se guarda en
+// `desde_offline` para auditar qué se registró sin señal y se sincronizó después.
+// Lo declara el cliente: es un dato informativo, no confiable para autorizar ni
+// para relajar validaciones (geocerca, alertas, etc.).
+const desdeOffline = z.boolean().optional();
+
 export const salidaDpiSchema = z.object({
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z
     .string()
     .datetime({ message: 'Fecha-hora ISO requerida' }),
+  desdeOffline,
 });
 
 export type SalidaDpiInput = z.infer<typeof salidaDpiSchema>;
@@ -365,6 +372,7 @@ export const recepcionKitSchema = z.object({
   militarId: z.string().uuid().nullable().optional(),
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
+  desdeOffline,
 });
 
 export const llegadaRecintoSchema = z.object({
@@ -372,10 +380,12 @@ export const llegadaRecintoSchema = z.object({
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
   precisionMetros: z.number().nonnegative().nullable().optional(),
+  desdeOffline,
 });
 
 export const llegadaNoCdaSchema = z.object({
   recintoId: z.string().uuid(),
+  desdeOffline,
 });
 
 export const llegadaRecintoManualSchema = z.object({
@@ -389,6 +399,7 @@ export const salidaRecintoSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
   actaInstalacionUrl: z.string().min(1, 'Acta de instalación requerida'),
   actaEscrutinioUrl: z.string().min(1, 'Acta de escrutinio requerida'),
+  desdeOffline,
 });
 
 export const ingestaPosicionesSchema = z.object({
@@ -410,6 +421,7 @@ export const llegadaDpiSchema = z.object({
   longitud: z.number().min(-180).max(180),
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
   precisionMetros: z.number().nonnegative().nullable().optional(),
+  desdeOffline,
 });
 
 // Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)
