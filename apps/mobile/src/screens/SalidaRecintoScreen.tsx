@@ -22,12 +22,11 @@ import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
 import { capturarYSubirActa, limpiarActas, reintentarSubidaActa, restaurarActas } from '../lib/offline-actas';
 import {
+  activarRastreoSegundoPlano,
   asegurarServiciosUbicacion,
-  iniciarRastreo,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
-  solicitarPermisoBackground,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 
@@ -250,12 +249,9 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       await limpiarActas(contextoId);
 
       // HU4-CA3: iniciar rastreo continuo en segundo plano. Es "best-effort":
-      // la salida ya quedó registrada (o encolada), así que si esto falla el operador
-      // igual debe poder continuar.
-      try {
-        await solicitarPermisoBackground();
-        await iniciarRastreo();
-      } catch {
+      // la salida ya quedó registrada (o encolada), así que si esto falla o tarda
+      // demasiado el operador igual debe poder continuar.
+      if ((await activarRastreoSegundoPlano()) === 'fallo') {
         Alert.alert(
           'Rastreo en segundo plano no disponible',
           'Tu salida quedó registrada, pero no se pudo activar el rastreo de ubicación en segundo plano en este dispositivo.',

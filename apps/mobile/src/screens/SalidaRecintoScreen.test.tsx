@@ -29,8 +29,7 @@ jest.mock('../lib/location', () => {
     LocationServicesDisabledError,
     asegurarServiciosUbicacion: jest.fn(),
     obtenerUbicacionPuntual: jest.fn(),
-    solicitarPermisoBackground: jest.fn(),
-    iniciarRastreo: jest.fn(),
+    activarRastreoSegundoPlano: jest.fn().mockResolvedValue('activo'),
   };
 });
 
@@ -54,7 +53,7 @@ import {
   reintentarSubidaActa,
   limpiarActas,
 } from '../lib/offline-actas';
-import { asegurarServiciosUbicacion, obtenerUbicacionPuntual } from '../lib/location';
+import { activarRastreoSegundoPlano, asegurarServiciosUbicacion, obtenerUbicacionPuntual } from '../lib/location';
 import { CameraFoto } from '../components/CameraFoto';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
@@ -255,6 +254,46 @@ describe('SalidaRecintoScreen', () => {
     // Sigue deshabilitado porque falta la de escrutinio.
     const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
     expect(continuar.props.disabled).toBe(true);
+  });
+
+  describe('rastreo en segundo plano tras registrar la salida', () => {
+    async function registrarSalida() {
+      (capturarYSubirActa as jest.Mock).mockImplementation((_ctx: string, tipo: string, uri: string) =>
+        Promise.resolve({ uri, url: `actas/${tipo}.bin`, error: null }),
+      );
+      const onSalidaRegistrada = jest.fn();
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(<SalidaRecintoScreen onSalidaRegistrada={onSalidaRegistrada} />);
+        await flushPromises();
+      });
+      await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
+      await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+      await act(async () => pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress());
+      const checkbox = renderer.root.find((n) => n.type === Pressable && n.props.accessibilityRole === 'checkbox');
+      await act(async () => checkbox.props.onPress());
+      await act(async () => {
+        pressableAncestor(renderer.root.findByProps({ children: 'Registrar Salida de Recinto Electoral' })).props.onPress();
+        await flushPromises();
+      });
+      return onSalidaRegistrada;
+    }
+
+    it("si falla ('fallo'), avisa pero continúa el flujo", async () => {
+      (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('fallo');
+      const onSalidaRegistrada = await registrarSalida();
+
+      expect(Alert.alert).toHaveBeenCalledWith('Rastreo en segundo plano no disponible', expect.any(String));
+      expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
+    });
+
+    it("si vence el límite ('pendiente'), continúa sin alerta de fallo", async () => {
+      (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('pendiente');
+      const onSalidaRegistrada = await registrarSalida();
+
+      expect(Alert.alert).not.toHaveBeenCalledWith('Rastreo en segundo plano no disponible', expect.any(String));
+      expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('la cámara se titula con el acta que se está fotografiando (no "Foto del militar")', async () => {

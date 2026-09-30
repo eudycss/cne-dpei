@@ -26,7 +26,7 @@ jest.mock('./queries/retorno', () => ({ postPosiciones: jest.fn() }));
 
 import * as Location from 'expo-location';
 import { postPosiciones } from './queries/retorno';
-import { iniciarRastreo, iniciarRastreoPrimerPlano } from './location';
+import { activarRastreoSegundoPlano, iniciarRastreo, iniciarRastreoPrimerPlano } from './location';
 
 const fakeLocation = (lat: number, lon: number, timestamp = 1_700_000_000_000) => ({
   coords: { latitude: lat, longitude: lon },
@@ -98,6 +98,94 @@ describe('iniciarRastreo', () => {
     await iniciarRastreo();
 
     expect(Location.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('activarRastreoSegundoPlano', () => {
+  const concedido = { status: 'granted' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue(concedido);
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockResolvedValue(concedido);
+    (Location.hasStartedLocationUpdatesAsync as jest.Mock).mockResolvedValue(false);
+    (Location.startLocationUpdatesAsync as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("devuelve 'activo' cuando concede el permiso e inicia el rastreo", async () => {
+    await expect(activarRastreoSegundoPlano()).resolves.toBe('activo');
+    expect(Location.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("devuelve 'fallo' si niega el permiso en segundo plano (no inicia el rastreo)", async () => {
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' });
+
+    await expect(activarRastreoSegundoPlano()).resolves.toBe('fallo');
+    expect(Location.startLocationUpdatesAsync).not.toHaveBeenCalled();
+  });
+
+  it("devuelve 'fallo' si iniciarRastreo rechaza dentro del límite", async () => {
+    (Location.startLocationUpdatesAsync as jest.Mock).mockRejectedValue(new Error('servicio no disponible'));
+
+    await expect(activarRastreoSegundoPlano()).resolves.toBe('fallo');
+  });
+
+  it("devuelve 'pendiente' al vencer el límite si el permiso nunca responde (bug de 'Registrando…')", async () => {
+    jest.useFakeTimers();
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+    const resultado = activarRastreoSegundoPlano(20_000);
+    await jest.advanceTimersByTimeAsync(20_000);
+
+    await expect(resultado).resolves.toBe('pendiente');
+  });
+
+  it('si el permiso llega después del límite, el rastreo igual arranca solo', async () => {
+    jest.useFakeTimers();
+    let conceder!: (v: unknown) => void;
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        conceder = resolve;
+      }),
+    );
+
+    const resultado = activarRastreoSegundoPlano(20_000);
+    await jest.advanceTimersByTimeAsync(20_000);
+    await expect(resultado).resolves.toBe('pendiente');
+    expect(Location.startLocationUpdatesAsync).not.toHaveBeenCalled();
+
+    // El operador vuelve de Ajustes y concede "Permitir siempre".
+    conceder(concedido);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(Location.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('un rechazo posterior al límite no queda como promesa rechazada sin manejar', async () => {
+    jest.useFakeTimers();
+    let rechazar!: (e: unknown) => void;
+    (Location.requestBackgroundPermissionsAsync as jest.Mock).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rechazar = reject;
+      }),
+    );
+    const sinManejar = jest.fn();
+    // env.d.ts tipa `process` solo con `env` (código de app); aquí se usa el de Node.
+    const nodeProcess = (globalThis as unknown as { process: { on: Function; off: Function } }).process;
+    nodeProcess.on('unhandledRejection', sinManejar);
+
+    const resultado = activarRastreoSegundoPlano(20_000);
+    await jest.advanceTimersByTimeAsync(20_000);
+    await expect(resultado).resolves.toBe('pendiente');
+    rechazar(new Error('boom'));
+    await jest.advanceTimersByTimeAsync(0);
+    await new Promise((r) => jest.requireActual('timers').setImmediate(r));
+
+    nodeProcess.off('unhandledRejection', sinManejar);
+    expect(sinManejar).not.toHaveBeenCalled();
   });
 });
 

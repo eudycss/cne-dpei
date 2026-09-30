@@ -20,8 +20,7 @@ jest.mock('../lib/location', () => {
     LocationPermissionDeniedError,
     LocationServicesDisabledError,
     obtenerUbicacionPuntual: jest.fn(),
-    solicitarPermisoBackground: jest.fn(),
-    iniciarRastreo: jest.fn(),
+    activarRastreoSegundoPlano: jest.fn(),
   };
 });
 
@@ -37,7 +36,7 @@ jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 
 import { SalidaDpiScreen } from './SalidaDpiScreen';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
-import { obtenerUbicacionPuntual, solicitarPermisoBackground, iniciarRastreo } from '../lib/location';
+import { activarRastreoSegundoPlano, obtenerUbicacionPuntual } from '../lib/location';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -92,15 +91,14 @@ describe('SalidaDpiScreen', () => {
     (getMiAsignacion as jest.Mock).mockResolvedValue(asignacionFixture);
     (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 1, longitud: 2, precisionMetros: 5 });
     (postSalidaDpi as jest.Mock).mockResolvedValue({ id: 'salida-1' });
-    (solicitarPermisoBackground as jest.Mock).mockResolvedValue(undefined);
-    (iniciarRastreo as jest.Mock).mockResolvedValue(undefined);
+    (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('activo');
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
       const target = (buttons ?? []).find((b) => b.text !== 'Cancelar');
       target?.onPress?.();
     });
   });
 
-  it('tras registrar la salida exitosamente, solicita el permiso en segundo plano e inicia el rastreo', async () => {
+  it('tras registrar la salida exitosamente, activa el rastreo en segundo plano', async () => {
     let renderer!: ReactTestRenderer;
     await act(async () => {
       renderer = create(<SalidaDpiScreen onSalidaRegistrada={jest.fn()} />);
@@ -110,12 +108,11 @@ describe('SalidaDpiScreen', () => {
     await presionarRegistrarSalida(renderer);
 
     expect(postSalidaDpi).toHaveBeenCalledTimes(1);
-    expect(solicitarPermisoBackground).toHaveBeenCalledTimes(1);
-    expect(iniciarRastreo).toHaveBeenCalledTimes(1);
+    expect(activarRastreoSegundoPlano).toHaveBeenCalledTimes(1);
   });
 
   it('si el rastreo en segundo plano falla, avisa con una alerta pero no bloquea el flujo', async () => {
-    (solicitarPermisoBackground as jest.Mock).mockRejectedValue(new Error('sin permiso de background'));
+    (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('fallo');
     const onSalidaRegistrada = jest.fn();
     let renderer!: ReactTestRenderer;
     await act(async () => {
@@ -125,13 +122,27 @@ describe('SalidaDpiScreen', () => {
 
     await presionarRegistrarSalida(renderer);
 
-    expect(iniciarRastreo).not.toHaveBeenCalled();
     expect(Alert.alert).toHaveBeenCalledWith(
       'Rastreo en segundo plano no disponible',
       expect.any(String),
     );
     // Best-effort: la salida ya registrada permite continuar el flujo igual.
     expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
+  });
+
+  it("si la activación queda 'pendiente' (vence el límite), continúa sin alerta de fallo", async () => {
+    (activarRastreoSegundoPlano as jest.Mock).mockResolvedValue('pendiente');
+    const onSalidaRegistrada = jest.fn();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaDpiScreen onSalidaRegistrada={onSalidaRegistrada} />);
+      await flushPromises();
+    });
+
+    await presionarRegistrarSalida(renderer);
+
+    expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
+    expect(Alert.alert).not.toHaveBeenCalledWith('Rastreo en segundo plano no disponible', expect.any(String));
   });
 
   it('si postSalidaDpi devuelve null (sin señal), avisa y permite continuar sin bloquear', async () => {
