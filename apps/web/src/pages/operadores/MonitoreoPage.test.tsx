@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
@@ -14,10 +14,34 @@ vi.mock('../../lib/queries/monitoreo', () => ({
   getFotoActa: vi.fn(),
 }));
 
+const flyToMock = vi.fn();
 vi.mock('../../components/map', () => ({
   MapView: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  Marker: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  Marker: ({
+    children,
+    color,
+    pulse,
+    offset,
+  }: {
+    children?: React.ReactNode;
+    color?: string;
+    pulse?: boolean;
+    offset?: [number, number];
+  }) => (
+    <div
+      data-testid="marker"
+      data-color={color}
+      data-pulse={String(!!pulse)}
+      data-offset={JSON.stringify(offset ?? null)}
+    >
+      {children}
+    </div>
+  ),
   FitBounds: () => null,
+  FlyTo: (props: { target: [number, number] | null; nonce: number }) => {
+    flyToMock(props);
+    return null;
+  },
 }));
 
 vi.mock('slot-text/react', () => ({
@@ -163,6 +187,95 @@ describe('MonitoreoPage', () => {
 
     expect(within(filaRetorno).getByText(/En retorno/)).toBeInTheDocument();
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
+  });
+
+  describe('mapa en ruta', () => {
+    const AHORA = new Date('2026-10-01T17:15:00.000Z');
+    const jairo: OperadorEnRetorno = {
+      operadorId: 'jairo',
+      operadorNombre: 'Jairo Leal',
+      latitud: 0.2315582,
+      longitud: -78.6282684,
+      capturadoEn: '2026-10-01T16:48:00.000Z', // 27 min antes
+      kits: [],
+      estado: 'EN_TRANSITO',
+    };
+    const willy: OperadorEnRetorno = {
+      operadorId: 'willy',
+      operadorNombre: 'Willy Paspuel',
+      latitud: 0.2315933,
+      longitud: -78.6283783,
+      capturadoEn: '2026-10-01T17:14:30.000Z', // en vivo
+      kits: [],
+      estado: 'EN_RETORNO',
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+      vi.setSystemTime(AHORA);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('marca "sin señal" a quien dejó de enviar ubicación, en gris y sin pulso', async () => {
+      getOperadoresMock.mockResolvedValue([jairo, willy]);
+      getEstadoCdasMock.mockResolvedValue([]);
+
+      renderPage();
+
+      expect((await screen.findAllByText('Sin señal hace 27 min')).length).toBe(2); // lista + popup
+      const [markerJairo, markerWilly] = screen.getAllByTestId('marker');
+      expect(markerJairo).toHaveAttribute('data-color', '#6b7280');
+      expect(markerJairo).toHaveAttribute('data-pulse', 'false');
+      expect(markerWilly).toHaveAttribute('data-color', '#2563eb');
+      expect(markerWilly).toHaveAttribute('data-pulse', 'true');
+      expect(within(markerWilly).queryByText(/Sin señal/)).not.toBeInTheDocument();
+    });
+
+    it('pasa a "sin señal" con el paso del tiempo aunque los datos no cambien', async () => {
+      getOperadoresMock.mockResolvedValue([willy]);
+      getEstadoCdasMock.mockResolvedValue([]);
+
+      renderPage();
+
+      await screen.findAllByText('Willy Paspuel');
+      expect(screen.queryByText(/Sin señal/)).not.toBeInTheDocument();
+
+      // Willy envió su última posición 30 s antes; 10 min después sigue igual.
+      act(() => {
+        vi.advanceTimersByTime(10 * 60_000);
+      });
+
+      expect((await screen.findAllByText('Sin señal hace 10 min')).length).toBe(2);
+    });
+
+    it('separa los marcadores de dos operadores en el mismo punto', async () => {
+      getOperadoresMock.mockResolvedValue([jairo, willy]);
+      getEstadoCdasMock.mockResolvedValue([]);
+
+      renderPage();
+
+      await screen.findAllByText('Jairo Leal');
+      const offsets = screen.getAllByTestId('marker').map((m) => m.getAttribute('data-offset'));
+      expect(offsets[0]).not.toBe('[0,0]');
+      expect(offsets[0]).not.toBe(offsets[1]);
+    });
+
+    it('al seleccionar un operador de la lista centra el mapa en su posición', async () => {
+      getOperadoresMock.mockResolvedValue([jairo, willy]);
+      getEstadoCdasMock.mockResolvedValue([]);
+      const user = userEvent.setup();
+
+      renderPage();
+
+      const boton = (await screen.findAllByRole('button')).find((b) =>
+        b.textContent?.includes('Jairo Leal'),
+      )!;
+      await user.click(boton);
+
+      expect(flyToMock).toHaveBeenLastCalledWith({ target: [0.2315582, -78.6282684], nonce: 1 });
+    });
   });
 
   it('el botón "Ver ubicación" está deshabilitado si el CDA no tiene ubicación, y abre el modal si la tiene', async () => {
