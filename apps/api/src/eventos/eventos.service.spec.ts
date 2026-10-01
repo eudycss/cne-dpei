@@ -24,6 +24,8 @@ describe('EventosService', () => {
     eventoTracking: { findMany: jest.fn() },
     usuario: { findMany: jest.fn() },
     tipoEventoCatalog: { findUnique: jest.fn() },
+    $executeRaw: jest.fn(),
+    $transaction: jest.fn(),
   };
 
   const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -51,6 +53,9 @@ describe('EventosService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // La transacción interactiva recibe el mismo mock como cliente `tx`.
+    prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
+    prisma.$executeRaw.mockResolvedValue(1);
     const moduleRef = await Test.createTestingModule({
       providers: [EventosService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -91,6 +96,65 @@ describe('EventosService', () => {
 
       expect(result.estado).toBe('BORRADOR');
       expect(prisma.configAlerta.create).toHaveBeenCalledWith({ data: { eventoId } });
+    });
+
+    it('hereda la coordenada de la Delegación del evento más reciente que la tenga', async () => {
+      prisma.tipoEventoCatalog.findUnique.mockResolvedValueOnce({ codigo: 'ELECCION_GENERAL', activo: true });
+      prisma.eventoElectoral.create.mockResolvedValueOnce(eventoRow());
+      prisma.configAlerta.create.mockResolvedValueOnce(configRow);
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(configRow);
+
+      await service.create({
+        nombre: 'Elección 2026',
+        tipo: 'ELECCION_GENERAL',
+        fechaJornada: '2026-07-01',
+      } as any);
+
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+      const [plantilla, ...valores] = prisma.$executeRaw.mock.calls[0];
+      const sql = (plantilla as string[]).join('?');
+      expect(sql).toContain('UPDATE config_alertas SET delegacion_ubicacion');
+      expect(sql).toContain('ca.delegacion_ubicacion IS NOT NULL');
+      expect(sql).toContain('ORDER BY e.creado_en DESC');
+      // Excluye al propio evento y actualiza solo su fila.
+      expect(valores).toEqual([eventoId, eventoId]);
+      // Se hereda después de crear la config, no antes, y todo en una transacción.
+      expect(prisma.configAlerta.create.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.$executeRaw.mock.invocationCallOrder[0],
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('avisa en el log si no hay evento previo del que heredar la Delegación, sin fallar', async () => {
+      const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+      prisma.$executeRaw.mockResolvedValueOnce(0);
+      prisma.tipoEventoCatalog.findUnique.mockResolvedValueOnce({ codigo: 'ELECCION_GENERAL', activo: true });
+      prisma.eventoElectoral.create.mockResolvedValueOnce(eventoRow());
+      prisma.configAlerta.create.mockResolvedValueOnce(configRow);
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(configRow);
+
+      const result = await service.create({
+        nombre: 'Elección 2026',
+        tipo: 'ELECCION_GENERAL',
+        fechaJornada: '2026-07-01',
+      } as any);
+
+      expect(result.id).toBe(eventoId);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('sin coordenada de la Delegación'));
+    });
+
+    it('propaga el error si falla la herencia (la transacción revierte el evento)', async () => {
+      prisma.$executeRaw.mockRejectedValueOnce(new Error('db caída'));
+      prisma.tipoEventoCatalog.findUnique.mockResolvedValueOnce({ codigo: 'ELECCION_GENERAL', activo: true });
+      prisma.eventoElectoral.create.mockResolvedValueOnce(eventoRow());
+      prisma.configAlerta.create.mockResolvedValueOnce(configRow);
+
+      await expect(
+        service.create({ nombre: 'Elección 2026', tipo: 'ELECCION_GENERAL', fechaJornada: '2026-07-01' } as any),
+      ).rejects.toThrow('db caída');
+      expect(prisma.eventoElectoral.findUnique).not.toHaveBeenCalled();
     });
   });
 

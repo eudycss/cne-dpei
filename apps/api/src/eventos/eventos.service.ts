@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -19,6 +20,8 @@ import { PrismaService } from '../db/prisma.service';
 
 @Injectable()
 export class EventosService {
+  private readonly logger = new Logger(EventosService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async list(): Promise<EventoElectoral[]> {
@@ -43,18 +46,42 @@ export class EventosService {
   async create(input: CreateEventoRequest): Promise<EventoElectoral> {
     const parsed = createEventoSchema.parse(input);
     await this.assertTipoValido(parsed.tipo);
-    const evento = await this.prisma.eventoElectoral.create({
-      data: {
-        nombre: parsed.nombre,
-        tipo: parsed.tipo,
-        fechaJornada: new Date(parsed.fechaJornada),
-        descripcion: parsed.descripcion ?? null,
-        estado: 'BORRADOR',
-        // Config de alertas con umbrales por defecto (HU18-CA6)
-        // (se crea junto al evento)
-      },
+    const { evento, heredadas } = await this.prisma.$transaction(async (tx) => {
+      const evento = await tx.eventoElectoral.create({
+        data: {
+          nombre: parsed.nombre,
+          tipo: parsed.tipo,
+          fechaJornada: new Date(parsed.fechaJornada),
+          descripcion: parsed.descripcion ?? null,
+          estado: 'BORRADOR',
+          // Config de alertas con umbrales por defecto (HU18-CA6)
+          // (se crea junto al evento)
+        },
+      });
+      await tx.configAlerta.create({ data: { eventoId: evento.id } });
+      // La Delegación no cambia de un evento a otro y no hay pantalla para
+      // cargarla: sin esto el evento nuevo queda sin coordenada y la llegada al
+      // DPI no se valida por distancia (tracking.service registrarLlegadaDpi).
+      // Con UPDATE ... FROM no se toca ninguna fila si no hay de dónde heredar.
+      const heredadas = await tx.$executeRaw`
+        UPDATE config_alertas SET delegacion_ubicacion = origen.delegacion_ubicacion
+        FROM (
+          SELECT ca.delegacion_ubicacion
+          FROM config_alertas ca
+          JOIN eventos_electorales e ON e.id = ca.evento_id
+          WHERE ca.delegacion_ubicacion IS NOT NULL AND ca.evento_id <> ${evento.id}::uuid
+          ORDER BY e.creado_en DESC
+          LIMIT 1
+        ) AS origen
+        WHERE config_alertas.evento_id = ${evento.id}::uuid;
+      `;
+      return { evento, heredadas };
     });
-    await this.prisma.configAlerta.create({ data: { eventoId: evento.id } });
+    if (heredadas === 0) {
+      this.logger.warn(
+        `Evento ${evento.id} creado sin coordenada de la Delegación: la llegada al DPI no se validará por distancia`,
+      );
+    }
     return this.get(evento.id);
   }
 
