@@ -2,16 +2,22 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { ZodValidationExceptionFilter } from './common/zod-validation.filter';
 import { parseWebOrigins } from './common/web-origin.util';
+import { configurarBodyParsers } from './common/body-parsers';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    bodyParser: false,
+  });
   app.useLogger(app.get(Logger));
+  configurarBodyParsers(app);
 
   app.use(helmet());
 
