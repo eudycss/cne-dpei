@@ -295,10 +295,13 @@ describe('MonitoreoPage', () => {
 
     // El motivo de cada botón desactivado.
     const filaSin = screen.getByText('Colegio Otavalo').closest('tr')!;
-    expect(within(filaSin).getByRole('button', { name: 'Ver foto' })).toHaveAttribute(
-      'title',
-      'El operador aún no subió la foto del militar',
-    );
+    expect(
+      within(filaSin).getByRole('button', {
+        name: 'Ver foto',
+        description: 'El operador aún no subió la foto del militar',
+      }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('region', { name: 'Tabla de estado de CDAs' })).toHaveAttribute('tabindex', '0');
   });
 
   it('el botón "Ver ubicación" está deshabilitado si el CDA no tiene ubicación, y abre el modal si la tiene', async () => {
@@ -310,8 +313,8 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Escuela Manuela Cañizares');
 
     const botonesUbicacion = screen.getAllByRole('button', { name: 'Ver ubicación' });
-    expect(botonesUbicacion[1]).toBeDisabled(); // fila sin ubicación (Colegio Otavalo)
-    expect(botonesUbicacion[0]).toBeEnabled();
+    expect(botonesUbicacion[1]).toHaveAttribute('aria-disabled', 'true'); // fila sin ubicación (Colegio Otavalo)
+    expect(botonesUbicacion[0]).not.toHaveAttribute('aria-disabled');
 
     await user.click(botonesUbicacion[0]);
 
@@ -330,8 +333,8 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Escuela Manuela Cañizares');
 
     const botonesFoto = screen.getAllByRole('button', { name: 'Ver foto' });
-    expect(botonesFoto[1]).toBeDisabled(); // Colegio Otavalo sin foto militar
-    expect(botonesFoto[0]).toBeEnabled();
+    expect(botonesFoto[1]).toHaveAttribute('aria-disabled', 'true'); // Colegio Otavalo sin foto militar
+    expect(botonesFoto[0]).not.toHaveAttribute('aria-disabled');
 
     await user.click(botonesFoto[0]);
 
@@ -361,16 +364,16 @@ describe('MonitoreoPage', () => {
     const botonEscrutinio1 = within(filaConActas).getByRole('button', {
       name: 'Ver acta de escrutinio — Escuela Manuela Cañizares',
     });
-    expect(botonInstalacion1).toBeEnabled();
-    expect(botonEscrutinio1).toBeDisabled();
+    expect(botonInstalacion1).not.toHaveAttribute('aria-disabled');
+    expect(botonEscrutinio1).toHaveAttribute('aria-disabled', 'true');
 
     // Colegio Otavalo: no tiene ninguna de las dos.
     expect(
       within(filaSinActas).getByRole('button', { name: 'Ver acta de instalación — Colegio Otavalo' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     expect(
       within(filaSinActas).getByRole('button', { name: 'Ver acta de escrutinio — Colegio Otavalo' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
 
     await user.click(botonInstalacion1);
 

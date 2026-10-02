@@ -57,8 +57,11 @@ export function MapView({ center, zoom, scrollZoom = true, pitch = 0, className,
 
   // Cambio de tema sin recrear el mapa: solo se reemplaza el estilo base. Los
   // marcadores y popups son DOM (maplibregl.Marker), no capas, así que no se pierden.
+  const temaAplicado = useRef(theme);
   useEffect(() => {
-    map?.setStyle(estiloMapa(theme));
+    if (!map || temaAplicado.current === theme) return;
+    temaAplicado.current = theme;
+    map.setStyle(estiloMapa(theme));
   }, [map, theme]);
 
   return (

@@ -13,7 +13,7 @@ function estiloRaster(id: string, tiles: string[], attribution: string): maplibr
 }
 
 const ATRIBUCION_OSM =
-  '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>';
 
 export const ESTILO_CLARO = estiloRaster(
   'osm',
@@ -25,7 +25,7 @@ export const ESTILO_CLARO = estiloRaster(
 export const ESTILO_OSCURO = estiloRaster(
   'carto-dark',
   ['a', 'b', 'c', 'd'].map((s) => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png`),
-  `${ATRIBUCION_OSM} &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>`,
+  `${ATRIBUCION_OSM} &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>`,
 );
 
 export function estiloMapa(theme: Theme): maplibregl.StyleSpecification {

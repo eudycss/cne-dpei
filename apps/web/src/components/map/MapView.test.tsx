@@ -52,6 +52,8 @@ describe('MapView', () => {
     render(<MapView center={[0.35, -78.12]} zoom={11} />);
     expect(instancias).toHaveLength(1);
     expect(instancias[0].opciones.style).toBe(ESTILO_OSCURO);
+    // Ya nace con el estilo correcto: no se vuelve a aplicar al terminar de cargar.
+    expect(instancias[0].setStyle).not.toHaveBeenCalled();
   });
 
   it('al cambiar el tema reemplaza el estilo sin recrear el mapa', () => {

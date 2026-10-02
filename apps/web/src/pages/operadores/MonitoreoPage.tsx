@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TextoAnimado } from '../../components/TextoAnimado';
+import { BotonConMotivo } from '../../components/BotonConMotivo';
 import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
@@ -385,7 +386,8 @@ export function MonitoreoPage() {
         ) : cdaError ? (
           <p style={{ color: '#dc2626' }}>No se pudo cargar el estado de los CDAs.</p>
         ) : (
-          <div className="table-scroll">
+          // Enfocable para poder desplazarla horizontalmente con el teclado.
+          <div className="table-scroll" role="region" aria-label="Tabla de estado de CDAs" tabIndex={0}>
           <table className="table-sticky-first">
             <thead>
               <tr>
@@ -426,50 +428,38 @@ export function MonitoreoPage() {
                     </td>
                     <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
                     <td>
-                      <button
-                        className="btn secondary"
-                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                        disabled={!c.ubicacion}
-                        title={c.ubicacion ? undefined : 'Aún no hay ubicación registrada'}
+                      <BotonConMotivo
                         onClick={() => setVerUbicacion(c)}
+                        motivo={c.ubicacion ? null : 'Aún no hay ubicación registrada'}
                       >
                         Ver ubicación
-                      </button>
+                      </BotonConMotivo>
                     </td>
                     <td>
-                      <button
-                        className="btn secondary"
-                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                        disabled={!c.tieneFotoMilitar}
-                        title={c.tieneFotoMilitar ? undefined : 'El operador aún no subió la foto del militar'}
+                      <BotonConMotivo
                         onClick={() => setVerFoto(c)}
+                        motivo={c.tieneFotoMilitar ? null : 'El operador aún no subió la foto del militar'}
                       >
                         Ver foto
-                      </button>
+                      </BotonConMotivo>
                     </td>
                     <td>
-                      <button
-                        className="btn secondary"
-                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                        disabled={!c.tieneActaInstalacion}
-                        title={c.tieneActaInstalacion ? undefined : 'Aún no se subió el acta de instalación'}
+                      <BotonConMotivo
                         onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
-                        aria-label={`Ver acta de instalación — ${c.nombreRecinto}`}
+                        motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el acta de instalación'}
+                        ariaLabel={`Ver acta de instalación — ${c.nombreRecinto}`}
                       >
                         Ver acta
-                      </button>
+                      </BotonConMotivo>
                     </td>
                     <td>
-                      <button
-                        className="btn secondary"
-                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                        disabled={!c.tieneActaEscrutinio}
-                        title={c.tieneActaEscrutinio ? undefined : 'Aún no se subió el acta de escrutinio'}
+                      <BotonConMotivo
                         onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
-                        aria-label={`Ver acta de escrutinio — ${c.nombreRecinto}`}
+                        motivo={c.tieneActaEscrutinio ? null : 'Aún no se subió el acta de escrutinio'}
+                        ariaLabel={`Ver acta de escrutinio — ${c.nombreRecinto}`}
                       >
                         Ver acta
-                      </button>
+                      </BotonConMotivo>
                     </td>
                   </tr>
                 );
