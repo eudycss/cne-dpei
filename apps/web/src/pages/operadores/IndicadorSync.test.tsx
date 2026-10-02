@@ -37,6 +37,21 @@ describe('IndicadorSync', () => {
     expect(screen.getByText('Actualizando…')).toBeInTheDocument();
   });
 
+  it('el StatusMark refleja el estado y queda oculto al lector (su texto es en inglés)', () => {
+    const { container, rerender } = render(
+      <IndicadorSync actualizadoEn={Date.now()} actualizando error={false} />,
+    );
+    const indicador = container.querySelector('.sync-indicator')!;
+    expect(indicador).toHaveAttribute('data-estado', 'running');
+    expect(container.querySelector('.status-mark')?.closest('[aria-hidden="true"]')).not.toBeNull();
+
+    rerender(<IndicadorSync actualizadoEn={Date.now()} actualizando={false} error={false} />);
+    expect(indicador).toHaveAttribute('data-estado', 'done');
+
+    rerender(<IndicadorSync actualizadoEn={Date.now()} actualizando={false} error />);
+    expect(indicador).toHaveAttribute('data-estado', 'failed');
+  });
+
   it('solo anuncia el error al lector de pantalla, no cada refresco', () => {
     const { rerender } = render(
       <IndicadorSync actualizadoEn={Date.now()} actualizando={false} error={false} />,
