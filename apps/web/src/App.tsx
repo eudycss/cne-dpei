@@ -19,6 +19,7 @@ import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
 import { EnlacesPage } from './pages/enlaces/EnlacesPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
+import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -121,6 +122,9 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Reporte Power BI "Proyecto CDAS" — el acceso real lo controla Power BI */}
+        <Route path="/reportes/cdas" element={<PowerBiCdasPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
