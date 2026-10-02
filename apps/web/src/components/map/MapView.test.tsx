@@ -23,12 +23,10 @@ vi.mock('maplibre-gl', () => {
   }
   class Control {}
   return {
-    default: {
-      Map: FakeMap,
-      NavigationControl: Control,
-      GeolocateControl: Control,
-      FullscreenControl: Control,
-    },
+    Map: FakeMap,
+    NavigationControl: Control,
+    GeolocateControl: Control,
+    FullscreenControl: Control,
   };
 });
 vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));

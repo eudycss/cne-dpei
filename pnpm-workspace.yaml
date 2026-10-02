@@ -4,6 +4,9 @@ packages:
 shamefullyHoist: true
 overrides:
   yargs: "^17.6.2"
+  # Vulnerabilidades altas en dependencias internas de jsdom (solo pruebas).
+  "ws@>=8.0.0 <8.21.0": "8.22.0"
+  "form-data@>=4.0.0 <4.0.6": "4.0.6"
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

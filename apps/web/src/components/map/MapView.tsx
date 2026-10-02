@@ -1,5 +1,5 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MapContext } from './MapContext';
 import { estiloMapa } from './estilos';
