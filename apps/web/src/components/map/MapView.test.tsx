@@ -7,7 +7,8 @@ const instancias: Array<{
   remove: ReturnType<typeof vi.fn>;
 }> = [];
 
-const urlsWorker: string[] = [];
+// worker.ts llama a setWorkerUrl al importarse: la lista debe existir antes (vi.hoisted).
+const { urlsWorker } = vi.hoisted(() => ({ urlsWorker: [] as string[] }));
 
 vi.mock('maplibre-gl', () => {
   class FakeMap {
