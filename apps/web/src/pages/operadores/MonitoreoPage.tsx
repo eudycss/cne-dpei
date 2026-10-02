@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { SlotText } from 'slot-text/react';
-import 'slot-text/style.css';
+import { TextoAnimado } from '../../components/TextoAnimado';
 import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
@@ -286,7 +285,7 @@ export function MonitoreoPage() {
 
         <div className="card" style={{ flex: '1 1 280px', minWidth: 260 }}>
           <h3 style={{ marginTop: 0 }}>
-            En ruta (<SlotText text={String(operadores.length)} />)
+            En ruta (<TextoAnimado text={String(operadores.length)} />)
           </h3>
           {operadores.length > 0 ? (
             <p id="monitoreo-ayuda-centrar" style={{ fontSize: 12, opacity: 0.7, margin: '-0.5rem 0 0.25rem' }}>
@@ -349,7 +348,11 @@ export function MonitoreoPage() {
       </p>
       <div className="card">
         <div className="row">
-          <select value={cantonFiltro} onChange={(e) => setCantonFiltro(e.target.value)}>
+          <select
+            value={cantonFiltro}
+            onChange={(e) => setCantonFiltro(e.target.value)}
+            aria-label="Filtrar CDAs por cantón"
+          >
             <option value="">Todos los cantones</option>
             {cantones.map(([id, nombre]) => (
               <option key={id} value={id}>{nombre}</option>
@@ -371,7 +374,7 @@ export function MonitoreoPage() {
                     display: 'inline-block',
                   }}
                 />
-                {info.label}: <strong><SlotText text={String(conteoPorEstado[estado] ?? 0)} /></strong>
+                {info.label}: <strong><TextoAnimado text={String(conteoPorEstado[estado] ?? 0)} /></strong>
               </span>
             );
           })}
@@ -382,7 +385,8 @@ export function MonitoreoPage() {
         ) : cdaError ? (
           <p style={{ color: '#dc2626' }}>No se pudo cargar el estado de los CDAs.</p>
         ) : (
-          <table>
+          <div className="table-scroll">
+          <table className="table-sticky-first">
             <thead>
               <tr>
                 <th>Código</th>
@@ -417,7 +421,7 @@ export function MonitoreoPage() {
                             display: 'inline-block',
                           }}
                         />
-                        <SlotText text={info.label} />
+                        <TextoAnimado text={info.label} />
                       </span>
                     </td>
                     <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
@@ -426,6 +430,7 @@ export function MonitoreoPage() {
                         className="btn secondary"
                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                         disabled={!c.ubicacion}
+                        title={c.ubicacion ? undefined : 'Aún no hay ubicación registrada'}
                         onClick={() => setVerUbicacion(c)}
                       >
                         Ver ubicación
@@ -436,6 +441,7 @@ export function MonitoreoPage() {
                         className="btn secondary"
                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                         disabled={!c.tieneFotoMilitar}
+                        title={c.tieneFotoMilitar ? undefined : 'El operador aún no subió la foto del militar'}
                         onClick={() => setVerFoto(c)}
                       >
                         Ver foto
@@ -446,6 +452,7 @@ export function MonitoreoPage() {
                         className="btn secondary"
                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                         disabled={!c.tieneActaInstalacion}
+                        title={c.tieneActaInstalacion ? undefined : 'Aún no se subió el acta de instalación'}
                         onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
                         aria-label={`Ver acta de instalación — ${c.nombreRecinto}`}
                       >
@@ -457,6 +464,7 @@ export function MonitoreoPage() {
                         className="btn secondary"
                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                         disabled={!c.tieneActaEscrutinio}
+                        title={c.tieneActaEscrutinio ? undefined : 'Aún no se subió el acta de escrutinio'}
                         onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
                         aria-label={`Ver acta de escrutinio — ${c.nombreRecinto}`}
                       >
@@ -475,6 +483,7 @@ export function MonitoreoPage() {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

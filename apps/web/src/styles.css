@@ -133,13 +133,22 @@ a:hover { text-decoration: underline; }
 
 /* Layout */
 .app-shell { display: flex; min-height: 100vh; }
-.sidebar { width: 240px; background: var(--bg-sidebar); color: var(--text-sidebar); padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: flex-start; }
-.sidebar .brand { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; background: var(--bg-sidebar-brand); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem; }
+/* La barra lateral no hace scroll completa: solo el menú. Así el bloque del
+   usuario y "Cerrar sesión" quedan siempre visibles abajo. */
+.sidebar { width: 240px; background: var(--bg-sidebar); color: var(--text-sidebar); padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; position: sticky; top: 0; height: 100vh; overflow: hidden; align-self: flex-start; }
+.sidebar .brand { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; background: var(--bg-sidebar-brand); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; flex-shrink: 0; }
 .sidebar .brand h1 { color: var(--text-sidebar-brand); }
 .sidebar h1 { font-size: 1rem; margin: 0; }
-.sidebar a { color: var(--text-sidebar-link); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; }
-.sidebar a.active, .sidebar a:hover { background: var(--bg-sidebar-hover); color: #fff; text-decoration: none; }
-.sidebar .me { margin-top: auto; font-size: 0.8rem; color: var(--text-sidebar-me); }
+.sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.25rem; padding-right: 2px; }
+.sidebar a { position: relative; color: var(--text-sidebar-link); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; transition: background var(--dur-fast), color var(--dur-fast); }
+.sidebar a:hover { background: var(--bg-sidebar-hover); color: #fff; text-decoration: none; }
+.sidebar a.active { background: var(--bg-sidebar-hover); color: #fff; font-weight: 600; text-decoration: none; }
+.sidebar a.active::before {
+  content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
+  width: 3px; border-radius: 3px; background: var(--accent-bar);
+}
+.sidebar .me { flex-shrink: 0; font-size: 0.8rem; color: var(--text-sidebar-me); border-top: 1px solid var(--bg-sidebar-hover); padding-top: 0.75rem; }
+.sidebar .me .badge { white-space: nowrap; }
 .main { flex: 1; padding: 1.5rem 2rem; overflow: auto; }
 .main h2 { margin-top: 0; }
 
@@ -157,9 +166,34 @@ a:hover { text-decoration: underline; }
 .field label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: var(--text-label); }
 .field input, .field select, .field textarea {
   width: 100%; padding: 0.5rem 0.65rem; border: 1px solid var(--border-input); border-radius: 6px; font-size: 0.9rem;
-  background: var(--bg-card); color: var(--text);
+  background-color: var(--bg-card); color: var(--text);
 }
+.field select { padding-right: 2rem; }
 .field input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+/* Selects fuera de formularios (filtros): mismo aspecto que los campos y
+   flecha propia, en vez del control nativo blanco sobre fondo oscuro. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 36px;
+  padding: 0.45rem 2rem 0.45rem 0.65rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 55%, calc(100% - 10px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color var(--dur-fast);
+}
+select:hover { border-color: var(--primary); }
+select option { background: var(--bg-card); color: var(--text); }
 .error { color: var(--error); font-size: 0.85rem; margin-top: 0.25rem; }
 
 /* Button */
@@ -168,6 +202,10 @@ a:hover { text-decoration: underline; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn.secondary { background: var(--border); color: var(--text); }
 .btn.secondary:hover { background: var(--border-input); }
+/* Desactivado: contorno punteado y texto atenuado pero legible, en vez de
+   un botón casi invisible por la opacidad. */
+.btn.secondary:disabled { opacity: 1; background: transparent; color: var(--text-muted); border: 1px dashed var(--border-input); }
+.btn.secondary:disabled:hover { background: transparent; }
 .btn.danger { background: var(--error); color: #fff; }
 .btn.danger:hover { background: var(--error-hover); }
 .row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
@@ -177,6 +215,11 @@ table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); }
 th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .table-scroll { overflow-x: auto; }
+/* Primera columna fija al desplazar horizontalmente. */
+.table-sticky-first th:first-child,
+.table-sticky-first td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg-card); }
+.table-sticky-first th:first-child { background: var(--border-subtle); }
+.table-sticky-first th, .table-sticky-first td { white-space: nowrap; }
 .table-report { min-width: 1000px; }
 
 .badge { display: inline-block; padding: 0.15rem 0.5rem; background: var(--badge-bg); color: var(--badge-text); border-radius: 999px; font-size: 0.75rem; margin-right: 4px; }

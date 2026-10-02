@@ -6,6 +6,7 @@ import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
 import { EnlaceCaidoBanner } from '../components/EnlaceCaidoBanner';
 import { useEnlacesCaidosPendientes } from '../lib/useEnlacesCaidosPendientes';
+import { etiquetaRol } from '../lib/roles';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -34,48 +35,50 @@ export function Layout() {
             <Logo height={44} />
             <h1>CNE Imbabura</h1>
           </div>
-          <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Usuarios
-          </NavLink>
-          <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Militares
-          </NavLink>
-          <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Recintos Electorales
-          </NavLink>
-          <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Eventos Electorales
-          </NavLink>
-          <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Asignaciones
-          </NavLink>
-          <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Kits Electorales
-          </NavLink>
-          <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Monitoreo
-          </NavLink>
-          <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Incidencias
-          </NavLink>
-          {puedeVerAlertas && (
-            <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Alertas
+          <nav className="sidebar-nav" aria-label="Menú principal">
+            <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Usuarios
             </NavLink>
-          )}
-          {puedeVerEnlaces && (
-            <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Enlaces
+            <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Militares
             </NavLink>
-          )}
-          {puedeVerReportes && (
-            <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Reportes
+            <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Recintos Electorales
             </NavLink>
-          )}
-          <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Power BI CDAS
-          </NavLink>
+            <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Eventos Electorales
+            </NavLink>
+            <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Asignaciones
+            </NavLink>
+            <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Kits Electorales
+            </NavLink>
+            <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Monitoreo
+            </NavLink>
+            <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Incidencias
+            </NavLink>
+            {puedeVerAlertas && (
+              <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Alertas
+              </NavLink>
+            )}
+            {puedeVerEnlaces && (
+              <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Enlaces
+              </NavLink>
+            )}
+            {puedeVerReportes && (
+              <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+                Reportes
+              </NavLink>
+            )}
+            <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
+              Power BI CDAS
+            </NavLink>
+          </nav>
           <div className="me">
             <div>
               <strong>{user?.nombres} {user?.apellidos}</strong>
@@ -83,7 +86,7 @@ export function Layout() {
             <div style={{ opacity: 0.7 }}>{user?.email}</div>
             <div style={{ marginTop: '0.25rem' }}>
               {user?.roles.map((r) => (
-                <span className="badge" key={r}>{r}</span>
+                <span className="badge" key={r}>{etiquetaRol(r)}</span>
               ))}
             </div>
             <button

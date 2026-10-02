@@ -278,6 +278,29 @@ describe('MonitoreoPage', () => {
     });
   });
 
+  it('tabla de CDAs accesible: estado legible, filtro con nombre y primera columna fija', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+
+    renderPage();
+
+    const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    // El texto completo para el lector de pantalla; la animación queda oculta.
+    const estado = within(fila).getByText('En retorno', { selector: '.sr-only' });
+    expect(estado.nextElementSibling).toHaveAttribute('aria-hidden', 'true');
+
+    expect(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' })).toBeInTheDocument();
+    expect(fila.closest('table')).toHaveClass('table-sticky-first');
+    expect(fila.closest('.table-scroll')).not.toBeNull();
+
+    // El motivo de cada botón desactivado.
+    const filaSin = screen.getByText('Colegio Otavalo').closest('tr')!;
+    expect(within(filaSin).getByRole('button', { name: 'Ver foto' })).toHaveAttribute(
+      'title',
+      'El operador aún no subió la foto del militar',
+    );
+  });
+
   it('el botón "Ver ubicación" está deshabilitado si el CDA no tiene ubicación, y abre el modal si la tiene', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
