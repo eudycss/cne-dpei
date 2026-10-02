@@ -42,6 +42,42 @@ describe('EnlacesService', () => {
   });
 
   describe('revisarEnlaces', () => {
+    afterEach(() => {
+      delete process.env.ENLACES_CRON_ENABLED;
+    });
+
+    it('no hace nada si ENLACES_CRON_ENABLED=false (ej. API local de desarrollo)', async () => {
+      process.env.ENLACES_CRON_ENABLED = 'false';
+
+      await service.revisarEnlaces();
+
+      expect(sheetsClient.leerEnlacesImbabura).not.toHaveBeenCalled();
+      expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
+      expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('también se desactiva con mayúsculas o espacios (" FALSE ")', async () => {
+      process.env.ENLACES_CRON_ENABLED = ' FALSE ';
+
+      await service.revisarEnlaces();
+
+      expect(sheetsClient.leerEnlacesImbabura).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['sin definir (caso de producción)', undefined],
+      ['"true"', 'true'],
+    ])('sigue revisando si ENLACES_CRON_ENABLED está %s', async (_caso, valor) => {
+      if (valor === undefined) delete process.env.ENLACES_CRON_ENABLED;
+      else process.env.ENLACES_CRON_ENABLED = valor;
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([]);
+
+      await service.revisarEnlaces();
+
+      expect(sheetsClient.leerEnlacesImbabura).toHaveBeenCalledTimes(1);
+    });
+
     it('notifica cuando un enlace pasa de ACTIVO a FALLO', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
