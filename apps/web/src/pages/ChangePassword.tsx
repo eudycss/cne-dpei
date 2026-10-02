@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { ChangePasswordResponse } from '@cne/shared-types';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api, tokenStore } from '../lib/api';

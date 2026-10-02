@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { createUserSchema } from '@cne/shared-validation';
 import { api } from '../../lib/api';
 
