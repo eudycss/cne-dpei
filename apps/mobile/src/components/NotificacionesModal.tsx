@@ -95,7 +95,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   subtitle: { fontSize: 12, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 2 },
   empty: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginVertical: 18 },
   row: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary, marginTop: 5, marginRight: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.primaryBg, marginTop: 5, marginRight: 6 },
   text: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textPrimary },
   textUnread: { fontFamily: fontFamily.medium },
   meta: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 2 },

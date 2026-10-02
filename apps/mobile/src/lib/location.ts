@@ -114,6 +114,72 @@ export async function iniciarRastreo(): Promise<void> {
   });
 }
 
+export type ResultadoRastreo = 'activo' | 'fallo' | 'pendiente';
+
+/** Tiempo máximo que la pantalla espera al permiso + inicio del rastreo. */
+// Alcanza para un diálogo de permiso normal; si tarda más, la activación sigue por detrás.
+export const LIMITE_ACTIVAR_RASTREO_MS = 10_000;
+
+/**
+ * Pide el permiso en segundo plano e inicia el rastreo sin dejar la pantalla
+ * esperando para siempre: en Android 17 (emulador) `requestBackgroundPermissionsAsync`
+ * no resolvía y la salida ya registrada quedaba en "Registrando…".
+ *
+ * - 'activo': rastreo iniciado.
+ * - 'fallo': permiso denegado o error; quien llama avisa al operador.
+ * - 'pendiente': venció el límite. La activación sigue en curso (p. ej. el
+ *   operador aún está en Ajustes eligiendo "Permitir siempre") y arrancará sola
+ *   si se concede, así que no se avisa de un fallo que quizá no ocurra.
+ */
+export async function activarRastreoSegundoPlano(
+  limiteMs: number = LIMITE_ACTIVAR_RASTREO_MS,
+): Promise<ResultadoRastreo> {
+  const activacion = (async () => {
+    await solicitarPermisoBackground();
+    await iniciarRastreo();
+  })();
+  // Si falla después del límite, nadie la espera: evita un rechazo sin manejar.
+  activacion.catch(() => {});
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<'pendiente'>((resolve) => {
+    timer = setTimeout(() => resolve('pendiente'), limiteMs);
+  });
+  try {
+    return await Promise.race([activacion.then(() => 'activo' as const), limite]);
+  } catch {
+    return 'fallo';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Estado real del rastreo en segundo plano, para no anunciar "Rastreo activo"
+ * cuando nunca arrancó. Si el permiso "Permitir siempre" ya está concedido
+ * (p. ej. el operador lo dio en Ajustes después) lo arranca sin preguntar;
+ * nunca abre diálogos de permiso: eso queda para el botón del aviso.
+ */
+export async function asegurarRastreoSiHayPermiso(): Promise<boolean> {
+  const activo = () => Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
+  try {
+    if (!(await Location.hasServicesEnabledAsync())) return false;
+    if (await activo()) return true;
+    const bg = await Location.getBackgroundPermissionsAsync();
+    if (bg.status !== 'granted') return false;
+    await iniciarRastreo();
+    return await activo();
+  } catch {
+    return false;
+  }
+}
+
+/** Si el permiso "Permitir todo el tiempo" está concedido (sin abrir diálogos). */
+export async function permisoSegundoPlanoConcedido(): Promise<boolean> {
+  const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+  return bg?.status === 'granted';
+}
+
 export async function detenerRastreo(): Promise<void> {
   const yaActivo = await Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
   if (yaActivo) {

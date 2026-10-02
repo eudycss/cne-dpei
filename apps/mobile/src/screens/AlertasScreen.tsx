@@ -176,7 +176,7 @@ const makeStyles = (c: Colors) =>
       borderColor: c.border,
       backgroundColor: c.bgCard,
     },
-    chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+    chipActive: { backgroundColor: c.primaryBg, borderColor: c.primary },
     chipText: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textSecondary },
     chipTextActive: { color: '#fff' },
     list: { flex: 1 },
@@ -196,7 +196,7 @@ const makeStyles = (c: Colors) =>
     acciones: { flexDirection: 'row', gap: 8, marginTop: 10 },
     btn: {
       flex: 1,
-      backgroundColor: c.primary,
+      backgroundColor: c.primaryBg,
       borderRadius: 8,
       paddingVertical: 8,
       alignItems: 'center',

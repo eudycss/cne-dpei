@@ -22,12 +22,11 @@ import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
 import { capturarYSubirActa, limpiarActas, reintentarSubidaActa, restaurarActas } from '../lib/offline-actas';
 import {
+  activarRastreoSegundoPlano,
   asegurarServiciosUbicacion,
-  iniciarRastreo,
   LocationPermissionDeniedError,
   LocationServicesDisabledError,
   obtenerUbicacionPuntual,
-  solicitarPermisoBackground,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 
@@ -250,12 +249,9 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       await limpiarActas(contextoId);
 
       // HU4-CA3: iniciar rastreo continuo en segundo plano. Es "best-effort":
-      // la salida ya quedó registrada (o encolada), así que si esto falla el operador
-      // igual debe poder continuar.
-      try {
-        await solicitarPermisoBackground();
-        await iniciarRastreo();
-      } catch {
+      // la salida ya quedó registrada (o encolada), así que si esto falla o tarda
+      // demasiado el operador igual debe poder continuar.
+      if ((await activarRastreoSegundoPlano()) === 'fallo') {
         Alert.alert(
           'Rastreo en segundo plano no disponible',
           'Tu salida quedó registrada, pero no se pudo activar el rastreo de ubicación en segundo plano en este dispositivo.',
@@ -569,7 +565,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   stepBadgeWrap: { alignItems: 'center', minWidth: 80 },
   stepCircle: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   stepCircleIdle: { backgroundColor: c.border },
-  stepCircleActive: { backgroundColor: c.primary },
+  stepCircleActive: { backgroundColor: c.primaryBg },
   stepCircleDone: { backgroundColor: c.success },
   stepCircleText: { color: '#fff', fontFamily: fontFamily.bold, fontSize: 13 },
   stepLabel: { fontSize: 11, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 4, textAlign: 'center' },
@@ -671,7 +667,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
 
   btnPrimary: {
-    backgroundColor: c.primary,
+    backgroundColor: c.primaryBg,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: 8,

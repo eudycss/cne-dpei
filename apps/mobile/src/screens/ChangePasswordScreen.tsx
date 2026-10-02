@@ -89,6 +89,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   title: { fontSize: 20, fontFamily: fontFamily.bold, color: c.textPrimary },
   subtitle: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginVertical: 8 },
   label: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textLabel, marginBottom: 4 },
-  button: { backgroundColor: c.primary, padding: 12, borderRadius: 6, marginTop: 4 },
+  button: { backgroundColor: c.primaryBg, padding: 12, borderRadius: 6, marginTop: 4 },
   buttonText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold },
 });
