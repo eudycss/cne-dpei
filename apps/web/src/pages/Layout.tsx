@@ -1,5 +1,21 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Moon, Sun } from 'lucide-react';
+import {
+  CalendarDays,
+  ChartColumn,
+  ClipboardList,
+  FileChartColumn,
+  LogOut,
+  MapPinned,
+  Moon,
+  Network,
+  Package,
+  School,
+  ShieldCheck,
+  Siren,
+  Sun,
+  TriangleAlert,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
@@ -37,46 +53,58 @@ export function Layout() {
           </div>
           <nav className="sidebar-nav" aria-label="Menú principal">
             <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Usuarios
+              <Users size={16} aria-hidden="true" />
+              <span>Usuarios</span>
             </NavLink>
             <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Militares
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>Militares</span>
             </NavLink>
             <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Recintos Electorales
+              <School size={16} aria-hidden="true" />
+              <span>Recintos Electorales</span>
             </NavLink>
             <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Eventos Electorales
+              <CalendarDays size={16} aria-hidden="true" />
+              <span>Eventos Electorales</span>
             </NavLink>
             <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Asignaciones
+              <ClipboardList size={16} aria-hidden="true" />
+              <span>Asignaciones</span>
             </NavLink>
             <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Kits Electorales
+              <Package size={16} aria-hidden="true" />
+              <span>Kits Electorales</span>
             </NavLink>
             <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Monitoreo
+              <MapPinned size={16} aria-hidden="true" />
+              <span>Monitoreo</span>
             </NavLink>
             <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Incidencias
+              <TriangleAlert size={16} aria-hidden="true" />
+              <span>Incidencias</span>
             </NavLink>
             {puedeVerAlertas && (
               <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-                Alertas
+                <Siren size={16} aria-hidden="true" />
+                <span>Alertas</span>
               </NavLink>
             )}
             {puedeVerEnlaces && (
               <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
-                Enlaces
+                <Network size={16} aria-hidden="true" />
+                <span>Enlaces</span>
               </NavLink>
             )}
             {puedeVerReportes && (
               <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
-                Reportes
+                <FileChartColumn size={16} aria-hidden="true" />
+                <span>Reportes</span>
               </NavLink>
             )}
             <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Power BI CDAS
+              <ChartColumn size={16} aria-hidden="true" />
+              <span>Power BI CDAS</span>
             </NavLink>
           </nav>
           <div className="me">
@@ -94,7 +122,8 @@ export function Layout() {
               style={{ marginTop: '0.5rem', width: '100%' }}
               onClick={() => logout()}
             >
-              Cerrar sesión
+              <LogOut size={14} aria-hidden="true" />
+              <span>Cerrar sesión</span>
             </button>
           </div>
         </aside>

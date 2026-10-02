@@ -2,19 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TextoAnimado } from '../../components/TextoAnimado';
 import { BotonConMotivo } from '../../components/BotonConMotivo';
-import type { CdaEstadoDto, EstadoOperadorCda, OperadorEnRetorno } from '@cne/shared-types';
+import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
 import { MapView, Marker, FitBounds, FlyTo } from '../../components/map';
 import { desplazamientosMarcadores, estaSinSenal, formatearDuracion, minutosDesde } from './monitoreo-mapa';
-
-const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
-  EN_DPI: { label: 'En DPI', color: '#9ca3af' },
-  EN_TRANSITO: { label: 'En tránsito', color: '#7c3aed' },
-  EN_RECINTO: { label: 'En el recinto', color: '#f59e0b' },
-  EN_RETORNO: { label: 'En retorno', color: '#2563eb' },
-  RETORNADO: { label: 'Llegó al DPEI', color: '#16a34a' },
-};
+import { ESTADO_INFO, type ConteoEstados } from './estado-info';
+import { KpiEstados } from './KpiEstados';
+import { FiltroEstado, type FiltroEstadoValor } from './FiltroEstado';
+import { IndicadorSync } from './IndicadorSync';
 
 // Marcador de quien dejó de enviar ubicación: gris y sin pulso, para que no se
 // confunda con una posición en vivo.
@@ -200,7 +196,13 @@ export function MonitoreoPage() {
   const enfocar = (lat: number, lng: number) =>
     setEnfoque((prev) => ({ target: [lat, lng], nonce: (prev?.nonce ?? 0) + 1 }));
 
-  const { data: cdaData, isLoading: cdaLoading, isError: cdaError } = useQuery({
+  const {
+    data: cdaData,
+    isLoading: cdaLoading,
+    isError: cdaError,
+    isFetching: cdaActualizando,
+    dataUpdatedAt: cdaActualizadoEn,
+  } = useQuery({
     queryKey: ['estado-cdas'],
     queryFn: getEstadoCdas,
     refetchInterval: 10_000,
@@ -209,6 +211,7 @@ export function MonitoreoPage() {
 
   const cdas = cdaData ?? [];
   const [cantonFiltro, setCantonFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState<FiltroEstadoValor>('TODOS');
   const [verUbicacion, setVerUbicacion] = useState<CdaEstadoDto | null>(null);
   const [verFoto, setVerFoto] = useState<CdaEstadoDto | null>(null);
   const [verActa, setVerActa] = useState<{ cda: CdaEstadoDto; tipo: 'instalacion' | 'escrutinio' } | null>(
@@ -223,15 +226,19 @@ export function MonitoreoPage() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [cdas]);
 
-  const cdasFiltrados = cantonFiltro
+  // Los totales (tarjetas y filtro por estado) respetan el cantón elegido; la
+  // tabla además respeta el estado elegido.
+  const cdasDelCanton = cantonFiltro
     ? cdas.filter((c) => String(c.cantonId) === cantonFiltro)
     : cdas;
+  const cdasFiltrados =
+    estadoFiltro === 'TODOS' ? cdasDelCanton : cdasDelCanton.filter((c) => c.estado === estadoFiltro);
 
   const conteoPorEstado = useMemo(() => {
-    const acc = {} as Record<EstadoOperadorCda, number>;
-    for (const c of cdasFiltrados) acc[c.estado] = (acc[c.estado] ?? 0) + 1;
+    const acc: ConteoEstados = {};
+    for (const c of cdasDelCanton) acc[c.estado] = (acc[c.estado] ?? 0) + 1;
     return acc;
-  }, [cdasFiltrados]);
+  }, [cdasDelCanton]);
 
   return (
     <div>
@@ -343,12 +350,22 @@ export function MonitoreoPage() {
         </div>
       </div>
 
-      <h2 style={{ marginTop: '2rem' }}>Estado de CDAs</h2>
-      <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
+      <div className="seccion-titulo" style={{ marginTop: '2rem' }}>
+        <h2 style={{ margin: 0 }}>Estado de CDAs</h2>
+        <IndicadorSync
+          actualizadoEn={cdaActualizadoEn}
+          actualizando={cdaActualizando}
+          error={cdaError}
+        />
+      </div>
+      <p style={{ opacity: 0.7, margin: '0.25rem 0 1rem' }}>
         Estado actual de cada CDA del evento activo. Se actualiza automáticamente cada 10 segundos.
       </p>
+
+      <KpiEstados conteo={conteoPorEstado} total={cdasDelCanton.length} />
+
       <div className="card">
-        <div className="row">
+        <div className="row" style={{ gap: '0.75rem' }}>
           <select
             value={cantonFiltro}
             onChange={(e) => setCantonFiltro(e.target.value)}
@@ -359,26 +376,12 @@ export function MonitoreoPage() {
               <option key={id} value={id}>{nombre}</option>
             ))}
           </select>
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', margin: '0.75rem 0' }}>
-          {(Object.keys(ESTADO_INFO) as EstadoOperadorCda[]).map((estado) => {
-            const info = ESTADO_INFO[estado];
-            return (
-              <span key={estado} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    background: info.color,
-                    display: 'inline-block',
-                  }}
-                />
-                {info.label}: <strong><TextoAnimado text={String(conteoPorEstado[estado] ?? 0)} /></strong>
-              </span>
-            );
-          })}
+          <FiltroEstado
+            valor={estadoFiltro}
+            onChange={setEstadoFiltro}
+            conteo={conteoPorEstado}
+            total={cdasDelCanton.length}
+          />
         </div>
 
         {cdaLoading ? (
@@ -467,7 +470,9 @@ export function MonitoreoPage() {
               {cdasFiltrados.length === 0 && (
                 <tr>
                   <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
-                    No hay CDAs con operador asignado en el evento activo
+                    {cdas.length === 0
+                      ? 'No hay CDAs con operador asignado en el evento activo'
+                      : 'Ningún CDA coincide con los filtros elegidos'}
                   </td>
                 </tr>
               )}

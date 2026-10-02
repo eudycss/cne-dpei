@@ -278,6 +278,35 @@ describe('MonitoreoPage', () => {
     });
   });
 
+  it('el filtro por estado filtra la tabla; las tarjetas cuentan según el cantón', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText('Escuela Manuela Cañizares');
+
+    expect(screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI' })).toHaveAttribute(
+      'aria-valuenow',
+      '50',
+    );
+
+    await user.click(screen.getByRole('radio', { name: /Llegó al DPEI/ }));
+    expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
+    expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /En tránsito/ }));
+    expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
+
+    // Con el cantón Ibarra (solo el CDA en retorno), nadie llegó todavía.
+    await user.click(screen.getByRole('radio', { name: /Todos/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' }), '1');
+    expect(screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI' })).toHaveAttribute(
+      'aria-valuenow',
+      '0',
+    );
+  });
+
   it('tabla de CDAs accesible: estado legible, filtro con nombre y primera columna fija', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
