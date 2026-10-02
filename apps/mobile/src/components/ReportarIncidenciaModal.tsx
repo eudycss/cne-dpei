@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -12,6 +13,7 @@ import {
 import type { EstadoIncidencia, Incidencia, TipoIncidencia } from '@cne/shared-types';
 import { misIncidencias, reportarIncidencia } from '../lib/queries/incidencias';
 import { obtenerUbicacionPuntual } from '../lib/location';
+import { comprimirFoto } from '../lib/comprimir-foto';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
 import { Colors } from '../theme/colors';
@@ -59,6 +61,8 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [fotoBase64, setFotoBase64] = useState<string | null>(null);
   const [mostrarCamara, setMostrarCamara] = useState(false);
+  const [preparandoFoto, setPreparandoFoto] = useState(false);
+  const capturaActual = useRef(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState(false);
@@ -79,11 +83,37 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
   }, [visible]);
 
   function limpiarFormulario() {
+    capturaActual.current++; // descarta una compresión que siga en curso
     setTipo(null);
     setDescripcion('');
     setFotoUri(null);
     setFotoBase64(null);
+    setPreparandoFoto(false);
     setExito(false);
+  }
+
+  // La foto de la cámara (4000×3000, varios MB) se reduce antes de enviarla
+  // por datos móviles. Si la compresión falla se usa la original; si tampoco
+  // hay original, se avisa en vez de enviar la incidencia sin foto.
+  async function onFotoCapturada(uri: string, base64?: string) {
+    const id = ++capturaActual.current;
+    setMostrarCamara(false);
+    setError(null);
+    setFotoUri(uri);
+    setFotoBase64(null);
+    setPreparandoFoto(true);
+    AccessibilityInfo.announceForAccessibility('Preparando foto');
+    const comprimida = await comprimirFoto(uri);
+    if (id !== capturaActual.current) return; // llegó otra foto o se limpió el formulario
+    const final = comprimida ?? base64 ?? null;
+    setPreparandoFoto(false);
+    if (!final) {
+      setFotoUri(null);
+      setError('No se pudo preparar la foto. Tómala de nuevo.');
+      return;
+    }
+    setFotoBase64(final);
+    AccessibilityInfo.announceForAccessibility('Foto adjuntada');
   }
 
   async function onGuardar() {
@@ -125,11 +155,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
     return (
       <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
         <CameraFoto
-          onCapture={(uri, base64) => {
-            setFotoUri(uri);
-            setFotoBase64(base64 ?? null);
-            setMostrarCamara(false);
-          }}
+          onCapture={onFotoCapturada}
           onCancel={() => setMostrarCamara(false)}
           titulo="Foto de la incidencia"
         />
@@ -183,11 +209,22 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
               <Pressable style={styles.btnSecondary} onPress={() => setMostrarCamara(true)}>
                 <Text style={styles.btnSecondaryText}>{fotoUri ? 'Cambiar foto' : 'Agregar foto'}</Text>
               </Pressable>
-              {fotoUri && <Text style={styles.muted}>Foto adjuntada.</Text>}
+              {fotoUri && (
+                <Text style={styles.muted} accessibilityLiveRegion="polite">
+                  {preparandoFoto ? 'Preparando foto…' : 'Foto adjuntada.'}
+                </Text>
+              )}
 
               {error && <Text style={styles.error}>{error}</Text>}
 
-              <Pressable style={[styles.btnPrimary, enviando && { opacity: 0.6 }]} onPress={onGuardar} disabled={enviando}>
+              <Pressable
+                style={[styles.btnPrimary, (enviando || preparandoFoto) && { opacity: 0.6 }]}
+                onPress={onGuardar}
+                disabled={enviando || preparandoFoto}
+                testID="btn-guardar-incidencia"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: enviando || preparandoFoto, busy: enviando || preparandoFoto }}
+              >
                 {enviando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnPrimaryText}>Guardar</Text>}
               </Pressable>
             </ScrollView>
