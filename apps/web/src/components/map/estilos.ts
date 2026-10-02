@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import type { Theme } from '../../theme/ThemeContext';
 
 // Tiles raster de OpenStreetMap, gratis y sin API key. Se usan raster y no

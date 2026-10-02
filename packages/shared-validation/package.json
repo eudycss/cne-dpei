@@ -16,13 +16,15 @@
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "zod": "3.23.8"
   },
   "devDependencies": {
-    "tsup": "8.3.0",
+    "tsup": "8.5.1",
     "typescript": "5.5.4",
-    "vitest": "^2.1.9"
+    "vitest": "3.2.7"
   }
 }

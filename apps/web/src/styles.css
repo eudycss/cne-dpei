@@ -175,6 +175,15 @@ a:hover { text-decoration: underline; }
   background-color: var(--bg-card); color: var(--text);
 }
 .field select { padding-right: 2rem; }
+/* Casillas dentro de un .field: no deben estirarse al 100 % como los campos de
+   texto, y su <label className="row"> debe seguir siendo una fila (si no,
+   ".field label { display: block }" deja el checkbox solo en la línea de abajo). */
+.field input[type="checkbox"], .field input[type="radio"] {
+  width: auto; padding: 0; margin: 0; flex-shrink: 0;
+  inline-size: 1rem; block-size: 1rem; accent-color: var(--primary);
+}
+.field .field-titulo { display: block; font-size: 0.85rem; margin-bottom: 0.35rem; color: var(--text-label); }
+.field label.row { display: flex; align-items: center; color: var(--text); font-size: 0.9rem; cursor: pointer; }
 .field input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 
 /* Selects fuera de formularios (filtros): mismo aspecto que los campos y
