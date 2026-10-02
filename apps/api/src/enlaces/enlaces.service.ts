@@ -67,7 +67,11 @@ export class EnlacesService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async revisarEnlaces(): Promise<void> {
+    // Una API local con su propia base, levantada tras días apagada, ve como "recién
+    // caídos" enlaces que ya estaban caídos y genera avisos falsos. Activo por defecto
+    // para no apagar producción por olvido; en desarrollo se desactiva explícitamente.
     this.limpiarEsperasCodigoVencidas();
+    if (process.env.ENLACES_CRON_ENABLED?.trim().toLowerCase() === 'false') return;
     let filas: Awaited<ReturnType<SheetsEnlacesClient['leerEnlacesImbabura']>>;
     try {
       filas = await this.sheetsClient.leerEnlacesImbabura();
