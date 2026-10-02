@@ -31,6 +31,14 @@ const TIPOS: { value: TipoIncidencia; label: string }[] = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
+/** Mensaje en español para el operador; el 413 de Express llega en inglés. */
+export function mensajeErrorIncidencia(e: any): string {
+  if (e?.response?.status === 413) {
+    return 'La foto es demasiado grande para enviarla. Toma otra foto e intenta de nuevo.';
+  }
+  return e?.response?.data?.message ?? 'No se pudo reportar la incidencia. Intenta de nuevo.';
+}
+
 function formatHora(iso: string): string {
   return new Date(iso).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' });
 }
@@ -107,7 +115,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
       setExito(true);
       if (result !== null) cargarLista();
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? 'No se pudo reportar la incidencia. Intenta de nuevo.');
+      setError(mensajeErrorIncidencia(e));
     } finally {
       setEnviando(false);
     }

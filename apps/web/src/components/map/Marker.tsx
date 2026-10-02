@@ -10,11 +10,13 @@ interface MarkerProps {
   pulse?: boolean;
   /** Color del punto (CSS). Por defecto usa var(--primary). */
   color?: string;
+  /** Desplazamiento en píxeles [x, y], para separar marcadores que caen en el mismo punto. */
+  offset?: [number, number];
   /** Contenido del popup que se abre al hacer click en el marcador. */
   children?: ReactNode;
 }
 
-export function Marker({ position, pulse, color, children }: MarkerProps) {
+export function Marker({ position, pulse, color, offset, children }: MarkerProps) {
   const map = useMapInstance();
   const markerElRef = useRef<HTMLDivElement | null>(null);
   const popupElRef = useRef<HTMLDivElement | null>(null);
@@ -48,6 +50,10 @@ export function Marker({ position, pulse, color, children }: MarkerProps) {
   useEffect(() => {
     markerRef.current?.setLngLat([position[1], position[0]]);
   }, [position[0], position[1]]);
+
+  useEffect(() => {
+    markerRef.current?.setOffset(offset ?? [0, 0]);
+  }, [offset?.[0], offset?.[1]]);
 
   return (
     <>

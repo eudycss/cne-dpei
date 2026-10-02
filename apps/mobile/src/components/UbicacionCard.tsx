@@ -14,6 +14,11 @@ type Props = {
   destinoLabel: string;
 };
 
+/** Une la preposición con el artículo: "de el recinto" → "del recinto", "a el" → "al". */
+export function contraer(preposicion: 'de' | 'a', destino: string): string {
+  return destino.startsWith('el ') ? `${preposicion}l ${destino.slice(3)}` : `${preposicion} ${destino}`;
+}
+
 export function UbicacionCard({ info, verificando, error, onActualizar, destinoLabel }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -32,9 +37,9 @@ export function UbicacionCard({ info, verificando, error, onActualizar, destinoL
   } else if (info?.dentro) {
     mensaje = `Estás en ${destinoLabel}.`;
   } else if (info) {
-    mensaje = `Estás a ${Math.round(info.distanciaM)} m de ${destinoLabel}. Acércate a menos de ${Math.round(info.margenM)} m.`;
+    mensaje = `Estás a ${Math.round(info.distanciaM)} m ${contraer('de', destinoLabel)}. Acércate a menos de ${Math.round(info.margenM)} m.`;
   } else {
-    mensaje = `No se ha verificado tu cercanía a ${destinoLabel}.`;
+    mensaje = `No se ha verificado tu cercanía ${contraer('a', destinoLabel)}.`;
   }
 
   return (
