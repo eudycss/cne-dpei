@@ -3,6 +3,10 @@ import { TextoAnimado } from '../../components/TextoAnimado';
 import SloshGauge from '../../components/micro/SloshGauge/SloshGauge';
 import { ESTADO_INFO, ORDEN_ESTADOS, type ConteoEstados } from './estado-info';
 
+// Verde más oscuro que el del estado (#16a34a): con texto blanco encima da
+// ~5:1 de contraste; el del estado solo llega a ~3.3:1 (WCAG 1.4.3).
+const COLOR_LIQUIDO = '#15803d';
+
 interface Props {
   conteo: ConteoEstados;
   total: number;
@@ -21,13 +25,13 @@ export function KpiEstados({ conteo, total }: Props) {
   return (
     <div className="kpi-grid">
       <div className="kpi-card kpi-card--avance">
-        {/* SloshGauge (React Bits) ya expone role="meter" y aria-valuenow. El
-            liquidColor va en hex porque el componente calcula con él el color
-            del texto sobre el líquido. */}
+        {/* SloshGauge (React Bits) ya expone role="meter" y aria-valuenow, pero
+            sin unidad: el % va en el nombre. El liquidColor va en hex porque el
+            componente calcula con él el color del texto sobre el líquido. */}
         <SloshGauge
           value={porcentaje}
-          ariaLabel={`CDAs que llegaron al DPEI (${llegados} de ${total})`}
-          liquidColor={ESTADO_INFO.RETORNADO.color}
+          ariaLabel={`CDAs que llegaron al DPEI: ${porcentaje} % (${llegados} de ${total})`}
+          liquidColor={COLOR_LIQUIDO}
           glassColor="var(--border-subtle)"
           width={52}
           height={76}

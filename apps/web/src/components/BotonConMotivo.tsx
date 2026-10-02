@@ -32,15 +32,16 @@ export function BotonConMotivo({ children, onClick, motivo, ariaLabel }: Props) 
     </button>
   );
 
-  if (!inactivo) return boton;
-
   // WarmTooltip (React Bits) muestra el motivo al pasar el mouse o al enfocar
   // con teclado; mientras está abierto, apunta aria-describedby a sí mismo, y
-  // cerrado se conserva el .sr-only de abajo.
+  // cerrado se conserva el .sr-only de abajo. El envoltorio se monta siempre
+  // (desactivado si no hay motivo) para que el botón no se remonte y pierda el
+  // foco cuando cambia entre activo e inactivo.
   return (
     <>
       <WarmTooltip
-        content={motivo}
+        content={motivo ?? ''}
+        disabled={!inactivo}
         side="top"
         size="sm"
         surfaceColor="var(--text)"
@@ -48,9 +49,11 @@ export function BotonConMotivo({ children, onClick, motivo, ariaLabel }: Props) 
       >
         {boton}
       </WarmTooltip>
-      <span id={idMotivo} className="sr-only">
-        {motivo}
-      </span>
+      {inactivo ? (
+        <span id={idMotivo} className="sr-only">
+          {motivo}
+        </span>
+      ) : null}
     </>
   );
 }

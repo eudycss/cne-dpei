@@ -22,7 +22,7 @@ describe('KpiEstados', () => {
   it('muestra el número de CDAs por estado y el avance de llegada como medidor', () => {
     render(<KpiEstados conteo={{ EN_TRANSITO: 2, RETORNADO: 1 }} total={4} />);
 
-    const medidor = screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI (1 de 4)' });
+    const medidor = screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI: 25 % (1 de 4)' });
     expect(medidor).toHaveAttribute('aria-valuenow', '25');
     expect(medidor).toHaveAttribute('aria-valuemin', '0');
     expect(medidor).toHaveAttribute('aria-valuemax', '100');

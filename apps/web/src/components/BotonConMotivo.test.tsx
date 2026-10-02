@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BotonConMotivo } from './BotonConMotivo';
 
@@ -54,9 +54,41 @@ describe('BotonConMotivo', () => {
     );
   });
 
-  it('sin motivo no envuelve el botón en un tooltip', () => {
-    const { container } = render(<BotonConMotivo onClick={() => {}}>Ver foto</BotonConMotivo>);
-    expect(container.querySelector('.warm-tooltip__trigger')).toBeNull();
+  it('Escape cierra el tooltip y la descripción vuelve al texto oculto', async () => {
+    render(
+      <BotonConMotivo onClick={() => {}} motivo="Aún no hay ubicación registrada">
+        Ver ubicación
+      </BotonConMotivo>,
+    );
+    await userEvent.tab();
+    await screen.findByRole('tooltip');
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    expect(
+      screen.getByRole('button', { name: 'Ver ubicación', description: 'Aún no hay ubicación registrada' }),
+    ).toBeInTheDocument();
+  });
+
+  it('no pierde el foco cuando pasa de inactivo a activo (no se remonta el botón)', async () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <BotonConMotivo onClick={onClick} motivo="Aún no se subió el acta de instalación">
+        Ver acta
+      </BotonConMotivo>,
+    );
+    await userEvent.tab();
+    const boton = screen.getByRole('button', { name: 'Ver acta' });
+    expect(boton).toHaveFocus();
+
+    rerender(<BotonConMotivo onClick={onClick}>Ver acta</BotonConMotivo>);
+
+    expect(screen.getByRole('button', { name: 'Ver acta' })).toBe(boton);
+    expect(boton).toHaveFocus();
+    expect(boton).not.toHaveAttribute('aria-disabled');
+    await userEvent.keyboard('{Enter}');
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('respeta un aria-label propio', () => {

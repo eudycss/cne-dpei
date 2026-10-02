@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import type { EstadoOperadorCda } from '@cne/shared-types';
 import RubberSegment from '../../components/micro/RubberSegment/RubberSegment';
 import { ESTADO_INFO, ORDEN_ESTADOS, type ConteoEstados } from './estado-info';
@@ -36,20 +37,34 @@ export function FiltroEstado({ valor, onChange, conteo, total }: Props) {
     };
   });
 
+  // RubberSegment solo selecciona con pointerdown y flechas. Los lectores de
+  // pantalla (modo exploración), Voice Control o Switch Control envían un
+  // "click" sin pointerdown, y Enter/Espacio también llegan como click: este
+  // manejador cubre esos casos sin modificar el componente de terceros.
+  function alHacerClic(e: MouseEvent<HTMLDivElement>) {
+    const radio = (e.target as HTMLElement).closest('[role="radio"]');
+    if (!radio) return;
+    const indice = Array.from(e.currentTarget.querySelectorAll('[role="radio"]')).indexOf(radio);
+    const opcion = OPCIONES[indice];
+    if (opcion !== undefined && opcion !== valor) onChange(opcion);
+  }
+
   return (
-    <RubberSegment
-      items={items}
-      value={valor}
-      onChange={(v) => onChange(v as FiltroEstadoValor)}
-      aria-label="Filtrar CDAs por estado"
-      size="sm"
-      equalSlots={false}
-      trackColor="var(--border-subtle)"
-      thumbColor="var(--bg-card)"
-      textColor="var(--text-muted)"
-      activeTextColor="var(--text)"
-      radius={999}
-      className="filtro-estado"
-    />
+    <div className="filtro-estado-contenedor" onClick={alHacerClic}>
+      <RubberSegment
+        items={items}
+        value={valor}
+        onChange={(v) => onChange(v as FiltroEstadoValor)}
+        aria-label="Filtrar CDAs por estado"
+        size="md"
+        equalSlots={false}
+        trackColor="var(--border-subtle)"
+        thumbColor="var(--bg-card)"
+        textColor="var(--text)"
+        activeTextColor="var(--text)"
+        radius={999}
+        className="filtro-estado"
+      />
+    </div>
   );
 }
