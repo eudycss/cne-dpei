@@ -35,6 +35,22 @@
   --shadow-dropdown: 0 6px 24px rgba(0,0,0,0.08);
   --gradient-accent: #e0e7ff;
   --gradient-login: radial-gradient(120% 120% at 50% -10%, var(--gradient-accent) 0%, var(--bg) 60%);
+
+  /* Sistema de diseño (docs/tasks/estilosweb.md) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --accent-bar: var(--primary);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
+  --estado-dpi: #94a3b8;
+  --estado-transito: #8b5cf6;
+  --estado-recinto: #f59e0b;
+  --estado-retorno: #3b82f6;
+  --estado-llego: #22c55e;
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  /* Controles nativos (select, scrollbars, date pickers) siguen el tema. */
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -73,6 +89,7 @@
   --shadow-login: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-dropdown: 0 6px 24px rgba(0,0,0,0.5);
   --gradient-accent: #1e2a4a;
+  color-scheme: dark;
 }
 
 @media print {
@@ -94,6 +111,25 @@
 body, html, #root { margin: 0; padding: 0; height: 100%; font-family: 'DM Sans', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
+
+/* Foco visible y uniforme para teclado (WCAG 2.4.7). */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; box-shadow: var(--focus-ring); }
+
+/* Movimiento reducido (WCAG 2.3.3): sin animaciones ni transiciones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Texto solo para lectores de pantalla. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
 /* Layout */
 .app-shell { display: flex; min-height: 100vh; }
