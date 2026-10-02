@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { SlotText } from 'slot-text/react';
-import 'slot-text/style.css';
+import { TextoAnimado } from './TextoAnimado';
 import type { NotificacionItem } from '@cne/shared-types';
 import {
   describirNotificacion,
@@ -93,13 +92,14 @@ export function NotificationsBell() {
       <button
         type="button"
         className="notif-button"
-        aria-label="Notificaciones"
+        aria-label={noLeidas > 0 ? `Notificaciones, ${noLeidas} sin leer` : 'Notificaciones'}
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         <Bell size={18} />
         {noLeidas > 0 ? (
           <span className="notif-badge">
-            <SlotText text={noLeidas > 99 ? '99+' : String(noLeidas)} />
+            <TextoAnimado text={noLeidas > 99 ? '99+' : String(noLeidas)} />
           </span>
         ) : null}
       </button>

@@ -34,6 +34,26 @@ function renderBell() {
   );
 }
 
+describe('NotificationsBell — accesibilidad', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('anuncia las no leídas en el nombre del botón e indica si el panel está abierto', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockResolvedValue({
+      data: { items: [item('n1', '2026-09-08T10:00:00.000Z')], total: 1, noLeidas: 28 },
+    });
+
+    renderBell();
+
+    const boton = await screen.findByRole('button', { name: 'Notificaciones, 28 sin leer' });
+    expect(boton).toHaveAttribute('aria-expanded', 'false');
+    await user.click(boton);
+    expect(boton).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
 describe('NotificationsBell — paginación', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,7 +79,7 @@ describe('NotificationsBell — paginación', () => {
 
     renderBell();
 
-    await user.click(screen.getByLabelText('Notificaciones'));
+    await user.click(screen.getByRole('button', { name: /^Notificaciones/ }));
     const boton = await screen.findByText('Cargar más');
     expect(screen.getAllByRole('listitem')).toHaveLength(10);
 
@@ -92,7 +112,7 @@ describe('NotificationsBell — paginación', () => {
 
     renderBell();
 
-    await user.click(screen.getByLabelText('Notificaciones'));
+    await user.click(screen.getByRole('button', { name: /^Notificaciones/ }));
     const boton = await screen.findByText('Cargar más');
     await user.click(boton);
     await waitFor(() => {
@@ -122,7 +142,7 @@ describe('NotificationsBell — paginación', () => {
 
     renderBell();
 
-    await user.click(screen.getByLabelText('Notificaciones'));
+    await user.click(screen.getByRole('button', { name: /^Notificaciones/ }));
     const boton = await screen.findByText('Cargar más');
     await user.click(boton);
 
@@ -141,7 +161,7 @@ describe('NotificationsBell — paginación', () => {
 
     renderBell();
 
-    await user.click(screen.getByLabelText('Notificaciones'));
+    await user.click(screen.getByRole('button', { name: /^Notificaciones/ }));
     await screen.findByText('1 sin leer');
 
     expect(screen.queryByText('Cargar más')).not.toBeInTheDocument();

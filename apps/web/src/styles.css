@@ -35,6 +35,22 @@
   --shadow-dropdown: 0 6px 24px rgba(0,0,0,0.08);
   --gradient-accent: #e0e7ff;
   --gradient-login: radial-gradient(120% 120% at 50% -10%, var(--gradient-accent) 0%, var(--bg) 60%);
+
+  /* Sistema de diseño (docs/tasks/estilosweb.md) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --accent-bar: var(--primary);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
+  --estado-dpi: #94a3b8;
+  --estado-transito: #8b5cf6;
+  --estado-recinto: #f59e0b;
+  --estado-retorno: #3b82f6;
+  --estado-llego: #22c55e;
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  /* Controles nativos (select, scrollbars, date pickers) siguen el tema. */
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -73,6 +89,7 @@
   --shadow-login: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-dropdown: 0 6px 24px rgba(0,0,0,0.5);
   --gradient-accent: #1e2a4a;
+  color-scheme: dark;
 }
 
 @media print {
@@ -95,15 +112,49 @@ body, html, #root { margin: 0; padding: 0; height: 100%; font-family: 'DM Sans',
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Foco visible y uniforme para teclado (WCAG 2.4.7). */
+/* Solo outline (no box-shadow) para no pisar las sombras propias de cada componente. */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Movimiento reducido (WCAG 2.3.3): sin animaciones ni transiciones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Texto solo para lectores de pantalla. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
 /* Layout */
 .app-shell { display: flex; min-height: 100vh; }
-.sidebar { width: 240px; background: var(--bg-sidebar); color: var(--text-sidebar); padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: flex-start; }
-.sidebar .brand { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; background: var(--bg-sidebar-brand); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem; }
+/* La barra lateral no hace scroll completa: solo el menú. Así el bloque del
+   usuario y "Cerrar sesión" quedan siempre visibles abajo. */
+.sidebar { width: 240px; background: var(--bg-sidebar); color: var(--text-sidebar); padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; position: sticky; top: 0; height: 100vh; overflow: hidden; align-self: flex-start; }
+.sidebar .brand { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; background: var(--bg-sidebar-brand); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; flex-shrink: 0; }
 .sidebar .brand h1 { color: var(--text-sidebar-brand); }
 .sidebar h1 { font-size: 1rem; margin: 0; }
-.sidebar a { color: var(--text-sidebar-link); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; }
-.sidebar a.active, .sidebar a:hover { background: var(--bg-sidebar-hover); color: #fff; text-decoration: none; }
-.sidebar .me { margin-top: auto; font-size: 0.8rem; color: var(--text-sidebar-me); }
+.sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.25rem; padding-right: 2px; }
+.sidebar a { position: relative; display: flex; align-items: center; gap: 0.6rem; color: var(--text-sidebar-link); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; transition: background var(--dur-fast), color var(--dur-fast); }
+.sidebar a:hover { background: var(--bg-sidebar-hover); color: #fff; text-decoration: none; }
+.sidebar a.active { background: var(--bg-sidebar-hover); color: #fff; font-weight: 600; text-decoration: none; }
+.sidebar a.active::before {
+  content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
+  width: 3px; border-radius: 3px; background: var(--accent-bar);
+}
+/* El nav recorta lo que sale de sus bordes (overflow): anillo de foco interior. */
+.sidebar a:focus-visible { outline-offset: -2px; }
+.sidebar .me { flex-shrink: 0; font-size: 0.8rem; color: var(--text-sidebar-me); border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.sidebar .me .badge { white-space: nowrap; }
+.sidebar a svg { flex-shrink: 0; opacity: 0.85; }
+.sidebar a.active svg { opacity: 1; }
+.sidebar .me .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
 .main { flex: 1; padding: 1.5rem 2rem; overflow: auto; }
 .main h2 { margin-top: 0; }
 
@@ -121,9 +172,38 @@ a:hover { text-decoration: underline; }
 .field label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: var(--text-label); }
 .field input, .field select, .field textarea {
   width: 100%; padding: 0.5rem 0.65rem; border: 1px solid var(--border-input); border-radius: 6px; font-size: 0.9rem;
-  background: var(--bg-card); color: var(--text);
+  background-color: var(--bg-card); color: var(--text);
 }
+.field select { padding-right: 2rem; }
 .field input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+/* Selects fuera de formularios (filtros): mismo aspecto que los campos y
+   flecha propia, en vez del control nativo blanco sobre fondo oscuro. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 36px;
+  padding: 0.45rem 2rem 0.45rem 0.65rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 55%, calc(100% - 10px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color var(--dur-fast);
+}
+select:hover { border-color: var(--primary); }
+select option { background: var(--bg-card); color: var(--text); }
+/* En alto contraste de Windows los background-image desaparecen: volver a la flecha nativa. */
+@media (forced-colors: active) {
+  select:not([multiple]):not([size]) { appearance: auto; background-image: none; padding-right: 0.65rem; }
+}
 .error { color: var(--error); font-size: 0.85rem; margin-top: 0.25rem; }
 
 /* Button */
@@ -132,6 +212,12 @@ a:hover { text-decoration: underline; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn.secondary { background: var(--border); color: var(--text); }
 .btn.secondary:hover { background: var(--border-input); }
+/* Desactivado: contorno punteado y texto atenuado pero legible, en vez de
+   un botón casi invisible por la opacidad. */
+.btn.secondary:disabled,
+.btn.secondary[aria-disabled="true"] { opacity: 1; background: transparent; color: var(--text-muted); border: 1px dashed var(--border-input); cursor: not-allowed; }
+.btn.secondary:disabled:hover,
+.btn.secondary[aria-disabled="true"]:hover { background: transparent; }
 .btn.danger { background: var(--error); color: #fff; }
 .btn.danger:hover { background: var(--error-hover); }
 .row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
@@ -141,6 +227,11 @@ table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); }
 th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .table-scroll { overflow-x: auto; }
+/* Primera columna fija al desplazar horizontalmente. */
+.table-sticky-first th:first-child,
+.table-sticky-first td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg-card); }
+.table-sticky-first th:first-child { background: var(--border-subtle); z-index: 2; }
+.table-sticky-first th, .table-sticky-first td { white-space: nowrap; }
 .table-report { min-width: 1000px; }
 
 .badge { display: inline-block; padding: 0.15rem 0.5rem; background: var(--badge-bg); color: var(--badge-text); border-radius: 999px; font-size: 0.75rem; margin-right: 4px; }
@@ -215,6 +306,66 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 
 .operador-popup { font-size: 0.85rem; color: var(--text); max-width: 220px; }
 .operador-popup ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+
+/* Monitoreo: título de sección con indicador de sincronización */
+.seccion-titulo { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.sync-indicator {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.65rem; border-radius: 999px; font-size: 0.78rem;
+  background: var(--success-bg); color: var(--success-text);
+}
+.sync-indicator--error { background: var(--error-bg); color: var(--error-text); }
+@media (prefers-reduced-motion: no-preference) {
+  .sync-spin { animation: sync-giro 0.9s linear infinite; }
+}
+@keyframes sync-giro { to { transform: rotate(360deg); } }
+
+/* Monitoreo: tarjetas KPI por estado */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.kpi-card {
+  --kpi-color: var(--primary);
+  position: relative; overflow: hidden;
+  background: var(--bg-card); border-radius: var(--radius-md); box-shadow: var(--shadow-card);
+  padding: 0.85rem 1rem; border: 1px solid var(--border);
+  transition: transform var(--dur-base), box-shadow var(--dur-base);
+}
+.kpi-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--kpi-color); }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-dropdown); }
+.kpi-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
+.kpi-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--kpi-color); display: inline-block; flex-shrink: 0; }
+.kpi-num { font-size: 2rem; font-weight: 700; line-height: 1.1; margin-top: 0.35rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.kpi-card--avance { --kpi-color: var(--estado-llego); display: flex; align-items: center; gap: 0.85rem; grid-column: span 2; }
+.kpi-detalle { font-size: 1.05rem; font-weight: 600; color: var(--text); margin-top: 0.2rem; }
+.kpi-gauge {
+  --avance: 0%;
+  width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: conic-gradient(var(--kpi-color) var(--avance), var(--border) 0);
+  transition: background var(--dur-base);
+}
+.kpi-gauge-valor {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--bg-card);
+  display: grid; place-items: center; font-weight: 700; font-size: 0.95rem; color: var(--text);
+}
+@media (max-width: 520px) { .kpi-card--avance { grid-column: auto; } }
+
+/* Monitoreo: filtro segmentado por estado */
+.segmented {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+  background: var(--border-subtle); border: 1px solid var(--border); border-radius: 999px;
+}
+.segmented-opcion {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 32px;
+  padding: 0.3rem 0.8rem; border: 0; border-radius: 999px; background: transparent;
+  color: var(--text-muted); font: inherit; font-size: 0.82rem; cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base), box-shadow var(--dur-base);
+}
+.segmented-opcion:hover { color: var(--text); }
+.segmented-opcion[aria-checked="true"] { background: var(--bg-card); color: var(--text); font-weight: 600; box-shadow: var(--shadow-card); }
+.segmented-cantidad {
+  min-width: 1.4rem; padding: 0 0.35rem; border-radius: 999px; font-size: 0.72rem; text-align: center;
+  background: var(--border); color: var(--text); font-variant-numeric: tabular-nums;
+}
 
 /* Fila de la lista "En ruta": centra el mapa en el operador al hacer click. */
 .monitoreo-operador-btn {
