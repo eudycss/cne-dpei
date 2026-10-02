@@ -8,7 +8,7 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { ZodValidationExceptionFilter } from './common/zod-validation.filter';
-import { parseWebOrigins } from './common/web-origin.util';
+import { parseOriginPatterns, parseWebOrigins } from './common/web-origin.util';
 import { configurarBodyParsers } from './common/body-parsers';
 
 async function bootstrap() {
@@ -23,7 +23,9 @@ async function bootstrap() {
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   app.enableCors({
-    origin: parseWebOrigins(webOrigin),
+    // Orígenes exactos (WEB_ORIGIN) + comodines opcionales (WEB_ORIGIN_PATTERNS),
+    // p. ej. los previews de Vercel. Sin WEB_ORIGIN_PATTERNS no cambia nada.
+    origin: [...parseWebOrigins(webOrigin), ...parseOriginPatterns(process.env.WEB_ORIGIN_PATTERNS)],
     credentials: true,
   });
 
