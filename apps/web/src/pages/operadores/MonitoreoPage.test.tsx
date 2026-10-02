@@ -123,7 +123,7 @@ describe('MonitoreoPage', () => {
 
     renderPage();
 
-    expect(screen.getAllByText('Cargando…').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^Cargando/).length).toBeGreaterThan(0);
   });
 
   it('muestra error si las queries fallan', async () => {
@@ -278,6 +278,61 @@ describe('MonitoreoPage', () => {
     });
   });
 
+  it('el filtro por estado filtra la tabla; las tarjetas cuentan según el cantón', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText('Escuela Manuela Cañizares');
+
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
+      'aria-valuenow',
+      '50',
+    );
+
+    await user.click(screen.getByRole('radio', { name: /Llegó al DPEI/ }));
+    expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
+    expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /En tránsito/ }));
+    expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
+
+    // Con el cantón Ibarra (solo el CDA en retorno), nadie llegó todavía.
+    await user.click(screen.getByRole('radio', { name: /Todos/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' }), '1');
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
+      'aria-valuenow',
+      '0',
+    );
+  });
+
+  it('tabla de CDAs accesible: estado legible, filtro con nombre y primera columna fija', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+
+    renderPage();
+
+    const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    // El texto completo para el lector de pantalla; la animación queda oculta.
+    const estado = within(fila).getByText('En retorno', { selector: '.sr-only' });
+    expect(estado.nextElementSibling).toHaveAttribute('aria-hidden', 'true');
+
+    expect(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' })).toBeInTheDocument();
+    expect(fila.closest('table')).toHaveClass('table-sticky-first');
+    expect(fila.closest('.table-scroll')).not.toBeNull();
+
+    // El motivo de cada botón desactivado.
+    const filaSin = screen.getByText('Colegio Otavalo').closest('tr')!;
+    expect(
+      within(filaSin).getByRole('button', {
+        name: 'Ver foto',
+        description: 'El operador aún no subió la foto del militar',
+      }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('region', { name: 'Tabla de estado de CDAs' })).toHaveAttribute('tabindex', '0');
+  });
+
   it('el botón "Ver ubicación" está deshabilitado si el CDA no tiene ubicación, y abre el modal si la tiene', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
@@ -287,8 +342,8 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Escuela Manuela Cañizares');
 
     const botonesUbicacion = screen.getAllByRole('button', { name: 'Ver ubicación' });
-    expect(botonesUbicacion[1]).toBeDisabled(); // fila sin ubicación (Colegio Otavalo)
-    expect(botonesUbicacion[0]).toBeEnabled();
+    expect(botonesUbicacion[1]).toHaveAttribute('aria-disabled', 'true'); // fila sin ubicación (Colegio Otavalo)
+    expect(botonesUbicacion[0]).not.toHaveAttribute('aria-disabled');
 
     await user.click(botonesUbicacion[0]);
 
@@ -307,8 +362,8 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Escuela Manuela Cañizares');
 
     const botonesFoto = screen.getAllByRole('button', { name: 'Ver foto' });
-    expect(botonesFoto[1]).toBeDisabled(); // Colegio Otavalo sin foto militar
-    expect(botonesFoto[0]).toBeEnabled();
+    expect(botonesFoto[1]).toHaveAttribute('aria-disabled', 'true'); // Colegio Otavalo sin foto militar
+    expect(botonesFoto[0]).not.toHaveAttribute('aria-disabled');
 
     await user.click(botonesFoto[0]);
 
@@ -338,16 +393,16 @@ describe('MonitoreoPage', () => {
     const botonEscrutinio1 = within(filaConActas).getByRole('button', {
       name: 'Ver acta de escrutinio — Escuela Manuela Cañizares',
     });
-    expect(botonInstalacion1).toBeEnabled();
-    expect(botonEscrutinio1).toBeDisabled();
+    expect(botonInstalacion1).not.toHaveAttribute('aria-disabled');
+    expect(botonEscrutinio1).toHaveAttribute('aria-disabled', 'true');
 
     // Colegio Otavalo: no tiene ninguna de las dos.
     expect(
       within(filaSinActas).getByRole('button', { name: 'Ver acta de instalación — Colegio Otavalo' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     expect(
       within(filaSinActas).getByRole('button', { name: 'Ver acta de escrutinio — Colegio Otavalo' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
 
     await user.click(botonInstalacion1);
 

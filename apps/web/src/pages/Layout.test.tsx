@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -68,6 +68,30 @@ function enlaceCaidoItem(id = 'n1', codigo = '978') {
     leidaEn: null,
   };
 }
+
+describe('Layout — barra lateral', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    apiGetMock.mockResolvedValue({ data: { items: [], total: 0, noLeidas: 0 } });
+  });
+
+  it('muestra el rol con un nombre legible en vez del valor interno', () => {
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    renderLayout();
+    expect(screen.getByText('Técnico supervisor')).toBeInTheDocument();
+    expect(screen.queryByText('TECNICO_SUPERVISOR')).not.toBeInTheDocument();
+  });
+
+  it('agrupa los enlaces en un menú con nombre y deja "Cerrar sesión" fuera del área con scroll', () => {
+    setSessionUser(['ADMINISTRADOR']);
+    renderLayout();
+    const menu = screen.getByRole('navigation', { name: 'Menú principal' });
+    expect(within(menu).getByRole('link', { name: 'Monitoreo' })).toBeInTheDocument();
+    const cerrar = screen.getByRole('button', { name: 'Cerrar sesión' });
+    expect(menu).not.toContainElement(cerrar);
+  });
+});
 
 describe('Layout — visibilidad del menú lateral por rol', () => {
   beforeEach(() => {

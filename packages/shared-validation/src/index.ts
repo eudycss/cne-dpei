@@ -231,11 +231,14 @@ export const updateEventoSchema = z.object({
   descripcion: z.string().max(2000).nullable().optional(),
 });
 
+/** 200 km: cubre toda la provincia, para eventos de prueba lejos del recinto real. */
+export const MARGEN_LLEGADA_MAX_METROS = 200_000;
+
 export const configAlertasSchema = z.object({
   umbralLlegadaRecintoMin: z.number().int().min(1).max(1440),
   umbralLlegadaDpiMin: z.number().int().min(1).max(1440),
   umbralSinSyncMin: z.number().int().min(1).max(1440),
-  margenLlegadaMetros: z.number().int().min(10).max(50000),
+  margenLlegadaMetros: z.number().int().min(10).max(MARGEN_LLEGADA_MAX_METROS),
 });
 
 export const closeEventoSchema = z.object({

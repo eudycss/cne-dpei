@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MARGEN_LLEGADA_MAX_METROS,
   cedulaSchema,
+  configAlertasSchema,
   isValidCedulaEcuatoriana,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
@@ -10,6 +12,25 @@ import {
   salidaRecintoSchema,
   telefonoSchema,
 } from './index';
+
+describe('configAlertasSchema', () => {
+  const base = { umbralLlegadaRecintoMin: 120, umbralLlegadaDpiMin: 120, umbralSinSyncMin: 30 };
+
+  it('acepta márgenes de decenas de km para eventos de prueba', () => {
+    expect(configAlertasSchema.safeParse({ ...base, margenLlegadaMetros: 60_000 }).success).toBe(true);
+    expect(
+      configAlertasSchema.safeParse({ ...base, margenLlegadaMetros: MARGEN_LLEGADA_MAX_METROS }).success,
+    ).toBe(true);
+  });
+
+  it('rechaza márgenes fuera de 10 m – 200 km o no enteros', () => {
+    expect(configAlertasSchema.safeParse({ ...base, margenLlegadaMetros: 9 }).success).toBe(false);
+    expect(
+      configAlertasSchema.safeParse({ ...base, margenLlegadaMetros: MARGEN_LLEGADA_MAX_METROS + 1 }).success,
+    ).toBe(false);
+    expect(configAlertasSchema.safeParse({ ...base, margenLlegadaMetros: 150.5 }).success).toBe(false);
+  });
+});
 
 describe('isValidCedulaEcuatoriana / cedulaSchema', () => {
   // Cédulas construidas con el algoritmo módulo-10 oficial (coeficientes

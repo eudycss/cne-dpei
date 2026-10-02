@@ -8,6 +8,9 @@ const workspaceRoot = path.resolve(__dirname, '../..');
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // El worker de MapLibre (src/components/map/worker.ts) es un módulo ES con
+  // imports; se empaqueta como ES para que funcione como module worker.
+  worker: { format: 'es' },
   resolve: {
     alias: {
       // Asset central compartido del monorepo (single source of truth)

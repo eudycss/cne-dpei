@@ -1,11 +1,28 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Moon, Sun } from 'lucide-react';
+import {
+  CalendarDays,
+  ChartColumn,
+  ClipboardList,
+  FileChartColumn,
+  LogOut,
+  MapPinned,
+  Moon,
+  Network,
+  Package,
+  School,
+  ShieldCheck,
+  Siren,
+  Sun,
+  TriangleAlert,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
 import { EnlaceCaidoBanner } from '../components/EnlaceCaidoBanner';
 import { useEnlacesCaidosPendientes } from '../lib/useEnlacesCaidosPendientes';
+import { etiquetaRol } from '../lib/roles';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -34,48 +51,62 @@ export function Layout() {
             <Logo height={44} />
             <h1>CNE Imbabura</h1>
           </div>
-          <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Usuarios
-          </NavLink>
-          <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Militares
-          </NavLink>
-          <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Recintos Electorales
-          </NavLink>
-          <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Eventos Electorales
-          </NavLink>
-          <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Asignaciones
-          </NavLink>
-          <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Kits Electorales
-          </NavLink>
-          <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Monitoreo
-          </NavLink>
-          <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Incidencias
-          </NavLink>
-          {puedeVerAlertas && (
-            <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Alertas
+          <nav className="sidebar-nav" aria-label="Menú principal">
+            <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Users size={16} aria-hidden="true" />
+              <span>Usuarios</span>
             </NavLink>
-          )}
-          {puedeVerEnlaces && (
-            <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Enlaces
+            <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>Militares</span>
             </NavLink>
-          )}
-          {puedeVerReportes && (
-            <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Reportes
+            <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <School size={16} aria-hidden="true" />
+              <span>Recintos Electorales</span>
             </NavLink>
-          )}
-          <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Power BI CDAS
-          </NavLink>
+            <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <CalendarDays size={16} aria-hidden="true" />
+              <span>Eventos Electorales</span>
+            </NavLink>
+            <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <ClipboardList size={16} aria-hidden="true" />
+              <span>Asignaciones</span>
+            </NavLink>
+            <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Package size={16} aria-hidden="true" />
+              <span>Kits Electorales</span>
+            </NavLink>
+            <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <MapPinned size={16} aria-hidden="true" />
+              <span>Monitoreo</span>
+            </NavLink>
+            <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <TriangleAlert size={16} aria-hidden="true" />
+              <span>Incidencias</span>
+            </NavLink>
+            {puedeVerAlertas && (
+              <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
+                <Siren size={16} aria-hidden="true" />
+                <span>Alertas</span>
+              </NavLink>
+            )}
+            {puedeVerEnlaces && (
+              <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
+                <Network size={16} aria-hidden="true" />
+                <span>Enlaces</span>
+              </NavLink>
+            )}
+            {puedeVerReportes && (
+              <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+                <FileChartColumn size={16} aria-hidden="true" />
+                <span>Reportes</span>
+              </NavLink>
+            )}
+            <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <ChartColumn size={16} aria-hidden="true" />
+              <span>Power BI CDAS</span>
+            </NavLink>
+          </nav>
           <div className="me">
             <div>
               <strong>{user?.nombres} {user?.apellidos}</strong>
@@ -83,7 +114,7 @@ export function Layout() {
             <div style={{ opacity: 0.7 }}>{user?.email}</div>
             <div style={{ marginTop: '0.25rem' }}>
               {user?.roles.map((r) => (
-                <span className="badge" key={r}>{r}</span>
+                <span className="badge" key={r}>{etiquetaRol(r)}</span>
               ))}
             </div>
             <button
@@ -91,7 +122,8 @@ export function Layout() {
               style={{ marginTop: '0.5rem', width: '100%' }}
               onClick={() => logout()}
             >
-              Cerrar sesión
+              <LogOut size={14} aria-hidden="true" />
+              <span>Cerrar sesión</span>
             </button>
           </div>
         </aside>
