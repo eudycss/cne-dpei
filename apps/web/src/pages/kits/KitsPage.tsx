@@ -728,8 +728,8 @@ function CreateKitModal({
           </p>
         </div>
 
-        <div className="field">
-          <label>Contenidos del kit</label>
+        <div className="field" role="group" aria-labelledby="kit-contenidos-nuevo">
+          <span id="kit-contenidos-nuevo" className="field-titulo">Contenidos del kit</span>
           {itemsCatalog.length === 0 && (
             <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
           )}
@@ -1019,8 +1019,8 @@ function EditKitModal({
           </p>
         </div>
 
-        <div className="field">
-          <label>Contenidos del kit</label>
+        <div className="field" role="group" aria-labelledby="kit-contenidos-editar">
+          <span id="kit-contenidos-editar" className="field-titulo">Contenidos del kit</span>
           {itemsCatalog.length === 0 && (
             <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
           )}

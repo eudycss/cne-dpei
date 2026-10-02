@@ -195,6 +195,17 @@ describe('KitsPage — CreateKitModal', () => {
     expect(screen.getByLabelText('Mouse')).toBeChecked();
   });
 
+  it('los contenidos forman un grupo con nombre y cada casilla va en la misma fila que su texto', async () => {
+    await openCreateModal();
+
+    const grupo = screen.getByRole('group', { name: 'Contenidos del kit' });
+    const casilla = within(grupo).getByRole('checkbox', { name: 'Computador' });
+    // La casilla y su texto comparten la etiqueta, que se muestra como fila (no como bloque).
+    const etiqueta = casilla.closest('label')!;
+    expect(etiqueta).toHaveClass('row');
+    expect(etiqueta).toHaveTextContent('Computador');
+  });
+
   it('desmarcar un ítem lo excluye del payload, y el nombre se autogenera desde el recinto', async () => {
     const user = await openCreateModal();
     postMock.mockResolvedValueOnce({ data: {} });
