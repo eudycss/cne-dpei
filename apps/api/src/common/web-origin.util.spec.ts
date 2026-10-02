@@ -98,6 +98,23 @@ describe('parseOriginPatterns', () => {
     expect(parseOriginPatterns('http://*.vercel.app')).toEqual([]); // no https
     expect(parseOriginPatterns('https://*.vercel.app/ruta')).toEqual([]); // con ruta
     expect(parseOriginPatterns('https://exacto.vercel.app')).toEqual([]); // sin * (va en WEB_ORIGIN)
+    expect(parseOriginPatterns('https://*')).toEqual([]); // sin dominio literal tras el *
+    expect(parseOriginPatterns('https://a-*-b-*.vercel.app')).toEqual([]); // más de un *
+  });
+
+  it('respeta espacios en la lista y es sensible a mayúsculas (Origin llega en minúsculas)', () => {
+    expect(coincide('https://cne-dpei-web-abc-cne2027.vercel.app', `  ${PATRON}  ,  `)).toBe(true);
+    expect(coincide('https://CNE-DPEI-WEB-abc-cne2027.vercel.app')).toBe(false);
+  });
+
+  it('no admite puerto en el origen', () => {
+    expect(coincide('https://cne-dpei-web-abc-cne2027.vercel.app:8443')).toBe(false);
+  });
+
+  it('límite conocido (documentado): un equipo ajeno con slug "x-cne2027" también coincide', () => {
+    // El "-" del comodín no se distingue del separador de Vercel. Es aceptable
+    // porque la sesión no usa cookies (ver comentario de parseOriginPatterns).
+    expect(coincide('https://cne-dpei-web-abc-x-cne2027.vercel.app')).toBe(true);
   });
 
   it('admite varios patrones separados por coma', () => {
