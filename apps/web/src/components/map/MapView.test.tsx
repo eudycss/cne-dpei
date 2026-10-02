@@ -7,6 +7,8 @@ const instancias: Array<{
   remove: ReturnType<typeof vi.fn>;
 }> = [];
 
+const urlsWorker: string[] = [];
+
 vi.mock('maplibre-gl', () => {
   class FakeMap {
     opciones: { style: unknown };
@@ -23,6 +25,7 @@ vi.mock('maplibre-gl', () => {
   }
   class Control {}
   return {
+    setWorkerUrl: (url: string) => urlsWorker.push(url),
     Map: FakeMap,
     NavigationControl: Control,
     GeolocateControl: Control,
@@ -30,6 +33,7 @@ vi.mock('maplibre-gl', () => {
   };
 });
 vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));
+vi.mock('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url', () => ({ default: '/worker-maplibre.js' }));
 
 let temaActual: 'light' | 'dark' = 'light';
 vi.mock('../../theme/ThemeContext', () => ({
@@ -43,6 +47,10 @@ describe('MapView', () => {
   beforeEach(() => {
     instancias.length = 0;
     temaActual = 'light';
+  });
+
+  it('registra el worker empaquetado por Vite (MapLibre v6 no lo encuentra solo)', () => {
+    expect(urlsWorker).toEqual(['/worker-maplibre.js']);
   });
 
   it('crea el mapa con el estilo del tema actual', () => {
