@@ -60,8 +60,7 @@ describe('ReportarIncidenciaModal — foto comprimida', () => {
       .join(' | ');
   const boton = (texto: string) =>
     tree.root.findAllByType(Pressable).find((p) => p.findAllByType(Text).some((t) => t.props.children === texto))!;
-  const botonGuardar = () =>
-    tree.root.findAllByType(Pressable).find((p) => p.props.accessibilityRole === 'button')!;
+  const botonGuardar = () => tree.root.findByProps({ testID: 'btn-guardar-incidencia' });
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -77,7 +76,7 @@ describe('ReportarIncidenciaModal — foto comprimida', () => {
   });
 
   it('envía la versión comprimida de la foto', async () => {
-    comprimirMock.mockResolvedValue({ uri: 'file:///chica.jpg', base64: 'CHICA' });
+    comprimirMock.mockResolvedValue('CHICA');
 
     await act(async () => mockCapturar!('file:///grande.jpg', 'GRANDE'));
 
@@ -97,7 +96,7 @@ describe('ReportarIncidenciaModal — foto comprimida', () => {
   });
 
   it('mientras prepara la foto avisa y no deja guardar', async () => {
-    let terminar!: (v: { uri: string; base64: string }) => void;
+    let terminar!: (v: string) => void;
     comprimirMock.mockReturnValue(new Promise((r) => (terminar = r)));
 
     await act(async () => {
@@ -108,7 +107,33 @@ describe('ReportarIncidenciaModal — foto comprimida', () => {
     expect(botonGuardar().props.disabled).toBe(true);
     expect(botonGuardar().props.accessibilityState).toEqual({ disabled: true, busy: true });
 
-    await act(async () => terminar({ uri: 'file:///chica.jpg', base64: 'CHICA' }));
+    await act(async () => terminar('CHICA'));
     expect(botonGuardar().props.disabled).toBe(false);
+  });
+
+  it('si llegan dos fotos seguidas, gana la última aunque la primera termine después', async () => {
+    let terminarPrimera!: (v: string) => void;
+    comprimirMock
+      .mockReturnValueOnce(new Promise((r) => (terminarPrimera = r)))
+      .mockResolvedValueOnce('SEGUNDA');
+
+    await act(async () => {
+      mockCapturar!('file:///1.jpg', 'UNO');
+    });
+    await act(async () => boton('Cambiar foto').props.onPress());
+    await act(async () => mockCapturar!('file:///2.jpg', 'DOS'));
+    await act(async () => terminarPrimera('PRIMERA')); // llega tarde: se descarta
+
+    await act(async () => botonGuardar().props.onPress());
+    expect(reportarMock).toHaveBeenCalledWith(expect.objectContaining({ fotoBase64: 'SEGUNDA' }));
+  });
+
+  it('sin foto comprimida ni original avisa y no dice "Foto adjuntada"', async () => {
+    comprimirMock.mockResolvedValue(null);
+
+    await act(async () => mockCapturar!('file:///rota.jpg', undefined));
+
+    expect(textos()).toContain('No se pudo preparar la foto. Tómala de nuevo.');
+    expect(textos()).not.toContain('Foto adjuntada.');
   });
 });

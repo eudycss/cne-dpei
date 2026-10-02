@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -82,26 +83,37 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
   }, [visible]);
 
   function limpiarFormulario() {
+    capturaActual.current++; // descarta una compresión que siga en curso
     setTipo(null);
     setDescripcion('');
     setFotoUri(null);
     setFotoBase64(null);
+    setPreparandoFoto(false);
     setExito(false);
   }
 
   // La foto de la cámara (4000×3000, varios MB) se reduce antes de enviarla
-  // por datos móviles. Si la compresión falla se usa la original.
+  // por datos móviles. Si la compresión falla se usa la original; si tampoco
+  // hay original, se avisa en vez de enviar la incidencia sin foto.
   async function onFotoCapturada(uri: string, base64?: string) {
     const id = ++capturaActual.current;
     setMostrarCamara(false);
+    setError(null);
     setFotoUri(uri);
     setFotoBase64(null);
     setPreparandoFoto(true);
+    AccessibilityInfo.announceForAccessibility('Preparando foto');
     const comprimida = await comprimirFoto(uri);
-    if (id !== capturaActual.current) return; // llegó otra foto mientras tanto
-    setFotoUri(comprimida?.uri ?? uri);
-    setFotoBase64(comprimida?.base64 ?? base64 ?? null);
+    if (id !== capturaActual.current) return; // llegó otra foto o se limpió el formulario
+    const final = comprimida ?? base64 ?? null;
     setPreparandoFoto(false);
+    if (!final) {
+      setFotoUri(null);
+      setError('No se pudo preparar la foto. Tómala de nuevo.');
+      return;
+    }
+    setFotoBase64(final);
+    AccessibilityInfo.announceForAccessibility('Foto adjuntada');
   }
 
   async function onGuardar() {
@@ -209,6 +221,7 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
                 style={[styles.btnPrimary, (enviando || preparandoFoto) && { opacity: 0.6 }]}
                 onPress={onGuardar}
                 disabled={enviando || preparandoFoto}
+                testID="btn-guardar-incidencia"
                 accessibilityRole="button"
                 accessibilityState={{ disabled: enviando || preparandoFoto, busy: enviando || preparandoFoto }}
               >
