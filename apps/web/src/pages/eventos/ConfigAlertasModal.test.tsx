@@ -71,11 +71,10 @@ describe('ConfigAlertasModal', () => {
     await screen.findByDisplayValue('275');
 
     await user.clear(screen.getByLabelText('Umbral sin sincronización (min)'));
-    // Evita la validación nativa del navegador para probar la propia.
-    screen.getByRole('button', { name: 'Guardar' }).closest('form')!.noValidate = true;
     await user.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    expect(screen.getByText('Completa todos los campos.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Completa todos los campos.');
+    expect(screen.getByLabelText('Umbral sin sincronización (min)')).toHaveAttribute('aria-invalid', 'true');
     expect(patchMock).not.toHaveBeenCalled();
   });
 
@@ -87,10 +86,53 @@ describe('ConfigAlertasModal', () => {
 
     await user.clear(margen);
     await user.type(margen, '250000');
-    screen.getByRole('button', { name: 'Guardar' }).closest('form')!.noValidate = true;
     await user.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    expect(screen.getByText(/Valor no válido en: Margen de llegada \(10 a 200/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Valor no válido en: Margen de llegada \(10 a 200/);
+    expect(margen).toHaveAttribute('aria-invalid', 'true');
     expect(patchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['9', 'por debajo del mínimo'],
+    ['150.5', 'decimal'],
+  ])('rechaza el margen %s (%s)', async (valor) => {
+    const user = userEvent.setup();
+    renderModal();
+    const margen = screen.getByLabelText('Margen de llegada al recinto (m)');
+    await screen.findByDisplayValue('275');
+
+    await user.clear(margen);
+    await user.type(margen, valor);
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Margen de llegada/);
+    expect(patchMock).not.toHaveBeenCalled();
+  });
+
+  it('advierte cuando el margen supera 5 km (la geocerca casi no valida)', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const margen = screen.getByLabelText('Margen de llegada al recinto (m)');
+    await screen.findByDisplayValue('275');
+    expect(screen.queryByText(/prácticamente no se\s+valida/)).not.toBeInTheDocument();
+
+    await user.clear(margen);
+    await user.type(margen, '5001');
+
+    expect(screen.getByText(/prácticamente no se\s+valida/)).toBeInTheDocument();
+  });
+
+  it('si el servidor falla muestra su mensaje y vuelve a habilitar "Guardar"', async () => {
+    patchMock.mockRejectedValueOnce({ response: { data: { message: 'No autorizado' } } });
+    const user = userEvent.setup();
+    const onDone = renderModal();
+    await screen.findByDisplayValue('275');
+
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No autorizado');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled();
+    expect(onDone).not.toHaveBeenCalled();
   });
 });

@@ -531,6 +531,9 @@ function CloseEventoModal({
 
 type ConfigAlertasTexto = Record<keyof ConfigAlertas, string>;
 
+/** A partir de aquí se advierte que la geocerca de llegada queda casi sin efecto. */
+const MARGEN_AVISO_METROS = 5_000;
+
 const ETIQUETA_CONFIG: Record<keyof ConfigAlertas, string> = {
   umbralLlegadaRecintoMin: 'Umbral llegada al recinto (1 a 1440 min)',
   umbralLlegadaDpiMin: 'Umbral llegada al DPI (1 a 1440 min)',
@@ -584,6 +587,7 @@ export function ConfigAlertasModal({
     }),
   );
   const [error, setError] = useState<string | null>(null);
+  const [campoError, setCampoError] = useState<keyof ConfigAlertas | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Sincronizar form cuando llegue el detalle
@@ -603,7 +607,10 @@ export function ConfigAlertasModal({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (Object.values(form).some((v) => v.trim() === '')) {
+    setCampoError(null);
+    const vacio = (Object.keys(form) as (keyof ConfigAlertas)[]).find((k) => form[k].trim() === '');
+    if (vacio) {
+      setCampoError(vacio);
       setError('Completa todos los campos.');
       return;
     }
@@ -611,6 +618,7 @@ export function ConfigAlertasModal({
     if (!parsed.success) {
       // Los mensajes de zod vienen en inglés: se indica el campo y su rango válido.
       const campo = parsed.error.issues[0]?.path[0] as keyof ConfigAlertas | undefined;
+      setCampoError(campo ?? null);
       setError(campo ? `Valor no válido en: ${ETIQUETA_CONFIG[campo]}.` : 'Datos inválidos');
       return;
     }
@@ -630,10 +638,13 @@ export function ConfigAlertasModal({
       className="center"
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
     >
+      {/* noValidate: la validación propia da mensajes en español con el rango
+          de cada campo, en vez de las burbujas nativas del navegador. */}
       <form
         className="login-card"
         style={{ maxWidth: 480, width: '100%' }}
         onSubmit={onSubmit}
+        noValidate
       >
         <h1>Configurar umbrales de alerta</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
@@ -652,6 +663,7 @@ export function ConfigAlertasModal({
             step={1}
             value={form.umbralLlegadaRecintoMin}
             onChange={numField('umbralLlegadaRecintoMin')}
+            aria-invalid={campoError === 'umbralLlegadaRecintoMin' || undefined}
             aria-describedby="cfg-umbral-recinto-ayuda"
             required
           />
@@ -672,6 +684,7 @@ export function ConfigAlertasModal({
             step={1}
             value={form.umbralLlegadaDpiMin}
             onChange={numField('umbralLlegadaDpiMin')}
+            aria-invalid={campoError === 'umbralLlegadaDpiMin' || undefined}
             aria-describedby="cfg-umbral-dpi-ayuda"
             required
           />
@@ -691,6 +704,7 @@ export function ConfigAlertasModal({
             step={1}
             value={form.umbralSinSyncMin}
             onChange={numField('umbralSinSyncMin')}
+            aria-invalid={campoError === 'umbralSinSyncMin' || undefined}
             aria-describedby="cfg-umbral-sync-ayuda"
             required
           />
@@ -710,6 +724,7 @@ export function ConfigAlertasModal({
             step={1}
             value={form.margenLlegadaMetros}
             onChange={numField('margenLlegadaMetros')}
+            aria-invalid={campoError === 'margenLlegadaMetros' || undefined}
             aria-describedby="cfg-margen-llegada-ayuda"
             required
           />
@@ -718,9 +733,19 @@ export function ConfigAlertasModal({
             {MARGEN_LLEGADA_MAX_METROS.toLocaleString('es-EC')} m). Sube este valor
             temporalmente en un evento de prueba para hacer una demo sin estar en el recinto real.
           </span>
+          {Number(form.margenLlegadaMetros) > MARGEN_AVISO_METROS ? (
+            <div className="banner" role="status" style={{ marginTop: '0.5rem' }}>
+              Con más de {MARGEN_AVISO_METROS / 1000} km, la llegada al recinto prácticamente no se
+              valida. Úsalo solo en eventos de prueba y vuelve al valor normal al terminar.
+            </div>
+          ) : null}
         </div>
 
-        {error && <div className="banner error">{error}</div>}
+        {error && (
+          <div className="banner error" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
           <button type="button" className="btn secondary" onClick={onClose}>

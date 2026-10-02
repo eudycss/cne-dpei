@@ -400,7 +400,7 @@ importers:
         specifier: 5.5.4
         version: 5.5.4
       vitest:
-        specifier: ^3.2.7
+        specifier: 3.2.7
         version: 3.2.7(@types/node@20.16.10)(jiti@2.7.0)(jsdom@25.0.1(supports-color@8.1.1))(lightningcss@1.32.0)(supports-color@8.1.1)(terser@5.47.1)(yaml@2.9.0)
 
 packages:
