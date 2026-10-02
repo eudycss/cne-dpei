@@ -73,6 +73,9 @@ export function Layout() {
               Reportes
             </NavLink>
           )}
+          <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Power BI CDAS
+          </NavLink>
           <div className="me">
             <div>
               <strong>{user?.nombres} {user?.apellidos}</strong>
