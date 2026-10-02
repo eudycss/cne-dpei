@@ -1,30 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { ESTILO_CLARO, ESTILO_OSCURO, estiloMapa } from './estilos';
 
-function tilesDe(estilo: typeof ESTILO_CLARO): string[] {
-  const fuente = Object.values(estilo.sources)[0] as { tiles: string[] };
-  return fuente.tiles;
+function fuenteDe(estilo: typeof ESTILO_CLARO) {
+  return estilo.sources.osm as { type: string; tiles: string[]; attribution: string };
 }
 
 describe('estiloMapa', () => {
-  it('usa OpenStreetMap en tema claro y CARTO Dark Matter en tema oscuro', () => {
+  it('elige el estilo según el tema', () => {
     expect(estiloMapa('light')).toBe(ESTILO_CLARO);
     expect(estiloMapa('dark')).toBe(ESTILO_OSCURO);
-    expect(tilesDe(ESTILO_CLARO)[0]).toContain('tile.openstreetmap.org');
-    expect(tilesDe(ESTILO_OSCURO)[0]).toContain('basemaps.cartocdn.com/dark_all');
   });
 
-  it('usa solo teselas raster por HTTPS (sin vector tiles)', () => {
+  it('ambos temas usan teselas raster de OpenStreetMap por HTTPS, sin API key', () => {
     for (const estilo of [ESTILO_CLARO, ESTILO_OSCURO]) {
-      const fuente = Object.values(estilo.sources)[0] as { type: string };
+      const fuente = fuenteDe(estilo);
       expect(fuente.type).toBe('raster');
-      expect(tilesDe(estilo).every((t) => t.startsWith('https://'))).toBe(true);
+      expect(fuente.tiles.every((t) => t.startsWith('https://') && t.includes('tile.openstreetmap.org'))).toBe(true);
+      expect(fuente.attribution).toContain('OpenStreetMap');
     }
   });
 
-  it('el tema oscuro acredita a OpenStreetMap y a CARTO', () => {
-    const fuente = Object.values(ESTILO_OSCURO.sources)[0] as { attribution: string };
-    expect(fuente.attribution).toContain('OpenStreetMap');
-    expect(fuente.attribution).toContain('CARTO');
+  it('el tema oscuro invierte el brillo y gira el tono; el claro no altera las teselas', () => {
+    const capaOscura = ESTILO_OSCURO.layers[0] as { paint?: Record<string, number> };
+    expect(capaOscura.paint?.['raster-brightness-min']).toBeGreaterThan(
+      capaOscura.paint?.['raster-brightness-max'] ?? 1,
+    );
+    expect(capaOscura.paint?.['raster-hue-rotate']).toBe(180);
+    expect((ESTILO_CLARO.layers[0] as { paint?: unknown }).paint).toBeUndefined();
   });
 });
