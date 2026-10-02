@@ -37,6 +37,28 @@ describe('BotonConMotivo', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it('al enfocar con teclado muestra el motivo en un tooltip', async () => {
+    render(
+      <BotonConMotivo onClick={() => {}} motivo="Aún no se subió el acta de escrutinio">
+        Ver acta
+      </BotonConMotivo>,
+    );
+
+    await userEvent.tab();
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Aún no se subió el acta de escrutinio');
+    expect(screen.getByRole('button', { name: 'Ver acta' })).toHaveAttribute(
+      'aria-describedby',
+      tooltip.id,
+    );
+  });
+
+  it('sin motivo no envuelve el botón en un tooltip', () => {
+    const { container } = render(<BotonConMotivo onClick={() => {}}>Ver foto</BotonConMotivo>);
+    expect(container.querySelector('.warm-tooltip__trigger')).toBeNull();
+  });
+
   it('respeta un aria-label propio', () => {
     render(
       <BotonConMotivo onClick={() => {}} ariaLabel="Ver acta de escrutinio — Colegio Otavalo">

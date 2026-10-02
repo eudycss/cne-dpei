@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TextoAnimado } from '../../components/TextoAnimado';
 import { BotonConMotivo } from '../../components/BotonConMotivo';
+import { Cargando } from '../../components/Cargando';
+import { WarmTooltipGroup } from '../../components/micro/WarmTooltip/WarmTooltip';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
@@ -88,7 +90,7 @@ function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => 
           style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}
         >
           {isLoading ? (
-            <p className="muted">Cargando…</p>
+            <Cargando texto="Cargando foto…" />
           ) : isError ? (
             <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
           ) : url ? (
@@ -148,7 +150,7 @@ function FotoActaModal({
           style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}
         >
           {isLoading ? (
-            <p className="muted">Cargando…</p>
+            <Cargando texto="Cargando acta…" />
           ) : isError ? (
             <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
           ) : url ? (
@@ -301,7 +303,7 @@ export function MonitoreoPage() {
             </p>
           ) : null}
           {isLoading ? (
-            <p style={{ opacity: 0.7 }}>Cargando…</p>
+            <Cargando texto="Cargando operadores en ruta…" />
           ) : isError ? (
             <p style={{ color: '#dc2626' }}>No se pudo cargar el monitoreo.</p>
           ) : operadores.length === 0 ? (
@@ -385,11 +387,12 @@ export function MonitoreoPage() {
         </div>
 
         {cdaLoading ? (
-          <p className="muted">Cargando…</p>
+          <Cargando texto="Cargando estado de CDAs…" />
         ) : cdaError ? (
           <p style={{ color: '#dc2626' }}>No se pudo cargar el estado de los CDAs.</p>
         ) : (
           // Enfocable para poder desplazarla horizontalmente con el teclado.
+          <WarmTooltipGroup>
           <div className="table-scroll" role="region" aria-label="Tabla de estado de CDAs" tabIndex={0}>
           <table className="table-sticky-first">
             <thead>
@@ -479,6 +482,7 @@ export function MonitoreoPage() {
             </tbody>
           </table>
           </div>
+          </WarmTooltipGroup>
         )}
       </div>
 

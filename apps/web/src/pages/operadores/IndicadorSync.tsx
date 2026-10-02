@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, CircleAlert, RefreshCw } from 'lucide-react';
+import StatusMark, { type StatusMarkStatus } from '../../components/micro/StatusMark/StatusMark';
 
 interface Props {
   /** dataUpdatedAt de React Query (ms); 0 si todavía no hubo datos. */
@@ -27,22 +27,26 @@ export function IndicadorSync({ actualizadoEn, actualizando, error }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  let icono = <Check size={14} aria-hidden="true" />;
+  let estado: StatusMarkStatus = actualizadoEn ? 'done' : 'pending';
   let texto = actualizadoEn ? `Actualizado ${haceCuanto(actualizadoEn, ahora)}` : 'Esperando datos…';
   let clase = 'sync-indicator';
   if (actualizando) {
-    icono = <RefreshCw size={14} aria-hidden="true" className="sync-spin" />;
+    estado = 'running';
     texto = 'Actualizando…';
   }
   if (error) {
-    icono = <CircleAlert size={14} aria-hidden="true" />;
+    estado = 'failed';
     texto = 'No se pudo actualizar';
     clase += ' sync-indicator--error';
   }
 
   return (
-    <span className={clase}>
-      {icono}
+    <span className={clase} data-estado={estado}>
+      {/* Un solo StatusMark que se transforma entre estados (gira → ✓ / ✗).
+          Oculto al lector: su texto interno está en inglés y ya hay uno visible. */}
+      <span aria-hidden="true" className="sync-mark">
+        <StatusMark status={estado} size={15} strokeWidth={2.4} color="currentColor" doneColor="currentColor" errorColor="currentColor" />
+      </span>
       <span>{texto}</span>
       <span className="sr-only" role="status">
         {error ? 'No se pudo actualizar el estado de los CDAs' : ''}

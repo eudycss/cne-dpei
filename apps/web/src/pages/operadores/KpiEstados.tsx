@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { TextoAnimado } from '../../components/TextoAnimado';
+import SloshGauge from '../../components/micro/SloshGauge/SloshGauge';
 import { ESTADO_INFO, ORDEN_ESTADOS, type ConteoEstados } from './estado-info';
 
 interface Props {
@@ -20,20 +21,19 @@ export function KpiEstados({ conteo, total }: Props) {
   return (
     <div className="kpi-grid">
       <div className="kpi-card kpi-card--avance">
-        <div
-          className="kpi-gauge"
-          role="meter"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={porcentaje}
-          aria-valuetext={`${porcentaje} %, ${llegados} de ${total} CDAs`}
-          aria-label="CDAs que llegaron al DPEI"
-          style={{ '--avance': `${porcentaje}%` } as CSSProperties}
-        >
-          <span className="kpi-gauge-valor" aria-hidden="true">
-            {porcentaje}%
-          </span>
-        </div>
+        {/* SloshGauge (React Bits) ya expone role="meter" y aria-valuenow. El
+            liquidColor va en hex porque el componente calcula con él el color
+            del texto sobre el líquido. */}
+        <SloshGauge
+          value={porcentaje}
+          ariaLabel={`CDAs que llegaron al DPEI (${llegados} de ${total})`}
+          liquidColor={ESTADO_INFO.RETORNADO.color}
+          glassColor="var(--border-subtle)"
+          width={52}
+          height={76}
+          radius={14}
+          ticks={4}
+        />
         <div>
           <div className="kpi-label">Llegaron al DPEI</div>
           <div className="kpi-detalle">

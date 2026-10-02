@@ -1,9 +1,10 @@
 import { useId, type ReactNode } from 'react';
+import WarmTooltip from './micro/WarmTooltip/WarmTooltip';
 
 interface Props {
   children: ReactNode;
   onClick: () => void;
-  /** Si hay motivo, el botón queda inactivo y el motivo se anuncia y se muestra al pasar el mouse. */
+  /** Si hay motivo, el botón queda inactivo y el motivo se anuncia y se muestra en un tooltip. */
   motivo?: string | null;
   ariaLabel?: string;
 }
@@ -17,25 +18,39 @@ export function BotonConMotivo({ children, onClick, motivo, ariaLabel }: Props) 
   const idMotivo = useId();
   const inactivo = Boolean(motivo);
 
+  const boton = (
+    <button
+      type="button"
+      className="btn secondary"
+      style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+      aria-label={ariaLabel}
+      aria-disabled={inactivo || undefined}
+      aria-describedby={inactivo ? idMotivo : undefined}
+      onClick={inactivo ? undefined : onClick}
+    >
+      {children}
+    </button>
+  );
+
+  if (!inactivo) return boton;
+
+  // WarmTooltip (React Bits) muestra el motivo al pasar el mouse o al enfocar
+  // con teclado; mientras está abierto, apunta aria-describedby a sí mismo, y
+  // cerrado se conserva el .sr-only de abajo.
   return (
     <>
-      <button
-        type="button"
-        className="btn secondary"
-        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-        aria-label={ariaLabel}
-        aria-disabled={inactivo || undefined}
-        aria-describedby={inactivo ? idMotivo : undefined}
-        title={motivo ?? undefined}
-        onClick={inactivo ? undefined : onClick}
+      <WarmTooltip
+        content={motivo}
+        side="top"
+        size="sm"
+        surfaceColor="var(--text)"
+        inkColor="var(--bg-card)"
       >
-        {children}
-      </button>
-      {inactivo ? (
-        <span id={idMotivo} className="sr-only">
-          {motivo}
-        </span>
-      ) : null}
+        {boton}
+      </WarmTooltip>
+      <span id={idMotivo} className="sr-only">
+        {motivo}
+      </span>
     </>
   );
 }

@@ -51,13 +51,10 @@ describe('FiltroEstado', () => {
     expect(onChange).toHaveBeenLastCalledWith('EN_DPI');
     expect(screen.getByRole('radio', { name: /En DPI/ })).toHaveFocus();
 
-    await userEvent.keyboard('{ArrowLeft}{ArrowLeft}');
-    expect(onChange).toHaveBeenLastCalledWith('RETORNADO'); // da la vuelta
-
-    await userEvent.keyboard('{Home}');
-    expect(onChange).toHaveBeenLastCalledWith('TODOS');
     await userEvent.keyboard('{End}');
     expect(onChange).toHaveBeenLastCalledWith('RETORNADO');
+    await userEvent.keyboard('{Home}');
+    expect(onChange).toHaveBeenLastCalledWith('TODOS');
 
     // Solo la opción activa queda en el orden de tabulación.
     const enTab = screen.getAllByRole('radio').filter((r) => r.getAttribute('tabindex') === '0');

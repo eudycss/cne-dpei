@@ -123,7 +123,7 @@ describe('MonitoreoPage', () => {
 
     renderPage();
 
-    expect(screen.getAllByText('Cargando…').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^Cargando/).length).toBeGreaterThan(0);
   });
 
   it('muestra error si las queries fallan', async () => {
@@ -286,7 +286,7 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Escuela Manuela Cañizares');
 
-    expect(screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI' })).toHaveAttribute(
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
       'aria-valuenow',
       '50',
     );
@@ -301,7 +301,7 @@ describe('MonitoreoPage', () => {
     // Con el cantón Ibarra (solo el CDA en retorno), nadie llegó todavía.
     await user.click(screen.getByRole('radio', { name: /Todos/ }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' }), '1');
-    expect(screen.getByRole('meter', { name: 'CDAs que llegaron al DPEI' })).toHaveAttribute(
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
       'aria-valuenow',
       '0',
     );
