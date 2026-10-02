@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { strongPasswordSchema } from '@cne/shared-validation';
 import { api } from '../lib/api';
 import { Logo } from '../components/Logo';
