@@ -7,6 +7,7 @@ import type {
   TipoEventoCatalog,
 } from '@cne/shared-types';
 import {
+  MARGEN_LLEGADA_MAX_METROS,
   configAlertasSchema,
   createEventoSchema,
   updateEventoSchema,
@@ -528,7 +529,34 @@ function CloseEventoModal({
 
 // ─── Modal configurar alertas ─────────────────────────────────────────────────
 
-function ConfigAlertasModal({
+type ConfigAlertasTexto = Record<keyof ConfigAlertas, string>;
+
+const ETIQUETA_CONFIG: Record<keyof ConfigAlertas, string> = {
+  umbralLlegadaRecintoMin: 'Umbral llegada al recinto (1 a 1440 min)',
+  umbralLlegadaDpiMin: 'Umbral llegada al DPI (1 a 1440 min)',
+  umbralSinSyncMin: 'Umbral sin sincronización (1 a 1440 min)',
+  margenLlegadaMetros: `Margen de llegada (10 a ${MARGEN_LLEGADA_MAX_METROS.toLocaleString('es-EC')} m, número entero)`,
+};
+
+export function configATexto(c: ConfigAlertas): ConfigAlertasTexto {
+  return {
+    umbralLlegadaRecintoMin: String(c.umbralLlegadaRecintoMin),
+    umbralLlegadaDpiMin: String(c.umbralLlegadaDpiMin),
+    umbralSinSyncMin: String(c.umbralSinSyncMin),
+    margenLlegadaMetros: String(c.margenLlegadaMetros),
+  };
+}
+
+export function textoAConfig(t: ConfigAlertasTexto): ConfigAlertas {
+  return {
+    umbralLlegadaRecintoMin: Number(t.umbralLlegadaRecintoMin),
+    umbralLlegadaDpiMin: Number(t.umbralLlegadaDpiMin),
+    umbralSinSyncMin: Number(t.umbralSinSyncMin),
+    margenLlegadaMetros: Number(t.margenLlegadaMetros),
+  };
+}
+
+export function ConfigAlertasModal({
   evento,
   onClose,
   onDone,
@@ -545,38 +573,45 @@ function ConfigAlertasModal({
 
   const cfg = detalle?.configAlertas;
 
-  const [form, setForm] = useState<ConfigAlertas>({
-    umbralLlegadaRecintoMin: cfg?.umbralLlegadaRecintoMin ?? 120,
-    umbralLlegadaDpiMin: cfg?.umbralLlegadaDpiMin ?? 120,
-    umbralSinSyncMin: cfg?.umbralSinSyncMin ?? 30,
-    margenLlegadaMetros: cfg?.margenLlegadaMetros ?? 150,
-  });
+  // Los valores se guardan como texto mientras se escriben: con Number('')
+  // el campo se volvía "0" al borrarlo y no se podía escribir otro número.
+  const [form, setForm] = useState<ConfigAlertasTexto>(() =>
+    configATexto({
+      umbralLlegadaRecintoMin: cfg?.umbralLlegadaRecintoMin ?? 120,
+      umbralLlegadaDpiMin: cfg?.umbralLlegadaDpiMin ?? 120,
+      umbralSinSyncMin: cfg?.umbralSinSyncMin ?? 30,
+      margenLlegadaMetros: cfg?.margenLlegadaMetros ?? 150,
+    }),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Sincronizar form cuando llegue el detalle
   const [synced, setSynced] = useState(false);
   if (cfg && !synced) {
-    setForm({
-      umbralLlegadaRecintoMin: cfg.umbralLlegadaRecintoMin,
-      umbralLlegadaDpiMin: cfg.umbralLlegadaDpiMin,
-      umbralSinSyncMin: cfg.umbralSinSyncMin,
-      margenLlegadaMetros: cfg.margenLlegadaMetros,
-    });
+    setForm(configATexto(cfg));
     setSynced(true);
   }
 
   function numField(k: keyof ConfigAlertas) {
-    return (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [k]: Number(e.target.value) }));
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const valor = e.target.value;
+      setForm((f) => ({ ...f, [k]: valor }));
+    };
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const parsed = configAlertasSchema.safeParse(form);
+    if (Object.values(form).some((v) => v.trim() === '')) {
+      setError('Completa todos los campos.');
+      return;
+    }
+    const parsed = configAlertasSchema.safeParse(textoAConfig(form));
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
+      // Los mensajes de zod vienen en inglés: se indica el campo y su rango válido.
+      const campo = parsed.error.issues[0]?.path[0] as keyof ConfigAlertas | undefined;
+      setError(campo ? `Valor no válido en: ${ETIQUETA_CONFIG[campo]}.` : 'Datos inválidos');
       return;
     }
     setSaving(true);
@@ -607,63 +642,80 @@ function ConfigAlertasModal({
         </p>
 
         <div className="field">
-          <label>Umbral llegada al recinto (min)</label>
+          <label htmlFor="cfg-umbral-recinto">Umbral llegada al recinto (min)</label>
           <input
+            id="cfg-umbral-recinto"
             type="number"
+            inputMode="numeric"
             min={1}
             max={1440}
+            step={1}
             value={form.umbralLlegadaRecintoMin}
             onChange={numField('umbralLlegadaRecintoMin')}
+            aria-describedby="cfg-umbral-recinto-ayuda"
             required
           />
-          <span className="muted">
+          <span id="cfg-umbral-recinto-ayuda" className="muted">
             Alerta si el operador no llega al recinto antes de X minutos de la
             jornada.
           </span>
         </div>
 
         <div className="field">
-          <label>Umbral llegada al DPI (min)</label>
+          <label htmlFor="cfg-umbral-dpi">Umbral llegada al DPI (min)</label>
           <input
+            id="cfg-umbral-dpi"
             type="number"
+            inputMode="numeric"
             min={1}
             max={1440}
+            step={1}
             value={form.umbralLlegadaDpiMin}
             onChange={numField('umbralLlegadaDpiMin')}
+            aria-describedby="cfg-umbral-dpi-ayuda"
             required
           />
-          <span className="muted">
+          <span id="cfg-umbral-dpi-ayuda" className="muted">
             Alerta si el operador no registra llegada al DPI en X minutos.
           </span>
         </div>
 
         <div className="field">
-          <label>Umbral sin sincronización (min)</label>
+          <label htmlFor="cfg-umbral-sync">Umbral sin sincronización (min)</label>
           <input
+            id="cfg-umbral-sync"
             type="number"
+            inputMode="numeric"
             min={1}
             max={1440}
+            step={1}
             value={form.umbralSinSyncMin}
             onChange={numField('umbralSinSyncMin')}
+            aria-describedby="cfg-umbral-sync-ayuda"
             required
           />
-          <span className="muted">
+          <span id="cfg-umbral-sync-ayuda" className="muted">
             Alerta si no se recibe ningún dato del operador en X minutos.
           </span>
         </div>
 
         <div className="field">
-          <label>Margen de llegada al recinto (m)</label>
+          <label htmlFor="cfg-margen-llegada">Margen de llegada al recinto (m)</label>
           <input
+            id="cfg-margen-llegada"
             type="number"
+            inputMode="numeric"
             min={10}
-            max={50000}
+            max={MARGEN_LLEGADA_MAX_METROS}
+            step={1}
             value={form.margenLlegadaMetros}
             onChange={numField('margenLlegadaMetros')}
+            aria-describedby="cfg-margen-llegada-ayuda"
             required
           />
-          <span className="muted">
-            Distancia máxima permitida para registrar "Llegada al Recinto". Sube este valor
+          <span id="cfg-margen-llegada-ayuda" className="muted">
+            Distancia máxima permitida para registrar "Llegada al Recinto" (de 10 m a{' '}
+            {MARGEN_LLEGADA_MAX_METROS.toLocaleString('es-EC')} m). Sube este valor
             temporalmente en un evento de prueba para hacer una demo sin estar en el recinto real.
           </span>
         </div>
