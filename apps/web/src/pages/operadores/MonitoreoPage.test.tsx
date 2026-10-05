@@ -388,25 +388,25 @@ describe('MonitoreoPage', () => {
     // Escuela Manuela Cañizares: solo tiene acta de instalación (fixture).
     // Cada botón tiene un aria-label distinto para que sea identificable con lector de pantalla.
     const botonInstalacion1 = within(filaConActas).getByRole('button', {
-      name: 'Ver acta de instalación — Escuela Manuela Cañizares',
+      name: 'Ver reporte de instalación — Escuela Manuela Cañizares',
     });
     const botonEscrutinio1 = within(filaConActas).getByRole('button', {
-      name: 'Ver acta de escrutinio — Escuela Manuela Cañizares',
+      name: 'Ver reporte de escrutinio — Escuela Manuela Cañizares',
     });
     expect(botonInstalacion1).not.toHaveAttribute('aria-disabled');
     expect(botonEscrutinio1).toHaveAttribute('aria-disabled', 'true');
 
     // Colegio Otavalo: no tiene ninguna de las dos.
     expect(
-      within(filaSinActas).getByRole('button', { name: 'Ver acta de instalación — Colegio Otavalo' }),
+      within(filaSinActas).getByRole('button', { name: 'Ver reporte de instalación — Colegio Otavalo' }),
     ).toHaveAttribute('aria-disabled', 'true');
     expect(
-      within(filaSinActas).getByRole('button', { name: 'Ver acta de escrutinio — Colegio Otavalo' }),
+      within(filaSinActas).getByRole('button', { name: 'Ver reporte de escrutinio — Colegio Otavalo' }),
     ).toHaveAttribute('aria-disabled', 'true');
 
     await user.click(botonInstalacion1);
 
-    expect(await screen.findByRole('heading', { name: 'Acta de instalación' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Reporte de instalación' })).toBeInTheDocument();
     expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'instalacion');
   });
 });

@@ -322,7 +322,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         <Text style={styles.title}>Salida del recinto electoral</Text>
 
         <View style={styles.stepper}>
-          <StepBadge n={1} label="Actas obligatorias" active={paso === 1} done={paso > 1} styles={styles} />
+          <StepBadge n={1} label="Reportes obligatorios" active={paso === 1} done={paso > 1} styles={styles} />
           <View style={styles.stepLine} />
           <StepBadge n={2} label="Confirmar salida" active={paso === 2} done={false} styles={styles} />
         </View>
@@ -414,7 +414,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         <CameraFoto
           onCapture={onFotoCapturada}
           onCancel={() => setMostrarCamara(null)}
-          titulo={mostrarCamara === 'escrutinio' ? 'Acta de escrutinio' : 'Acta de instalación'}
+          titulo={mostrarCamara === 'escrutinio' ? 'Reporte de escrutinio' : 'Reporte de instalación'}
         />
       </Modal>
     </View>
@@ -465,18 +465,18 @@ function PasoActas({
   return (
     <>
       <Text style={styles.subtitle}>
-        Antes de salir del recinto debes subir la foto del acta de instalación y del acta de
+        Antes de salir del recinto debes subir la foto del reporte de instalación y del reporte de
         escrutinio. Sin ambas no podrás continuar.
       </Text>
       <ActaCard
-        titulo="Acta de instalación"
+        titulo="Reporte de instalación"
         estado={instalacion}
         onTomarFoto={() => onTomarFoto('instalacion')}
         onReintentar={() => onReintentar('instalacion')}
         styles={styles}
       />
       <ActaCard
-        titulo="Acta de escrutinio"
+        titulo="Reporte de escrutinio"
         estado={escrutinio}
         onTomarFoto={() => onTomarFoto('escrutinio')}
         onReintentar={() => onReintentar('escrutinio')}

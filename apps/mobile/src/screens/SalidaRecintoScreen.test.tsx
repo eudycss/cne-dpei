@@ -155,11 +155,11 @@ describe('SalidaRecintoScreen', () => {
     let continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
     expect(continuar.props.disabled).toBe(true);
 
-    await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
+    await tomarFoto(renderer, 'Reporte de instalación', 'file://instalacion.jpg');
     continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
     expect(continuar.props.disabled).toBe(true); // falta la de escrutinio
 
-    await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+    await tomarFoto(renderer, 'Reporte de escrutinio', 'file://escrutinio.jpg');
     continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
     expect(continuar.props.disabled).toBe(false);
     expect(capturarYSubirActa).toHaveBeenCalledTimes(2);
@@ -181,7 +181,7 @@ describe('SalidaRecintoScreen', () => {
       await flushPromises();
     });
 
-    await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
+    await tomarFoto(renderer, 'Reporte de instalación', 'file://instalacion.jpg');
 
     expect(renderer.root.findByProps({ children: 'Sin conexión' })).toBeTruthy();
 
@@ -190,7 +190,7 @@ describe('SalidaRecintoScreen', () => {
       url: 'actas/instalacion.bin',
       error: null,
     });
-    await reintentarActa(renderer, 'Acta de instalación');
+    await reintentarActa(renderer, 'Reporte de instalación');
 
     expect(renderer.root.findByProps({ children: 'Foto guardada de forma segura' })).toBeTruthy();
   });
@@ -205,8 +205,8 @@ describe('SalidaRecintoScreen', () => {
       await flushPromises();
     });
 
-    await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
-    await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+    await tomarFoto(renderer, 'Reporte de instalación', 'file://instalacion.jpg');
+    await tomarFoto(renderer, 'Reporte de escrutinio', 'file://escrutinio.jpg');
 
     await act(async () => {
       pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress();
@@ -267,8 +267,8 @@ describe('SalidaRecintoScreen', () => {
         renderer = create(<SalidaRecintoScreen onSalidaRegistrada={onSalidaRegistrada} />);
         await flushPromises();
       });
-      await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
-      await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+      await tomarFoto(renderer, 'Reporte de instalación', 'file://instalacion.jpg');
+      await tomarFoto(renderer, 'Reporte de escrutinio', 'file://escrutinio.jpg');
       await act(async () => pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress());
       const checkbox = renderer.root.find((n) => n.type === Pressable && n.props.accessibilityRole === 'checkbox');
       await act(async () => checkbox.props.onPress());
@@ -303,7 +303,7 @@ describe('SalidaRecintoScreen', () => {
       await flushPromises();
     });
 
-    for (const titulo of ['Acta de instalación', 'Acta de escrutinio']) {
+    for (const titulo of ['Reporte de instalación', 'Reporte de escrutinio']) {
       const boton = pressableAncestor(cardPorTitulo(renderer, titulo).findByProps({ children: 'Tomar foto' }));
       await act(async () => boton.props.onPress());
       const camara = renderer.root.findByType(CameraFoto);
@@ -321,8 +321,8 @@ describe('SalidaRecintoScreen', () => {
       renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
       await flushPromises();
     });
-    await tomarFoto(renderer, 'Acta de instalación', 'file://instalacion.jpg');
-    await tomarFoto(renderer, 'Acta de escrutinio', 'file://escrutinio.jpg');
+    await tomarFoto(renderer, 'Reporte de instalación', 'file://instalacion.jpg');
+    await tomarFoto(renderer, 'Reporte de escrutinio', 'file://escrutinio.jpg');
     await act(async () => pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress());
 
     const checkbox = () =>
