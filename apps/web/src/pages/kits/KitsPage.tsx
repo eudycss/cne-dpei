@@ -16,7 +16,15 @@ import { SearchInput } from '../../components/SearchInput';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useAuth } from '../../auth/AuthContext';
 import { ItemsKitPage } from '../items-kit/ItemsKitPage';
-import { getItemsKit, createItemKit } from '../../lib/queries/items-kit';
+import { getItemsKit } from '../../lib/queries/items-kit';
+import {
+  ContenidosKitField,
+  aDetalleItems,
+  contenidosDesdeCatalogo,
+  contenidosDesdeKit,
+  firmaContenidos,
+  type ContenidosKit,
+} from './ContenidosKitField';
 import {
   bulkUploadKits,
   downloadKitsPdfQr,
@@ -612,11 +620,7 @@ function CreateKitModal({
 }) {
   const [recintoId, setRecintoId] = useState('');
   const [esPrueba, setEsPrueba] = useState(false);
-  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(
-    () => new Set(itemsCatalog.map((i) => i.id)),
-  );
-  const [newItemLabel, setNewItemLabel] = useState('');
-  const [addingItem, setAddingItem] = useState(false);
+  const [contenidos, setContenidos] = useState<ContenidosKit>(() => contenidosDesdeCatalogo(itemsCatalog));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -632,43 +636,12 @@ function CreateKitModal({
 
   // Cuando el catálogo crece (ej. por "+ Agregar otro"), el ítem nuevo entra marcado.
   useEffect(() => {
-    setCheckedItemIds((prev) => {
-      const next = new Set(prev);
-      for (const it of itemsCatalog) if (!prev.has(it.id)) next.add(it.id);
+    setContenidos((prev) => {
+      const next = new Map(prev);
+      for (const it of itemsCatalog) if (!prev.has(it.id)) next.set(it.id, { serie: '', estado: 'BUENO' });
       return next;
     });
   }, [itemsCatalog]);
-
-  function toggleItem(id: string) {
-    setCheckedItemIds((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  }
-
-  async function handleAddItem() {
-    const etiqueta = newItemLabel.trim();
-    if (!etiqueta) return;
-    setAddingItem(true);
-    setError(null);
-    try {
-      const codigo = etiqueta
-        .toUpperCase()
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^A-Z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-      const res = await createItemKit({ codigo, etiqueta });
-      onCatalogChanged();
-      setCheckedItemIds((s) => new Set(s).add(res.data.id));
-      setNewItemLabel('');
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'No se pudo agregar el ítem');
-    } finally {
-      setAddingItem(false);
-    }
-  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -687,7 +660,7 @@ function CreateKitModal({
       nombre: `${recinto.codigoRecinto} — ${recinto.nombre}`,
       contenidos: null,
       esPrueba,
-      itemIds: [...checkedItemIds],
+      detalleItems: aDetalleItems(contenidos),
       recintoId,
     });
     if (!parsed.success) {
@@ -728,42 +701,14 @@ function CreateKitModal({
           </p>
         </div>
 
-        <div className="field" role="group" aria-labelledby="kit-contenidos-nuevo">
-          <span id="kit-contenidos-nuevo" className="field-titulo">Contenidos del kit</span>
-          {itemsCatalog.length === 0 && (
-            <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
-          )}
-          {itemsCatalog.map((item) => (
-            <label
-              key={item.id}
-              className="row"
-              style={{ gap: '0.4rem', alignItems: 'center', margin: '0.2rem 0' }}
-            >
-              <input
-                type="checkbox"
-                checked={checkedItemIds.has(item.id)}
-                onChange={() => toggleItem(item.id)}
-              />
-              {item.etiqueta}
-            </label>
-          ))}
-          <div className="row" style={{ marginTop: '0.5rem', gap: '0.4rem' }}>
-            <input
-              value={newItemLabel}
-              onChange={(e) => setNewItemLabel(e.target.value)}
-              placeholder="Otro ítem…"
-              maxLength={120}
-            />
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={addingItem || !newItemLabel.trim()}
-              onClick={handleAddItem}
-            >
-              {addingItem ? 'Agregando…' : '+ Agregar otro'}
-            </button>
-          </div>
-        </div>
+        <ContenidosKitField
+          idTitulo="kit-contenidos-nuevo"
+          itemsCatalog={itemsCatalog}
+          value={contenidos}
+          onChange={setContenidos}
+          onCatalogChanged={onCatalogChanged}
+          onError={setError}
+        />
 
         <label className="row" style={{ margin: '0.5rem 0 0', gap: '0.35rem', alignItems: 'center' }}>
           <input type="checkbox" checked={esPrueba} onChange={(e) => setEsPrueba(e.target.checked)} />
@@ -916,9 +861,7 @@ function EditKitModal({
   onDone: () => void;
 }) {
   const [recintoId, setRecintoId] = useState(kit.recintoId ?? '');
-  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(() => new Set(kit.itemIds));
-  const [newItemLabel, setNewItemLabel] = useState('');
-  const [addingItem, setAddingItem] = useState(false);
+  const [contenidos, setContenidos] = useState<ContenidosKit>(() => contenidosDesdeKit(kit));
   const [justificacion, setJustificacion] = useState('');
   const [frozen, setFrozen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -934,50 +877,22 @@ function EditKitModal({
       }));
   }, [recintos, recintosOcupados, kit.recintoId]);
 
-  function toggleItem(id: string) {
-    setCheckedItemIds((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  }
-
-  async function handleAddItem() {
-    const etiqueta = newItemLabel.trim();
-    if (!etiqueta) return;
-    setAddingItem(true);
-    setError(null);
-    try {
-      const codigo = etiqueta
-        .toUpperCase()
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^A-Z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-      const res = await createItemKit({ codigo, etiqueta });
-      onCatalogChanged();
-      setCheckedItemIds((s) => new Set(s).add(res.data.id));
-      setNewItemLabel('');
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'No se pudo agregar el ítem');
-    } finally {
-      setAddingItem(false);
-    }
-  }
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const payload: { recintoId?: string; itemIds?: string[]; justificacion?: string } = {
+    const payload: {
+      recintoId?: string;
+      detalleItems?: ReturnType<typeof aDetalleItems>;
+      justificacion?: string;
+    } = {
       justificacion: justificacion.trim() || undefined,
     };
     if (recintoId && recintoId !== (kit.recintoId ?? '')) payload.recintoId = recintoId;
-    const itemsActuales = new Set(kit.itemIds);
-    const itemsCambiaron =
-      itemsActuales.size !== checkedItemIds.size ||
-      [...checkedItemIds].some((id) => !itemsActuales.has(id));
-    if (itemsCambiaron) payload.itemIds = [...checkedItemIds];
+    // Se manda el contenido completo (con serie/estado) solo si algo cambió.
+    if (firmaContenidos(contenidos) !== firmaContenidos(contenidosDesdeKit(kit))) {
+      payload.detalleItems = aDetalleItems(contenidos);
+    }
 
     const parsed = editKitSchema.safeParse(payload);
     if (!parsed.success) {
@@ -1019,42 +934,14 @@ function EditKitModal({
           </p>
         </div>
 
-        <div className="field" role="group" aria-labelledby="kit-contenidos-editar">
-          <span id="kit-contenidos-editar" className="field-titulo">Contenidos del kit</span>
-          {itemsCatalog.length === 0 && (
-            <p className="muted" style={{ fontSize: '0.85rem' }}>No hay ítems en el catálogo todavía.</p>
-          )}
-          {itemsCatalog.map((item) => (
-            <label
-              key={item.id}
-              className="row"
-              style={{ gap: '0.4rem', alignItems: 'center', margin: '0.2rem 0' }}
-            >
-              <input
-                type="checkbox"
-                checked={checkedItemIds.has(item.id)}
-                onChange={() => toggleItem(item.id)}
-              />
-              {item.etiqueta}
-            </label>
-          ))}
-          <div className="row" style={{ marginTop: '0.5rem', gap: '0.4rem' }}>
-            <input
-              value={newItemLabel}
-              onChange={(e) => setNewItemLabel(e.target.value)}
-              placeholder="Otro ítem…"
-              maxLength={120}
-            />
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={addingItem || !newItemLabel.trim()}
-              onClick={handleAddItem}
-            >
-              {addingItem ? 'Agregando…' : '+ Agregar otro'}
-            </button>
-          </div>
-        </div>
+        <ContenidosKitField
+          idTitulo="kit-contenidos-editar"
+          itemsCatalog={itemsCatalog}
+          value={contenidos}
+          onChange={setContenidos}
+          onCatalogChanged={onCatalogChanged}
+          onError={setError}
+        />
 
         {frozen && (
           <div className="field">

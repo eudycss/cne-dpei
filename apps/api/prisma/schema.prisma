@@ -43,6 +43,17 @@ enum EstadoKit {
   @@map("estado_kit")
 }
 
+// Estado físico de cada artículo del kit (laptop, escáner…) en el acta de
+// entrega/recepción. Al retorno el asistente puede registrar otro estado; ese
+// queda en RecepcionDpiKit.items, no aquí.
+enum EstadoItemKit {
+  BUENO
+  REGULAR
+  MALO
+
+  @@map("estado_item_kit")
+}
+
 enum TipoTracking {
   SALIDA_DPI
   LLEGADA_RECINTO
@@ -350,8 +361,11 @@ model ItemKitCatalog {
 // Relación kit↔item: qué ítems del catálogo trae cada kit. Sin id propio ni
 // campos extra (cantidad/orden) — la clave natural [kitId, itemId] alcanza.
 model KitItemContenido {
-  kitId  String @map("kit_id") @db.Uuid
-  itemId String @map("item_id") @db.Uuid
+  kitId  String        @map("kit_id") @db.Uuid
+  itemId String        @map("item_id") @db.Uuid
+  // Número de serie del artículo en este kit; NULL = sin serie ("S/N" en el acta).
+  serie  String?       @db.VarChar(60)
+  estado EstadoItemKit @default(BUENO)
 
   kit  KitElectoral   @relation(fields: [kitId], references: [id], onDelete: Cascade)
   item ItemKitCatalog @relation(fields: [itemId], references: [id], onDelete: Restrict)

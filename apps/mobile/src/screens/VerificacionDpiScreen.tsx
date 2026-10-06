@@ -10,13 +10,19 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { ItemChecklist, ValidarKitRetornoResponse } from '@cne/shared-types';
+import type { EstadoItemKit, ItemChecklist, ValidarKitRetornoResponse } from '@cne/shared-types';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { CameraQr } from '../components/CameraQr';
 import { validarKitRetorno, verificarKitRetorno } from '../lib/queries/retorno';
 import { fontFamily } from '../theme/typography';
+
+const ESTADOS: { value: EstadoItemKit; label: string }[] = [
+  { value: 'BUENO', label: 'Bueno' },
+  { value: 'REGULAR', label: 'Regular' },
+  { value: 'MALO', label: 'Malo' },
+];
 
 export function VerificacionDpiScreen() {
   const { colors } = useTheme();
@@ -27,12 +33,15 @@ export function VerificacionDpiScreen() {
   const [observaciones, setObservaciones] = useState('');
   const [confirmando, setConfirmando] = useState(false);
   const [verificados, setVerificados] = useState(0);
+  const [codigoManual, setCodigoManual] = useState('');
+  const [validando, setValidando] = useState(false);
 
   const todosMarcados = items.every((i) => i.marcado);
   const puedeConfirmar = todosMarcados || observaciones.trim().length > 0;
 
   async function onEscanear(codigo: string) {
     setMostrarCamara(false);
+    setValidando(true);
     try {
       const data = await validarKitRetorno(codigo);
       if (data.yaVerificado) {
@@ -42,12 +51,19 @@ export function VerificacionDpiScreen() {
       setKit(data);
       setItems(data.items);
       setObservaciones('');
+      setCodigoManual('');
     } catch (e: any) {
       Alert.alert(
         'Kit inválido',
         e?.response?.data?.message ?? 'No se pudo validar el código. Verifica e intenta de nuevo.',
       );
+    } finally {
+      setValidando(false);
     }
+  }
+
+  function cambiarEstado(index: number, estado: EstadoItemKit) {
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, estado } : it)));
   }
 
   function toggleItem(index: number) {
@@ -87,9 +103,36 @@ export function VerificacionDpiScreen() {
           completo.
         </Text>
 
-        <Pressable style={styles.btnPrimary} onPress={() => setMostrarCamara(true)}>
+        <Pressable style={styles.btnPrimary} onPress={() => setMostrarCamara(true)} accessibilityRole="button">
           <Text style={styles.btnPrimaryText}>Escanear Kit</Text>
         </Pressable>
+
+        {/* Si el QR está dañado o la cámara falla, el código impreso se escribe a mano. */}
+        <Text style={styles.manualLabel}>O escribe el código del kit</Text>
+        <View style={styles.manualRow}>
+          <TextInput
+            style={styles.manualInput}
+            value={codigoManual}
+            onChangeText={(t) => setCodigoManual(t.toUpperCase())}
+            placeholder="Ej. ABCD2345"
+            placeholderTextColor={colors.textPlaceholder}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={40}
+            accessibilityLabel="Código del kit"
+            onSubmitEditing={() => codigoManual.trim() && onEscanear(codigoManual.trim())}
+          />
+          <Pressable
+            style={[styles.btnValidar, (!codigoManual.trim() || validando) && styles.btnDisabled]}
+            disabled={!codigoManual.trim() || validando}
+            onPress={() => onEscanear(codigoManual.trim())}
+            accessibilityRole="button"
+            accessibilityLabel="Validar código"
+            accessibilityState={{ disabled: !codigoManual.trim() || validando }}
+          >
+            {validando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnPrimaryText}>Validar</Text>}
+          </Pressable>
+        </View>
 
         <Text style={styles.contador}>
           {verificados} kit{verificados === 1 ? '' : 's'} verificado{verificados === 1 ? '' : 's'} en
@@ -111,16 +154,51 @@ export function VerificacionDpiScreen() {
                 <Text style={styles.kitCode}>{kit.codigoUnico}</Text>
                 <Text style={styles.kitNombre}>{kit.nombre}</Text>
 
-                <View style={styles.checklist}>
+                <ScrollView style={styles.checklist}>
                   {items.map((it, index) => (
-                    <Pressable key={index} style={styles.itemRow} onPress={() => toggleItem(index)}>
-                      <View style={[styles.checkbox, it.marcado && styles.checkboxOn]}>
-                        {it.marcado ? <Text style={styles.checkboxMark}>✓</Text> : null}
-                      </View>
-                      <Text style={styles.itemTexto}>{it.texto}</Text>
-                    </Pressable>
+                    <View key={index} style={styles.item}>
+                      <Pressable
+                        style={styles.itemRow}
+                        onPress={() => toggleItem(index)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: it.marcado }}
+                        accessibilityLabel={it.itemId ? `${it.texto}, serie ${it.serie || 'S/N'}` : it.texto}
+                      >
+                        <View style={[styles.checkbox, it.marcado && styles.checkboxOn]}>
+                          {it.marcado ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.itemTexto}>{it.texto}</Text>
+                          {it.itemId ? <Text style={styles.itemSerie}>Serie: {it.serie || 'S/N'}</Text> : null}
+                        </View>
+                      </Pressable>
+                      {/* Estado con el que vuelve el artículo (solo ítems del catálogo). */}
+                      {it.estado ? (
+                        <View
+                          style={styles.estados}
+                          accessibilityRole="radiogroup"
+                          accessibilityLabel={`Estado de ${it.texto}`}
+                        >
+                          {ESTADOS.map((e) => {
+                            const activo = it.estado === e.value;
+                            return (
+                              <Pressable
+                                key={e.value}
+                                style={[styles.estadoBtn, activo && styles.estadoBtnOn]}
+                                onPress={() => cambiarEstado(index, e.value)}
+                                accessibilityRole="radio"
+                                accessibilityState={{ checked: activo }}
+                                accessibilityLabel={`${it.texto}: ${e.label}`}
+                              >
+                                <Text style={[styles.estadoText, activo && styles.estadoTextOn]}>{e.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
                   ))}
-                </View>
+                </ScrollView>
 
                 <Text style={[styles.obsLabel, !todosMarcados && styles.obsLabelRequired]}>
                   Observaciones {todosMarcados ? '(opcional)' : '(obligatorio)'}
@@ -197,8 +275,39 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   kitOperador: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 8 },
   kitCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1, marginTop: 6 },
   kitNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 2, marginBottom: 8 },
-  checklist: { marginTop: 4, marginBottom: 8 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  checklist: { marginTop: 4, marginBottom: 8, maxHeight: 320 },
+  item: { paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.border },
+  itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, minHeight: 44 },
+  itemSerie: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
+  estados: { flexDirection: 'row', gap: 6, marginLeft: 32, marginBottom: 6 },
+  estadoBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: c.borderInput,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  estadoBtnOn: { backgroundColor: c.primaryBg, borderColor: c.primaryBg },
+  estadoText: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textPrimary },
+  estadoTextOn: { color: '#fff' },
+  manualLabel: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, marginTop: 8, marginBottom: 6 },
+  manualRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  manualInput: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: c.borderInput,
+    backgroundColor: c.bgCard,
+    color: c.textPrimary,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    fontSize: 15,
+    fontFamily: fontFamily.medium,
+    letterSpacing: 1,
+  },
+  btnValidar: { backgroundColor: c.primaryBg, paddingHorizontal: 18, borderRadius: 8, justifyContent: 'center', minHeight: 48 },
   checkbox: {
     width: 22,
     height: 22,

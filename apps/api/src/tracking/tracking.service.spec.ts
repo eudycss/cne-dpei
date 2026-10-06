@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
-import { TrackingService } from './tracking.service';
+import { checklistDesdeBd, TrackingService } from './tracking.service';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
@@ -266,16 +266,20 @@ describe('TrackingService', () => {
         operadorId,
         estado: 'EN_RETORNO',
         contenidos: 'Acta, sobres', // legacy, no debería usarse porque hay relación
-        itemsContenido: [{ item: { etiqueta: 'Computador' } }, { item: { etiqueta: 'Mouse' } }],
+        itemsContenido: [
+          { itemId: 'i1', serie: '5CD445577S', estado: 'BUENO', item: { etiqueta: 'Computador' } },
+          { itemId: 'i2', serie: null, estado: 'REGULAR', item: { etiqueta: 'Mouse' } },
+        ],
       });
       prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
       prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
 
       const result = await service.validarKitRetorno('sup1', adminRoles, 'ABCD2345');
 
+      // Cada fila trae serie y el estado con el que salió el artículo.
       expect(result.items).toEqual([
-        { texto: 'Computador', marcado: true },
-        { texto: 'Mouse', marcado: true },
+        { texto: 'Computador', marcado: true, itemId: 'i1', serie: '5CD445577S', estado: 'BUENO' },
+        { texto: 'Mouse', marcado: true, itemId: 'i2', serie: null, estado: 'REGULAR' },
       ]);
     });
 
@@ -310,7 +314,7 @@ describe('TrackingService', () => {
         operadorId,
         estado: 'EN_RETORNO',
         contenidos: null,
-        itemsContenido: [{ item: { etiqueta: 'Computador' } }],
+        itemsContenido: [{ itemId: 'i1', serie: null, estado: 'BUENO', item: { etiqueta: 'Computador' } }],
       });
       prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
       prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
@@ -318,7 +322,7 @@ describe('TrackingService', () => {
       const result = await service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345');
 
       expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
-      expect(result.items).toEqual([{ texto: 'Computador', marcado: true }]);
+      expect(result.items).toHaveLength(1);
     });
 
     it('un rol no transversal sin asignación sobre ese operador recibe 400', async () => {
@@ -337,6 +341,49 @@ describe('TrackingService', () => {
       await expect(
         service.validarKitRetorno('sup1', ['TECNICO_SUPERVISOR'], 'ABCD2345'),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('checklistDesdeBd (acta de retorno)', () => {
+    const contenido = [
+      { itemId: 'i1', serie: '5CD445577S', estado: 'BUENO' as const, item: { etiqueta: 'Computador' } },
+      { itemId: 'i2', serie: null, estado: 'BUENO' as const, item: { etiqueta: 'Cargador' } },
+    ];
+
+    it('toma texto y serie de la BD; del cliente solo marcado y estado', () => {
+      const r = checklistDesdeBd(contenido, [
+        { texto: 'Otro texto', marcado: true, itemId: 'i1', serie: 'FALSA', estado: 'REGULAR' },
+        { texto: 'Cargador', marcado: false, itemId: 'i2' },
+      ]);
+      expect(r).toEqual([
+        { texto: 'Computador', marcado: true, itemId: 'i1', serie: '5CD445577S', estado: 'REGULAR' },
+        { texto: 'Cargador', marcado: false, itemId: 'i2', serie: null, estado: 'BUENO' },
+      ]);
+    });
+
+    it('rechaza un ítem que no es del kit o que falte alguno', () => {
+      expect(() =>
+        checklistDesdeBd(contenido, [
+          { texto: 'a', marcado: true, itemId: 'i1' },
+          { texto: 'b', marcado: true, itemId: 'i2' },
+          { texto: 'c', marcado: true, itemId: 'ajeno' },
+        ]),
+      ).toThrow(BadRequestException);
+      expect(() => checklistDesdeBd(contenido, [{ texto: 'a', marcado: true, itemId: 'i1' }])).toThrow(
+        BadRequestException,
+      );
+      expect(() =>
+        checklistDesdeBd(contenido, [
+          { texto: 'a', marcado: true, itemId: 'i1' },
+          { texto: 'sin id', marcado: true },
+        ]),
+      ).toThrow(BadRequestException);
+    });
+
+    it('kits legacy sin ítems de catálogo guardan solo texto y marcado', () => {
+      expect(checklistDesdeBd([], [{ texto: 'Acta', marcado: true, serie: 'x', estado: 'MALO' }])).toEqual([
+        { texto: 'Acta', marcado: true },
+      ]);
     });
   });
 

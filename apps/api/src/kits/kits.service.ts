@@ -14,6 +14,8 @@ import {
   createKitSchema,
   desasignarKitSchema,
   editKitSchema,
+  esSerieValida,
+  MENSAJE_SERIE_INVALIDA,
   pdfQrSchema,
 } from '@cne/shared-validation';
 import type {
@@ -23,6 +25,7 @@ import type {
   CreateKitRequest,
   DesasignarKitRequest,
   EditKitRequest,
+  EstadoItemKit,
   Kit,
   Paginated,
   PdfQrRequest,
@@ -102,17 +105,8 @@ export class KitsService {
       }
     }
 
-    // Set: un mismo id repetido en itemIds no debe crear dos filas para el
-    // mismo (kitId, itemId) — violaría la PK compuesta de KitItemContenido.
-    const itemIds = [...new Set(parsed.itemIds)];
-    if (itemIds.length > 0) {
-      const activos = await this.prisma.itemKitCatalog.count({
-        where: { id: { in: itemIds }, activo: true },
-      });
-      if (activos !== itemIds.length) {
-        throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
-      }
-    }
+    const detalles = normalizarDetalle(parsed.detalleItems, parsed.itemIds) ?? [];
+    await this.assertItemsActivos(detalles.map((d) => d.itemId));
 
     // CA1 + CA5: generar codigoUnico único por evento (reintento ante colisión)
     const codigoUnico = await this.generarCodigoUnico(parsed.eventoId);
@@ -129,9 +123,7 @@ export class KitsService {
         recintoId: parsed.recintoId,
         estado: 'ASIGNADO',
         esPrueba: parsed.esPrueba ?? false,
-        itemsContenido: {
-          create: itemIds.map((itemId) => ({ item: { connect: { id: itemId } } })),
-        },
+        itemsContenido: { create: detalles.map(filaItemContenido) },
       },
       include: { itemsContenido: { include: { item: true } } },
     });
@@ -251,16 +243,21 @@ export class KitsService {
       data.nombre = `${recinto.codigoRecinto} — ${recinto.nombre}`;
     }
 
-    if (parsed.itemIds !== undefined) {
+    if (parsed.detalleItems !== undefined) {
+      // Con detalle (serie/estado) se reemplaza el contenido completo: así una
+      // serie corregida o un ítem quitado quedan exactamente como se envían.
+      const detalles = normalizarDetalle(parsed.detalleItems, undefined) ?? [];
+      // Un ítem que ya estaba en el kit puede seguir aunque se haya desactivado
+      // en el catálogo (si no, corregir una serie fallaría sin salida desde la
+      // UI); solo los ítems nuevos deben estar activos.
+      const yaEnKit = new Set(kit.itemsContenido.map((ic) => ic.itemId));
+      await this.assertItemsActivos(detalles.map((d) => d.itemId).filter((id) => !yaEnKit.has(id)));
+      data.itemsContenido = { deleteMany: {}, create: detalles.map(filaItemContenido) };
+    } else if (parsed.itemIds !== undefined) {
+      // Solo ids (clientes antiguos): diff para no perder la serie/estado de
+      // los ítems que se mantienen.
       const itemIds = [...new Set(parsed.itemIds)];
-      if (itemIds.length > 0) {
-        const activos = await this.prisma.itemKitCatalog.count({
-          where: { id: { in: itemIds }, activo: true },
-        });
-        if (activos !== itemIds.length) {
-          throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
-        }
-      }
+      await this.assertItemsActivos(itemIds);
       const actuales = new Set<string>(kit.itemsContenido.map((ic): string => ic.itemId));
       const nuevos = new Set<string>(itemIds);
       const toRemove: string[] = [...actuales].filter((itemId) => !nuevos.has(itemId));
@@ -433,19 +430,29 @@ export class KitsService {
         }
       }
 
-      const codigosItems = (d.items ?? '')
+      // Cada ítem es "CODIGO" o "CODIGO:SERIE" (la serie es opcional).
+      const entradasItems = (d.items ?? '')
         .split(',')
         .map((c) => c.trim())
         .filter((c) => c !== '');
-      const itemIds: string[] = [];
+      const detalleFila: { itemId: string; serie: string | null }[] = [];
       let itemInvalido: string | null = null;
-      for (const codigo of codigosItems) {
-        const itemId = itemIdPorCodigo.get(codigo.toLowerCase());
+      for (const entrada of entradasItems) {
+        const [codigo, ...resto] = entrada.split(':');
+        const itemId = itemIdPorCodigo.get(codigo.trim().toLowerCase());
         if (!itemId) {
-          itemInvalido = codigo;
+          itemInvalido = codigo.trim();
           break;
         }
-        itemIds.push(itemId);
+        detalleFila.push({ itemId, serie: resto.join(':').trim() || null });
+      }
+      const serieMala = detalleFila.find(
+        (x) => x.serie !== null && (x.serie.length > 60 || !esSerieValida(x.serie)),
+      );
+      if (!itemInvalido && serieMala) {
+        const motivo = serieMala.serie!.length > 60 ? 'Serie demasiado larga (máx. 60)' : MENSAJE_SERIE_INVALIDA;
+        errores.push({ fila: filaNum, error: `${motivo}: ${serieMala.serie}`, datos: raw });
+        continue;
       }
       if (itemInvalido) {
         errores.push({
@@ -455,7 +462,7 @@ export class KitsService {
         });
         continue;
       }
-      const itemIdsUnicos = [...new Set(itemIds)];
+      const detallesFila = normalizarDetalle(detalleFila, undefined) ?? [];
 
       try {
         const codigoUnico = await this.generarCodigoUnico(eventoId);
@@ -469,9 +476,7 @@ export class KitsService {
             operadorId,
             recintoId,
             estado: operadorId ? 'ASIGNADO' : 'EN_BODEGA',
-            itemsContenido: {
-              create: itemIdsUnicos.map((itemId) => ({ item: { connect: { id: itemId } } })),
-            },
+            itemsContenido: { create: detallesFila.map(filaItemContenido) },
           },
         });
         if (operadorId && recintoId) {
@@ -500,7 +505,7 @@ export class KitsService {
     ws.addRow({
       nombre: 'Kit Recinto 28',
       contenidos: 'Acta, sobres, sellos',
-      items: 'COMPUTADOR,MOUSE',
+      items: 'COMPUTADOR:5CD445577S,ESCANER:697UB20177,MOUSE',
       cedula_operador: '1710034065',
       codigo_recinto: '28',
     });
@@ -517,6 +522,16 @@ export class KitsService {
   }
 
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  private async assertItemsActivos(itemIds: string[]): Promise<void> {
+    if (itemIds.length === 0) return;
+    const activos = await this.prisma.itemKitCatalog.count({
+      where: { id: { in: itemIds }, activo: true },
+    });
+    if (activos !== itemIds.length) {
+      throw new BadRequestException('Uno o más ítems del kit no existen o están inactivos');
+    }
+  }
 
   /**
    * HU12-CA6: una vez iniciada la jornada electoral (evento ACTIVO y fecha de
@@ -627,6 +642,39 @@ export class KitsService {
   }
 }
 
+interface DetalleItem {
+  itemId: string;
+  serie: string | null;
+  estado: EstadoItemKit;
+}
+
+/**
+ * Unifica las dos formas de mandar el contenido: `detalleItems` (con serie y
+ * estado) manda sobre `itemIds`. Deduplica por itemId (gana el último), porque
+ * un mismo ítem repetido violaría la PK compuesta de KitItemContenido.
+ * Devuelve undefined si no vino ninguna de las dos.
+ */
+export function normalizarDetalle(
+  detalleItems: { itemId: string; serie?: string | null; estado?: EstadoItemKit }[] | undefined,
+  itemIds: string[] | undefined,
+): DetalleItem[] | undefined {
+  const fuente = detalleItems ?? itemIds?.map((itemId) => ({ itemId }));
+  if (!fuente) return undefined;
+  const porId = new Map<string, DetalleItem>();
+  for (const d of fuente as { itemId: string; serie?: string | null; estado?: EstadoItemKit }[]) {
+    porId.set(d.itemId, {
+      itemId: d.itemId,
+      serie: d.serie?.trim() || null,
+      estado: d.estado ?? 'BUENO',
+    });
+  }
+  return [...porId.values()];
+}
+
+function filaItemContenido(d: DetalleItem) {
+  return { item: { connect: { id: d.itemId } }, serie: d.serie, estado: d.estado };
+}
+
 function toKitDto(k: any): Kit {
   return {
     id: k.id,
@@ -637,6 +685,12 @@ function toKitDto(k: any): Kit {
     contenidos: k.contenidos ?? null,
     items: (k.itemsContenido ?? []).map((ic: any) => ic.item.etiqueta),
     itemIds: (k.itemsContenido ?? []).map((ic: any) => ic.itemId),
+    detalleItems: (k.itemsContenido ?? []).map((ic: any) => ({
+      itemId: ic.itemId,
+      etiqueta: ic.item?.etiqueta ?? '',
+      serie: ic.serie ?? null,
+      estado: ic.estado ?? 'BUENO',
+    })),
     recintoId: k.recintoId ?? null,
     operadorId: k.operadorId ?? null,
     estado: k.estado,
