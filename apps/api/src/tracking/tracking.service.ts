@@ -70,6 +70,20 @@ const MAX_HOLGURA_GPS_METROS = 100;
 // NULL (valor por defecto), no bloquea nada.
 const MARGEN_LLEGADA_DPI_METROS_DEFAULT = 150;
 
+/**
+ * Roles que ven y verifican los kits de todos los operadores, sin pasar por
+ * AsignacionSupervisor: el asistente transversal custodia todos los kits del
+ * DPEI; admin y lector ven todo.
+ *
+ * OJO: este helper salta la verificación de asignación. Los permisos de
+ * escritura los decide el @Roles del controller (el LECTOR no tiene ningún
+ * endpoint de escritura): antes de abrir un endpoint de escritura a LECTOR o
+ * ASISTENTE_TRANSVERSAL, revisar si pasa por verificarPertenenciaOperador.
+ */
+function esRolTransversalKits(roles: RoleName[]): boolean {
+  return roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR' || r === 'ASISTENTE_TRANSVERSAL');
+}
+
 @Injectable()
 export class TrackingService {
   constructor(
@@ -595,9 +609,8 @@ export class TrackingService {
     });
     if (!evento) return { total: 0, items: [] };
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
     let operadorIds: string[] | undefined;
-    if (!esAdmin) {
+    if (!esRolTransversalKits(roles)) {
       const asignados = await this.prisma.asignacionSupervisor.findMany({
         where: { eventoId: evento.id, supervisorId: viewerId },
         select: { operadorId: true },
@@ -650,14 +663,14 @@ export class TrackingService {
     return { total: items.length, items };
   }
 
-  /** Lanza 400 si el operador no está asignado a este supervisor (admins pasan siempre). */
+  /** Lanza 400 si el operador no está asignado a este supervisor (los roles transversales pasan siempre). */
   private async verificarPertenenciaOperador(
     eventoId: string,
     supervisorId: string,
     roles: RoleName[],
     operadorId: string,
   ): Promise<void> {
-    if (roles.includes('ADMINISTRADOR') || roles.includes('LECTOR')) return;
+    if (esRolTransversalKits(roles)) return;
     const asignado = await this.prisma.asignacionSupervisor.findFirst({
       where: { eventoId, supervisorId, operadorId },
       select: { id: true },

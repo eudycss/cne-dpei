@@ -330,7 +330,7 @@ export class TrackingController {
   }
 
   @Post('validar-kit-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verificación retorno DPI: valida el kit escaneado y devuelve su checklist',
@@ -343,7 +343,7 @@ export class TrackingController {
   }
 
   @Post('verificar-kit-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Verificación retorno DPI: confirma el checklist de contenidos de un kit',
@@ -356,7 +356,7 @@ export class TrackingController {
   }
 
   @Get('kits-verificados-retorno')
-  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
     summary: 'Verificación retorno DPI: kits ya verificados con el total',
   })

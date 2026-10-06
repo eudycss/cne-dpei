@@ -28,6 +28,7 @@ import { EnRetornoScreen } from './src/screens/EnRetornoScreen';
 import { LlegadaDpiScreen } from './src/screens/LlegadaDpiScreen';
 import { RetornadoScreen } from './src/screens/RetornadoScreen';
 import { SupervisorFlow } from './src/screens/SupervisorFlow';
+import { AsistenteFlow } from './src/screens/AsistenteFlow';
 import { useEtapaOperador } from './src/lib/useEtapaOperador';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
@@ -87,6 +88,7 @@ function Navigator() {
 
   const esOperador = user?.roles.includes('OPERADOR_CDA') ?? false;
   const esSupervisor = user?.roles.includes('TECNICO_SUPERVISOR') ?? false;
+  const esAsistente = user?.roles.includes('ASISTENTE_TRANSVERSAL') ?? false;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -98,6 +100,8 @@ function Navigator() {
         <Stack.Screen name="Home" component={OperadorFlow} />
       ) : esSupervisor ? (
         <Stack.Screen name="Home" component={SupervisorFlow} />
+      ) : esAsistente ? (
+        <Stack.Screen name="Home" component={AsistenteFlow} />
       ) : (
         <Stack.Screen name="Home" component={PlaceholderHome} />
       )}
