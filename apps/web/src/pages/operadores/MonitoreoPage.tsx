@@ -108,8 +108,8 @@ function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => 
 }
 
 const TITULO_ACTA: Record<'instalacion' | 'escrutinio', string> = {
-  instalacion: 'Acta de instalación',
-  escrutinio: 'Acta de escrutinio',
+  instalacion: 'Reporte de instalación',
+  escrutinio: 'Reporte de escrutinio',
 };
 
 function FotoActaModal({
@@ -150,7 +150,7 @@ function FotoActaModal({
           style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}
         >
           {isLoading ? (
-            <Cargando texto="Cargando acta…" />
+            <Cargando texto="Cargando reporte…" />
           ) : isError ? (
             <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
           ) : url ? (
@@ -452,8 +452,8 @@ export function MonitoreoPage() {
                     <td>
                       <BotonConMotivo
                         onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
-                        motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el acta de instalación'}
-                        ariaLabel={`Ver acta de instalación — ${c.nombreRecinto}`}
+                        motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el reporte de instalación'}
+                        ariaLabel={`Ver reporte de instalación — ${c.nombreRecinto}`}
                       >
                         Ver acta
                       </BotonConMotivo>
@@ -461,10 +461,10 @@ export function MonitoreoPage() {
                     <td>
                       <BotonConMotivo
                         onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
-                        motivo={c.tieneActaEscrutinio ? null : 'Aún no se subió el acta de escrutinio'}
-                        ariaLabel={`Ver acta de escrutinio — ${c.nombreRecinto}`}
+                        motivo={c.tieneActaEscrutinio ? null : 'Aún no se subió el reporte de escrutinio'}
+                        ariaLabel={`Ver reporte de escrutinio — ${c.nombreRecinto}`}
                       >
-                        Ver acta
+                        Ver reporte
                       </BotonConMotivo>
                     </td>
                   </tr>

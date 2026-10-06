@@ -1023,10 +1023,10 @@ export class TrackingService {
       this.storage.exists(parsed.actaEscrutinioUrl),
     ]);
     if (!instalacionExiste) {
-      throw new BadRequestException('Acta de instalación no encontrada. Vuelve a subirla.');
+      throw new BadRequestException('Reporte de instalación no encontrado. Vuelve a subirlo.');
     }
     if (!escrutinioExiste) {
-      throw new BadRequestException('Acta de escrutinio no encontrada. Vuelve a subirla.');
+      throw new BadRequestException('Reporte de escrutinio no encontrado. Vuelve a subirlo.');
     }
 
     const kit = await this.prisma.kitElectoral.findFirst({
@@ -1698,8 +1698,8 @@ export class TrackingService {
     if (!url) {
       throw new NotFoundException(
         tipo === 'instalacion'
-          ? 'No hay acta de instalación registrada para este CDA'
-          : 'No hay acta de escrutinio registrada para este CDA',
+          ? 'No hay reporte de instalación registrado para este CDA'
+          : 'No hay reporte de escrutinio registrado para este CDA',
       );
     }
 
