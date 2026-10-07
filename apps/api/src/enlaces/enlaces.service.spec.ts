@@ -16,7 +16,13 @@ describe('EnlacesService', () => {
   let service: EnlacesService;
 
   const prisma = {
-    enlaceRecinto: { findUnique: jest.fn(), upsert: jest.fn(), findMany: jest.fn() },
+    enlaceRecinto: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      findMany: jest.fn(),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      count: jest.fn().mockResolvedValue(0),
+    },
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
   };
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
@@ -267,7 +273,87 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
+      expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
       expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('elimina de la tabla los recintos que ya no están en la hoja (ej. borraron el 1207)', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      prisma.enlaceRecinto.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1); // total, a eliminar
+      prisma.enlaceRecinto.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.deleteMany).toHaveBeenCalledWith({
+        where: { codigoRecinto: { notIn: ['978', '982'] } },
+      });
+    });
+
+    it('NO borra si dejaría fuera más de la mitad de la tabla — se asume lectura parcial de la hoja', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.count.mockResolvedValueOnce(137).mockResolvedValueOnce(136);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('no llama a deleteMany si no hay nada que eliminar', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('no elimina un recinto que sigue en la hoja aunque su upsert haya fallado', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.upsert.mockRejectedValueOnce(new Error('violates constraint'));
+      prisma.enlaceRecinto.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.deleteMany).toHaveBeenCalledWith({
+        where: { codigoRecinto: { notIn: ['978', '982'] } },
+      });
+    });
+
+    it('NO borra nada si la hoja no trae filas de Imbabura — una hoja vacía o mal leída no debe vaciar la tabla', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([]);
+
+      await service.revisarEnlaces();
+
+      expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('un fallo al eliminar recintos no impide las notificaciones del ciclo', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+      prisma.enlaceRecinto.count.mockRejectedValueOnce(new Error('timeout de base'));
+
+      await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalled();
+      expect(sendEnlaceCaido).toHaveBeenCalled();
     });
 
     it('un fallo en Telegram no impide encolar el aviso in-app', async () => {
