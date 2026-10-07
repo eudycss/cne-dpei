@@ -143,10 +143,13 @@ export class InformeCustodiaService {
     // La última recepción de cada kit (por si hubo un reintento).
     const recepciones = new Map<string, (typeof recepcionesKit)[number]>();
     for (const r of recepcionesKit) if (!recepciones.has(r.kitId)) recepciones.set(r.kitId, r);
-    const devoluciones = new Map(devolucionesKit.map((d) => [d.kitId, d]));
+    // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
+    const devoluciones = new Map<string, (typeof devolucionesKit)[number]>(devolucionesKit.map((d) => [d.kitId, d]));
     const correcciones = new Map<string, typeof correccionesKit>();
     for (const c of correccionesKit) correcciones.set(c.kitId, [...(correcciones.get(c.kitId) ?? []), c]);
-    const entregas = new Map(kits.filter((k) => k.entregaCustodio).map((k) => [k.id, k.entregaCustodio!]));
+    const entregas = new Map<string, NonNullable<(typeof kits)[number]['entregaCustodio']>>(
+      kits.filter((k) => k.entregaCustodio).map((k) => [k.id, k.entregaCustodio!]),
+    );
 
     // Usuarios y militares referidos por id (quién registró, quién verificó,
     // valores del historial de correcciones).
@@ -170,7 +173,7 @@ export class InformeCustodiaService {
       }),
     ]);
     const usuarioPorId = new Map<string, Usuario>(usuarios.map((u) => [u.id, u]));
-    const militarPorId = new Map(militares.map((m) => [m.id, m]));
+    const militarPorId = new Map<string, Usuario>(militares.map((m) => [m.id, m]));
 
     return {
       evento,
@@ -194,7 +197,7 @@ export class InformeCustodiaService {
       const entrega = datos.entregas.get(k.id);
       const recepcion = datos.recepciones.get(k.id);
       const devolucion = datos.devoluciones.get(k.id);
-      const retorno = new Map(
+      const retorno = new Map<string, ItemChecklist>(
         ((devolucion?.items as ItemChecklist[] | null) ?? [])
           .filter((i) => i.itemId)
           .map((i) => [i.itemId as string, i]),
