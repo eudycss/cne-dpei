@@ -5,6 +5,7 @@ const ETIQUETAS_ROL: Record<RoleName, string> = {
   TECNICO_SUPERVISOR: 'Técnico supervisor',
   OPERADOR_CDA: 'Operador CDA',
   LECTOR: 'Lector',
+  ASISTENTE_TRANSVERSAL: 'Asistente Electoral Transversal',
 };
 
 /** Nombre legible del rol; si llega uno desconocido se muestra tal cual. */

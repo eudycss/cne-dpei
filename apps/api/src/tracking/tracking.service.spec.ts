@@ -300,6 +300,73 @@ describe('TrackingService', () => {
         { texto: 'sobres', marcado: true },
       ]);
     });
+
+    it('el ASISTENTE_TRANSVERSAL valida el kit de cualquier operador sin asignación de supervisor', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId,
+        codigoUnico: 'ABCD2345',
+        nombre: 'Kit 1',
+        operadorId,
+        estado: 'EN_RETORNO',
+        contenidos: null,
+        itemsContenido: [{ item: { etiqueta: 'Computador' } }],
+      });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345');
+
+      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(result.items).toEqual([{ texto: 'Computador', marcado: true }]);
+    });
+
+    it('un rol no transversal sin asignación sobre ese operador recibe 400', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId,
+        codigoUnico: 'ABCD2345',
+        nombre: 'Kit 1',
+        operadorId,
+        estado: 'EN_RETORNO',
+        contenidos: null,
+        itemsContenido: [],
+      });
+      prisma.asignacionSupervisor.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.validarKitRetorno('sup1', ['TECNICO_SUPERVISOR'], 'ABCD2345'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('confirmarVerificacionKitRetorno', () => {
+    const input = { kitId, items: [{ texto: 'Computador', marcado: true }] };
+    const kit = { id: kitId, eventoId, operadorId };
+
+    it('el ASISTENTE_TRANSVERSAL verifica el kit de cualquier operador y queda registrado a su nombre', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit);
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+      prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+
+      const result = await service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input);
+
+      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(prisma.recepcionDpiKit.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ kitId, supervisorId: 'asist1' }),
+      });
+      expect(result).toEqual(expect.objectContaining({ id: 'r1', kitId }));
+    });
+
+    it('un rol no transversal sin asignación sobre ese operador recibe 400 y no crea nada', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit);
+      prisma.asignacionSupervisor.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.confirmarVerificacionKitRetorno('sup1', ['TECNICO_SUPERVISOR'], input),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.recepcionDpiKit.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('confirmarRecepcionKit', () => {
@@ -818,6 +885,24 @@ describe('TrackingService', () => {
       expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
       expect(result.total).toBe(1);
       expect(result.items[0]).toEqual(expect.objectContaining({ kitId, operadorId }));
+    });
+
+    it('el ASISTENTE_TRANSVERSAL ve todos los kits verificados sin filtrar por asignación', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: kitId, codigoUnico: 'K01', nombre: 'Kit 1', operadorId },
+      ]);
+      prisma.recepcionDpiKit.findMany.mockResolvedValueOnce([
+        { kitId, confirmadoEn: new Date(ocurridoEn) },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+      ]);
+
+      const result = await service.kitsVerificadosRetorno('asist1', ['ASISTENTE_TRANSVERSAL']);
+
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(result.total).toBe(1);
     });
   });
 
