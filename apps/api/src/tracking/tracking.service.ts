@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import type {
   CdaEstadoDto,
+  EstadoItemKit,
   EstadoOperadorCda,
   IngestaPosicionesRequest,
+  ItemChecklist,
   IngestaPosicionesResponse,
   KitVerificadoRetorno,
   KitsVerificadosRetornoResponse,
@@ -540,17 +542,25 @@ export class TrackingService {
 
     // Kits nuevos traen el checklist de la relación real; los creados antes de
     // esa migración caen al parseo de texto libre legacy.
+    // Con ítems del catálogo, cada fila trae serie y el estado con el que salió
+    // (el asistente lo confirma o cambia al retorno).
     const itemsContenido = kit.itemsContenido ?? [];
-    const itemLabels = itemsContenido.length > 0
-      ? itemsContenido.map((ic) => ic.item.etiqueta)
-      : parseContenidos(kit.contenidos);
+    const items = itemsContenido.length > 0
+      ? itemsContenido.map((ic) => ({
+          texto: ic.item.etiqueta,
+          marcado: true,
+          itemId: ic.itemId,
+          serie: ic.serie ?? null,
+          estado: ic.estado,
+        }))
+      : parseContenidos(kit.contenidos).map((texto) => ({ texto, marcado: true }));
 
     return {
       id: kit.id,
       codigoUnico: kit.codigoUnico,
       nombre: kit.nombre,
       operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : 'Operador',
-      items: itemLabels.map((texto) => ({ texto, marcado: true })),
+      items,
       yaVerificado,
     };
   }
@@ -567,7 +577,10 @@ export class TrackingService {
   ): Promise<VerificarKitRetornoResponse> {
     const parsed = verificarKitRetornoSchema.parse(input);
 
-    const kit = await this.prisma.kitElectoral.findUnique({ where: { id: parsed.kitId } });
+    const kit = await this.prisma.kitElectoral.findUnique({
+      where: { id: parsed.kitId },
+      include: { itemsContenido: { include: { item: true } } },
+    });
     if (!kit) throw new NotFoundException('Kit no encontrado');
     if (!kit.operadorId) {
       throw new BadRequestException('Este kit no está asignado a ningún operador');
@@ -586,7 +599,7 @@ export class TrackingService {
       data: {
         kitId: kit.id,
         supervisorId,
-        items: parsed.items,
+        items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items),
         observaciones: parsed.observaciones ?? null,
       },
     });
@@ -1885,6 +1898,43 @@ function detectarContentTypeImagen(buffer: Buffer): string {
     return 'image/gif';
   }
   return 'image/jpeg';
+}
+
+/** Tipo objeto (no interface): Prisma lo acepta tal cual en una columna Json. */
+type FilaChecklistJson = { [K in keyof ItemChecklist]: ItemChecklist[K] };
+
+/**
+ * Arma el checklist de retorno que se guarda en el acta a partir de lo que
+ * hay en la BD (texto y serie de cada artículo del kit): del cliente solo se
+ * acepta si volvió (`marcado`) y con qué estado. Así el móvil no puede meter
+ * ítems ajenos al kit ni cambiar una serie. Exige que vengan todos los ítems
+ * del kit, ni uno más. Los kits legacy (sin ítems de catálogo) guardan el
+ * checklist de texto libre como antes.
+ */
+export function checklistDesdeBd(
+  itemsContenido: { itemId: string; serie: string | null; estado: EstadoItemKit; item: { etiqueta: string } }[],
+  enviados: ItemChecklist[],
+): FilaChecklistJson[] {
+  if (itemsContenido.length === 0) {
+    return enviados.map(({ texto, marcado }) => ({ texto, marcado }));
+  }
+  const porId = new Map(enviados.filter((e) => e.itemId).map((e) => [e.itemId as string, e]));
+  const idsKit = new Set(itemsContenido.map((ic) => ic.itemId));
+  const sobrantes = [...porId.keys()].filter((id) => !idsKit.has(id));
+  const faltantes = itemsContenido.filter((ic) => !porId.has(ic.itemId));
+  if (sobrantes.length > 0 || faltantes.length > 0 || porId.size !== enviados.length) {
+    throw new BadRequestException('El checklist no coincide con el contenido del kit. Vuelve a escanearlo.');
+  }
+  return itemsContenido.map((ic) => {
+    const enviado = porId.get(ic.itemId)!;
+    return {
+      texto: ic.item.etiqueta,
+      marcado: enviado.marcado,
+      itemId: ic.itemId,
+      serie: ic.serie,
+      estado: enviado.estado ?? ic.estado,
+    };
+  });
 }
 
 function parseContenidos(contenidos: string | null): string[] {

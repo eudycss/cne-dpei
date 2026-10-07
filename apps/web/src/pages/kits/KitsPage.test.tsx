@@ -221,9 +221,38 @@ describe('KitsPage — CreateKitModal', () => {
         nombre: '28 — Escuela Central',
         contenidos: null,
         esPrueba: false,
-        itemIds: ['11111111-1111-1111-1111-111111111111'],
+        itemIds: [],
+        detalleItems: [{ itemId: '11111111-1111-1111-1111-111111111111', serie: null, estado: 'BUENO' }],
         recintoId: '33333333-3333-3333-3333-333333333333',
       }),
+    );
+  });
+
+  it('cada ítem marcado pide serie y estado, y se envían en detalleItems', async () => {
+    const user = await openCreateModal();
+    postMock.mockResolvedValueOnce({ data: {} });
+
+    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByText('28 — Escuela Central'));
+    await user.type(screen.getByLabelText('Número de serie de Computador'), '5CD445577S');
+    await user.selectOptions(screen.getByLabelText('Estado de Mouse'), 'REGULAR');
+    // Un ítem desmarcado no pide serie.
+    await user.click(screen.getByLabelText('Mouse'));
+    expect(screen.queryByLabelText('Estado de Mouse')).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('Mouse'));
+    await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith(
+        '/kits',
+        expect.objectContaining({
+          detalleItems: [
+            { itemId: '11111111-1111-1111-1111-111111111111', serie: '5CD445577S', estado: 'BUENO' },
+            // Al volver a marcarlo arranca limpio (Bueno, sin serie).
+            { itemId: '22222222-2222-2222-2222-222222222222', serie: null, estado: 'BUENO' },
+          ],
+        }),
+      ),
     );
   });
 
@@ -271,6 +300,7 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
       contenidos: null,
       items: ['Computador'],
       itemIds: [itemId],
+      detalleItems: [],
       recintoId,
       operadorId: null,
       estado: 'ASIGNADO',
@@ -359,6 +389,33 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     await waitFor(() =>
       expect(patchMock).toHaveBeenCalledWith(`/kits/${kitId}`, {
         recintoId: otroRecintoId,
+        justificacion: undefined,
+      }),
+    );
+  });
+
+  it('EditKitModal muestra la serie guardada y solo envía detalleItems si el contenido cambió', async () => {
+    kitsActuales = [
+      kit({ detalleItems: [{ itemId, etiqueta: 'Computador', serie: 'OLD123', estado: 'BUENO' }] }),
+    ];
+    const user = userEvent.setup();
+    renderKitsPage();
+    await screen.findByText('ABCD2345');
+
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+    const modal = (await screen.findByText('Editar kit')).closest('form') as HTMLElement;
+    const serie = within(modal).getByLabelText('Número de serie de Computador');
+    expect(serie).toHaveValue('OLD123');
+
+    patchMock.mockResolvedValueOnce({ data: kit() });
+    await user.clear(serie);
+    await user.type(serie, 'NEW456');
+    await user.selectOptions(within(modal).getByLabelText('Estado de Computador'), 'MALO');
+    await user.click(within(modal).getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith(`/kits/${kitId}`, {
+        detalleItems: [{ itemId, serie: 'NEW456', estado: 'MALO' }],
         justificacion: undefined,
       }),
     );

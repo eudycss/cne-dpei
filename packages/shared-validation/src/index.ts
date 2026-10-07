@@ -266,12 +266,38 @@ export const bulkAsignacionRowSchema = z.object({
 export type BulkAsignacionRow = z.infer<typeof bulkAsignacionRowSchema>;
 
 // --- Kits electorales (HU11) ---
+export const ESTADOS_ITEM_KIT = ['BUENO', 'REGULAR', 'MALO'] as const;
+export const estadoItemKitSchema = z.enum(ESTADOS_ITEM_KIT);
+
+// Número de serie de un artículo. No puede empezar con = + - @ (una hoja de
+// cálculo lo ejecutaría como fórmula al exportar) ni tener caracteres de control.
+const SERIE_INVALIDA = /^[=+\-@]|[\u0000-\u001f\u007f]/;
+export const MENSAJE_SERIE_INVALIDA = 'La serie no puede empezar con = + - @ ni tener caracteres de control';
+export function esSerieValida(serie: string): boolean {
+  return !SERIE_INVALIDA.test(serie);
+}
+export const serieItemSchema = z
+  .string()
+  .trim()
+  .max(60, 'Máximo 60 caracteres')
+  .refine(esSerieValida, MENSAJE_SERIE_INVALIDA);
+
+// Un artículo del kit con su serie y estado (acta de cadena de custodia).
+// Serie vacía = sin serie ("S/N" en el acta).
+export const itemKitDetalleSchema = z.object({
+  itemId: z.string().uuid(),
+  serie: serieItemSchema.nullable().optional(),
+  estado: estadoItemKitSchema.optional(),
+});
+
 export const createKitSchema = z.object({
   eventoId: z.string().uuid('Evento inválido'),
   nombre: z.string().min(1, 'Requerido').max(160),
   contenidos: z.string().max(1000).nullable().optional(),
   esPrueba: z.boolean().optional(),
   itemIds: z.array(z.string().uuid()).optional().default([]),
+  // Si viene, reemplaza a itemIds y además guarda serie/estado de cada ítem.
+  detalleItems: z.array(itemKitDetalleSchema).optional(),
   recintoId: z.string().uuid('Selecciona un recinto'),
 });
 
@@ -302,11 +328,13 @@ export const editKitSchema = z
   .object({
     recintoId: z.string().uuid('Recinto inválido').optional(),
     itemIds: z.array(z.string().uuid()).optional(),
+    detalleItems: z.array(itemKitDetalleSchema).optional(),
     justificacion: z.string().max(500).optional(),
   })
-  .refine((v) => v.recintoId !== undefined || v.itemIds !== undefined, {
-    message: 'Debes indicar al menos recintoId o itemIds',
-  });
+  .refine(
+    (v) => v.recintoId !== undefined || v.itemIds !== undefined || v.detalleItems !== undefined,
+    { message: 'Debes indicar al menos recintoId o los ítems del kit' },
+  );
 
 // HU12-CA6: justificación excepcional para modificar asignaciones con el
 // evento ya congelado (jornada electoral iniciada).
@@ -427,10 +455,15 @@ export const llegadaDpiSchema = z.object({
   desdeOffline,
 });
 
-// Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)
+// Verificación de kits al retorno al DPI (rol ASISTENTE_TRANSVERSAL)
+// itemId/serie/estado solo existen para kits con ítems del catálogo; los kits
+// legacy (texto libre) mandan solo texto + marcado.
 export const itemChecklistSchema = z.object({
   texto: z.string().min(1),
   marcado: z.boolean(),
+  itemId: z.string().uuid().optional(),
+  serie: z.string().max(60).nullable().optional(),
+  estado: estadoItemKitSchema.optional(),
 });
 
 export const verificarKitRetornoSchema = z

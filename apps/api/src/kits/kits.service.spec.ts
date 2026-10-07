@@ -1,8 +1,13 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
-import { KitsService } from './kits.service';
+import { itemKitDetalleSchema } from '@cne/shared-validation';
+import { KitsService, normalizarDetalle } from './kits.service';
 import { PrismaService } from '../db/prisma.service';
+
+function csvFile(csv: string) {
+  return { originalname: 'kits.csv', mimetype: 'text/csv', buffer: Buffer.from(csv, 'utf8') } as Express.Multer.File;
+}
 
 describe('KitsService', () => {
   let service: KitsService;
@@ -211,7 +216,7 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            itemsContenido: { create: [{ item: { connect: { id: operadorId } } }] },
+            itemsContenido: { create: [{ item: { connect: { id: operadorId } }, serie: null, estado: 'BUENO' }] },
           }),
         }),
       );
@@ -236,7 +241,7 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            itemsContenido: { create: [{ item: { connect: { id: operadorId } } }] },
+            itemsContenido: { create: [{ item: { connect: { id: operadorId } }, serie: null, estado: 'BUENO' }] },
           }),
         }),
       );
@@ -330,6 +335,177 @@ describe('KitsService', () => {
       } as any);
 
       expect(result.estado).toBe('ASIGNADO');
+    });
+  });
+
+  describe('serie y estado de los ítems', () => {
+    const itemA = '55555555-5555-5555-5555-555555555555';
+    const itemB = '66666666-6666-6666-6666-666666666666';
+
+    it('create con detalleItems guarda serie y estado (y manda sobre itemIds)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.count.mockResolvedValueOnce(2);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(
+        kitRow({
+          recintoId,
+          itemsContenido: [
+            { itemId: itemA, serie: '5CD445577S', estado: 'BUENO', item: { etiqueta: 'Computador' } },
+            { itemId: itemB, serie: null, estado: 'REGULAR', item: { etiqueta: 'Cargador' } },
+          ],
+        }),
+      );
+
+      const result = await service.create({
+        eventoId,
+        nombre: 'Kit 1',
+        recintoId,
+        itemIds: [operadorId],
+        detalleItems: [
+          { itemId: itemA, serie: ' 5CD445577S ' },
+          { itemId: itemB, serie: '', estado: 'REGULAR' },
+        ],
+      } as any);
+
+      expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemsContenido: {
+              create: [
+                { item: { connect: { id: itemA } }, serie: '5CD445577S', estado: 'BUENO' },
+                { item: { connect: { id: itemB } }, serie: null, estado: 'REGULAR' },
+              ],
+            },
+          }),
+        }),
+      );
+      expect(result.detalleItems).toEqual([
+        { itemId: itemA, etiqueta: 'Computador', serie: '5CD445577S', estado: 'BUENO' },
+        { itemId: itemB, etiqueta: 'Cargador', serie: null, estado: 'REGULAR' },
+      ]);
+    });
+
+    it('editar con detalleItems reemplaza todo el contenido (borra y vuelve a crear)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ itemsContenido: [{ itemId: itemA }] }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.itemKitCatalog.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.update.mockResolvedValueOnce(kitRow());
+
+      await service.editar(kitId, { detalleItems: [{ itemId: itemB, serie: 'X1', estado: 'MALO' }] } as any);
+
+      expect(prisma.kitElectoral.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            itemsContenido: {
+              deleteMany: {},
+              create: [{ item: { connect: { id: itemB } }, serie: 'X1', estado: 'MALO' }],
+            },
+          },
+        }),
+      );
+    });
+
+    it('carga masiva: "CODIGO:SERIE" guarda la serie; sin ":" queda sin serie', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([
+        { id: itemA, codigo: 'COMPUTADOR' },
+        { id: itemB, codigo: 'MOUSE' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findUnique.mockResolvedValue(null);
+      prisma.kitElectoral.create.mockResolvedValue(kitRow());
+
+      const csv = ['nombre,items', 'Kit A,"computador: 5CD445577S ,MOUSE"'].join('\n');
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.errores).toHaveLength(0);
+      expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemsContenido: {
+              create: [
+                { item: { connect: { id: itemA } }, serie: '5CD445577S', estado: 'BUENO' },
+                { item: { connect: { id: itemB } }, serie: null, estado: 'BUENO' },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('carga masiva: una serie de más de 60 caracteres es error de esa fila', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([{ id: itemA, codigo: 'COMPUTADOR' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      const csv = ['nombre,items', `Kit A,COMPUTADOR:${'X'.repeat(61)}`].join('\n');
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.creados).toBe(0);
+      expect(result.errores[0].error).toMatch(/serie demasiado larga/i);
+    });
+
+    it('editar con detalleItems acepta un ítem ya del kit aunque se haya desactivado en el catálogo', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ itemsContenido: [{ itemId: itemA }] }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.kitElectoral.update.mockResolvedValueOnce(kitRow());
+
+      await service.editar(kitId, { detalleItems: [{ itemId: itemA, serie: 'CORREGIDA' }] } as any);
+
+      // itemA ya estaba en el kit: no se valida contra el catálogo activo.
+      expect(prisma.itemKitCatalog.count).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.update).toHaveBeenCalled();
+    });
+
+    it('carga masiva: una serie que empieza como fórmula (=, +, -, @) es error de esa fila', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([{ id: itemA, codigo: 'COMPUTADOR' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      const csv = ['nombre,items', 'Kit A,COMPUTADOR:=HYPERLINK(x)'].join('\n');
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.creados).toBe(0);
+      expect(result.errores[0].error).toMatch(/no puede empezar con/i);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
+    it('el esquema rechaza series con fórmula, de más de 60 caracteres o un estado inválido', () => {
+      const ok = (d: object) => itemKitDetalleSchema.safeParse({ itemId: itemA, ...d }).success;
+      expect(ok({ serie: '5CD445577S', estado: 'REGULAR' })).toBe(true);
+      expect(ok({ serie: '=1+1' })).toBe(false);
+      expect(ok({ serie: '@cmd' })).toBe(false);
+      expect(ok({ serie: 'AB\u0007C' })).toBe(false);
+      expect(ok({ serie: 'X'.repeat(61) })).toBe(false);
+      expect(ok({ estado: 'ROTO' })).toBe(false);
+    });
+
+    it('normalizarDetalle deduplica por ítem (gana el último), limpia la serie y usa BUENO por defecto', () => {
+      expect(
+        normalizarDetalle(
+          [
+            { itemId: itemA, serie: 'viejo' },
+            { itemId: itemB, serie: '   ' },
+            { itemId: itemA, serie: ' nuevo ', estado: 'MALO' },
+          ],
+          undefined,
+        ),
+      ).toEqual([
+        { itemId: itemA, serie: 'nuevo', estado: 'MALO' },
+        { itemId: itemB, serie: null, estado: 'BUENO' },
+      ]);
+      expect(normalizarDetalle(undefined, [itemA])).toEqual([{ itemId: itemA, serie: null, estado: 'BUENO' }]);
+      expect(normalizarDetalle(undefined, undefined)).toBeUndefined();
     });
   });
 
@@ -565,14 +741,6 @@ describe('KitsService', () => {
   });
 
   describe('bulkUpload', () => {
-    function csvFile(csv: string) {
-      return {
-        originalname: 'kits.csv',
-        mimetype: 'text/csv',
-        buffer: Buffer.from(csv, 'utf8'),
-      } as Express.Multer.File;
-    }
-
     it('lanza BadRequestException si no se envía archivo', async () => {
       await expect(service.bulkUpload(undefined as any, eventoId)).rejects.toThrow(
         BadRequestException,
@@ -699,8 +867,8 @@ describe('KitsService', () => {
           data: expect.objectContaining({
             itemsContenido: {
               create: [
-                { item: { connect: { id: itemAId } } },
-                { item: { connect: { id: itemBId } } },
+                { item: { connect: { id: itemAId } }, serie: null, estado: 'BUENO' },
+                { item: { connect: { id: itemBId } }, serie: null, estado: 'BUENO' },
               ],
             },
           }),

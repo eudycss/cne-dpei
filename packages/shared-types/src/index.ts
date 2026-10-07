@@ -296,6 +296,22 @@ export type EstadoKit =
   | 'EN_RETORNO'
   | 'RETORNADO';
 
+export type EstadoItemKit = 'BUENO' | 'REGULAR' | 'MALO';
+
+/** Un artículo del kit con su serie y estado (null = sin serie, "S/N"). */
+export interface KitItemDetalle {
+  itemId: string;
+  etiqueta: string;
+  serie: string | null;
+  estado: EstadoItemKit;
+}
+
+export interface KitItemDetalleInput {
+  itemId: string;
+  serie?: string | null;
+  estado?: EstadoItemKit;
+}
+
 export interface Kit {
   id: string;
   eventoId: string;
@@ -305,6 +321,7 @@ export interface Kit {
   contenidos: string | null; // legacy: solo tiene valor en kits creados antes del catálogo de ítems
   items: string[]; // etiquetas de ItemKitCatalog vinculadas al kit vía KitItemContenido
   itemIds: string[]; // ids de ItemKitCatalog vinculados al kit vía KitItemContenido
+  detalleItems: KitItemDetalle[];
   recintoId: string | null;
   operadorId: string | null;
   estado: EstadoKit;
@@ -318,12 +335,14 @@ export interface CreateKitRequest {
   contenidos?: string | null;
   esPrueba?: boolean;
   itemIds?: string[];
+  detalleItems?: KitItemDetalleInput[];
   recintoId: string;
 }
 
 export interface EditKitRequest {
   recintoId?: string;
   itemIds?: string[];
+  detalleItems?: KitItemDetalleInput[];
   justificacion?: string;
 }
 
@@ -426,10 +445,14 @@ export interface RecepcionKitResponse {
   confirmadoEn: string;
 }
 
-// Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR)
+// Verificación de kits al retorno al DPI (rol ASISTENTE_TRANSVERSAL)
 export interface ItemChecklist {
   texto: string;
   marcado: boolean;
+  // Solo en kits con ítems del catálogo (los legacy de texto libre no los traen).
+  itemId?: string;
+  serie?: string | null;
+  estado?: EstadoItemKit;
 }
 
 export interface ValidarKitRetornoResponse {
