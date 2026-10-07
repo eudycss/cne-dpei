@@ -36,6 +36,9 @@ vi.mock('./pages/operadores/MonitoreoPage', () => ({ MonitoreoPage: () => <div>p
 vi.mock('./pages/incidencias/IncidenciasPage', () => ({ IncidenciasPage: () => <div>página: incidencias</div> }));
 vi.mock('./pages/alertas/AlertasPage', () => ({ AlertasPage: () => <div>página: alertas</div> }));
 vi.mock('./pages/reportes/ReporteNoCdaPage', () => ({ ReporteNoCdaPage: () => <div>página: reportes</div> }));
+vi.mock('./pages/reportes/CadenaCustodiaPage', () => ({
+  CadenaCustodiaPage: () => <div>página: cadena de custodia</div>,
+}));
 
 const USER_KEY = 'cne.user';
 
@@ -102,6 +105,28 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     setSessionUser(['TECNICO_SUPERVISOR']);
     renderAppAt('/alertas');
     expect(screen.getByText('página: alertas')).toBeInTheDocument();
+  });
+
+  it('ASISTENTE_TRANSVERSAL entra a la web y su inicio es la cadena de custodia', () => {
+    setSessionUser(['ASISTENTE_TRANSVERSAL']);
+    renderAppAt('/');
+    expect(screen.getByText('página: cadena de custodia')).toBeInTheDocument();
+  });
+
+  it('ASISTENTE_TRANSVERSAL recibe "Acceso denegado" en páginas de administración', () => {
+    setSessionUser(['ASISTENTE_TRANSVERSAL']);
+    renderAppAt('/reportes/no-cda');
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+  });
+
+  it('TECNICO_SUPERVISOR no ve la cadena de custodia; LECTOR sí', () => {
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    const { unmount } = renderAppAt('/reportes/cadena-custodia');
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    unmount();
+    setSessionUser(['LECTOR']);
+    renderAppAt('/reportes/cadena-custodia');
+    expect(screen.getByText('página: cadena de custodia')).toBeInTheDocument();
   });
 
   it('ADMINISTRADOR entra tanto a /alertas como a /reportes/no-cda', () => {

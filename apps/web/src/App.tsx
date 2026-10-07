@@ -19,6 +19,8 @@ import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
 import { EnlacesPage } from './pages/enlaces/EnlacesPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
+import { CadenaCustodiaPage } from './pages/reportes/CadenaCustodiaPage';
+import { Inicio } from './pages/Inicio';
 import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
@@ -39,12 +41,12 @@ export default function App() {
       />
       <Route
         element={
-          <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR']}>
+          <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']}>
             <Layout />
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/users" replace />} />
+        <Route path="/" element={<Inicio />} />
 
         {/* Usuarios */}
         <Route path="/users" element={<UsersList />} />
@@ -119,6 +121,16 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']}>
               <ReporteNoCdaPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Cadena de custodia de kits (acta por kit) */}
+        <Route
+          path="/reportes/cadena-custodia"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']}>
+              <CadenaCustodiaPage />
             </ProtectedRoute>
           }
         />

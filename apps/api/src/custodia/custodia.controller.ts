@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   cambiarOperadorSchema,
@@ -31,6 +33,7 @@ import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CustodiaService } from './custodia.service';
+import { FiltrosInforme, InformeCustodiaService } from './informe-custodia.service';
 
 /** Cadena de custodia del kit en el DPEI (Asistente Electoral Transversal). */
 @ApiTags('custodia')
@@ -39,7 +42,10 @@ import { CustodiaService } from './custodia.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')
 export class CustodiaController {
-  constructor(private readonly custodia: CustodiaService) {}
+  constructor(
+    private readonly custodia: CustodiaService,
+    private readonly informes: InformeCustodiaService,
+  ) {}
 
   @Post('validar-kit')
   @HttpCode(HttpStatus.OK)
@@ -88,6 +94,56 @@ export class CustodiaController {
   buscarOperadores(@Query('buscar') buscar?: unknown) {
     return this.custodia.buscarOperadores(textoBusqueda(buscar));
   }
+
+  // ─── Informe y actas (lectura: también el LECTOR) ─────────────────────────
+
+  @Get('informe')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @ApiOperation({ summary: 'Informe consolidado de cadena de custodia (una fila por kit del evento activo)' })
+  informe(
+    @Res({ passthrough: true }) res: Response,
+    @Query('cantonId') cantonId?: unknown,
+    @Query('recintoId') recintoId?: unknown,
+  ) {
+    // Lleva cédulas: que ningún caché (navegador o proxy) lo guarde.
+    res.setHeader('Cache-Control', 'no-store');
+    return this.informes.informe(filtrosInforme(cantonId, recintoId));
+  }
+
+  @Get('actas')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @ApiOperation({ summary: 'Actas de cadena de custodia de los kits filtrados (un PDF, una página por kit)' })
+  async actas(
+    @Res() res: Response,
+    @Query('cantonId') cantonId?: unknown,
+    @Query('recintoId') recintoId?: unknown,
+  ) {
+    enviarPdf(res, await this.informes.actas(filtrosInforme(cantonId, recintoId)), 'actas-custodia.pdf');
+  }
+
+  @Get('kits/:kitId/acta')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @ApiOperation({ summary: 'Acta de cadena de custodia de un kit (PDF)' })
+  async actaKit(@Res() res: Response, @Param('kitId', ParseUUIDPipe) kitId: string) {
+    enviarPdf(res, await this.informes.actaKit(kitId), 'acta-custodia.pdf');
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Filtros opcionales del informe; un valor inválido se ignora en vez de romper la consulta. */
+export function filtrosInforme(cantonId: unknown, recintoId: unknown): FiltrosInforme {
+  const canton = typeof cantonId === 'string' && /^\d{1,6}$/.test(cantonId) ? Number(cantonId) : undefined;
+  const recinto = typeof recintoId === 'string' && UUID.test(recintoId) ? recintoId : undefined;
+  return { cantonId: canton, recintoId: recinto };
+}
+
+function enviarPdf(res: Response, pdf: Buffer, archivo: string) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${archivo}"`);
+  // Lleva cédulas y la foto del militar: que ningún caché lo guarde.
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(pdf);
 }
 
 /** ?buscar= puede llegar repetido (arreglo) o ausente: solo se acepta un texto, recortado. */

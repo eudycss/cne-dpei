@@ -850,3 +850,34 @@ export interface CambiarOperadorRequest {
   operadorId: string;
   motivo: string;
 }
+
+/** Una fila del informe consolidado de cadena de custodia (un kit). */
+export interface FilaInformeCustodia {
+  kitId: string;
+  codigoUnico: string;
+  recintoId: string | null;
+  recintoCodigo: string | null;
+  recintoNombre: string | null;
+  cantonId: number | null;
+  cantonNombre: string | null;
+  operadorNombre: string | null;
+  operadorCedula: string | null;
+  /** Paso 1: Asistente → militar en el DPEI. */
+  entrega: {
+    militarNombre: string;
+    militarCedula: string;
+    entregadoEn: string;
+    entregadoPorNombre: string;
+    militarDeOtroRecinto: boolean;
+  } | null;
+  /** Paso 2: militar → operador CDA (con foto del militar). */
+  recepcion: { confirmadoEn: string; tieneFoto: boolean } | null;
+  /** Paso 3: operador CDA → Asistente al retorno. */
+  devolucion: {
+    confirmadoEn: string;
+    verificadoPorNombre: string;
+    completo: boolean;
+    observaciones: string | null;
+  } | null;
+  correcciones: number;
+}
