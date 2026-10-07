@@ -15,6 +15,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
+/** Más bajas que esta fracción de la tabla en un solo ciclo se tratan como lectura incompleta de la hoja. */
+const MAX_FRACCION_BAJAS_POR_CICLO = 0.5;
 
 /** Subconjunto mínimo del payload de un Telegram Update que necesita el webhook. */
 export interface TelegramUpdate {
@@ -127,10 +129,42 @@ export class EnlacesService {
       }
     }
 
+    await this.eliminarRecintosFueraDeLaHoja(filas);
+
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarCaidasPorTelegram(caidas, filas);
     await this.notificarRecuperadosPorCorreo(recuperados);
     await this.notificarRecuperadosPorTelegram(recuperados);
+  }
+
+  /** La web, /caidos y la búsqueda por código leen esta tabla, no la hoja: si un
+   * recinto se borra de la hoja y aquí no se elimina, sigue apareciendo para siempre
+   * con su último estado. Una lectura vacía o parcial (ej. cambiaron el texto de
+   * PROVINCIA, hoja a medio editar) no debe vaciar la tabla: al repoblarse en el
+   * siguiente ciclo, todo lo que siga caído se avisaría de nuevo como "recién caído".
+   * Por eso, si se borraría más de la mitad de la tabla, se asume lectura incompleta. */
+  private async eliminarRecintosFueraDeLaHoja(filas: { codigoRecinto: string }[]): Promise<void> {
+    if (filas.length === 0) return;
+
+    try {
+      const where = { codigoRecinto: { notIn: filas.map((f) => f.codigoRecinto) } };
+      const [total, aEliminar] = await Promise.all([
+        this.prisma.enlaceRecinto.count(),
+        this.prisma.enlaceRecinto.count({ where }),
+      ]);
+      if (aEliminar === 0) return;
+      if (aEliminar > total * MAX_FRACCION_BAJAS_POR_CICLO) {
+        this.log.warn(
+          `La hoja de enlaces dejaría fuera ${aEliminar} de ${total} recintos — parece una lectura incompleta, no se elimina nada`,
+        );
+        return;
+      }
+
+      const { count } = await this.prisma.enlaceRecinto.deleteMany({ where });
+      this.log.log(`Se eliminaron ${count} recinto(s) que ya no están en la hoja de enlaces`);
+    } catch (e) {
+      this.log.error(`Error eliminando recintos que ya no están en la hoja de enlaces: ${e}`);
+    }
   }
 
   /** Un solo correo con todos los recintos caídos en este ciclo, en vez de uno por recinto. */
