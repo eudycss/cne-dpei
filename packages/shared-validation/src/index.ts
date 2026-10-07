@@ -540,3 +540,29 @@ export const updateEstadoAlertaSchema = z.object({
 export const addCorreoEnlaceSchema = z.object({
   correo: emailSchema,
 });
+
+// --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---
+const motivoCorreccionSchema = z
+  .string()
+  .trim()
+  .min(5, 'Explica el motivo (mínimo 5 caracteres)')
+  .max(500, 'Máximo 500 caracteres');
+
+export const registrarEntregaSchema = z.object({
+  kitId: z.string().uuid('Kit inválido'),
+  militarId: z.string().uuid('Selecciona un militar'),
+});
+
+export const corregirMilitarSchema = z.object({
+  militarId: z.string().uuid('Selecciona un militar'),
+  motivo: motivoCorreccionSchema,
+});
+
+export const cambiarOperadorSchema = z.object({
+  operadorId: z.string().uuid('Selecciona un operador'),
+  motivo: motivoCorreccionSchema,
+});
+
+export type RegistrarEntregaInput = z.infer<typeof registrarEntregaSchema>;
+export type CorregirMilitarInput = z.infer<typeof corregirMilitarSchema>;
+export type CambiarOperadorInput = z.infer<typeof cambiarOperadorSchema>;

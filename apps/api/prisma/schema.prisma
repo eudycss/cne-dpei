@@ -88,8 +88,17 @@ enum TipoAlerta {
   NO_LLEGO_DPI
   SIN_SINCRONIZAR
   KIT_NO_CORRESPONDE
+  ENTREGA_MILITAR_NO_REGISTRADA
 
   @@map("tipo_alerta")
+}
+
+// Qué se corrigió en la cadena de custodia de un kit (historial con motivo).
+enum CampoCorreccionCustodia {
+  MILITAR
+  OPERADOR
+
+  @@map("campo_correccion_custodia")
 }
 
 enum EstadoAlerta {
@@ -268,6 +277,8 @@ model Militar {
 
   recinto Recinto @relation(fields: [recintoId], references: [id])
 
+  entregasCustodio EntregaCustodioKit[]
+
   @@index([recintoId], map: "idx_militares_recinto")
   @@map("militares")
 }
@@ -337,6 +348,8 @@ model KitElectoral {
   // `contenidos` (texto libre) queda como legacy: kits creados antes de esta
   // relación lo siguen mostrando tal cual. Los kits nuevos usan itemsContenido.
   itemsContenido KitItemContenido[]
+  entregaCustodio      EntregaCustodioKit?
+  correccionesCustodia CorreccionCustodiaKit[]
 
   @@unique([eventoId, codigoUnico])
   @@index([eventoId], map: "idx_kits_evento")
@@ -424,6 +437,46 @@ model RecepcionKit {
 
   @@index([kitId], map: "idx_recepciones_kit")
   @@map("recepciones_kit")
+}
+
+// Cadena de custodia, paso 1: el Asistente Electoral Transversal entrega el kit
+// a un militar en el DPEI. Uno por kit; las correcciones van al historial.
+model EntregaCustodioKit {
+  id                   String   @id @default(uuid()) @db.Uuid
+  kitId                String   @unique @map("kit_id") @db.Uuid
+  eventoId             String   @map("evento_id") @db.Uuid
+  militarId            String   @map("militar_id") @db.Uuid
+  entregadoPorId       String   @map("entregado_por_id") @db.Uuid
+  entregadoEn          DateTime @default(now()) @map("entregado_en") @db.Timestamptz(6)
+  // El militar no estaba asignado al recinto del kit (cambio de último minuto).
+  militarDeOtroRecinto Boolean  @default(false) @map("militar_de_otro_recinto")
+
+  // Restrict: la entrega es evidencia de custodia; no se borra con el kit ni
+  // se borra un militar que recibió un kit.
+  kit     KitElectoral @relation(fields: [kitId], references: [id], onDelete: Restrict)
+  militar Militar      @relation(fields: [militarId], references: [id], onDelete: Restrict)
+
+  @@index([eventoId], map: "idx_entregas_custodio_evento")
+  @@map("entregas_custodio_kit")
+}
+
+// Historial de correcciones de último minuto (militar de la entrega u
+// operador CDA del kit): solo inserción (trigger en la migración), nunca se
+// pierde el valor anterior.
+model CorreccionCustodiaKit {
+  id             String                  @id @default(uuid()) @db.Uuid
+  kitId          String                  @map("kit_id") @db.Uuid
+  campo          CampoCorreccionCustodia
+  valorAnterior  String?                 @map("valor_anterior") @db.Uuid
+  valorNuevo     String                  @map("valor_nuevo") @db.Uuid
+  motivo         String                  @db.VarChar(500)
+  corregidoPorId String                  @map("corregido_por_id") @db.Uuid
+  corregidoEn    DateTime                @default(now()) @map("corregido_en") @db.Timestamptz(6)
+
+  kit KitElectoral @relation(fields: [kitId], references: [id], onDelete: Restrict)
+
+  @@index([kitId], map: "idx_correcciones_custodia_kit")
+  @@map("correcciones_custodia_kit")
 }
 
 model RecepcionDpiKit {

@@ -128,6 +128,24 @@ export class AlertasService {
     });
   }
 
+  // Llamado inline desde TrackingService: el CDA recibió un kit cuya entrega
+  // al militar (Asistente Electoral Transversal → militar) no se registró.
+  // No bloquea la recepción; deja la brecha visible en la cadena de custodia.
+  async generarEntregaMilitarNoRegistrada(opts: {
+    eventoId: string;
+    operadorId: string;
+    kitId: string;
+    codigoKit: string;
+  }): Promise<void> {
+    await this.generarSiNoExiste({
+      eventoId: opts.eventoId,
+      operadorId: opts.operadorId,
+      kitId: opts.kitId,
+      tipo: 'ENTREGA_MILITAR_NO_REGISTRADA',
+      mensaje: `El kit ${opts.codigoKit} fue recibido por el CDA sin que se registrara su entrega al militar en el DPEI.`,
+    });
+  }
+
   // ─── Cron: CA1, CA2, CA3 ─────────────────────────────────────────────────
 
   @Cron(CronExpression.EVERY_5_MINUTES)

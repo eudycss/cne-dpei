@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +20,8 @@ import type {
   UpdateMilitarRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+
+const MILITAR_CON_ENTREGAS = 'No se puede eliminar: este militar recibió kits (cadena de custodia)';
 
 @Injectable()
 export class MilitaresService {
@@ -86,7 +89,18 @@ export class MilitaresService {
   async remove(id: string): Promise<{ deleted: true }> {
     const existing = await this.prisma.militar.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Militar no encontrado');
-    await this.prisma.militar.delete({ where: { id } });
+    // Un militar que recibió un kit es parte de la cadena de custodia (acta).
+    const entregas = await this.prisma.entregaCustodioKit.count({ where: { militarId: id } });
+    if (entregas > 0) {
+      throw new ConflictException(MILITAR_CON_ENTREGAS);
+    }
+    try {
+      await this.prisma.militar.delete({ where: { id } });
+    } catch (e) {
+      // Recibió un kit entre la cuenta y el borrado: la FK (Restrict) lo frena.
+      if ((e as { code?: string }).code === 'P2003') throw new ConflictException(MILITAR_CON_ENTREGAS);
+      throw e;
+    }
     return { deleted: true };
   }
 

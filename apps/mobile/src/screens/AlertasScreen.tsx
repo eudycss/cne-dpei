@@ -20,6 +20,7 @@ const TIPO_LABELS: Record<TipoAlerta, string> = {
   NO_LLEGO_DPI: 'No llegó al DPI',
   SIN_SINCRONIZAR: 'Sin sincronización',
   KIT_NO_CORRESPONDE: 'Kit no corresponde',
+  ENTREGA_MILITAR_NO_REGISTRADA: 'Entrega al militar no registrada',
 };
 
 const ESTADO_COLOR: Record<EstadoAlerta, string> = {

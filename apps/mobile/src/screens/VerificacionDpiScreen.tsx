@@ -16,7 +16,7 @@ import type { EstadoItemKit, ItemChecklist, ValidarKitRetornoResponse } from '@c
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
-import { CameraQr } from '../components/CameraQr';
+import { IngresoCodigoKit } from '../components/IngresoCodigoKit';
 import { validarKitRetorno, verificarKitRetorno } from '../lib/queries/retorno';
 import { fontFamily } from '../theme/typography';
 
@@ -29,20 +29,17 @@ const ESTADOS: { value: EstadoItemKit; label: string }[] = [
 export function VerificacionDpiScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [mostrarCamara, setMostrarCamara] = useState(false);
   const [kit, setKit] = useState<ValidarKitRetornoResponse | null>(null);
   const [items, setItems] = useState<ItemChecklist[]>([]);
   const [observaciones, setObservaciones] = useState('');
   const [confirmando, setConfirmando] = useState(false);
   const [verificados, setVerificados] = useState(0);
-  const [codigoManual, setCodigoManual] = useState('');
   const [validando, setValidando] = useState(false);
 
   const todosMarcados = items.every((i) => i.marcado);
   const puedeConfirmar = todosMarcados || observaciones.trim().length > 0;
 
   async function onEscanear(codigo: string) {
-    setMostrarCamara(false);
     setValidando(true);
     try {
       const data = await validarKitRetorno(codigo);
@@ -53,7 +50,6 @@ export function VerificacionDpiScreen() {
       setKit(data);
       setItems(data.items);
       setObservaciones('');
-      setCodigoManual('');
     } catch (e: any) {
       Alert.alert(
         'Kit inválido',
@@ -105,46 +101,13 @@ export function VerificacionDpiScreen() {
           completo.
         </Text>
 
-        <Pressable style={styles.btnPrimary} onPress={() => setMostrarCamara(true)} accessibilityRole="button">
-          <Text style={styles.btnPrimaryText}>Escanear Kit</Text>
-        </Pressable>
-
-        {/* Si el QR está dañado o la cámara falla, el código impreso se escribe a mano. */}
-        <Text style={styles.manualLabel}>O escribe el código del kit</Text>
-        <View style={styles.manualRow}>
-          <TextInput
-            style={styles.manualInput}
-            value={codigoManual}
-            onChangeText={(t) => setCodigoManual(t.toUpperCase())}
-            placeholder="Ej. ABCD2345"
-            placeholderTextColor={colors.textPlaceholder}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            maxLength={40}
-            accessibilityLabel="Código del kit"
-            onSubmitEditing={() => codigoManual.trim() && onEscanear(codigoManual.trim())}
-          />
-          <Pressable
-            style={[styles.btnValidar, (!codigoManual.trim() || validando) && styles.btnDisabled]}
-            disabled={!codigoManual.trim() || validando}
-            onPress={() => onEscanear(codigoManual.trim())}
-            accessibilityRole="button"
-            accessibilityLabel="Validar código"
-            accessibilityState={{ disabled: !codigoManual.trim() || validando }}
-          >
-            {validando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnPrimaryText}>Validar</Text>}
-          </Pressable>
-        </View>
+        <IngresoCodigoKit onCodigo={onEscanear} ocupado={validando} />
 
         <Text style={styles.contador}>
           {verificados} kit{verificados === 1 ? '' : 's'} verificado{verificados === 1 ? '' : 's'} en
           esta sesión
         </Text>
       </ScrollView>
-
-      <Modal visible={mostrarCamara} animationType="slide" presentationStyle="fullScreen">
-        <CameraQr onScan={onEscanear} onCancel={() => setMostrarCamara(false)} />
-      </Modal>
 
       <Modal
         visible={kit != null}
@@ -318,22 +281,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   estadoBtnOn: { backgroundColor: c.primaryBg, borderColor: c.primaryBg },
   estadoText: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textPrimary },
   estadoTextOn: { color: '#fff' },
-  manualLabel: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, marginTop: 8, marginBottom: 6 },
-  manualRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  manualInput: {
-    flex: 1,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: c.borderInput,
-    backgroundColor: c.bgCard,
-    color: c.textPrimary,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    fontSize: 15,
-    fontFamily: fontFamily.medium,
-    letterSpacing: 1,
-  },
-  btnValidar: { backgroundColor: c.primaryBg, paddingHorizontal: 18, borderRadius: 8, justifyContent: 'center', minHeight: 48 },
   checkbox: {
     width: 22,
     height: 22,

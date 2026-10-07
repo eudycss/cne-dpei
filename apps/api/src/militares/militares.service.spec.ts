@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
 import { MilitaresService } from './militares.service';
@@ -20,6 +20,7 @@ describe('MilitaresService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
+    entregaCustodioKit: { count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
   };
 
@@ -113,6 +114,19 @@ describe('MilitaresService', () => {
       const result = await service.remove(militarId);
       expect(result).toEqual({ deleted: true });
       expect(prisma.militar.delete).toHaveBeenCalledWith({ where: { id: militarId } });
+    });
+
+    it('no elimina a un militar que recibió kits (cadena de custodia)', async () => {
+      prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
+      prisma.entregaCustodioKit.count.mockResolvedValueOnce(2);
+      await expect(service.remove(militarId)).rejects.toThrow(ConflictException);
+      expect(prisma.militar.delete).not.toHaveBeenCalled();
+    });
+
+    it('si recibió un kit justo antes de borrar (FK P2003), responde 409 y no 500', async () => {
+      prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
+      prisma.militar.delete.mockRejectedValueOnce(Object.assign(new Error('FK'), { code: 'P2003' }));
+      await expect(service.remove(militarId)).rejects.toThrow(ConflictException);
     });
   });
 

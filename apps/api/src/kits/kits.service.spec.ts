@@ -273,6 +273,10 @@ describe('KitsService', () => {
       await expect(service.asignar(kitId, { operadorId } as any)).rejects.toThrow(
         BadRequestException,
       );
+      // Solo operadores activos: uno desactivado no se puede asignar.
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: operadorId, activo: true }),
+      });
     });
 
     it('lanza ConflictException si el operador ya tiene kits en otro recinto', async () => {

@@ -23,6 +23,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { IncidenciasModule } from './incidencias/incidencias.module';
 import { AlertasModule } from './alertas/alertas.module';
 import { EnlacesModule } from './enlaces/enlaces.module';
+import { CustodiaModule } from './custodia/custodia.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { EnlacesModule } from './enlaces/enlaces.module';
     IncidenciasModule,
     AlertasModule,
     EnlacesModule,
+    CustodiaModule,
   ],
   controllers: [AppController],
   providers: [
