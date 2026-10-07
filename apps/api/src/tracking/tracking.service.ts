@@ -51,7 +51,6 @@ import {
   verificarKitRetornoSchema,
 } from '@cne/shared-validation';
 
-import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { AlertasService } from '../alertas/alertas.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -600,7 +599,7 @@ export class TrackingService {
       data: {
         kitId: kit.id,
         supervisorId,
-        items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items) as unknown as Prisma.InputJsonValue,
+        items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items),
         observaciones: parsed.observaciones ?? null,
       },
     });
@@ -1901,6 +1900,9 @@ function detectarContentTypeImagen(buffer: Buffer): string {
   return 'image/jpeg';
 }
 
+/** Tipo objeto (no interface): Prisma lo acepta tal cual en una columna Json. */
+type FilaChecklistJson = { [K in keyof ItemChecklist]: ItemChecklist[K] };
+
 /**
  * Arma el checklist de retorno que se guarda en el acta a partir de lo que
  * hay en la BD (texto y serie de cada artículo del kit): del cliente solo se
@@ -1912,7 +1914,7 @@ function detectarContentTypeImagen(buffer: Buffer): string {
 export function checklistDesdeBd(
   itemsContenido: { itemId: string; serie: string | null; estado: EstadoItemKit; item: { etiqueta: string } }[],
   enviados: ItemChecklist[],
-): ItemChecklist[] {
+): FilaChecklistJson[] {
   if (itemsContenido.length === 0) {
     return enviados.map(({ texto, marcado }) => ({ texto, marcado }));
   }
