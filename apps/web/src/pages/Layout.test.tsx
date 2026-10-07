@@ -137,6 +137,26 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
+
+  it('ASISTENTE_TRANSVERSAL solo ve "Cadena de custodia" (el resto no le corresponde)', () => {
+    setSessionUser(['ASISTENTE_TRANSVERSAL']);
+    renderLayout();
+    const menu = screen.getByRole('navigation', { name: 'Menú principal' });
+    expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual(['Cadena de custodia']);
+  });
+
+  it('ADMINISTRADOR y LECTOR ven "Cadena de custodia"; TECNICO_SUPERVISOR no', () => {
+    for (const [rol, ve] of [
+      ['ADMINISTRADOR', true],
+      ['LECTOR', true],
+      ['TECNICO_SUPERVISOR', false],
+    ] as const) {
+      setSessionUser([rol]);
+      const { unmount } = renderLayout();
+      expect(!!screen.queryByText('Cadena de custodia')).toBe(ve);
+      unmount();
+    }
+  });
 });
 
 describe('Layout — banner persistente de enlace caído', () => {
