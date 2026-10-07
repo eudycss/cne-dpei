@@ -1,5 +1,5 @@
 import { act, create, ReactTestRenderer, TestInstance } from 'react-test-renderer';
-import { Alert, Pressable, Text, TextInput } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ValidarKitRetornoResponse } from '@cne/shared-types';
 
 jest.setTimeout(30000);
@@ -68,6 +68,47 @@ describe('VerificacionDpiScreen', () => {
       'Computador, serie 5CD445577S',
       'Cargador, serie S/N',
     ]);
+  });
+
+  it('con muchos artículos todos quedan en un solo desplazamiento y los botones siempre a la vista', async () => {
+    const items = Array.from({ length: 6 }, (_, i) => ({
+      texto: `Artículo ${i}`,
+      marcado: true,
+      itemId: `i${i}`,
+      serie: null,
+      estado: 'BUENO' as const,
+    }));
+    (validarKitRetorno as jest.Mock).mockResolvedValue({ ...kitCatalogo, items });
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+
+    expect(textos(r)).toContain('Contenido: 6 artículos');
+    // Los 6 artículos están dentro del contenido desplazable del modal...
+    const contenido = r.root.find((n) => n.type === ScrollView && n.props.testID === 'verificacion-contenido');
+    expect(contenido.findAll((n) => n.type === Pressable && n.props.accessibilityRole === 'checkbox')).toHaveLength(6);
+    // ...sin un alto fijo que esconda artículos sin avisar.
+    expect(StyleSheet.flatten(contenido.props.style)).not.toHaveProperty('maxHeight');
+    // Cancelar y Confirmar quedan fuera del desplazamiento: siempre a la vista.
+    const acciones = r.root.find((n) => n.type === View && n.props.testID === 'verificacion-acciones');
+    expect(contenido.findAll((n) => n === acciones)).toHaveLength(0);
+    expect(acciones.findAll((n) => n.type === Pressable)).toHaveLength(2);
+  });
+
+  it('con un solo artículo lo dice en singular', async () => {
+    (validarKitRetorno as jest.Mock).mockResolvedValue({ ...kitCatalogo, items: [kitCatalogo.items[0]] });
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+    expect(textos(r)).toContain('Contenido: 1 artículo');
+  });
+
+  it('el botón Atrás de Android cierra el modal como Cancelar', async () => {
+    (validarKitRetorno as jest.Mock).mockResolvedValue(kitCatalogo);
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+    const modal = () => r.root.findAllByType(Modal).find((m) => m.props.onRequestClose)!;
+    expect(modal().props.visible).toBe(true);
+    await act(async () => modal().props.onRequestClose());
+    expect(modal().props.visible).toBe(false);
   });
 
   it('el botón Validar está deshabilitado sin código', async () => {

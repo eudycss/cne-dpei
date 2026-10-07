@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -144,83 +146,101 @@ export function VerificacionDpiScreen() {
         <CameraQr onScan={onEscanear} onCancel={() => setMostrarCamara(false)} />
       </Modal>
 
-      <Modal visible={kit != null} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
+      <Modal
+        visible={kit != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !confirmando && setKit(null)}
+      >
+        {/* El teclado no tapa las observaciones (el Modal es otra ventana en Android). */}
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Verificar contenido del kit</Text>
-            {kit ? (
-              <>
-                <Text style={styles.kitOperador}>Operador: {kit.operadorNombre}</Text>
-                <Text style={styles.kitCode}>{kit.codigoUnico}</Text>
-                <Text style={styles.kitNombre}>{kit.nombre}</Text>
+            {/* Todo el contenido se desplaza junto (no una lista con alto fijo que
+                esconda artículos); los botones quedan siempre a la vista. */}
+            <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" testID="verificacion-contenido">
+              <Text style={styles.modalTitle} accessibilityRole="header">
+                Verificar contenido del kit
+              </Text>
+              {kit ? (
+                <>
+                  <Text style={styles.kitOperador}>Operador: {kit.operadorNombre}</Text>
+                  <Text style={styles.kitCode}>{kit.codigoUnico}</Text>
+                  <Text style={styles.kitNombre}>{kit.nombre}</Text>
 
-                <ScrollView style={styles.checklist}>
-                  {items.map((it, index) => (
-                    <View key={index} style={styles.item}>
-                      <Pressable
-                        style={styles.itemRow}
-                        onPress={() => toggleItem(index)}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: it.marcado }}
-                        accessibilityLabel={it.itemId ? `${it.texto}, serie ${it.serie || 'S/N'}` : it.texto}
-                      >
-                        <View style={[styles.checkbox, it.marcado && styles.checkboxOn]}>
-                          {it.marcado ? <Text style={styles.checkboxMark}>✓</Text> : null}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTexto}>{it.texto}</Text>
-                          {it.itemId ? <Text style={styles.itemSerie}>Serie: {it.serie || 'S/N'}</Text> : null}
-                        </View>
-                      </Pressable>
-                      {/* Estado con el que vuelve el artículo (solo ítems del catálogo). */}
-                      {it.estado ? (
-                        <View
-                          style={styles.estados}
-                          accessibilityRole="radiogroup"
-                          accessibilityLabel={`Estado de ${it.texto}`}
+                  <Text style={styles.checklistTitulo} accessibilityRole="header">
+                    Contenido: {items.length} artículo{items.length === 1 ? '' : 's'}
+                  </Text>
+                  <View style={styles.checklist}>
+                    {items.map((it, index) => (
+                      <View key={index} style={styles.item}>
+                        <Pressable
+                          style={styles.itemRow}
+                          onPress={() => toggleItem(index)}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: it.marcado }}
+                          accessibilityLabel={it.itemId ? `${it.texto}, serie ${it.serie || 'S/N'}` : it.texto}
                         >
-                          {ESTADOS.map((e) => {
-                            const activo = it.estado === e.value;
-                            return (
-                              <Pressable
-                                key={e.value}
-                                style={[styles.estadoBtn, activo && styles.estadoBtnOn]}
-                                onPress={() => cambiarEstado(index, e.value)}
-                                accessibilityRole="radio"
-                                accessibilityState={{ checked: activo }}
-                                accessibilityLabel={`${it.texto}: ${e.label}`}
-                              >
-                                <Text style={[styles.estadoText, activo && styles.estadoTextOn]}>{e.label}</Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      ) : null}
-                    </View>
-                  ))}
-                </ScrollView>
+                          <View style={[styles.checkbox, it.marcado && styles.checkboxOn]}>
+                            {it.marcado ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.itemTexto}>{it.texto}</Text>
+                            {it.itemId ? <Text style={styles.itemSerie}>Serie: {it.serie || 'S/N'}</Text> : null}
+                          </View>
+                        </Pressable>
+                        {/* Estado con el que vuelve el artículo (solo ítems del catálogo). */}
+                        {it.estado ? (
+                          <View
+                            style={styles.estados}
+                            accessibilityRole="radiogroup"
+                            accessibilityLabel={`Estado de ${it.texto}`}
+                          >
+                            {ESTADOS.map((e) => {
+                              const activo = it.estado === e.value;
+                              return (
+                                <Pressable
+                                  key={e.value}
+                                  style={[styles.estadoBtn, activo && styles.estadoBtnOn]}
+                                  onPress={() => cambiarEstado(index, e.value)}
+                                  accessibilityRole="radio"
+                                  accessibilityState={{ checked: activo }}
+                                  accessibilityLabel={`${it.texto}: ${e.label}`}
+                                >
+                                  <Text style={[styles.estadoText, activo && styles.estadoTextOn]}>{e.label}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
 
-                <Text style={[styles.obsLabel, !todosMarcados && styles.obsLabelRequired]}>
-                  Observaciones {todosMarcados ? '(opcional)' : '(obligatorio)'}
-                </Text>
-                <TextInput
-                  style={styles.textArea}
-                  value={observaciones}
-                  onChangeText={setObservaciones}
-                  placeholder="Describe qué falta o qué está dañado"
-                  placeholderTextColor={colors.textPlaceholder}
-                  multiline
-                  numberOfLines={3}
-                  maxLength={500}
-                />
-              </>
-            ) : null}
-            <View style={styles.modalActions}>
+                  <Text style={[styles.obsLabel, !todosMarcados && styles.obsLabelRequired]}>
+                    Observaciones {todosMarcados ? '(opcional)' : '(obligatorio)'}
+                  </Text>
+                  <TextInput
+                    style={styles.textArea}
+                    value={observaciones}
+                    onChangeText={setObservaciones}
+                    placeholder="Describe qué falta o qué está dañado"
+                    placeholderTextColor={colors.textPlaceholder}
+                    multiline
+                    numberOfLines={3}
+                    maxLength={500}
+                  />
+                </>
+              ) : null}
+            </ScrollView>
+            <View style={styles.modalActions} testID="verificacion-acciones">
               <Pressable style={styles.btnSecondary} onPress={() => setKit(null)} disabled={confirmando}>
                 <Text style={styles.btnSecondaryText}>Cancelar</Text>
               </Pressable>
               <Pressable
-                style={[styles.btnPrimary, (!puedeConfirmar || confirmando) && styles.btnDisabled]}
+                style={[styles.btnPrimary, styles.btnModal, (!puedeConfirmar || confirmando) && styles.btnDisabled]}
                 onPress={confirmar}
                 disabled={!puedeConfirmar || confirmando}
               >
@@ -232,7 +252,7 @@ export function VerificacionDpiScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -267,15 +287,21 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: c.btnSecondaryBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   btnSecondaryText: { color: c.btnSecondaryText, textAlign: 'center', fontSize: 14, fontFamily: fontFamily.semiBold },
   modalBackdrop: { flex: 1, backgroundColor: c.modalOverlay, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  modalCard: { backgroundColor: c.bgCard, borderRadius: 12, padding: 22, width: '100%', maxWidth: 380 },
+  modalCard: { backgroundColor: c.bgCard, borderRadius: 12, padding: 22, width: '100%', maxWidth: 380, maxHeight: '92%' },
+  modalScroll: { flexGrow: 0 },
+  // Reparte el ancho con "Cancelar"; el texto no queda pegado a los bordes.
+  btnModal: { flex: 1, minHeight: 44, marginBottom: 0, paddingVertical: 12, paddingHorizontal: 10, justifyContent: 'center' },
+  checklistTitulo: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, marginTop: 4 },
   modalTitle: { fontSize: 18, fontFamily: fontFamily.bold, color: c.textPrimary, marginBottom: 4 },
   kitOperador: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 8 },
   kitCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1, marginTop: 6 },
   kitNombre: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 2, marginBottom: 8 },
-  checklist: { marginTop: 4, marginBottom: 8, maxHeight: 320 },
+  checklist: { marginTop: 4, marginBottom: 8 },
   item: { paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.border },
   itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, minHeight: 44 },
   itemSerie: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
