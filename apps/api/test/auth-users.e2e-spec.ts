@@ -8,6 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 import { AppModule } from '../src/app.module';
 import { ZodValidationExceptionFilter } from '../src/common/zod-validation.filter';
+import { PrismaService } from '../src/db/prisma.service';
 
 /**
  * Flujo end-to-end de Fase 1 (HU1, HU7, HU9):
@@ -17,6 +18,7 @@ import { ZodValidationExceptionFilter } from '../src/common/zod-validation.filte
  *   4. Login con el nuevo usuario → debeCambiarPwd = true
  *   5. Cambio de contraseña obligatorio
  *   6. Login con la nueva contraseña → debeCambiarPwd = false
+ *   7. Restablecer la contraseña del nuevo usuario no toca a ningún otro
  *
  * Requiere postgres levantado y `pnpm db:seed` ejecutado.
  */
@@ -174,5 +176,34 @@ describe('Auth + Users (e2e)', () => {
       .set('Authorization', `Bearer ${login.body.accessToken}`)
       .send({ currentPassword: 'Nueva*26', newPassword: 'corta' })
       .expect(400);
+  });
+
+  it('7. restablecer contraseña solo afecta al usuario elegido', async () => {
+    const prisma = app.get(PrismaService);
+    const filas = () =>
+      prisma.usuario.findMany({ select: { id: true, email: true, passwordHash: true, debeCambiarPwd: true } });
+    const antes = await filas();
+    const objetivo = antes.find((u) => u.email === newUserEmail)!;
+    expect(objetivo.debeCambiarPwd).toBe(false);
+
+    await request(app.getHttpServer())
+      .post(`/users/${objetivo.id}/reset-password`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    const despues = new Map((await filas()).map((u) => [u.id, u]));
+    for (const u of antes) {
+      const ahora = despues.get(u.id)!;
+      if (u.id === objetivo.id) {
+        expect(ahora.passwordHash).not.toBe(u.passwordHash);
+        expect(ahora.debeCambiarPwd).toBe(true);
+      } else {
+        expect({ email: u.email, hash: ahora.passwordHash, debe: ahora.debeCambiarPwd }).toEqual({
+          email: u.email,
+          hash: u.passwordHash,
+          debe: u.debeCambiarPwd,
+        });
+      }
+    }
   });
 });
