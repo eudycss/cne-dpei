@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -89,6 +90,8 @@ function esRolTransversalKits(roles: RoleName[]): boolean {
 
 @Injectable()
 export class TrackingService {
+  private readonly logger = new Logger(TrackingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
@@ -494,6 +497,8 @@ export class TrackingService {
       data: { estado: 'ENTREGADO' },
     });
 
+    await this.alertarSiFaltaEntregaMilitar(kit, operadorId);
+
     return {
       id: row.id,
       kitId: kit.id,
@@ -675,6 +680,32 @@ export class TrackingService {
     });
 
     return { total: items.length, items };
+  }
+
+  /**
+   * Si el CDA recibió un kit sin entrega al militar registrada, genera la
+   * alerta. Nunca bloquea ni hace fallar la recepción (ya quedó guardada):
+   * un error aquí solo se registra.
+   */
+  private async alertarSiFaltaEntregaMilitar(
+    kit: { id: string; eventoId: string; codigoUnico: string },
+    operadorId: string,
+  ): Promise<void> {
+    try {
+      const entrega = await this.prisma.entregaCustodioKit.findUnique({
+        where: { kitId: kit.id },
+        select: { id: true },
+      });
+      if (entrega) return;
+      await this.alertas.generarEntregaMilitarNoRegistrada({
+        eventoId: kit.eventoId,
+        operadorId,
+        kitId: kit.id,
+        codigoKit: kit.codigoUnico,
+      });
+    } catch (e) {
+      this.logger.warn(`No se pudo evaluar la alerta de entrega al militar del kit ${kit.id}: ${(e as Error).message}`);
+    }
   }
 
   /** Lanza 400 si el operador no está asignado a este supervisor (los roles transversales pasan siempre). */

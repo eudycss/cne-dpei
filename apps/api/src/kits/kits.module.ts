@@ -7,5 +7,6 @@ import { ItemsKitService } from './items-kit.service';
 @Module({
   controllers: [KitsController, ItemsKitController],
   providers: [KitsService, ItemsKitService],
+  exports: [KitsService],
 })
 export class KitsModule {}

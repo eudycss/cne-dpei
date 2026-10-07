@@ -25,6 +25,7 @@ describe('TrackingService', () => {
     eventoTracking: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
+    entregaCustodioKit: { findUnique: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn() },
     asignacionSupervisor: { findFirst: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
@@ -47,6 +48,7 @@ describe('TrackingService', () => {
 
   const alertas = {
     generarKitNoCorresponde: jest.fn(),
+    generarEntregaMilitarNoRegistrada: jest.fn(),
   };
 
   const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -453,6 +455,48 @@ describe('TrackingService', () => {
 
       expect(result.id).toBe('rk-existente');
       expect(prisma.$queryRaw).not.toHaveBeenCalled(); // no inserta
+    });
+
+    function recepcionNueva() {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ id: kitId, operadorId, eventoId, codigoUnico: 'K01' });
+      storage.exists.mockResolvedValueOnce(true);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'rk1', confirmado_en: new Date(ocurridoEn) }]);
+    }
+
+    it('sin entrega al militar registrada, recibe igual pero genera la alerta (no bloquea)', async () => {
+      recepcionNueva();
+      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce(null);
+
+      const result = await service.confirmarRecepcionKit(operadorId, input as any);
+
+      expect(result.id).toBe('rk1');
+      expect(prisma.kitElectoral.update).toHaveBeenCalledWith({ where: { id: kitId }, data: { estado: 'ENTREGADO' } });
+      expect(alertas.generarEntregaMilitarNoRegistrada).toHaveBeenCalledWith({
+        eventoId,
+        operadorId,
+        kitId,
+        codigoKit: 'K01',
+      });
+    });
+
+    it('si generar la alerta falla, la recepción ya guardada no se rompe', async () => {
+      recepcionNueva();
+      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce(null);
+      alertas.generarEntregaMilitarNoRegistrada.mockRejectedValueOnce(new Error('BD caída'));
+
+      await expect(service.confirmarRecepcionKit(operadorId, input as any)).resolves.toEqual(
+        expect.objectContaining({ id: 'rk1' }),
+      );
+    });
+
+    it('con la entrega al militar registrada, no genera alerta', async () => {
+      recepcionNueva();
+      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce({ id: 'e1' });
+
+      await service.confirmarRecepcionKit(operadorId, input as any);
+
+      expect(alertas.generarEntregaMilitarNoRegistrada).not.toHaveBeenCalled();
     });
   });
 

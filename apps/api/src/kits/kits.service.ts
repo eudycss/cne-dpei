@@ -132,7 +132,25 @@ export class KitsService {
 
   async asignar(id: string, input: AsignarKitRequest): Promise<Kit> {
     const parsed = asignarKitSchema.parse(input);
+    const kit = await this.validarAsignacion(id, parsed.operadorId, parsed.justificacion);
 
+    const updated = await this.prisma.kitElectoral.update({
+      where: { id },
+      data: {
+        operadorId: parsed.operadorId,
+        estado: kit.estado === 'EN_BODEGA' ? 'ASIGNADO' : kit.estado,
+      },
+    });
+    return toKitDto(updated);
+  }
+
+  /**
+   * Reglas para asignar un operador a un kit, sin escribir nada (custodia las
+   * usa antes de su propia transacción): recinto fijado, jornada no congelada
+   * (o justificación), usuario OPERADOR_CDA activo y 1 operador = 1 recinto.
+   * Devuelve el kit leído.
+   */
+  async validarAsignacion(id: string, operadorId: string, justificacion?: string) {
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
 
@@ -146,20 +164,21 @@ export class KitsService {
 
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
-    this.assertNoFrozen(evento, parsed.justificacion);
+    this.assertNoFrozen(evento, justificacion);
 
     const operador = await this.prisma.usuario.findFirst({
       where: {
-        id: parsed.operadorId,
+        id: operadorId,
+        activo: true,
         roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } },
       },
     });
-    if (!operador) throw new BadRequestException('El usuario no tiene rol OPERADOR_CDA');
+    if (!operador) throw new BadRequestException('El usuario no es un OPERADOR_CDA activo');
 
     const otrosKits = await this.prisma.kitElectoral.findMany({
       where: {
         eventoId: kit.eventoId,
-        operadorId: parsed.operadorId,
+        operadorId,
         id: { not: id },
         recintoId: { not: null },
       },
@@ -170,15 +189,7 @@ export class KitsService {
         'Este operador ya tiene kits asignados a otro recinto en este evento',
       );
     }
-
-    const updated = await this.prisma.kitElectoral.update({
-      where: { id },
-      data: {
-        operadorId: parsed.operadorId,
-        estado: kit.estado === 'EN_BODEGA' ? 'ASIGNADO' : kit.estado,
-      },
-    });
-    return toKitDto(updated);
+    return kit;
   }
 
   /**

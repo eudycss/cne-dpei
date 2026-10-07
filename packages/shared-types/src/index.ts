@@ -754,7 +754,8 @@ export type TipoAlerta =
   | 'NO_LLEGO_RECINTO'
   | 'NO_LLEGO_DPI'
   | 'SIN_SINCRONIZAR'
-  | 'KIT_NO_CORRESPONDE';
+  | 'KIT_NO_CORRESPONDE'
+  | 'ENTREGA_MILITAR_NO_REGISTRADA';
 
 export type EstadoAlerta = 'GENERADA' | 'VISTA' | 'ATENDIDA';
 
@@ -794,4 +795,58 @@ export interface ConfigEnlacesResponse {
 
 export interface AddCorreoEnlaceRequest {
   correo: string;
+}
+
+// --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---
+export interface MilitarResumen {
+  id: string;
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  recintoId: string;
+  recintoNombre: string;
+}
+
+export interface OperadorResumen {
+  id: string;
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+}
+
+export interface EntregaCustodio {
+  militar: MilitarResumen;
+  entregadoEn: string;
+  entregadoPorNombre: string;
+  militarDeOtroRecinto: boolean;
+}
+
+/** Ficha del kit escaneado por el asistente para entregarlo a un militar. */
+export interface KitCustodiaResponse {
+  kitId: string;
+  codigoUnico: string;
+  nombre: string;
+  estado: EstadoKit;
+  recinto: { id: string; codigo: string; nombre: string } | null;
+  operador: OperadorResumen | null;
+  /** Militares asignados al recinto del kit (la opción por defecto). */
+  militaresRecinto: MilitarResumen[];
+  entrega: EntregaCustodio | null;
+  /** Hasta que el CDA reciba el kit (estado ASIGNADO) se puede entregar o corregir. */
+  editable: boolean;
+}
+
+export interface RegistrarEntregaRequest {
+  kitId: string;
+  militarId: string;
+}
+
+export interface CorregirMilitarRequest {
+  militarId: string;
+  motivo: string;
+}
+
+export interface CambiarOperadorRequest {
+  operadorId: string;
+  motivo: string;
 }
