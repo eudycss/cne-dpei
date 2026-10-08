@@ -324,27 +324,29 @@ docker run --rm -v "$PWD":/app -w /app node:22-alpine sh -c "npm ci && npm test 
 
 ## 7. Plan de trabajo en la rama `estilos-web`
 
-| Fase | Tareas | Commit sugerido |
-|---|---|---|
-| 1 | Crear la rama; agregar `tokens.css`, reglas de `prefers-reduced-motion` y foco visible | `style: tokens de diseño y reglas base de accesibilidad` |
-| 2 | Correcciones CSS: barra lateral, menú activo, tabla con columna fija, botones desactivados, columna Estado accesible | `fix(a11y): sidebar, tabla y estados accesibles` |
-| 3 | Mapa oscuro según el tema | `feat(mapa): estilo oscuro según tema` |
-| 4 | Instalar dependencias; integrar Glide Select y Rubber Segment | `feat(ui): filtros de cantón y estado animados` |
-| 5 | Bell Toggle, Status Mark y Warm Tooltip | `feat(ui): notificaciones, indicador de sincronización y tooltips` |
-| 6 | Tarjetas KPI + Slosh Gauge; Lattice Loader | `feat(ui): KPIs de llegada y loaders` |
-| 7 | Pruebas unitarias; `npm audit`; revisión con Lighthouse y axe | `test: cobertura de componentes de estilos web` |
-| 8 | Push y Pull Request `estilos-web → main` con capturas antes y después | — |
+| Fase | Tareas | Commit sugerido | Estado |
+|---|---|---|---|
+| 1 | Crear la rama; agregar `tokens.css`, reglas de `prefers-reduced-motion` y foco visible | `style: tokens de diseño y reglas base de accesibilidad` | ✅ 3080399 |
+| 2 | Correcciones CSS: barra lateral, menú activo, tabla con columna fija, botones desactivados, columna Estado accesible | `fix(a11y): sidebar, tabla y estados accesibles` | ✅ b5a7fe9, 6177503 |
+| 3 | Mapa oscuro según el tema | `feat(mapa): estilo oscuro según tema` | ✅ f44e3d5, 45b4e03 (sin CARTO, exige API key) |
+| 4 | Instalar dependencias; integrar Glide Select y Rubber Segment | `feat(ui): filtros de cantón y estado animados` | ✅ Rubber Segment (FiltroEstado). Glide Select no: el select de cantón usa los tokens (alternativa aceptada en §2.2) |
+| 5 | Bell Toggle, Status Mark y Warm Tooltip | `feat(ui): notificaciones, indicador de sincronización y tooltips` | 🟡 Status Mark y Warm Tooltip ✅ (63b032b). **Falta Bell Toggle** (la campana no "suena") |
+| 6 | Tarjetas KPI + Slosh Gauge; Lattice Loader | `feat(ui): KPIs de llegada y loaders` | ✅ 9d41920, 63b032b, b60520f |
+| 7 | Pruebas unitarias; `npm audit`; revisión con Lighthouse y axe | `test: cobertura de componentes de estilos web` | 🟡 Tests y audit ✅ (c58949b). **Falta Lighthouse/axe** |
+| 8 | Push y Pull Request `estilos-web → main` con capturas antes y después | — | 🟡 PR #34 y #35 mergeados en `probarweb`. **Faltan capturas** |
+
+Componentes opcionales de §3.1 aún sin integrar: Call Chip, Hold Button, Slide Commit, Swipe Row, Spring Check, Squish Switch, Flip Card.
 
 ---
 
 ## 8. Criterios de aceptación del PR
 
-- [ ] Todo el trabajo está en la rama `estilos-web`.
-- [ ] No quedan `<select>` nativos sin estilo en la vista de Monitoreo.
-- [ ] El mapa se ve oscuro en tema oscuro y claro en tema claro.
-- [ ] "Cerrar sesión" es visible sin hacer scroll en la barra lateral.
+- [x] Todo el trabajo está en la rama `estilos-web`.
+- [x] No quedan `<select>` nativos sin estilo en la vista de Monitoreo.
+- [x] El mapa se ve oscuro en tema oscuro y claro en tema claro.
+- [x] "Cerrar sesión" es visible sin hacer scroll en la barra lateral.
 - [ ] Lighthouse Accessibility ≥ 95 y axe DevTools sin errores críticos.
-- [ ] Con `prefers-reduced-motion: reduce` no hay animaciones.
+- [x] Con `prefers-reduced-motion: reduce` no hay animaciones.
 - [ ] `npm test` pasa con cobertura ≥ 80 % en `src/components/ui/`.
-- [ ] `npm audit` sin vulnerabilidades altas ni críticas.
+- [x] `npm audit` sin vulnerabilidades altas ni críticas.
 - [ ] Capturas antes y después en tema claro y oscuro adjuntas al PR.
