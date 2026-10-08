@@ -7,6 +7,7 @@ import {
   llegadaDpiSchema,
   llegadaNoCdaSchema,
   llegadaRecintoSchema,
+  pruebaConexionSchema,
   recepcionKitSchema,
   salidaDpiSchema,
   salidaRecintoSchema,
@@ -126,6 +127,7 @@ describe('desdeOffline en los schemas de tracking que pasan por la cola offline'
     ['llegadaRecinto', llegadaRecintoSchema, geo],
     ['llegadaDpi', llegadaDpiSchema, geo],
     ['salidaRecinto', salidaRecintoSchema, { ...geo, actaInstalacionUrl: 'a', actaEscrutinioUrl: 'b' }],
+    ['pruebaConexion', pruebaConexionSchema, { ocurridoEn: '2026-09-30T10:00:00.000Z' }],
     ['llegadaNoCda', llegadaNoCdaSchema, { recintoId: '55555555-5555-5555-5555-555555555555' }],
     [
       'recepcionKit',

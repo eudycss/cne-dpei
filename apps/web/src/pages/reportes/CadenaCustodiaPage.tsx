@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
-import { sileo } from 'sileo';
 import type { FilaInformeCustodia } from '@cne/shared-types';
 import { Logo } from '../../components/Logo';
 import { Cargando } from '../../components/Cargando';
@@ -9,8 +8,8 @@ import {
   descargarActaKit,
   descargarActas,
   getInformeCustodia,
-  guardarArchivo,
 } from '../../lib/queries/custodia';
+import { useDescargaPdf } from '../../lib/useDescargaPdf';
 
 type FiltroEtapa = 'TODOS' | 'PENDIENTES' | 'COMPLETOS';
 
@@ -22,17 +21,6 @@ function fechaHora(iso: string, conAnio = false): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  });
-}
-
-/** Texto de un Blob (FileReader como respaldo de navegadores sin Blob.text). */
-function textoDeBlob(b: Blob): Promise<string> {
-  if (typeof b.text === 'function') return b.text();
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(r.error);
-    r.readAsText(b);
   });
 }
 
@@ -65,7 +53,7 @@ export function CadenaCustodiaPage() {
   const [cantonId, setCantonId] = useState('');
   const [recintoId, setRecintoId] = useState('');
   const [etapa, setEtapa] = useState<FiltroEtapa>('TODOS');
-  const [descargando, setDescargando] = useState<string | null>(null);
+  const { descargando, descargar } = useDescargaPdf('No se pudo descargar el acta');
 
   const filas = data ?? [];
   const cantones = useMemo(() => {
@@ -95,25 +83,6 @@ export function CadenaCustodiaPage() {
     recibidos: visibles.filter((f) => f.recepcion).length,
     devueltos: visibles.filter((f) => f.devolucion).length,
   };
-
-  async function descargar(clave: string, accion: () => Promise<{ data: Blob }>, archivo: string) {
-    setDescargando(clave);
-    try {
-      guardarArchivo((await accion()).data, archivo);
-    } catch (e: any) {
-      // Con blob, el mensaje del servidor (p. ej. "filtra por cantón") viene como Blob.
-      let mensaje = 'No se pudo descargar el acta';
-      try {
-        const cuerpo = e?.response?.data;
-        if (cuerpo instanceof Blob) mensaje = JSON.parse(await textoDeBlob(cuerpo))?.message ?? mensaje;
-      } catch {
-        /* se queda el mensaje genérico */
-      }
-      sileo.error({ title: mensaje });
-    } finally {
-      setDescargando(null);
-    }
-  }
 
   function exportarExcel() {
     const rows: (string | number)[][] = [

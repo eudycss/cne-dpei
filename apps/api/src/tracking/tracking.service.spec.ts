@@ -22,7 +22,7 @@ describe('TrackingService', () => {
     recinto: { findUnique: jest.fn(), findMany: jest.fn() },
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
-    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn() },
+    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     entregaCustodioKit: { findUnique: jest.fn() },
@@ -126,7 +126,7 @@ describe('TrackingService', () => {
       });
       prisma.recinto.findMany.mockResolvedValueOnce([]); // noCdas
       prisma.militar.findFirst.mockResolvedValueOnce(null);
-      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
 
       const result = await service.miAsignacion(operadorId);
 
@@ -151,7 +151,7 @@ describe('TrackingService', () => {
       prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
       prisma.recinto.findMany.mockResolvedValueOnce([]);
       prisma.militar.findFirst.mockResolvedValueOnce(null);
-      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
 
       const result = await service.miAsignacion(operadorId);
 
@@ -168,12 +168,140 @@ describe('TrackingService', () => {
       prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
       prisma.recinto.findMany.mockResolvedValueOnce([]);
       prisma.militar.findFirst.mockResolvedValueOnce(null);
-      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, [], []]);
+      prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
 
       const result = await service.miAsignacion(operadorId);
 
       expect(result.delegacion).toBeNull();
       expect(result.margenLlegadaDpiMetros).toBe(150);
+    });
+
+    it('indica si el operador ya hizo la prueba de conexión', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.militar.findFirst.mockResolvedValueOnce(null);
+      // [salidaDpi, llegada, pruebaConexion, salidaRecinto, llegadaDpi, recepciones, noCda]
+      prisma.$transaction.mockResolvedValueOnce([{ id: 's' }, { id: 'l' }, { id: 'p' }, null, null, [], []]);
+
+      const result = await service.miAsignacion(operadorId);
+
+      expect(result.yaRegistroLlegada).toBe(true);
+      expect(result.yaRegistroPruebaConexion).toBe(true);
+      expect(result.yaRegistroSalidaRecinto).toBe(false);
+    });
+  });
+
+  describe('reporteFlujoCdas', () => {
+    it('incluye la prueba de conexión, el cantón y el id del operador de cada CDA', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId, codigoUnico: 'K001' }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: '1961', nombre: 'UE García Moreno', canton: { id: 1, nombre: 'Ibarra' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Willy', apellidos: 'Paspuel', cedula: '1002003001' },
+      ]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-01T16:55:00.000Z') },
+        { operadorId, tipo: 'PRUEBA_CONEXION', ocurridoEn: new Date('2026-10-01T17:00:00.000Z') },
+      ]);
+
+      const [fila] = await service.reporteFlujoCdas();
+
+      expect(fila).toMatchObject({
+        operadorId,
+        cantonId: 1,
+        cantonNombre: 'Ibarra',
+        llegadaRecintoEn: '2026-10-01T16:55:00.000Z',
+        pruebaConexionEn: '2026-10-01T17:00:00.000Z',
+        salidaRecintoEn: null,
+      });
+      expect(prisma.eventoTracking.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tipo: { in: expect.arrayContaining(['PRUEBA_CONEXION']) },
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('registrarPruebaConexion', () => {
+    it('lanza NotFoundException si no hay evento activo', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanza BadRequestException si aún no registró la llegada al recinto', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null) // sin prueba previa
+        .mockResolvedValueOnce(null); // sin llegada
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('es idempotente: si ya existe la devuelve sin crear otra (reenvío de la cola offline)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'prueba-1', ocurridoEn: new Date(ocurridoEn) });
+
+      const result = await service.registrarPruebaConexion(operadorId, {
+        ocurridoEn: '2026-06-23T11:00:00.000Z',
+        desdeOffline: true,
+      });
+
+      expect(result).toEqual({ id: 'prueba-1', ocurridoEn });
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('registra la prueba en el recinto de la llegada y conserva desdeOffline', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ recintoId });
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'prueba-2', ocurridoEn: new Date(ocurridoEn) });
+
+      const result = await service.registrarPruebaConexion(operadorId, { ocurridoEn, desdeOffline: true });
+
+      expect(result).toEqual({ id: 'prueba-2', ocurridoEn });
+      expect(prisma.eventoTracking.create).toHaveBeenCalledWith({
+        data: {
+          eventoId,
+          operadorId,
+          tipo: 'PRUEBA_CONEXION',
+          recintoId,
+          ocurridoEn: new Date(ocurridoEn),
+          desdeOffline: true,
+        },
+        select: { id: true, ocurridoEn: true },
+      });
+    });
+
+    it('si otra petición la insertó a la vez (índice único), devuelve la que quedó', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null) // aún no existía al consultar
+        .mockResolvedValueOnce({ recintoId }) // llegada
+        .mockResolvedValueOnce({ id: 'ganadora', ocurridoEn: new Date(ocurridoEn) });
+      prisma.eventoTracking.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).resolves.toEqual({
+        id: 'ganadora',
+        ocurridoEn,
+      });
+    });
+
+    it('rechaza una fecha que no es ISO', async () => {
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn: 'ayer' })).rejects.toThrow();
+      expect(prisma.eventoElectoral.findFirst).not.toHaveBeenCalled();
     });
   });
 

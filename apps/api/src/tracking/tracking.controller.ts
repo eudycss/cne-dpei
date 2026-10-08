@@ -7,7 +7,9 @@ import {
   HttpStatus,
   Param,
   ParseFilePipeBuilder,
+  ParseUUIDPipe,
   Post,
+  Query,
   Res,
   StreamableFile,
   UploadedFile,
@@ -30,6 +32,7 @@ import type {
   LlegadaNoCdaRequest,
   LlegadaRecintoManualRequest,
   LlegadaRecintoRequest,
+  PruebaConexionRequest,
   RecepcionKitRequest,
   SalidaDpiRequest,
   SalidaRecintoRequest,
@@ -42,6 +45,7 @@ import {
   llegadaNoCdaSchema,
   llegadaRecintoManualSchema,
   llegadaRecintoSchema,
+  pruebaConexionSchema,
   recepcionKitSchema,
   salidaDpiSchema,
   salidaRecintoSchema,
@@ -50,7 +54,9 @@ import {
 } from '@cne/shared-validation';
 
 import { TrackingService } from './tracking.service';
+import { InformeOperadorService } from './informe-operador.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -62,7 +68,10 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 @Controller('tracking')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TrackingController {
-  constructor(private readonly tracking: TrackingService) {}
+  constructor(
+    private readonly tracking: TrackingService,
+    private readonly informes: InformeOperadorService,
+  ) {}
 
   @Get('mi-asignacion')
   @Roles('OPERADOR_CDA')
@@ -186,6 +195,19 @@ export class TrackingController {
     return this.tracking.registrarLlegadaNoCda(user.sub, body);
   }
 
+  @Post('prueba-conexion')
+  @Roles('OPERADOR_CDA')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Prueba de conexión: el operador confirma que el recinto tiene conexión (después de la llegada)',
+  })
+  pruebaConexion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(pruebaConexionSchema)) body: PruebaConexionRequest,
+  ) {
+    return this.tracking.registrarPruebaConexion(user.sub, body);
+  }
+
   @Post('salida-recinto')
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
@@ -268,6 +290,59 @@ export class TrackingController {
   })
   reporteFlujo() {
     return this.tracking.reporteFlujoCdas();
+  }
+
+  // ─── Informe del Operador CDA (PDF) ────────────────────────────────────────
+
+  @Get('informes-operador/responsables')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Usuarios que pueden firmar el Informe del Operador CDA como responsables' })
+  responsablesInforme() {
+    return this.informes.responsables();
+  }
+
+  @Get('informes-operador/pdf')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({
+    summary:
+      'Informes de varios operadores CDA (los elegidos en operadorIds, los de un cantón o todos), un PDF con una sección por operador',
+  })
+  async informesOperadorPdf(
+    @Res() res: Response,
+    @Query('responsableId', ParseUUIDPipe) responsableId: string,
+    @Query('cantonId') cantonId?: unknown,
+    @Query('operadorIds') operadorIds?: unknown,
+    @Query('incluirJornada') incluirJornada?: unknown,
+  ) {
+    const filtro = { cantonId: cantonDelQuery(cantonId), operadorIds: operadoresDelQuery(operadorIds) };
+    const pdf = await this.informes.pdfVarios(filtro, responsableId, jornadaDelQuery(incluirJornada));
+    enviarPdf(res, pdf, 'informes-operadores-cda.pdf');
+  }
+
+  @Get('informes-operador/reporte-general')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Reporte general de seguimiento de CDAs (PDF): una tabla con la jornada de cada operador' })
+  async reporteGeneralPdf(
+    @Res() res: Response,
+    @Query('responsableId', ParseUUIDPipe) responsableId: string,
+    @Query('cantonId') cantonId?: unknown,
+    @Query('incluirJornada') incluirJornada?: unknown,
+  ) {
+    const pdf = await this.informes.pdfGeneral(cantonDelQuery(cantonId), responsableId, jornadaDelQuery(incluirJornada));
+    enviarPdf(res, pdf, 'reporte-general-cdas.pdf');
+  }
+
+  @Get('informes-operador/:operadorId/pdf')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Informe del Operador CDA (PDF): jornada, prueba de conexión y reportes (día de elecciones) y firmas' })
+  async informeOperadorPdf(
+    @Res() res: Response,
+    @Param('operadorId', ParseUUIDPipe) operadorId: string,
+    @Query('responsableId', ParseUUIDPipe) responsableId: string,
+    @Query('incluirJornada') incluirJornada?: unknown,
+  ) {
+    const pdf = await this.informes.pdfOperador(operadorId, responsableId, jornadaDelQuery(incluirJornada));
+    enviarPdf(res, pdf, 'informe-operador-cda.pdf');
   }
 
   @Get('estado-cdas/:recintoId/foto-militar')
@@ -374,4 +449,42 @@ export class TrackingController {
   resetEstadoOperador(@Param('operadorId') operadorId: string) {
     return this.tracking.resetEstadoOperador(operadorId);
   }
+}
+
+/**
+ * ?cantonId= del informe masivo: ausente = todos los cantones. Un valor que
+ * viene pero no es un id válido da 400, para no entregar de más (cédulas y
+ * fotos de todo el evento) a quien creyó estar filtrando.
+ */
+export function cantonDelQuery(valor: unknown): number | undefined {
+  if (valor === undefined || valor === '') return undefined;
+  if (typeof valor === 'string' && /^[1-9]\d{0,5}$/.test(valor)) return Number(valor);
+  throw new BadRequestException('cantonId inválido');
+}
+
+/**
+ * ?incluirJornada= del informe: solo "true" incluye la prueba de conexión y
+ * las fotos de los reportes (día de elecciones). Ausente = pruebas técnicas.
+ */
+export function jornadaDelQuery(valor: unknown): boolean {
+  if (valor === undefined || valor === '' || valor === 'false') return false;
+  if (valor === 'true') return true;
+  throw new BadRequestException('incluirJornada debe ser true o false');
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_OPERADORES_QUERY = 200;
+
+/**
+ * ?operadorIds= (ids separados por coma) de los operadores elegidos. Ausente =
+ * sin este filtro. Un id inválido da 400 en vez de ignorarse.
+ */
+export function operadoresDelQuery(valor: unknown): string[] | undefined {
+  if (valor === undefined || valor === '') return undefined;
+  if (typeof valor !== 'string') throw new BadRequestException('operadorIds inválido');
+  const ids = [...new Set(valor.split(',').map((s) => s.trim()))];
+  if (ids.length > MAX_OPERADORES_QUERY || ids.some((id) => !UUID.test(id))) {
+    throw new BadRequestException('operadorIds inválido');
+  }
+  return ids;
 }

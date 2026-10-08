@@ -80,6 +80,7 @@ const asignacionFixture: MiAsignacionResponse = {
   kits: [{ id: 'k1', codigoUnico: 'K001', nombre: 'Kit 1', contenidos: null, items: [], recibido: true }],
   yaRegistroSalida: true,
   yaRegistroLlegada: false,
+  yaRegistroPruebaConexion: false,
   yaRegistroSalidaRecinto: true,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: 'https://storage.example.com/foto.jpg',

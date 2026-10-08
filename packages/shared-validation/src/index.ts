@@ -423,6 +423,13 @@ export const llegadaRecintoManualSchema = z.object({
   recintoId: z.string().uuid(),
 });
 
+// Prueba de conexión: el operador confirma a la vista que el recinto tiene
+// conexión, después de la llegada y antes de la salida. Solo guarda la hora.
+export const pruebaConexionSchema = z.object({
+  ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  desdeOffline,
+});
+
 // HU4 — Salida del recinto y rastreo continuo
 export const salidaRecintoSchema = z.object({
   latitud: z.number().min(-90).max(90),
@@ -483,6 +490,7 @@ export type LlegadaRecintoInput = z.infer<typeof llegadaRecintoSchema>;
 export type LlegadaNoCdaInput = z.infer<typeof llegadaNoCdaSchema>;
 export type LlegadaRecintoManualInput = z.infer<typeof llegadaRecintoManualSchema>;
 export type SalidaRecintoInput = z.infer<typeof salidaRecintoSchema>;
+export type PruebaConexionInput = z.infer<typeof pruebaConexionSchema>;
 export type IngestaPosicionesInput = z.infer<typeof ingestaPosicionesSchema>;
 export type LlegadaDpiInput = z.infer<typeof llegadaDpiSchema>;
 export type VerificarKitRetornoInput = z.infer<typeof verificarKitRetornoSchema>;

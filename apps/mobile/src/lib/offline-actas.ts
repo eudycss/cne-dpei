@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { subirFotoActa } from './queries/retorno';
+import { comprimirFoto } from './comprimir-foto';
 
 /**
  * Persistencia local de las 2 actas obligatorias (instalación/escrutinio) que
@@ -99,7 +100,14 @@ export async function capturarYSubirActa(
       await FileSystem.makeDirectoryAsync(directorio, { intermediates: true });
     }
     const destino = `${directorio}${tipo}.jpg`;
-    await FileSystem.copyAsync({ from: uriCamara, to: destino });
+    // Reducida (~300 KB): sube más rápido con mala señal y no infla el PDF del
+    // Informe del Operador CDA. Si no se pudo comprimir, se guarda la original.
+    const comprimida = await comprimirFoto(uriCamara);
+    if (comprimida) {
+      await FileSystem.writeAsStringAsync(destino, comprimida, { encoding: FileSystem.EncodingType.Base64 });
+    } else {
+      await FileSystem.copyAsync({ from: uriCamara, to: destino });
+    }
     uriPersistente = destino;
   } catch {
     // Si falla la copia a almacenamiento persistente, seguimos con el uri

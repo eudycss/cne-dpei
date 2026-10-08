@@ -31,6 +31,7 @@ const asignacionFixture: MiAsignacionResponse = {
   kits: [],
   yaRegistroSalida: true,
   yaRegistroLlegada: false,
+  yaRegistroPruebaConexion: false,
   yaRegistroSalidaRecinto: false,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: null,
