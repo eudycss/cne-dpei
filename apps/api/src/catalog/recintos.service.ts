@@ -30,6 +30,8 @@ export class RecintosService {
     tipo?: 'CDA' | 'NO_CDA';
     cdaDestinoId?: string;
     conOrigenes?: 'true' | 'false';
+    /** NO-CDAs sin CDA destino: no aparecen anidados bajo ningún CDA en la web. */
+    sinCda?: 'true' | 'false';
   }): Promise<Paginated<Recinto>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
@@ -46,6 +48,10 @@ export class RecintosService {
     if (opts.cdaDestinoId) where.cdaDestinoId = opts.cdaDestinoId;
     if (opts.conOrigenes === 'true') where.origenes = { some: {} };
     if (opts.conOrigenes === 'false') where.origenes = { none: {} };
+    if (opts.sinCda === 'true') {
+      where.tipo = 'NO_CDA';
+      where.cdaDestinoId = null;
+    }
 
     const [total, items] = await this.prisma.$transaction([
       this.prisma.recinto.count({ where }),
@@ -111,6 +117,9 @@ export class RecintosService {
     if (parsed.cantonId) await this.assertCanton(parsed.cantonId);
     if (parsed.codigoRecinto && parsed.codigoRecinto !== existing.codigoRecinto) {
       await this.assertCodigoDisponible(parsed.codigoRecinto);
+    }
+    if (existing.tipo === 'CDA' && parsed.tipo === 'NO_CDA') {
+      await this.assertPuedeDejarDeSerCda(id);
     }
 
     await this.prisma.recinto.update({
@@ -266,6 +275,43 @@ export class RecintosService {
   private async assertCodigoDisponible(codigoRecinto: string) {
     const dup = await this.prisma.recinto.findUnique({ where: { codigoRecinto } });
     if (dup) throw new ConflictException(`Ya existe un recinto con código ${codigoRecinto}`);
+  }
+
+  /**
+   * Monitoreo y reportes se arman a partir de los recintos CDA: si un CDA con
+   * kits asignados (evento activo) o con NO-CDAs que entregan en él pasa a
+   * NO-CDA, el operador y esos NO-CDAs dejan de verse en todo el sistema.
+   */
+  private async assertPuedeDejarDeSerCda(id: string) {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    const [kits, dependientes] = await Promise.all([
+      evento
+        ? this.prisma.kitElectoral.findMany({
+            where: { recintoId: id, eventoId: evento.id },
+            select: { operador: { select: { nombres: true, apellidos: true } } },
+          })
+        : Promise.resolve([]),
+      this.prisma.recinto.count({ where: { cdaDestinoId: id } }),
+    ]);
+    if (kits.length > 0) {
+      const operadores = [
+        ...new Set(kits.flatMap((k) => (k.operador ? [`${k.operador.nombres} ${k.operador.apellidos}`] : []))),
+      ];
+      throw new ConflictException(
+        `No se puede cambiar a NO-CDA: el recinto tiene ${kits.length} kit(s) asignado(s) en el evento activo` +
+          (operadores.length ? ` (${operadores.join(', ')})` : '') +
+          '. Quita primero la asignación del kit.',
+      );
+    }
+    if (dependientes > 0) {
+      throw new ConflictException(
+        `No se puede cambiar a NO-CDA: el recinto tiene ${dependientes} NO-CDA(s) que entregan en él. ` +
+          'Asígnalos primero a otro CDA.',
+      );
+    }
   }
 
   private async parseRows(file: Express.Multer.File): Promise<Array<Record<string, string>>> {

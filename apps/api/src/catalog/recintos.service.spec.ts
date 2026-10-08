@@ -20,6 +20,8 @@ describe('RecintosService', () => {
       findMany: jest.fn(),
     },
     militar: { count: jest.fn() },
+    eventoElectoral: { findFirst: jest.fn() },
+    kitElectoral: { findMany: jest.fn() },
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn(),
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
@@ -130,6 +132,72 @@ describe('RecintosService', () => {
 
       expect(result.nombre).toBe('Recinto Renombrado');
       expect(prisma.recinto.update).toHaveBeenCalled();
+    });
+
+    describe('cambiar de CDA a NO-CDA', () => {
+      beforeEach(() => {
+        prisma.eventoElectoral.findFirst.mockResolvedValue({ id: 'ev-1' });
+        prisma.kitElectoral.findMany.mockResolvedValue([]);
+        prisma.recinto.count.mockResolvedValue(0);
+      });
+
+      it('lo bloquea si tiene kits asignados en el evento activo y nombra al operador', async () => {
+        prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow());
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operador: { nombres: 'Diego', apellidos: 'Leon' } }]);
+
+        const intento = service.update(recintoId, { tipo: 'NO_CDA' } as any);
+
+        await expect(intento).rejects.toThrow(ConflictException);
+        await expect(intento).rejects.toThrow(/Diego Leon/);
+        expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { recintoId, eventoId: 'ev-1' } }),
+        );
+        expect(prisma.recinto.update).not.toHaveBeenCalled();
+      });
+
+      it('lo bloquea si hay NO-CDAs que entregan en él', async () => {
+        prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow());
+        prisma.recinto.count.mockResolvedValueOnce(2);
+
+        await expect(service.update(recintoId, { tipo: 'NO_CDA' } as any)).rejects.toThrow(/2 NO-CDA/);
+        expect(prisma.recinto.update).not.toHaveBeenCalled();
+      });
+
+      it('lo permite si no tiene kits ni NO-CDAs dependientes', async () => {
+        prisma.recinto.findUnique
+          .mockResolvedValueOnce(recintoRow())
+          .mockResolvedValueOnce(recintoRow({ tipo: 'NO_CDA' }));
+
+        await service.update(recintoId, { tipo: 'NO_CDA' } as any);
+
+        expect(prisma.recinto.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ tipo: 'NO_CDA' }) }),
+        );
+      });
+
+      it('no revisa nada al volver de NO-CDA a CDA (es la corrección)', async () => {
+        prisma.recinto.findUnique
+          .mockResolvedValueOnce(recintoRow({ tipo: 'NO_CDA' }))
+          .mockResolvedValueOnce(recintoRow());
+
+        await service.update(recintoId, { tipo: 'CDA' } as any);
+
+        expect(prisma.kitElectoral.findMany).not.toHaveBeenCalled();
+        expect(prisma.recinto.update).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('listRecintos', () => {
+    it('sinCda=true lista los NO-CDA sin CDA destino', async () => {
+      prisma.recinto.count.mockResolvedValueOnce(0);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+
+      await service.listRecintos({ sinCda: 'true' });
+
+      expect(prisma.recinto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tipo: 'NO_CDA', cdaDestinoId: null }) }),
+      );
     });
   });
 

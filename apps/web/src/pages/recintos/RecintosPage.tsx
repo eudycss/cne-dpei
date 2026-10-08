@@ -22,6 +22,9 @@ export function RecintosPage() {
   const [debounced, setDebounced] = useState('');
   const [cantonId, setCantonId] = useState('');
   const [conOrigenes, setConOrigenes] = useState('');
+  // NO-CDAs que no entregan en ningún CDA: no salen anidados bajo ninguno, así
+  // que solo se ven con este filtro (p. ej. un CDA que se cambió a NO-CDA).
+  const [soloSueltos, setSoloSueltos] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -46,12 +49,14 @@ export function RecintosPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recintos', { page, search: debounced, cantonId, conOrigenes }],
+    queryKey: ['recintos', { page, search: debounced, cantonId, conOrigenes, soloSueltos }],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), pageSize: '20', tipo: 'CDA' });
+      const params = new URLSearchParams({ page: String(page), pageSize: '20' });
+      if (soloSueltos) params.set('sinCda', 'true');
+      else params.set('tipo', 'CDA');
       if (debounced) params.set('search', debounced);
       if (cantonId) params.set('cantonId', cantonId);
-      if (conOrigenes) params.set('conOrigenes', conOrigenes);
+      if (conOrigenes && !soloSueltos) params.set('conOrigenes', conOrigenes);
       const res = await api.get<Paginated<Recinto>>(`/recintos?${params}`);
       return res.data;
     },
@@ -179,11 +184,21 @@ export function RecintosPage() {
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
-          <select value={conOrigenes} onChange={(e) => { setConOrigenes(e.target.value); setPage(1); }}>
-            <option value="">Total</option>
-            <option value="true">CDA con NO-CDAs</option>
-            <option value="false">CDA sin NO-CDAs</option>
+          <select
+            aria-label="Mostrar"
+            value={soloSueltos ? 'sueltos' : 'cda'}
+            onChange={(e) => { setSoloSueltos(e.target.value === 'sueltos'); setPage(1); }}
+          >
+            <option value="cda">CDA</option>
+            <option value="sueltos">NO-CDA sin CDA asignado</option>
           </select>
+          {!soloSueltos && (
+            <select value={conOrigenes} onChange={(e) => { setConOrigenes(e.target.value); setPage(1); }}>
+              <option value="">Total</option>
+              <option value="true">CDA con NO-CDAs</option>
+              <option value="false">CDA sin NO-CDAs</option>
+            </select>
+          )}
           <button
             className="btn secondary"
             onClick={handleExport}
@@ -202,6 +217,13 @@ export function RecintosPage() {
             <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo</button>
           )}
         </div>
+
+        {soloSueltos && (
+          <p className="muted" style={{ marginBottom: 0 }}>
+            NO-CDAs que no entregan en ningún CDA: no aparecen en la lista normal ni en Monitoreo y Reportes.
+            Si alguno era un CDA, edítalo y cámbialo de nuevo a tipo CDA.
+          </p>
+        )}
 
         {isLoading ? (
           <p className="muted">Cargando…</p>
@@ -761,7 +783,7 @@ function RecintoModal({
           </label>
         </div>
 
-        {error && <div className="banner error">{error}</div>}
+        {error && <div className="banner error" role="alert">{error}</div>}
 
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem', gap: '0.5rem' }}>
           <button type="button" className="btn secondary" onClick={onClose}>
