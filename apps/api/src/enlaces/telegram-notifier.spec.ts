@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import {
   abreviarCanton,
   TelegramNotifier,
+  TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
@@ -181,7 +182,7 @@ describe('TelegramNotifier', () => {
       expect(body.reply_markup).toEqual({
         keyboard: [
           [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
-          [{ text: TEXTO_BOTON_ESTADISTICAS }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
         ],
         resize_keyboard: true,
       });
@@ -286,7 +287,7 @@ describe('TelegramNotifier', () => {
       expect(body.reply_markup).toEqual({
         keyboard: [
           [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
-          [{ text: TEXTO_BOTON_ESTADISTICAS }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
         ],
         resize_keyboard: true,
       });

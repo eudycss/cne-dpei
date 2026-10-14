@@ -9,6 +9,7 @@ import {
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -55,6 +56,7 @@ describe('EnlacesService', () => {
         { provide: TelegramNotifier, useValue: telegram },
         { provide: NotificationsService, useValue: notifications },
         { provide: EnlacesEstadisticasService, useValue: estadisticas },
+        { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);

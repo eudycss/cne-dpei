@@ -8,12 +8,15 @@ import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.clien
 import {
   abreviarCanton,
   TelegramNotifier,
+  type GrupoAsignacion,
+  TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -68,6 +71,7 @@ export class EnlacesService {
     private readonly telegram: TelegramNotifier,
     private readonly notifications: NotificationsService,
     private readonly estadisticas: EnlacesEstadisticasService,
+    private readonly distributivo: DistributivoTecnicosClient,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -365,9 +369,52 @@ export class EnlacesService {
     return { enviados: caidas.length };
   }
 
+  /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
+   * el estado actual del enlace de cada uno. Los recintos monitoreados que no
+   * están en el distributivo (p. ej. el CPE) van al final como "Sin técnico
+   * asignado". */
+  async enviarAsignacionesTelegram(): Promise<void> {
+    const [asignaciones, enlaces] = await Promise.all([
+      this.distributivo.asignaciones(),
+      this.prisma.enlaceRecinto.findMany({
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
+        orderBy: { codigoRecinto: 'asc' },
+      }),
+    ]);
+    const enlacePorCodigo = new Map(enlaces.map((e) => [e.codigoRecinto, e]));
+
+    // El número de cada técnico es el orden en que aparece en el archivo.
+    const grupos = new Map<number, GrupoAsignacion>();
+    for (const a of [...asignaciones].sort((x, y) => x.numeroTecnico - y.numeroTecnico)) {
+      const grupo = grupos.get(a.numeroTecnico) ?? { numeroTecnico: a.numeroTecnico, tecnico: a.tecnico, recintos: [] };
+      const enlace = enlacePorCodigo.get(a.codigoRecinto);
+      grupo.recintos.push({
+        codigoRecinto: a.codigoRecinto,
+        nombreRecinto: enlace?.nombreRecinto ?? (a.localidad || 'Sin enlace monitoreado'),
+        canton: enlace?.canton ?? null,
+        estado: enlace?.estado ?? null,
+      });
+      grupos.set(a.numeroTecnico, grupo);
+    }
+
+    const asignados = new Set(asignaciones.map((a) => a.codigoRecinto));
+    const sinTecnico = enlaces
+      .filter((e) => !asignados.has(e.codigoRecinto))
+      .map((e) => ({ codigoRecinto: e.codigoRecinto, nombreRecinto: e.nombreRecinto, canton: e.canton, estado: e.estado }));
+
+    const lista = [...grupos.values()];
+    if (sinTecnico.length > 0) lista.push({ numeroTecnico: null, tecnico: '', recintos: sinTecnico });
+    if (lista.length === 0) {
+      await this.telegram.enviarTexto('El distributivo no tiene asignaciones de técnicos.', 'el aviso de asignaciones vacías');
+      return;
+    }
+    await this.telegram.enviarAsignaciones(lista);
+  }
+
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
    * responde con la lista actual de recintos caídos; `/estadisticas` (o su
-   * botón), con el top de caídas de hoy, la semana y el mes; el botón "Ingresar código"
+   * botón), con el top de caídas de hoy, la semana y el mes; `/asignaciones`
+   * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
    * distinto al configurado, texto que no matchea nada de esto) se ignora en
@@ -417,6 +464,24 @@ export class EnlacesService {
     if (esComandoCaidos) {
       if (claveEspera) this.esperandoCodigo.delete(claveEspera);
       await this.reenviarListaTelegram();
+      return;
+    }
+
+    const esComandoAsignaciones =
+      texto.startsWith('/asignaciones') || texto === TEXTO_BOTON_ASIGNACIONES.toLowerCase();
+    if (esComandoAsignaciones) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.enviarAsignacionesTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron armar las asignaciones para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          e instanceof DistributivoNoConfigurado
+            ? '⚠️ El distributivo de técnicos todavía no está configurado en el servidor.'
+            : '⚠️ No se pudieron consultar las asignaciones en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de asignaciones',
+        );
+      }
       return;
     }
 

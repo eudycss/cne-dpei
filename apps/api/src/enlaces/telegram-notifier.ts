@@ -11,14 +11,25 @@ export const TEXTO_BOTON_INGRESAR_CODIGO = '🔍 Ingresar código';
 /** Botón persistente con el top de caídas de hoy, la semana y el mes. */
 export const TEXTO_BOTON_ESTADISTICAS = '📊 Estadísticas';
 
+/** Botón persistente con los recintos CDA agrupados por técnico responsable. */
+export const TEXTO_BOTON_ASIGNACIONES = '👷 Asignaciones CDA';
+
 /** Teclado fijo bajo el chat, el mismo en todos los mensajes. */
 export const TECLADO = {
   keyboard: [
     [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
-    [{ text: TEXTO_BOTON_ESTADISTICAS }],
+    [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
   ],
   resize_keyboard: true,
 };
+
+/** Un técnico con sus recintos y el estado actual del enlace de cada uno. */
+export interface GrupoAsignacion {
+  /** null = recintos monitoreados que no están en el distributivo. */
+  numeroTecnico: number | null;
+  tecnico: string;
+  recintos: { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' | null }[];
+}
 
 /** Un período del mensaje de estadísticas ("Hoy", "Semana pasada"…). */
 export interface SeccionEstadisticas {
@@ -124,9 +135,7 @@ export function formatearEstadisticas(encabezado: string, secciones: SeccionEsta
     if (stats.datosParciales) texto.push(`<i>Datos desde ${ddmm(stats.historialDesde)}</i>`);
     stats.ranking.slice(0, top).forEach((e, i) => {
       const abreviatura = abreviarCanton(e.canton);
-      // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
-      const letras = Array.from(e.nombreRecinto);
-      const nombre = letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : e.nombreRecinto;
+      const nombre = recortarNombre(e.nombreRecinto);
       // 0 caídas con tiempo caído = la caída venía del período anterior.
       const caidas = e.caidas === 0 ? 'venía caído' : `${e.caidas} caída${e.caidas === 1 ? '' : 's'}`;
       texto.push(
@@ -141,6 +150,69 @@ export function formatearEstadisticas(encabezado: string, secciones: SeccionEsta
   if (mensaje.length <= MAX_LARGO_MENSAJE || top === 0) return mensaje;
   // No cabe: se achica el top hasta quedar, en el peor caso, solo con los totales.
   return formatearEstadisticas(encabezado, secciones, Math.floor(top / 2));
+}
+
+function recortarNombre(nombre: string): string {
+  // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
+  const letras = Array.from(nombre);
+  return letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : nombre;
+}
+
+const EMOJI_ESTADO = { ACTIVO: '✅', FALLO: '🔴' } as const;
+
+/**
+ * Recintos CDA por técnico ("1. Ana Pérez (11)" y sus recintos con ✅/🔴),
+ * en HTML escapado. Devuelve uno o más mensajes: si todo no cabe en uno de
+ * Telegram, se corta entre técnicos; solo un grupo que por sí solo no cabe se
+ * parte por líneas, repitiendo su título con "(cont.)".
+ */
+export function formatearAsignaciones(grupos: GrupoAsignacion[]): string[] {
+  const ENCABEZADO = '<b>👷 Asignaciones CDA</b>';
+  // Cada bloque cabe solo en un mensaje (junto al encabezado, en el peor caso).
+  const limiteBloque = MAX_LARGO_MENSAJE - ENCABEZADO.length - 2;
+  const bloques = grupos.flatMap((g) => {
+    const caidos = g.recintos.filter((r) => r.estado === 'FALLO').length;
+    const titulo =
+      g.numeroTecnico === null
+        ? `<b>Sin técnico asignado</b> (${g.recintos.length})`
+        : `<b>${g.numeroTecnico}. ${escapeHtml(g.tecnico)}</b> (${g.recintos.length}` +
+          `${caidos > 0 ? ` · ${caidos} caído${caidos === 1 ? '' : 's'}` : ''})`;
+    const lineas = g.recintos.map((r) => {
+      const abreviatura = abreviarCanton(r.canton);
+      const estado = r.estado ? EMOJI_ESTADO[r.estado] : '⚪';
+      return (
+        `${estado} ${escapeHtml(r.codigoRecinto)}${abreviatura ? ` (${escapeHtml(abreviatura)})` : ''} — ` +
+        escapeHtml(recortarNombre(r.nombreRecinto))
+      );
+    });
+    const partes: string[] = [];
+    let parte = titulo;
+    for (const linea of lineas) {
+      if (`${parte}\n${linea}`.length > limiteBloque) {
+        partes.push(parte);
+        parte = `${titulo} (cont.)\n${linea}`;
+      } else {
+        parte = `${parte}\n${linea}`;
+      }
+    }
+    partes.push(parte);
+    return partes;
+  });
+
+  // El encabezado va pegado al primer bloque: nunca sale un mensaje solo con él.
+  const mensajes: string[] = [];
+  let actual = ENCABEZADO;
+  for (const bloque of bloques) {
+    const unido = `${actual}\n\n${bloque}`;
+    if (unido.length > MAX_LARGO_MENSAJE && actual !== ENCABEZADO) {
+      mensajes.push(actual);
+      actual = bloque;
+    } else {
+      actual = unido;
+    }
+  }
+  mensajes.push(actual);
+  return mensajes;
 }
 
 @Injectable()
@@ -174,6 +246,13 @@ export class TelegramNotifier {
       `✅ Enlaces recuperados (${enlaces.length}):\n` +
       enlaces.map(formatearLinea).join('\n');
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
+  }
+
+  /** Uno o más mensajes, en orden (se espera cada envío antes del siguiente). */
+  async enviarAsignaciones(grupos: GrupoAsignacion[]): Promise<void> {
+    for (const mensaje of formatearAsignaciones(grupos)) {
+      await this.enviarMensaje(mensaje, 'las asignaciones CDA', 'HTML');
+    }
   }
 
   async enviarEstadisticas(encabezado: string, secciones: SeccionEstadisticas[]): Promise<void> {
