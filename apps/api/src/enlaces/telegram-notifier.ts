@@ -47,6 +47,22 @@ function formatearLinea(e: EnlaceCaido): string {
   return `${escapeHtml(e.codigoRecinto)}${sufijoCanton} — ${escapeHtml(e.nombreRecinto)}`;
 }
 
+const TIMEOUT_MS = 10_000;
+const MAX_INTENTOS = 2;
+const ESPERA_REINTENTO_MS = 2_000;
+const MAX_ESPERA_429_MS = 5_000;
+
+/** Segundos que pide Telegram en un 429 (`parameters.retry_after`); 1 si no lo trae o no se puede leer. */
+async function leerRetryAfter(res: Response): Promise<number> {
+  try {
+    const json = (await res.json()) as { parameters?: { retry_after?: number } };
+    const s = Number(json?.parameters?.retry_after);
+    return Number.isFinite(s) && s > 0 ? s : 1;
+  } catch {
+    return 1;
+  }
+}
+
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
@@ -98,28 +114,73 @@ export class TelegramNotifier {
       );
       return;
     }
+    const body = JSON.stringify({
+      chat_id: chatId,
+      text,
+      ...(parseMode ? { parse_mode: parseMode } : {}),
+      // Se manda en cada mensaje (no solo en /start) para que el botón nunca
+      // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
+      // lo cierre manualmente en su propio cliente.
+      reply_markup: {
+        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        resize_keyboard: true,
+      },
+    });
+
+    // Un solo reintento: Telegram a veces se cuelga o responde 5xx/429 por un
+    // momento. Los 4xx (mensaje mal armado, token o permisos) no se arreglan
+    // repitiendo. Si Telegram entregó pero tardó más del timeout, el reintento
+    // puede duplicar el mensaje: preferible a que el grupo no reciba nada.
+    for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+      const resultado = await this.intentarEnvio(token, body);
+      if (resultado.ok) return;
+      const ultimo = intento === MAX_INTENTOS || resultado.esperaMs === null;
+      const siguiente = ultimo
+        ? resultado.esperaMs === null
+          ? ' — no se reintenta'
+          : ''
+        : ' — se reintenta';
+      this.log.error(
+        `No se pudo enviar ${descripcion} a Telegram (intento ${intento}/${MAX_INTENTOS}): ${resultado.causa}${siguiente}`,
+      );
+      if (ultimo) return;
+      await this.esperar(resultado.esperaMs!);
+    }
+  }
+
+  /** Un intento de sendMessage con límite de tiempo. `esperaMs` es cuánto esperar
+   * antes de reintentar, o null si el error no se arregla reintentando. */
+  private async intentarEnvio(
+    token: string,
+    body: string,
+  ): Promise<{ ok: true } | { ok: false; causa: string; esperaMs: number | null }> {
     try {
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          ...(parseMode ? { parse_mode: parseMode } : {}),
-          // Se manda en cada mensaje (no solo en /start) para que el botón nunca
-          // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
-          // lo cierre manualmente en su propio cliente.
-          reply_markup: {
-            keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
-            resize_keyboard: true,
-          },
-        }),
+        body,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      if (!res.ok) {
-        this.log.error(`Telegram respondió ${res.status} al enviar ${descripcion}`);
+      if (res.ok) return { ok: true };
+      if (res.status === 429) {
+        // Si pide esperar más que el tope, reintentar antes solo traería otro 429.
+        const esperaMs = (await leerRetryAfter(res)) * 1000;
+        return { ok: false, causa: 'HTTP 429', esperaMs: esperaMs <= MAX_ESPERA_429_MS ? esperaMs : null };
       }
+      return { ok: false, causa: `HTTP ${res.status}`, esperaMs: res.status >= 500 ? ESPERA_REINTENTO_MS : null };
     } catch (e) {
-      this.log.error(`Error enviando ${descripcion} a Telegram: ${e}`);
+      // Solo nombre y código: el texto completo del error podría traer la URL, que lleva el token.
+      const err = e as Error & { cause?: { code?: string } };
+      const causa =
+        err?.name === 'TimeoutError' || err?.name === 'AbortError'
+          ? `sin respuesta en ${TIMEOUT_MS / 1000} s`
+          : `error de red (${[err?.name, err?.cause?.code].filter(Boolean).join(' ') || 'desconocido'})`;
+      return { ok: false, causa, esperaMs: ESPERA_REINTENTO_MS };
     }
+  }
+
+  /** Aparte para que las pruebas no esperen de verdad. */
+  protected esperar(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
