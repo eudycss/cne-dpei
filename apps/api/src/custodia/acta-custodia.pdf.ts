@@ -1,4 +1,4 @@
-import { ANCHO, asegurarEspacio, fecha, GRIS, LINEA, MARGEN, nuevoPdf, tabla, titulo } from '../common/pdf';
+import { ANCHO, asegurarEspacio, encabezado, fecha, GRIS, LINEA, MARGEN, nuevoPdf, tabla, titulo } from '../common/pdf';
 
 /** Todo lo que lleva el acta de un kit (ya resuelto: nombres, fechas, foto). */
 export interface DatosActa {
@@ -24,6 +24,37 @@ export interface Persona {
 
 const ESTADO: Record<string, string> = { BUENO: 'Bueno', REGULAR: 'Regular', MALO: 'Malo' };
 
+const BLANCO = '____________________';
+
+/** "16 de noviembre del 2026", hora de Ecuador continental (como la plantilla en Word). */
+export function fechaLarga(d: Date): string {
+  const [dia, mes, anio] = d
+    .toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil', day: 'numeric', month: 'long', year: 'numeric' })
+    .split(' de ');
+  return `${dia} de ${mes} del ${anio}`;
+}
+
+function quien(p: Persona | null): string {
+  return p ? `${p.nombre} con C.C. ${p.cedula}` : `${BLANCO} con C.C. ${BLANCO}`;
+}
+
+/**
+ * Párrafo inicial del acta, al estilo de la plantilla en Word ("En la ciudad
+ * de Ibarra al día…"), con la cadena de custodia en una sola narración. Lo que
+ * aún no se registró queda en blanco para llenarlo a mano.
+ */
+export function textoActa(a: DatosActa): string {
+  const dia = a.entrega?.fecha ?? a.recepcion?.fecha;
+  let texto =
+    `En la ciudad de Ibarra, al día ${dia ? fechaLarga(dia) : BLANCO}, el/la Sr./Srta. ${quien(a.entrega?.asistente ?? a.asistente)}, ` +
+    `ASISTENTE ELECTORAL TRANSVERSAL, realiza la ENTREGA DEL KIT CDA ${a.codigoUnico} al MILITAR ${quien(a.militar)}, ` +
+    `quien lo traslada y entrega al OPERADOR CDA ${quien(a.operador)} en el recinto ${a.recinto}, cantón ${a.canton}.`;
+  if (a.devolucion) {
+    texto += ' Concluida la jornada, el OPERADOR CDA devuelve el kit al ASISTENTE ELECTORAL TRANSVERSAL en la Delegación.';
+  }
+  return texto;
+}
+
 /**
  * Acta de entrega y recepción del kit CDA, una página por kit. A diferencia
  * de la plantilla en Word (una tabla de artículos por cada entrega), la tabla
@@ -48,15 +79,12 @@ export async function generarActasPdf(actas: DatosActa[]): Promise<Buffer> {
 function dibujarActa(doc: PDFKit.PDFDocument, a: DatosActa, foto: Buffer | null): void {
   doc.addPage();
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(GRIS)
-    .text('CONSEJO NACIONAL ELECTORAL — DELEGACIÓN PROVINCIAL DE IMBABURA', { align: 'center' });
-  doc.moveDown(0.3);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000')
-    .text('ACTA DE ENTREGA Y RECEPCIÓN DEL KIT CDA', { align: 'center' });
-  doc.moveDown(0.4);
+  encabezado(doc, ANCHO, 'ACTA DE ENTREGA Y RECEPCIÓN DEL KIT CDA');
   doc.font('Helvetica').fontSize(9.5)
     .text(`${a.eventoNombre}  ·  Kit ${a.codigoUnico}  ·  ${a.recinto}  ·  Cantón ${a.canton}`, { align: 'center' });
   doc.moveDown(0.8);
+  doc.font('Helvetica').fontSize(9.5).text(textoActa(a), { width: ANCHO, align: 'justify' });
+  doc.moveDown(0.4);
 
   // 1. Contenido del kit (una sola vez)
   titulo(doc, 'Contenido del kit');

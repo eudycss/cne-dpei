@@ -1,3 +1,6 @@
+import { existsSync } from 'fs';
+import { join } from 'path';
+
 import PDFDocument from 'pdfkit';
 import type { Response } from 'express';
 
@@ -8,6 +11,14 @@ export const ANCHO = 595.28 - MARGEN * 2; // A4 vertical
 export const ANCHO_HORIZONTAL = 841.89 - MARGEN * 2; // A4 horizontal
 export const GRIS = '#6b7280';
 export const LINEA = '#9ca3af';
+
+// Logo de las Elecciones 2027 (src/assets, copiado a dist por nest-cli). JPEG
+// sobre blanco: pdfkit lo incrusta sin decodificar transparencias. Se pasa por
+// ruta para que pdfkit lo incruste una sola vez y lo reutilice en cada página.
+// Si falta, el PDF sale sin logo en vez de fallar.
+const RUTA_LOGO = join(__dirname, '..', 'assets', 'logo-elecciones-2027.jpg');
+const hayLogo = existsSync(RUTA_LOGO);
+const ALTO_LOGO = 70;
 
 /**
  * Crea un documento A4 y la promesa que se resuelve con el PDF al llamar
@@ -47,6 +58,22 @@ export function asegurarEspacio(doc: PDFKit.PDFDocument, alto: number): void {
     doc.x = MARGEN;
     doc.y = MARGEN;
   }
+}
+
+/** Logo, institución y título, centrados en `ancho`. */
+export function encabezado(doc: PDFKit.PDFDocument, ancho: number, textoTitulo: string): void {
+  if (hayLogo) {
+    doc.image(RUTA_LOGO, MARGEN, MARGEN, { fit: [ancho, ALTO_LOGO], align: 'center' });
+    doc.y = MARGEN + ALTO_LOGO + 10;
+  }
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(GRIS)
+    .text('CONSEJO NACIONAL ELECTORAL — DELEGACIÓN PROVINCIAL DE IMBABURA', MARGEN, doc.y, {
+      width: ancho,
+      align: 'center',
+    });
+  doc.moveDown(0.3);
+  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000').text(textoTitulo, { width: ancho, align: 'center' });
+  doc.moveDown(0.4);
 }
 
 export function titulo(doc: PDFKit.PDFDocument, texto: string): void {

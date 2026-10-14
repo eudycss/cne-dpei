@@ -1,10 +1,8 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
-
 import {
   ANCHO,
   ANCHO_HORIZONTAL,
   asegurarEspacio,
+  encabezado,
   fecha,
   GRIS,
   LINEA,
@@ -44,14 +42,6 @@ export interface DatosInformeOperador extends JornadaOperador {
   actaEscrutinio: () => Promise<Buffer | null>;
 }
 
-// Logo de las Elecciones 2027 (src/assets, copiado a dist por nest-cli). JPEG
-// sobre blanco: pdfkit lo incrusta sin decodificar transparencias. Se pasa por
-// ruta para que pdfkit lo incruste una sola vez y lo reutilice en cada página.
-// Si falta, el informe sale sin logo en vez de fallar.
-const RUTA_LOGO = join(__dirname, '..', 'assets', 'logo-elecciones-2027.jpg');
-const hayLogo = existsSync(RUTA_LOGO);
-
-const ALTO_LOGO = 70;
 const ALTO_FOTO = 250;
 
 /**
@@ -146,22 +136,6 @@ function hito(d: Date | null): string {
 function sinOperadores(doc: PDFKit.PDFDocument): void {
   doc.addPage();
   doc.font('Helvetica').fontSize(12).text('No hay operadores CDA para los filtros elegidos.');
-}
-
-/** Logo, institución y título, centrados en `ancho`. */
-function encabezado(doc: PDFKit.PDFDocument, ancho: number, textoTitulo: string): void {
-  if (hayLogo) {
-    doc.image(RUTA_LOGO, MARGEN, MARGEN, { fit: [ancho, ALTO_LOGO], align: 'center' });
-    doc.y = MARGEN + ALTO_LOGO + 10;
-  }
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(GRIS)
-    .text('CONSEJO NACIONAL ELECTORAL — DELEGACIÓN PROVINCIAL DE IMBABURA', MARGEN, doc.y, {
-      width: ancho,
-      align: 'center',
-    });
-  doc.moveDown(0.3);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000').text(textoTitulo, { width: ancho, align: 'center' });
-  doc.moveDown(0.4);
 }
 
 /** Línea de firma con nombre, cédula y cargo, centrada en `ancho` desde `x`. */
