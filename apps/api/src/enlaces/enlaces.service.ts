@@ -192,7 +192,7 @@ export class EnlacesService {
         where: { fin: null },
         select: { codigoRecinto: true },
       });
-      const conCaidaAbierta = new Set(abiertas.map((a) => a.codigoRecinto));
+      const conCaidaAbierta = new Set<string>(abiertas.map((a) => a.codigoRecinto));
       const ahora = new Date();
       const nuevas = enFallo.filter((f) => !conCaidaAbierta.has(f.codigoRecinto));
       if (nuevas.length > 0) {
@@ -381,7 +381,8 @@ export class EnlacesService {
         orderBy: { codigoRecinto: 'asc' },
       }),
     ]);
-    const enlacePorCodigo = new Map(enlaces.map((e) => [e.codigoRecinto, e]));
+    // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
+    const enlacePorCodigo = new Map<string, (typeof enlaces)[number]>(enlaces.map((e) => [e.codigoRecinto, e]));
 
     // El número de cada técnico es el orden en que aparece en el archivo.
     const grupos = new Map<number, GrupoAsignacion>();
