@@ -4,6 +4,7 @@ import type { EnlaceRecinto } from '@cne/shared-types';
 import { getConfigEnlaces, getEnlaces } from '../../lib/queries/enlaces';
 import { formatearFechaHora } from '../../lib/notifications';
 import { CorreosAvisoModal } from './CorreosAvisoModal';
+import { EstadisticasEnlaces } from './EstadisticasEnlaces';
 
 const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
   ACTIVO: '#16a34a',
@@ -45,6 +46,7 @@ export function EnlacesPage() {
   const [busqueda, setBusqueda] = useState('');
   const [cantonFiltro, setCantonFiltro] = useState('');
   const [mostrarCorreos, setMostrarCorreos] = useState(false);
+  const [vista, setVista] = useState<'actual' | 'estadisticas'>('actual');
 
   const { data: enlaces = [], isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['enlaces'],
@@ -106,106 +108,131 @@ export function EnlacesPage() {
 
       {mostrarCorreos && <CorreosAvisoModal onClose={() => setMostrarCorreos(false)} />}
 
-      {ultimaActualizacion && (
-        <div className="banner" role="status">
-          <span aria-hidden="true">⚠️ </span>
-          Datos sin actualizar desde {formatearFechaHora(ultimaActualizacion)}. La revisión automática de la hoja
-          parece detenida: los estados pueden estar desfasados y los avisos por Telegram/correo podrían no estar
-          enviándose.
-        </div>
-      )}
+      <div role="group" aria-label="Vista" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <button
+          type="button"
+          className={vista === 'actual' ? 'btn' : 'btn secondary'}
+          aria-pressed={vista === 'actual'}
+          onClick={() => setVista('actual')}
+        >
+          Estado actual
+        </button>
+        <button
+          type="button"
+          className={vista === 'estadisticas' ? 'btn' : 'btn secondary'}
+          aria-pressed={vista === 'estadisticas'}
+          onClick={() => setVista('estadisticas')}
+        >
+          Estadísticas
+        </button>
+      </div>
 
-      {enlaces.length > 0 && (
-        <>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-            <label style={{ display: 'none' }} htmlFor="buscar-enlace">Buscar por nombre o código</label>
-            <input
-              id="buscar-enlace"
-              aria-label="Buscar por nombre o código"
-              type="search"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre o código…"
-              style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem', flex: 1, minWidth: 200 }}
-            />
-            <label style={{ display: 'none' }} htmlFor="filtro-canton">Filtrar por cantón</label>
-            <select
-              id="filtro-canton"
-              aria-label="Filtrar por cantón"
-              value={cantonFiltro}
-              onChange={(e) => setCantonFiltro(e.target.value)}
-              style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}
-            >
-              <option value="">Todos los cantones</option>
-              {cantones.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-
-          <div role="group" aria-label="Filtrar por estado" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            {FILTROS.map((f) => (
-              <button
-                key={f.valor}
-                type="button"
-                className={filtro === f.valor ? 'btn' : 'btn secondary'}
-                aria-pressed={filtro === f.valor}
-                onClick={() => setFiltro(f.valor)}
-              >
-                {f.etiqueta} ({conteos[f.valor]})
-              </button>
-            ))}
-          </div>
-
-          <p
-            aria-live="polite"
-            style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
-          >
-            Mostrando {enlacesFiltrados.length} de {enlaces.length} enlaces.
-          </p>
-        </>
-      )}
-
-      {isLoading ? (
-        <p className="muted">Cargando enlaces…</p>
-      ) : enlaces.length === 0 ? (
-        <p className="muted" style={{ textAlign: 'center', padding: '2rem 0' }}>
-          No hay enlaces registrados todavía. Se completan en la primera revisión automática.
-        </p>
-      ) : enlacesFiltrados.length === 0 ? (
-        <p className="muted" role="status" aria-live="polite" style={{ textAlign: 'center', padding: '2rem 0' }}>
-          No hay enlaces que coincidan con los filtros.
-        </p>
+      {vista === 'estadisticas' ? (
+        <EstadisticasEnlaces />
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Recinto</th>
-                <th>Cantón</th>
-                <th>Estado</th>
-                <th>Actualizado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {enlacesFiltrados.map((e) => (
-                <tr key={e.codigoRecinto}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{e.codigoRecinto}</td>
-                  <td>{e.nombreRecinto}</td>
-                  <td>{e.canton || '—'}</td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: ESTADO_COLOR[e.estado], display: 'inline-block' }} />
-                      {e.estado}
-                    </span>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>{formatearFechaHora(e.actualizadoEn)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {ultimaActualizacion && (
+            <div className="banner" role="status">
+              <span aria-hidden="true">⚠️ </span>
+              Datos sin actualizar desde {formatearFechaHora(ultimaActualizacion)}. La revisión automática de la hoja
+              parece detenida: los estados pueden estar desfasados y los avisos por Telegram/correo podrían no estar
+              enviándose.
+            </div>
+          )}
+
+          {enlaces.length > 0 && (
+            <>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                <label style={{ display: 'none' }} htmlFor="buscar-enlace">Buscar por nombre o código</label>
+                <input
+                  id="buscar-enlace"
+                  aria-label="Buscar por nombre o código"
+                  type="search"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por nombre o código…"
+                  style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem', flex: 1, minWidth: 200 }}
+                />
+                <label style={{ display: 'none' }} htmlFor="filtro-canton">Filtrar por cantón</label>
+                <select
+                  id="filtro-canton"
+                  aria-label="Filtrar por cantón"
+                  value={cantonFiltro}
+                  onChange={(e) => setCantonFiltro(e.target.value)}
+                  style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}
+                >
+                  <option value="">Todos los cantones</option>
+                  {cantones.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div role="group" aria-label="Filtrar por estado" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                {FILTROS.map((f) => (
+                  <button
+                    key={f.valor}
+                    type="button"
+                    className={filtro === f.valor ? 'btn' : 'btn secondary'}
+                    aria-pressed={filtro === f.valor}
+                    onClick={() => setFiltro(f.valor)}
+                  >
+                    {f.etiqueta} ({conteos[f.valor]})
+                  </button>
+                ))}
+              </div>
+
+              <p
+                aria-live="polite"
+                style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
+              >
+                Mostrando {enlacesFiltrados.length} de {enlaces.length} enlaces.
+              </p>
+            </>
+          )}
+
+          {isLoading ? (
+            <p className="muted">Cargando enlaces…</p>
+          ) : enlaces.length === 0 ? (
+            <p className="muted" style={{ textAlign: 'center', padding: '2rem 0' }}>
+              No hay enlaces registrados todavía. Se completan en la primera revisión automática.
+            </p>
+          ) : enlacesFiltrados.length === 0 ? (
+            <p className="muted" role="status" aria-live="polite" style={{ textAlign: 'center', padding: '2rem 0' }}>
+              No hay enlaces que coincidan con los filtros.
+            </p>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Recinto</th>
+                    <th>Cantón</th>
+                    <th>Estado</th>
+                    <th>Actualizado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enlacesFiltrados.map((e) => (
+                    <tr key={e.codigoRecinto}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{e.codigoRecinto}</td>
+                      <td>{e.nombreRecinto}</td>
+                      <td>{e.canton || '—'}</td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: ESTADO_COLOR[e.estado], display: 'inline-block' }} />
+                          {e.estado}
+                        </span>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>{formatearFechaHora(e.actualizadoEn)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </>
   );

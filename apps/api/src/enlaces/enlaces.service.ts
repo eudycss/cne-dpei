@@ -4,14 +4,19 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
-import { SheetsEnlacesClient } from './sheets-enlaces.client';
+import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
   abreviarCanton,
   TelegramNotifier,
+  type GrupoAsignacion,
+  TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -65,6 +70,8 @@ export class EnlacesService {
     private readonly sheetsClient: SheetsEnlacesClient,
     private readonly telegram: TelegramNotifier,
     private readonly notifications: NotificationsService,
+    private readonly estadisticas: EnlacesEstadisticasService,
+    private readonly distributivo: DistributivoTecnicosClient,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -129,6 +136,7 @@ export class EnlacesService {
       }
     }
 
+    await this.reconciliarCaidas(filas);
     await this.eliminarRecintosFueraDeLaHoja(filas);
 
     await this.notificarCaidasPorCorreo(caidas);
@@ -162,8 +170,57 @@ export class EnlacesService {
 
       const { count } = await this.prisma.enlaceRecinto.deleteMany({ where });
       this.log.log(`Se eliminaron ${count} recinto(s) que ya no están en la hoja de enlaces`);
+      // Un recinto que sale de la hoja deja de monitorearse: su caída abierta se
+      // cierra aquí para que no siga sumando tiempo caído para siempre.
+      await this.cerrarCaidas(where);
     } catch (e) {
       this.log.error(`Error eliminando recintos que ya no están en la hoja de enlaces: ${e}`);
+    }
+  }
+
+  /** Historial para las estadísticas, alineado con la hoja en cada ciclo (no
+   * solo en la transición): si un ciclo no pudo abrir o cerrar una caída (p. ej.
+   * un corte con la base), el siguiente lo corrige. Sin esto, una caída que no se
+   * cerró sumaría tiempo caído para siempre. Abre una caída para cada recinto en
+   * FALLO que no tenga una abierta (el índice único parcial evita duplicados) y
+   * cierra las abiertas de los que están ACTIVO. Precisión: la del cron (5 min). */
+  private async reconciliarCaidas(filas: SheetEnlaceRow[]): Promise<void> {
+    try {
+      const enFallo = filas.filter((f) => f.estado === 'FALLO');
+      const activos = filas.filter((f) => f.estado === 'ACTIVO').map((f) => f.codigoRecinto);
+      const abiertas = await this.prisma.enlaceCaida.findMany({
+        where: { fin: null },
+        select: { codigoRecinto: true },
+      });
+      const conCaidaAbierta = new Set<string>(abiertas.map((a) => a.codigoRecinto));
+      const ahora = new Date();
+      const nuevas = enFallo.filter((f) => !conCaidaAbierta.has(f.codigoRecinto));
+      if (nuevas.length > 0) {
+        await this.prisma.enlaceCaida.createMany({
+          data: nuevas.map((f) => ({
+            codigoRecinto: f.codigoRecinto,
+            nombreRecinto: f.nombreRecinto,
+            canton: normalizarCanton(f.canton),
+            inicio: ahora,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      if (activos.some((c) => conCaidaAbierta.has(c))) {
+        await this.cerrarCaidas({ codigoRecinto: { in: activos } });
+      }
+    } catch (e) {
+      // El historial nunca frena los avisos; el siguiente ciclo vuelve a intentarlo.
+      this.log.error(`No se pudo actualizar el historial de caídas: ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** Cierra las caídas abiertas (sin fin) de los recintos que cumplen `where`. */
+  private async cerrarCaidas(where: { codigoRecinto: { in: string[] } | { notIn: string[] } }): Promise<void> {
+    try {
+      await this.prisma.enlaceCaida.updateMany({ where: { ...where, fin: null }, data: { fin: new Date() } });
+    } catch (e) {
+      this.log.error(`No se pudo cerrar la caída de enlaces: ${(e as Error)?.message ?? e}`);
     }
   }
 
@@ -312,8 +369,53 @@ export class EnlacesService {
     return { enviados: caidas.length };
   }
 
+  /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
+   * el estado actual del enlace de cada uno. Los recintos monitoreados que no
+   * están en el distributivo (p. ej. el CPE) van al final como "Sin técnico
+   * asignado". */
+  async enviarAsignacionesTelegram(): Promise<void> {
+    const [asignaciones, enlaces] = await Promise.all([
+      this.distributivo.asignaciones(),
+      this.prisma.enlaceRecinto.findMany({
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
+        orderBy: { codigoRecinto: 'asc' },
+      }),
+    ]);
+    // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
+    const enlacePorCodigo = new Map<string, (typeof enlaces)[number]>(enlaces.map((e) => [e.codigoRecinto, e]));
+
+    // El número de cada técnico es el orden en que aparece en el archivo.
+    const grupos = new Map<number, GrupoAsignacion>();
+    for (const a of [...asignaciones].sort((x, y) => x.numeroTecnico - y.numeroTecnico)) {
+      const grupo = grupos.get(a.numeroTecnico) ?? { numeroTecnico: a.numeroTecnico, tecnico: a.tecnico, recintos: [] };
+      const enlace = enlacePorCodigo.get(a.codigoRecinto);
+      grupo.recintos.push({
+        codigoRecinto: a.codigoRecinto,
+        nombreRecinto: enlace?.nombreRecinto ?? (a.localidad || 'Sin enlace monitoreado'),
+        canton: enlace?.canton ?? null,
+        estado: enlace?.estado ?? null,
+      });
+      grupos.set(a.numeroTecnico, grupo);
+    }
+
+    const asignados = new Set(asignaciones.map((a) => a.codigoRecinto));
+    const sinTecnico = enlaces
+      .filter((e) => !asignados.has(e.codigoRecinto))
+      .map((e) => ({ codigoRecinto: e.codigoRecinto, nombreRecinto: e.nombreRecinto, canton: e.canton, estado: e.estado }));
+
+    const lista = [...grupos.values()];
+    if (sinTecnico.length > 0) lista.push({ numeroTecnico: null, tecnico: '', recintos: sinTecnico });
+    if (lista.length === 0) {
+      await this.telegram.enviarTexto('El distributivo no tiene asignaciones de técnicos.', 'el aviso de asignaciones vacías');
+      return;
+    }
+    await this.telegram.enviarAsignaciones(lista);
+  }
+
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
-   * responde con la lista actual de recintos caídos; el botón "Ingresar código"
+   * responde con la lista actual de recintos caídos; `/estadisticas` (o su
+   * botón), con el top de caídas de hoy, la semana y el mes; `/asignaciones`
+   * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
    * distinto al configurado, texto que no matchea nada de esto) se ignora en
@@ -363,6 +465,40 @@ export class EnlacesService {
     if (esComandoCaidos) {
       if (claveEspera) this.esperandoCodigo.delete(claveEspera);
       await this.reenviarListaTelegram();
+      return;
+    }
+
+    const esComandoAsignaciones =
+      texto.startsWith('/asignaciones') || texto === TEXTO_BOTON_ASIGNACIONES.toLowerCase();
+    if (esComandoAsignaciones) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.enviarAsignacionesTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron armar las asignaciones para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          e instanceof DistributivoNoConfigurado
+            ? '⚠️ El distributivo de técnicos todavía no está configurado en el servidor.'
+            : '⚠️ No se pudieron consultar las asignaciones en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de asignaciones',
+        );
+      }
+      return;
+    }
+
+    const esComandoEstadisticas =
+      texto.startsWith('/estadisticas') || texto === TEXTO_BOTON_ESTADISTICAS.toLowerCase();
+    if (esComandoEstadisticas) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.estadisticas.enviarEstadisticasTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron calcular las estadísticas para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          '⚠️ No se pudieron calcular las estadísticas en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de estadísticas',
+        );
+      }
       return;
     }
 

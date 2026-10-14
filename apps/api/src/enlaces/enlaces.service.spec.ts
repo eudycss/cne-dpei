@@ -2,7 +2,14 @@ import { Test } from '@nestjs/testing';
 import { EnlacesService } from './enlaces.service';
 import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
-import { TelegramNotifier, TEXTO_BOTON_CAIDOS, TEXTO_BOTON_INGRESAR_CODIGO } from './telegram-notifier';
+import {
+  TelegramNotifier,
+  TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
+  TEXTO_BOTON_INGRESAR_CODIGO,
+} from './telegram-notifier';
+import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -24,7 +31,13 @@ describe('EnlacesService', () => {
       count: jest.fn().mockResolvedValue(0),
     },
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
+    enlaceCaida: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
+  const estadisticas = { enviarEstadisticasTelegram: jest.fn().mockResolvedValue(undefined) };
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
@@ -42,6 +55,8 @@ describe('EnlacesService', () => {
         { provide: SheetsEnlacesClient, useValue: sheetsClient },
         { provide: TelegramNotifier, useValue: telegram },
         { provide: NotificationsService, useValue: notifications },
+        { provide: EnlacesEstadisticasService, useValue: estadisticas },
+        { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);
@@ -291,6 +306,99 @@ describe('EnlacesService', () => {
 
       expect(prisma.enlaceRecinto.deleteMany).toHaveBeenCalledWith({
         where: { codigoRecinto: { notIn: ['978', '982'] } },
+      });
+    });
+
+    describe('historial de caídas (estadísticas)', () => {
+      const fila = (codigo: string, estado: string) => ({
+        codigoRecinto: codigo,
+        nombreRecinto: `Recinto ${codigo}`,
+        canton: 'IBARRA',
+        estado,
+      });
+
+      beforeEach(() => {
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+        prisma.enlaceCaida.findMany.mockResolvedValue([]);
+      });
+
+      it('abre una caída para cada recinto en FALLO que no tenga una abierta', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('982', 'FALLO'), fila('28', 'ACTIVO')]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '982' }]);
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith({ where: { fin: null }, select: { codigoRecinto: true } });
+        expect(prisma.enlaceCaida.createMany).toHaveBeenCalledWith({
+          data: [{ codigoRecinto: '978', nombreRecinto: 'Recinto 978', canton: 'Ibarra', inicio: expect.any(Date) }],
+          skipDuplicates: true,
+        });
+      });
+
+      it('cierra las caídas abiertas de los recintos que están ACTIVO', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO'), fila('28', 'ACTIVO')]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.updateMany).toHaveBeenCalledWith({
+          where: { codigoRecinto: { in: ['978', '28'] }, fin: null },
+          data: { fin: expect.any(Date) },
+        });
+        expect(prisma.enlaceCaida.createMany).not.toHaveBeenCalled();
+      });
+
+      it('sin cambios no escribe nada (FALLO con caída abierta, ACTIVO sin abierta)', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('28', 'ACTIVO')]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.createMany).not.toHaveBeenCalled();
+        expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('si un ciclo no pudo cerrar la caída, el siguiente la cierra igual (ACTIVO→ACTIVO)', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.updateMany).toHaveBeenCalled();
+      });
+
+      it('si un ciclo no pudo abrirla, el siguiente la abre igual (FALLO→FALLO) sin volver a avisar', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.createMany).toHaveBeenCalled();
+        expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      });
+
+      it('un error de la base en el historial no frena los avisos del ciclo', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('conexión perdida'));
+
+        await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+
+        expect(telegram.enviarListaActual).toHaveBeenCalled();
+        expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
+      });
+
+      it('los recintos que salen de la hoja cierran su caída abierta', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        prisma.enlaceRecinto.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
+        prisma.enlaceRecinto.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.updateMany).toHaveBeenCalledWith({
+          where: { codigoRecinto: { notIn: ['978'] }, fin: null },
+          data: { fin: expect.any(Date) },
+        });
       });
     });
 
@@ -768,6 +876,44 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
       ]);
+    });
+
+    it.each([['/estadisticas'], ['/estadisticas@cne_bot'], [TEXTO_BOTON_ESTADISTICAS]])('"%s" responde con las estadísticas', async (texto) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: texto, chat: { id: '-100200300' } },
+      });
+
+      expect(estadisticas.enviarEstadisticasTelegram).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    it('si las estadísticas fallan, avisa en el grupo en vez de quedarse callado', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      estadisticas.enviarEstadisticasTelegram.mockRejectedValueOnce(new Error('base caída'));
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: TEXTO_BOTON_ESTADISTICAS, chat: { id: '-100200300' } },
+      });
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(
+        expect.stringContaining('No se pudieron calcular las estadísticas'),
+        expect.any(String),
+      );
+    });
+
+    it('el botón de estadísticas desde otro chat se ignora', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: TEXTO_BOTON_ESTADISTICAS, chat: { id: '-999' } },
+      });
+
+      expect(estadisticas.enviarEstadisticasTelegram).not.toHaveBeenCalled();
     });
 
     it('ignora el botón fijo si viene de un chat distinto al configurado', async () => {

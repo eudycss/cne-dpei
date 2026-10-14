@@ -608,10 +608,30 @@ model EnlaceRecinto {
 }
 
 model ConfigEnlaces {
-  id      Int      @id @default(1)
-  correos String[] @default([])
+  id             Int      @id @default(1)
+  correos        String[] @default([])
+  /// Desde cuándo se registra el historial de caídas (antes no hay datos).
+  historialDesde DateTime @default(now()) @map("historial_desde") @db.Timestamptz(6)
 
   @@map("config_enlaces")
+}
+
+/// Una caída de enlace: de ACTIVO a FALLO (`inicio`) hasta que vuelve a ACTIVO
+/// (`fin`; null mientras sigue caído). Copia nombre y cantón para que el
+/// historial sobreviva aunque el recinto salga de la hoja. Precisión: 5 min
+/// (frecuencia del cron). A lo más una caída abierta por recinto
+/// (índice único parcial uq_enlaces_caidas_abierta, en su migración).
+model EnlaceCaida {
+  id            String    @id @default(uuid()) @db.Uuid
+  codigoRecinto String    @map("codigo_recinto") @db.VarChar(20)
+  nombreRecinto String    @map("nombre_recinto") @db.VarChar(255)
+  canton        String?   @db.VarChar(100)
+  inicio        DateTime  @db.Timestamptz(6)
+  fin           DateTime? @db.Timestamptz(6)
+
+  @@index([inicio], map: "idx_enlaces_caidas_inicio")
+  @@index([codigoRecinto], map: "idx_enlaces_caidas_recinto")
+  @@map("enlaces_caidas")
 }
 
 // =====================================================================

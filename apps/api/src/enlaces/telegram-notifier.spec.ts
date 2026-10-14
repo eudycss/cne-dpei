@@ -1,7 +1,10 @@
+import { Logger } from '@nestjs/common';
 import {
   abreviarCanton,
   TelegramNotifier,
+  TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 
@@ -40,8 +43,15 @@ describe('abreviarCanton', () => {
 
 describe('TelegramNotifier', () => {
   const originalFetch = global.fetch;
+  let esperar: jest.SpyInstance;
+
+  beforeEach(() => {
+    // El reintento espera de verdad 2 s; en las pruebas solo se registra cuánto.
+    esperar = jest.spyOn(TelegramNotifier.prototype as any, 'esperar').mockResolvedValue(undefined);
+  });
 
   afterEach(() => {
+    esperar.mockRestore();
     global.fetch = originalFetch;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_CHAT_ID;
@@ -170,7 +180,10 @@ describe('TelegramNotifier', () => {
       const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(opts.body);
       expect(body.reply_markup).toEqual({
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        keyboard: [
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
+        ],
         resize_keyboard: true,
       });
     });
@@ -272,7 +285,10 @@ describe('TelegramNotifier', () => {
       // Texto libre sin escapar: con parse_mode HTML, un "<" del usuario rompería el envío.
       expect(body.parse_mode).toBeUndefined();
       expect(body.reply_markup).toEqual({
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        keyboard: [
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
+        ],
         resize_keyboard: true,
       });
     });
@@ -293,6 +309,132 @@ describe('TelegramNotifier', () => {
       const notifier = new TelegramNotifier();
 
       await expect(notifier.enviarTexto('hola', 'un texto')).resolves.not.toThrow();
+    });
+  });
+
+  describe('límite de tiempo y reintento', () => {
+    const respuesta = (status: number, json: unknown = {}) => ({ ok: status < 300, status, json: async () => json });
+
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+    });
+
+    it('cada envío lleva un límite de tiempo', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(200));
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(opts.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('si Telegram no responde a tiempo, reintenta una vez tras 2 s', async () => {
+      const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+      global.fetch = jest.fn().mockRejectedValueOnce(timeout).mockResolvedValueOnce(respuesta(200));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(esperar).toHaveBeenCalledWith(2000);
+    });
+
+    it('un 5xx (ej. 504) se reintenta una vez', async () => {
+      global.fetch = jest.fn().mockResolvedValueOnce(respuesta(504)).mockResolvedValueOnce(respuesta(200));
+
+      await new TelegramNotifier().enviarListaActual([]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('si el reintento también falla, no insiste más ni lanza', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(502));
+
+      await expect(new TelegramNotifier().enviarTexto('hola', 'un texto')).resolves.toBeUndefined();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([400, 401, 403])('un %i no se reintenta (repetir no lo arregla)', async (status) => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(status));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(esperar).not.toHaveBeenCalled();
+    });
+
+    it('un error de red cualquiera (no timeout) también se reintenta', async () => {
+      global.fetch = jest
+        .fn()
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(respuesta(200));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('un 429 espera lo que pide Telegram (retry_after)', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(respuesta(429, { parameters: { retry_after: 3 } }))
+        .mockResolvedValueOnce(respuesta(200));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(esperar).toHaveBeenCalledWith(3000);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('un 429 que pide más de 5 s no se reintenta (solo traería otro 429)', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(429, { parameters: { retry_after: 40 } }));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(esperar).not.toHaveBeenCalled();
+    });
+
+    it('un 429 sin retry_after o con un cuerpo ilegible espera 1 s', async () => {
+      const ilegible = { ok: false, status: 429, json: async () => Promise.reject(new SyntaxError('x')) };
+      global.fetch = jest.fn().mockResolvedValueOnce(respuesta(429)).mockResolvedValueOnce(respuesta(200));
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+      expect(esperar).toHaveBeenLastCalledWith(1000);
+
+      global.fetch = jest.fn().mockResolvedValueOnce(ilegible).mockResolvedValueOnce(respuesta(200));
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+      expect(esperar).toHaveBeenLastCalledWith(1000);
+    });
+
+    it('un 429 en el segundo intento no provoca un tercero', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(429, { parameters: { retry_after: 1 } }));
+
+      await expect(new TelegramNotifier().enviarTexto('hola', 'un texto')).resolves.toBeUndefined();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('los logs de error nunca incluyen el token, aunque el error traiga la URL', async () => {
+      const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const conUrl = Object.assign(new TypeError('fetch failed https://api.telegram.org/bottok123/sendMessage'), {
+        cause: { code: 'ECONNRESET' },
+      });
+      global.fetch = jest.fn().mockRejectedValue(conUrl);
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      const mensajes = log.mock.calls.map((c) => String(c[0])).join(' | ');
+      expect(mensajes).toContain('ECONNRESET');
+      expect(mensajes).not.toContain('tok123');
+      log.mockRestore();
+    });
+
+    it('un 4xx avisa en el log que no se reintenta', async () => {
+      const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      global.fetch = jest.fn().mockResolvedValue(respuesta(403));
+
+      await new TelegramNotifier().enviarTexto('hola', 'un texto');
+
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('HTTP 403 — no se reintenta'));
+      log.mockRestore();
     });
   });
 });

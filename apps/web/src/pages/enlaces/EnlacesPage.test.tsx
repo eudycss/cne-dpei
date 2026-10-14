@@ -43,6 +43,36 @@ describe('EnlacesPage', () => {
     });
   });
 
+  it('el botón Estadísticas cambia a la vista de los enlaces que más se caen', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/enlaces/estadisticas') {
+        return Promise.resolve({
+          data: {
+            periodo: 'dia',
+            desde: '2026-10-14T05:00:00.000Z',
+            hasta: '2026-10-15T05:00:00.000Z',
+            historialDesde: '2026-10-01T05:00:00.000Z',
+            datosParciales: false,
+            totalRecintos: 2,
+            ranking: [],
+            sinCaidas: [],
+          },
+        });
+      }
+      if (url === '/enlaces') return Promise.resolve({ data: enlaces });
+      return Promise.resolve({ data: config() });
+    });
+    renderPage();
+    await screen.findByText('Escuela Central');
+
+    await user.click(screen.getByRole('button', { name: 'Estadísticas' }));
+
+    expect(await screen.findByRole('heading', { name: 'Enlaces que más se caen' })).toBeInTheDocument();
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Estadísticas' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('lista los enlaces con su estado', async () => {
     renderPage();
 
