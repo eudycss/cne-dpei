@@ -797,6 +797,36 @@ export interface AddCorreoEnlaceRequest {
   correo: string;
 }
 
+/** Período de calendario (hora de Ecuador): día, semana lunes-domingo o mes. */
+export type PeriodoEstadisticasEnlaces = 'dia' | 'semana' | 'mes';
+
+export interface EstadisticaEnlace {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  canton: string;
+  /** Caídas que empezaron dentro del período. */
+  caidas: number;
+  /** Minutos caído dentro del período (incluye caídas que venían de antes). */
+  minutosCaido: number;
+  /** % del tiempo observado del período en que estuvo ACTIVO (0-100, 1 decimal). */
+  disponibilidad: number;
+  sigueCaido: boolean;
+}
+
+export interface EstadisticasEnlacesResponse {
+  periodo: PeriodoEstadisticasEnlaces;
+  desde: string;
+  hasta: string;
+  /** Desde cuándo hay historial; si es posterior a `desde`, el período está incompleto. */
+  historialDesde: string;
+  datosParciales: boolean;
+  totalRecintos: number;
+  /** Recintos con caídas o tiempo caído en el período, de más a menos caídas. */
+  ranking: EstadisticaEnlace[];
+  /** Recintos monitoreados sin ninguna caída en el período. */
+  sinCaidas: { codigoRecinto: string; nombreRecinto: string; canton: string }[];
+}
+
 // --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---
 export interface MilitarResumen {
   id: string;

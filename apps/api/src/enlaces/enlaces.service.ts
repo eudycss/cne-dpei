@@ -4,14 +4,16 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
-import { SheetsEnlacesClient } from './sheets-enlaces.client';
+import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
   abreviarCanton,
   TelegramNotifier,
   TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -65,6 +67,7 @@ export class EnlacesService {
     private readonly sheetsClient: SheetsEnlacesClient,
     private readonly telegram: TelegramNotifier,
     private readonly notifications: NotificationsService,
+    private readonly estadisticas: EnlacesEstadisticasService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -129,6 +132,7 @@ export class EnlacesService {
       }
     }
 
+    await this.reconciliarCaidas(filas);
     await this.eliminarRecintosFueraDeLaHoja(filas);
 
     await this.notificarCaidasPorCorreo(caidas);
@@ -162,8 +166,57 @@ export class EnlacesService {
 
       const { count } = await this.prisma.enlaceRecinto.deleteMany({ where });
       this.log.log(`Se eliminaron ${count} recinto(s) que ya no están en la hoja de enlaces`);
+      // Un recinto que sale de la hoja deja de monitorearse: su caída abierta se
+      // cierra aquí para que no siga sumando tiempo caído para siempre.
+      await this.cerrarCaidas(where);
     } catch (e) {
       this.log.error(`Error eliminando recintos que ya no están en la hoja de enlaces: ${e}`);
+    }
+  }
+
+  /** Historial para las estadísticas, alineado con la hoja en cada ciclo (no
+   * solo en la transición): si un ciclo no pudo abrir o cerrar una caída (p. ej.
+   * un corte con la base), el siguiente lo corrige. Sin esto, una caída que no se
+   * cerró sumaría tiempo caído para siempre. Abre una caída para cada recinto en
+   * FALLO que no tenga una abierta (el índice único parcial evita duplicados) y
+   * cierra las abiertas de los que están ACTIVO. Precisión: la del cron (5 min). */
+  private async reconciliarCaidas(filas: SheetEnlaceRow[]): Promise<void> {
+    try {
+      const enFallo = filas.filter((f) => f.estado === 'FALLO');
+      const activos = filas.filter((f) => f.estado === 'ACTIVO').map((f) => f.codigoRecinto);
+      const abiertas = await this.prisma.enlaceCaida.findMany({
+        where: { fin: null },
+        select: { codigoRecinto: true },
+      });
+      const conCaidaAbierta = new Set(abiertas.map((a) => a.codigoRecinto));
+      const ahora = new Date();
+      const nuevas = enFallo.filter((f) => !conCaidaAbierta.has(f.codigoRecinto));
+      if (nuevas.length > 0) {
+        await this.prisma.enlaceCaida.createMany({
+          data: nuevas.map((f) => ({
+            codigoRecinto: f.codigoRecinto,
+            nombreRecinto: f.nombreRecinto,
+            canton: normalizarCanton(f.canton),
+            inicio: ahora,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      if (activos.some((c) => conCaidaAbierta.has(c))) {
+        await this.cerrarCaidas({ codigoRecinto: { in: activos } });
+      }
+    } catch (e) {
+      // El historial nunca frena los avisos; el siguiente ciclo vuelve a intentarlo.
+      this.log.error(`No se pudo actualizar el historial de caídas: ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** Cierra las caídas abiertas (sin fin) de los recintos que cumplen `where`. */
+  private async cerrarCaidas(where: { codigoRecinto: { in: string[] } | { notIn: string[] } }): Promise<void> {
+    try {
+      await this.prisma.enlaceCaida.updateMany({ where: { ...where, fin: null }, data: { fin: new Date() } });
+    } catch (e) {
+      this.log.error(`No se pudo cerrar la caída de enlaces: ${(e as Error)?.message ?? e}`);
     }
   }
 
@@ -313,7 +366,8 @@ export class EnlacesService {
   }
 
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
-   * responde con la lista actual de recintos caídos; el botón "Ingresar código"
+   * responde con la lista actual de recintos caídos; `/estadisticas` (o su
+   * botón), con el top de caídas de hoy, la semana y el mes; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
    * distinto al configurado, texto que no matchea nada de esto) se ignora en
@@ -363,6 +417,22 @@ export class EnlacesService {
     if (esComandoCaidos) {
       if (claveEspera) this.esperandoCodigo.delete(claveEspera);
       await this.reenviarListaTelegram();
+      return;
+    }
+
+    const esComandoEstadisticas =
+      texto.startsWith('/estadisticas') || texto === TEXTO_BOTON_ESTADISTICAS.toLowerCase();
+    if (esComandoEstadisticas) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.estadisticas.enviarEstadisticasTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron calcular las estadísticas para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          '⚠️ No se pudieron calcular las estadísticas en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de estadísticas',
+        );
+      }
       return;
     }
 

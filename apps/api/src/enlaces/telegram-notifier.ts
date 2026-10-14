@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { EstadisticasEnlacesResponse } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
 
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
@@ -6,6 +7,28 @@ export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
 
 /** Botón persistente que arranca el flujo de "mande el código y le respondo con su estado". */
 export const TEXTO_BOTON_INGRESAR_CODIGO = '🔍 Ingresar código';
+
+/** Botón persistente con el top de caídas de hoy, la semana y el mes. */
+export const TEXTO_BOTON_ESTADISTICAS = '📊 Estadísticas';
+
+/** Teclado fijo bajo el chat, el mismo en todos los mensajes. */
+export const TECLADO = {
+  keyboard: [
+    [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+    [{ text: TEXTO_BOTON_ESTADISTICAS }],
+  ],
+  resize_keyboard: true,
+};
+
+/** Un período del mensaje de estadísticas ("Hoy", "Semana pasada"…). */
+export interface SeccionEstadisticas {
+  titulo: string;
+  stats: EstadisticasEnlacesResponse;
+}
+
+/** Límite de Telegram por mensaje (4096) con margen. */
+const MAX_LARGO_MENSAJE = 4000;
+const MAX_NOMBRE = 45;
 
 /** Claves sin tildes y en minúsculas (ver normalizarClave), para que "Urcuquí" y
  * "URCUQUI" de la hoja caigan en la misma abreviatura. */
@@ -63,6 +86,63 @@ async function leerRetryAfter(res: Response): Promise<number> {
   }
 }
 
+/** 75 → "1 h 15 min"; 3000 → "2 d 2 h". */
+export function formatearDuracion(minutos: number): string {
+  const m = Math.round(minutos);
+  if (m < 60) return `${m} min`;
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  const resto = m % 60;
+  if (d > 0) return h > 0 ? `${d} d ${h} h` : `${d} d`;
+  return resto > 0 ? `${h} h ${resto} min` : `${h} h`;
+}
+
+/** "dd/mm" en hora de Ecuador. */
+function ddmm(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil', day: '2-digit', month: '2-digit' });
+}
+
+function rotuloRango(stats: EstadisticasEnlacesResponse): string {
+  const ultimoDia = new Date(new Date(stats.hasta).getTime() - 1).toISOString();
+  return stats.periodo === 'dia' ? ddmm(stats.desde) : `${ddmm(stats.desde)}–${ddmm(ultimoDia)}`;
+}
+
+/**
+ * Mensaje de estadísticas (HTML escapado: código y nombre vienen de la hoja).
+ * Por período: total de caídas, el top `top` y cuántos no se cayeron. Si no
+ * cabe en un mensaje de Telegram, se achica el top.
+ */
+export function formatearEstadisticas(encabezado: string, secciones: SeccionEstadisticas[], top = 10): string {
+  const texto = [`<b>${escapeHtml(encabezado)}</b>`];
+  for (const { titulo, stats } of secciones) {
+    const totalCaidas = stats.ranking.reduce((n, e) => n + e.caidas, 0);
+    texto.push(
+      '',
+      `<b>${escapeHtml(titulo)}</b> (${rotuloRango(stats)}): ${totalCaidas} caída${totalCaidas === 1 ? '' : 's'}` +
+        ` · ${stats.sinCaidas.length} de ${stats.totalRecintos} sin caídas`,
+    );
+    if (stats.datosParciales) texto.push(`<i>Datos desde ${ddmm(stats.historialDesde)}</i>`);
+    stats.ranking.slice(0, top).forEach((e, i) => {
+      const abreviatura = abreviarCanton(e.canton);
+      // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
+      const letras = Array.from(e.nombreRecinto);
+      const nombre = letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : e.nombreRecinto;
+      // 0 caídas con tiempo caído = la caída venía del período anterior.
+      const caidas = e.caidas === 0 ? 'venía caído' : `${e.caidas} caída${e.caidas === 1 ? '' : 's'}`;
+      texto.push(
+        `${i + 1}. ${escapeHtml(e.codigoRecinto)}${abreviatura ? ` (${escapeHtml(abreviatura)})` : ''} — ` +
+          `${escapeHtml(nombre)} · ${caidas} · ${formatearDuracion(e.minutosCaido)}` +
+          (e.sigueCaido ? ' 🔴' : ''),
+      );
+    });
+    if (stats.ranking.length > top) texto.push(`… y ${stats.ranking.length - top} más`);
+  }
+  const mensaje = texto.join('\n');
+  if (mensaje.length <= MAX_LARGO_MENSAJE || top === 0) return mensaje;
+  // No cabe: se achica el top hasta quedar, en el peor caso, solo con los totales.
+  return formatearEstadisticas(encabezado, secciones, Math.floor(top / 2));
+}
+
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
@@ -96,6 +176,10 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
   }
 
+  async enviarEstadisticas(encabezado: string, secciones: SeccionEstadisticas[]): Promise<void> {
+    await this.enviarMensaje(formatearEstadisticas(encabezado, secciones), 'las estadísticas de enlaces', 'HTML');
+  }
+
   /** Mensaje de texto libre (prompt del flujo de "ingresar código" o el resultado
    * de la búsqueda) — a diferencia de enviarListaActual/enviarRecuperados, no tiene
    * un formato fijo, lo arma quien llama. */
@@ -121,10 +205,7 @@ export class TelegramNotifier {
       // Se manda en cada mensaje (no solo en /start) para que el botón nunca
       // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
       // lo cierre manualmente en su propio cliente.
-      reply_markup: {
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
-        resize_keyboard: true,
-      },
+      reply_markup: TECLADO,
     });
 
     // Un solo reintento: Telegram a veces se cuelga o responde 5xx/429 por un

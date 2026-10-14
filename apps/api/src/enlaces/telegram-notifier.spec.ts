@@ -3,6 +3,7 @@ import {
   abreviarCanton,
   TelegramNotifier,
   TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 
@@ -178,7 +179,10 @@ describe('TelegramNotifier', () => {
       const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
       const body = JSON.parse(opts.body);
       expect(body.reply_markup).toEqual({
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        keyboard: [
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }],
+        ],
         resize_keyboard: true,
       });
     });
@@ -280,7 +284,10 @@ describe('TelegramNotifier', () => {
       // Texto libre sin escapar: con parse_mode HTML, un "<" del usuario rompería el envío.
       expect(body.parse_mode).toBeUndefined();
       expect(body.reply_markup).toEqual({
-        keyboard: [[{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }]],
+        keyboard: [
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }],
+        ],
         resize_keyboard: true,
       });
     });
