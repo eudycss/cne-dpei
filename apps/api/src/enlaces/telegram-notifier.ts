@@ -31,6 +31,29 @@ export interface GrupoAsignacion {
   recintos: { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' | null }[];
 }
 
+/** Un recinto caído hace 30 min o más, con lo necesario para llamar a su encargado. */
+export interface AlertaRecinto {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  canton: string;
+  /** '' si el distributivo no la trae. */
+  parroquia: string;
+  inicio: Date;
+  minutosCaido: number;
+  /** 1 = primer aviso, 2 = primer recordatorio… */
+  aviso: number;
+  caidas24h: number;
+  caidas7d: number;
+  inestable: boolean;
+  encargado: { nombre: string; telefono: string } | null;
+}
+
+/** Un aviso de escalamiento: un posible corte de zona (varios recintos) o un recinto suelto (zona null). */
+export interface GrupoAlerta {
+  zona: string | null;
+  recintos: AlertaRecinto[];
+}
+
 /** Tarjeta de estadísticas de un período ("Hoy", "Semana pasada"…). */
 export interface TarjetaEstadisticas {
   titulo: string;
@@ -268,6 +291,66 @@ function recortarNombre(nombre: string): string {
   return letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : nombre;
 }
 
+/** Las líneas de un recinto en el aviso de escalamiento (HTML escapado). */
+function lineasAlerta(a: AlertaRecinto, enZona: boolean): string[] {
+  const sector = [abreviarCanton(a.canton), a.parroquia].filter(Boolean).map(escapeHtml).join(' · ');
+  const lineas = [
+    `🔴 <b>${escapeHtml(a.codigoRecinto)} · ${escapeHtml(recortarNombre(a.nombreRecinto))}</b>` +
+      (sector && !enZona ? ` (${sector})` : ''),
+    `⏱ Caído hace ${formatearDuracion(a.minutosCaido)}${a.aviso > 1 ? ` · ${a.aviso}.º aviso` : ''}`,
+  ];
+  if (a.inestable) {
+    lineas.push(
+      a.caidas24h >= 3
+        ? `⚠️ Inestable: ${a.caidas24h} caídas en 24 h`
+        : `⚠️ Inestable: ${a.caidas7d} caídas en 7 días`,
+    );
+  }
+  const encargado = a.encargado
+    ? [a.encargado.nombre, a.encargado.telefono].filter(Boolean).map(escapeHtml).join(' · ')
+    : '';
+  lineas.push(`📞 Encargado: ${encargado || 'sin registrar'}`);
+  return lineas;
+}
+
+/**
+ * Aviso de escalamiento (HTML escapado): primero los posibles cortes de zona,
+ * después los recintos sueltos, cada uno con su encargado para llamarlo. Si no
+ * cabe en un mensaje de Telegram, se parte entre grupos.
+ */
+export function formatearEscalamiento(grupos: GrupoAlerta[]): string[] {
+  const total = grupos.reduce((n, g) => n + g.recintos.length, 0);
+  const encabezado = `<b>🚨 Enlaces caídos hace 30 min o más (${total})</b>`;
+  // Una unidad por recinto; el título de la zona va pegado a su primer recinto y,
+  // si la zona no cabe en un mensaje, se repite con "(cont.)" en el siguiente.
+  const unidades = grupos.flatMap((g) => {
+    if (!g.zona) return [{ texto: lineasAlerta(g.recintos[0], false).join('\n'), cont: null as string | null }];
+    const zona = escapeHtml(g.zona);
+    const titulo =
+      `<b>📍 Posible corte de zona: ${zona} · ${g.recintos.length} recintos</b>\n` +
+      '<i>Revisar energía o fibra del sector.</i>';
+    const cont = `<b>📍 Zona ${zona} (cont.)</b>`;
+    return g.recintos.map((a, i) => {
+      const texto = lineasAlerta(a, true).join('\n');
+      return { texto: i === 0 ? `${titulo}\n\n${texto}` : texto, cont: i === 0 ? null : cont };
+    });
+  });
+
+  const mensajes: string[] = [];
+  let actual = encabezado;
+  for (const { texto, cont } of unidades) {
+    const unido = `${actual}\n\n${texto}`;
+    if (unido.length > MAX_LARGO_MENSAJE && actual !== encabezado) {
+      mensajes.push(actual);
+      actual = cont ? `${cont}\n\n${texto}` : texto;
+    } else {
+      actual = unido;
+    }
+  }
+  mensajes.push(actual);
+  return mensajes;
+}
+
 const EMOJI_ESTADO = { ACTIVO: '✅', FALLO: '🔴' } as const;
 
 /**
@@ -350,12 +433,25 @@ export class TelegramNotifier {
   /** Avisa qué recintos volvieron a ACTIVO tras haber estado en FALLO — sin esto,
    * el grupo solo se entera de las caídas y tiene que revisar la web para saber
    * cuándo se recupera un recinto. */
-  async enviarRecuperados(enlaces: EnlaceCaido[]): Promise<void> {
+  async enviarRecuperados(enlaces: EnlaceCaido[], minutosCaido?: Map<string, number>): Promise<void> {
     if (enlaces.length === 0) return;
     const texto =
       `✅ Enlaces recuperados (${enlaces.length}):\n` +
-      enlaces.map(formatearLinea).join('\n');
+      enlaces
+        .map((e) => {
+          const minutos = minutosCaido?.get(e.codigoRecinto);
+          return formatearLinea(e) + (minutos === undefined ? '' : ` · volvió tras ${formatearDuracion(minutos)}`);
+        })
+        .join('\n');
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
+  }
+
+  /** Aviso de enlaces caídos hace 30 min o más; uno o más mensajes, en orden. */
+  async enviarEscalamiento(grupos: GrupoAlerta[]): Promise<void> {
+    if (grupos.length === 0) return;
+    for (const mensaje of formatearEscalamiento(grupos)) {
+      await this.enviarMensaje(mensaje, 'el aviso de enlaces caídos hace 30 min', 'HTML');
+    }
   }
 
   /** Uno o más mensajes, en orden (se espera cada envío antes del siguiente). */

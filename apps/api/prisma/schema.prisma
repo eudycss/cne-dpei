@@ -628,6 +628,10 @@ model EnlaceCaida {
   canton        String?   @db.VarChar(100)
   inicio        DateTime  @db.Timestamptz(6)
   fin           DateTime? @db.Timestamptz(6)
+  /// Último aviso de escalamiento (30 min caído) mandado a Telegram; null = aún no.
+  ultimoAviso   DateTime? @map("ultimo_aviso") @db.Timestamptz(6)
+  /// Cuántos avisos de escalamiento se mandaron por esta caída.
+  avisos        Int       @default(0)
 
   @@index([inicio], map: "idx_enlaces_caidas_inicio")
   @@index([codigoRecinto], map: "idx_enlaces_caidas_recinto")

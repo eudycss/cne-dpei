@@ -29,10 +29,10 @@ describe('leerAsignaciones', () => {
     ]);
 
     expect(leerAsignaciones(wb)).toEqual([
-      { codigoRecinto: '1126', localidad: 'UE Uno', numeroTecnico: 1, tecnico: 'Ana Pérez' },
-      { codigoRecinto: '323', localidad: 'Plaza Dos', numeroTecnico: 1, tecnico: 'Ana Pérez' },
-      { codigoRecinto: '1225', localidad: 'UE Tres', numeroTecnico: 2, tecnico: 'Luis Mora' },
-      { codigoRecinto: '1008', localidad: 'UE Cuatro', numeroTecnico: 2, tecnico: 'luis mora' },
+      { codigoRecinto: '1126', localidad: 'UE Uno', parroquia: 'A', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+      { codigoRecinto: '323', localidad: 'Plaza Dos', parroquia: 'A', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+      { codigoRecinto: '1225', localidad: 'UE Tres', parroquia: 'B', numeroTecnico: 2, tecnico: 'Luis Mora' },
+      { codigoRecinto: '1008', localidad: 'UE Cuatro', parroquia: 'B', numeroTecnico: 2, tecnico: 'luis mora' },
     ]);
   });
 
@@ -40,7 +40,7 @@ describe('leerAsignaciones', () => {
     const wb = libro([['Ana', 28]], ['TECNICO RESPONSABLE', 'Codigo de Recinto']);
 
     expect(leerAsignaciones(wb)).toEqual([
-      { codigoRecinto: '28', localidad: '', numeroTecnico: 1, tecnico: 'Ana' },
+      { codigoRecinto: '28', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Ana' },
     ]);
   });
 
@@ -86,7 +86,7 @@ describe('DistributivoTecnicosClient', () => {
 
     const r = await new DistributivoTecnicosClient().asignaciones();
 
-    expect(r).toEqual([{ codigoRecinto: '28', localidad: 'UE Uno', numeroTecnico: 1, tecnico: 'Ana Pérez' }]);
+    expect(r).toEqual([{ codigoRecinto: '28', localidad: 'UE Uno', parroquia: 'A', numeroTecnico: 1, tecnico: 'Ana Pérez' }]);
     const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
     expect(url).toBe('https://drive.google.com/uc?export=download&id=1AbCdEfGhIjK_lmn-op');
     expect(opts.signal).toBeInstanceOf(AbortSignal);
@@ -114,8 +114,11 @@ describe('DistributivoTecnicosClient', () => {
     await cliente.asignaciones(t0 + 5 * 60_000);
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 500 });
+    // Fallan los dos enlaces de descarga (Drive y exportación de hoja de Google).
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
     await expect(cliente.asignaciones(t0 + 11 * 60_000)).resolves.toEqual(primera);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 });
