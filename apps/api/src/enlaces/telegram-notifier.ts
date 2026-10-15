@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { EstadisticasEnlacesResponse } from '@cne/shared-types';
+import type { EstadisticasEnlacesResponse, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
 
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
@@ -8,7 +8,7 @@ export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
 /** Botón persistente que arranca el flujo de "mande el código y le respondo con su estado". */
 export const TEXTO_BOTON_INGRESAR_CODIGO = '🔍 Ingresar código';
 
-/** Botón persistente con el top de caídas de hoy, la semana y el mes. */
+/** Botón persistente con la tarjeta de estadísticas (hoy, con botones para semana y mes). */
 export const TEXTO_BOTON_ESTADISTICAS = '📊 Estadísticas';
 
 /** Botón persistente con los recintos CDA agrupados por técnico responsable. */
@@ -31,10 +31,36 @@ export interface GrupoAsignacion {
   recintos: { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' | null }[];
 }
 
-/** Un período del mensaje de estadísticas ("Hoy", "Semana pasada"…). */
-export interface SeccionEstadisticas {
+/** Tarjeta de estadísticas de un período ("Hoy", "Semana pasada"…). */
+export interface TarjetaEstadisticas {
   titulo: string;
-  stats: EstadisticasEnlacesResponse;
+  actual: EstadisticasEnlacesResponse;
+  /** El período anterior, para comparar; null si el historial no lo cubre completo. */
+  anterior: EstadisticasEnlacesResponse | null;
+  /** true si el período sigue en curso: el anterior se cortó a la misma altura
+   * ("que ayer a esta hora"), para no comparar medio día contra uno entero. */
+  comparaHastaAhora: boolean;
+}
+
+/** callback_data de los botones Hoy/Semana/Mes bajo la tarjeta ("est:semana"). */
+export const PREFIJO_CALLBACK_ESTADISTICAS = 'est:';
+
+const BOTONES_PERIODO: readonly [PeriodoEstadisticasEnlaces, string][] = [
+  ['dia', 'Hoy'],
+  ['semana', 'Semana'],
+  ['mes', 'Mes'],
+];
+
+/** Botones bajo la tarjeta; el período que se está viendo va marcado. */
+export function tecladoPeriodos(seleccionado: PeriodoEstadisticasEnlaces) {
+  return {
+    inline_keyboard: [
+      BOTONES_PERIODO.map(([periodo, texto]) => ({
+        text: periodo === seleccionado ? `• ${texto} •` : texto,
+        callback_data: `${PREFIJO_CALLBACK_ESTADISTICAS}${periodo}`,
+      })),
+    ],
+  };
 }
 
 /** Límite de Telegram por mensaje (4096) con margen. */
@@ -97,6 +123,16 @@ async function leerRetryAfter(res: Response): Promise<number> {
   }
 }
 
+/** `description` de una respuesta de error de Telegram; '' si no se puede leer. */
+async function leerDescripcion(res: Response): Promise<string> {
+  try {
+    const json = (await res.json()) as { description?: unknown };
+    return typeof json?.description === 'string' ? json.description : '';
+  } catch {
+    return '';
+  }
+}
+
 /** 75 → "1 h 15 min"; 3000 → "2 d 2 h". */
 export function formatearDuracion(minutos: number): string {
   const m = Math.round(minutos);
@@ -118,38 +154,112 @@ function rotuloRango(stats: EstadisticasEnlacesResponse): string {
   return stats.periodo === 'dia' ? ddmm(stats.desde) : `${ddmm(stats.desde)}–${ddmm(ultimoDia)}`;
 }
 
+function plural(n: number, singular: string, pluralForma = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : pluralForma}`;
+}
+
+const ANCHO_BARRA = 10;
+const TOP_TARJETA = 5;
+const NOMBRE_ANTERIOR: Record<PeriodoEstadisticasEnlaces, string> = {
+  dia: 'el día anterior',
+  semana: 'la semana anterior',
+  mes: 'el mes anterior',
+};
+const NOMBRE_ANTERIOR_HASTA_AHORA: Record<PeriodoEstadisticasEnlaces, string> = {
+  dia: 'ayer a esta hora',
+  semana: 'la semana pasada a esta altura',
+  mes: 'el mes pasado a esta altura',
+};
+// Tabla fija y no toLocaleDateString: no depende del ICU que traiga el Node del servidor.
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** Barra de 10 bloques proporcional a `valor` (mínimo 1 bloque si es mayor que 0). */
+export function barra(valor: number, maximo: number): string {
+  const llenos = valor > 0 && maximo > 0 ? Math.max(1, Math.round((valor / maximo) * ANCHO_BARRA)) : 0;
+  return '█'.repeat(llenos) + '░'.repeat(ANCHO_BARRA - llenos);
+}
+
+function totalCaidas(stats: EstadisticasEnlacesResponse): number {
+  return stats.ranking.reduce((n, e) => n + e.caidas, 0);
+}
+
+/** "14/10", "12/10–18/10" o, para un mes, su nombre ("octubre"). */
+function rotuloPeriodo(stats: EstadisticasEnlacesResponse): string {
+  if (stats.periodo === 'mes') {
+    // `desde` es medianoche de Ecuador del día 1 (05:00 UTC): el mes UTC es el mismo.
+    return MESES[new Date(stats.desde).getUTCMonth()];
+  }
+  return rotuloRango(stats);
+}
+
 /**
- * Mensaje de estadísticas (HTML escapado: código y nombre vienen de la hoja).
- * Por período: total de caídas, el top `top` y cuántos no se cayeron. Si no
- * cabe en un mensaje de Telegram, se achica el top.
+ * Tarjeta de un período para Telegram (HTML escapado: código y nombre vienen
+ * de la hoja): primero lo que se entiende de un vistazo (cuántos recintos no
+ * se cayeron, cuánto tiempo sin enlace, comparación con el período anterior)
+ * y después los recintos con más tiempo caído, con una barra proporcional.
  */
-export function formatearEstadisticas(encabezado: string, secciones: SeccionEstadisticas[], top = 10): string {
-  const texto = [`<b>${escapeHtml(encabezado)}</b>`];
-  for (const { titulo, stats } of secciones) {
-    const totalCaidas = stats.ranking.reduce((n, e) => n + e.caidas, 0);
-    texto.push(
-      '',
-      `<b>${escapeHtml(titulo)}</b> (${rotuloRango(stats)}): ${totalCaidas} caída${totalCaidas === 1 ? '' : 's'}` +
-        ` · ${stats.sinCaidas.length} de ${stats.totalRecintos} sin caídas`,
+export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }: TarjetaEstadisticas): string {
+  const lineas = [`<b>📊 Enlaces CDA · ${escapeHtml(titulo)}</b> (${escapeHtml(rotuloPeriodo(actual))})`, ''];
+
+  const sanos = actual.sinCaidas.length;
+  const porcentaje = actual.totalRecintos > 0 ? Math.round((sanos * 100) / actual.totalRecintos) : 100;
+  lineas.push(`✅ <b>${sanos} de ${actual.totalRecintos}</b> recintos sin caídas (${porcentaje} %)`);
+
+  const conCaidas = actual.ranking;
+  if (conCaidas.length === 0) {
+    lineas.push('🎉 Ningún enlace se cayó en este período');
+  } else {
+    const minutos = conCaidas.reduce((n, e) => n + e.minutosCaido, 0);
+    lineas.push(
+      `🔴 ${plural(conCaidas.length, 'recinto')} con caídas · ${formatearDuracion(minutos)} sin enlace en total`,
     );
-    if (stats.datosParciales) texto.push(`<i>Datos desde ${ddmm(stats.historialDesde)}</i>`);
-    stats.ranking.slice(0, top).forEach((e, i) => {
+    const siguen = conCaidas.filter((e) => e.sigueCaido).length;
+    if (siguen > 0) lineas.push(`🚨 ${siguen} ${siguen === 1 ? 'sigue caído' : 'siguen caídos'} ahora`);
+  }
+
+  if (anterior) {
+    const diferencia = totalCaidas(actual) - totalCaidas(anterior);
+    // Cuenta caídas que empezaron en el período; un recinto que "venía caído" no suma.
+    const referencia = (comparaHastaAhora ? NOMBRE_ANTERIOR_HASTA_AHORA : NOMBRE_ANTERIOR)[actual.periodo];
+    lineas.push(
+      diferencia > 0
+        ? `📈 ${plural(diferencia, 'caída')} más que ${referencia}`
+        : diferencia < 0
+          ? `📉 ${plural(-diferencia, 'caída')} menos que ${referencia}`
+          : `➖ Mismo número de caídas que ${referencia}`,
+    );
+  }
+  if (actual.datosParciales) {
+    lineas.push(`<i>ℹ️ El registro empezó el ${ddmm(actual.historialDesde)}: este período aún no está completo.</i>`);
+  }
+
+  if (conCaidas.length > 0) {
+    const top = [...conCaidas]
+      .sort(
+        (a, b) =>
+          b.minutosCaido - a.minutosCaido || b.caidas - a.caidas || a.codigoRecinto.localeCompare(b.codigoRecinto),
+      )
+      .slice(0, TOP_TARJETA);
+    const maximo = top[0].minutosCaido;
+    lineas.push('', '<b>Más tiempo sin enlace</b>');
+    top.forEach((e, i) => {
       const abreviatura = abreviarCanton(e.canton);
-      const nombre = recortarNombre(e.nombreRecinto);
       // 0 caídas con tiempo caído = la caída venía del período anterior.
-      const caidas = e.caidas === 0 ? 'venía caído' : `${e.caidas} caída${e.caidas === 1 ? '' : 's'}`;
-      texto.push(
-        `${i + 1}. ${escapeHtml(e.codigoRecinto)}${abreviatura ? ` (${escapeHtml(abreviatura)})` : ''} — ` +
-          `${escapeHtml(nombre)} · ${caidas} · ${formatearDuracion(e.minutosCaido)}` +
-          (e.sigueCaido ? ' 🔴' : ''),
+      const caidas = e.caidas === 0 ? 'venía caído' : plural(e.caidas, 'caída');
+      lineas.push(
+        `${i + 1}. ${escapeHtml(recortarNombre(e.nombreRecinto))} ` +
+          `<i>(${escapeHtml(e.codigoRecinto)}${abreviatura ? ` · ${escapeHtml(abreviatura)}` : ''})</i>`,
+        `${barra(e.minutosCaido, maximo)} ${formatearDuracion(e.minutosCaido)} · ${caidas}${e.sigueCaido ? ' 🔴' : ''}`,
       );
     });
-    if (stats.ranking.length > top) texto.push(`… y ${stats.ranking.length - top} más`);
+    if (conCaidas.length > TOP_TARJETA) {
+      lineas.push(`… y ${plural(conCaidas.length - TOP_TARJETA, 'recinto')} más con caídas`);
+    }
   }
-  const mensaje = texto.join('\n');
-  if (mensaje.length <= MAX_LARGO_MENSAJE || top === 0) return mensaje;
-  // No cabe: se achica el top hasta quedar, en el peor caso, solo con los totales.
-  return formatearEstadisticas(encabezado, secciones, Math.floor(top / 2));
+  return lineas.join('\n');
 }
 
 function recortarNombre(nombre: string): string {
@@ -255,8 +365,33 @@ export class TelegramNotifier {
     }
   }
 
-  async enviarEstadisticas(encabezado: string, secciones: SeccionEstadisticas[]): Promise<void> {
-    await this.enviarMensaje(formatearEstadisticas(encabezado, secciones), 'las estadísticas de enlaces', 'HTML');
+  /** Con `conBotones`, la tarjeta lleva Hoy/Semana/Mes para cambiar de período en el mismo mensaje. */
+  async enviarTarjetaEstadisticas(tarjeta: TarjetaEstadisticas, conBotones: boolean): Promise<void> {
+    await this.enviarMensaje(
+      formatearTarjeta(tarjeta),
+      'las estadísticas de enlaces',
+      'HTML',
+      conBotones ? tecladoPeriodos(tarjeta.actual.periodo) : undefined,
+    );
+  }
+
+  /** Reemplaza la tarjeta de ese mensaje por la de otro período (botones Hoy/Semana/Mes). */
+  async editarTarjetaEstadisticas(messageId: number, tarjeta: TarjetaEstadisticas): Promise<void> {
+    await this.llamar(
+      'editMessageText',
+      {
+        message_id: messageId,
+        text: formatearTarjeta(tarjeta),
+        parse_mode: 'HTML',
+        reply_markup: tecladoPeriodos(tarjeta.actual.periodo),
+      },
+      'la tarjeta de estadísticas',
+    );
+  }
+
+  /** Quita el "cargando" del botón en el cliente de quien lo tocó. */
+  async responderBoton(callbackQueryId: string): Promise<void> {
+    await this.llamar('answerCallbackQuery', { callback_query_id: callbackQueryId }, 'la respuesta al botón', false);
   }
 
   /** Mensaje de texto libre (prompt del flujo de "ingresar código" o el resultado
@@ -268,7 +403,34 @@ export class TelegramNotifier {
 
   /** parseMode solo lo pasan los mensajes que escapan su contenido (formatearLinea);
    * enviarTexto va sin él porque su texto libre no está escapado. */
-  private async enviarMensaje(text: string, descripcion: string, parseMode?: 'HTML'): Promise<void> {
+  private async enviarMensaje(
+    text: string,
+    descripcion: string,
+    parseMode?: 'HTML',
+    replyMarkup: object = TECLADO,
+  ): Promise<void> {
+    await this.llamar(
+      'sendMessage',
+      {
+        text,
+        ...(parseMode ? { parse_mode: parseMode } : {}),
+        // El teclado fijo se manda en cada mensaje (no solo en /start) para que el
+        // botón nunca desaparezca del grupo, aunque el chat se reinicie o alguien lo
+        // cierre en su cliente. Un mensaje con botones propios (la tarjeta de
+        // estadísticas) no lo lleva, pero el teclado fijo se queda donde estaba.
+        reply_markup: replyMarkup,
+      },
+      descripcion,
+    );
+  }
+
+  /** Llama a un método de la Bot API; con `conChat`, al chat configurado. Nunca lanza. */
+  private async llamar(
+    metodo: string,
+    payload: Record<string, unknown>,
+    descripcion: string,
+    conChat = true,
+  ): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) {
@@ -277,22 +439,14 @@ export class TelegramNotifier {
       );
       return;
     }
-    const body = JSON.stringify({
-      chat_id: chatId,
-      text,
-      ...(parseMode ? { parse_mode: parseMode } : {}),
-      // Se manda en cada mensaje (no solo en /start) para que el botón nunca
-      // desaparezca del teclado del grupo, aunque el chat se reinicie o alguien
-      // lo cierre manualmente en su propio cliente.
-      reply_markup: TECLADO,
-    });
+    const body = JSON.stringify(conChat ? { chat_id: chatId, ...payload } : payload);
 
     // Un solo reintento: Telegram a veces se cuelga o responde 5xx/429 por un
     // momento. Los 4xx (mensaje mal armado, token o permisos) no se arreglan
     // repitiendo. Si Telegram entregó pero tardó más del timeout, el reintento
     // puede duplicar el mensaje: preferible a que el grupo no reciba nada.
     for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
-      const resultado = await this.intentarEnvio(token, body);
+      const resultado = await this.intentarEnvio(token, metodo, body);
       if (resultado.ok) return;
       const ultimo = intento === MAX_INTENTOS || resultado.esperaMs === null;
       const siguiente = ultimo
@@ -308,20 +462,25 @@ export class TelegramNotifier {
     }
   }
 
-  /** Un intento de sendMessage con límite de tiempo. `esperaMs` es cuánto esperar
+  /** Un intento de llamada a la Bot API con límite de tiempo. `esperaMs` es cuánto esperar
    * antes de reintentar, o null si el error no se arregla reintentando. */
   private async intentarEnvio(
     token: string,
+    metodo: string,
     body: string,
   ): Promise<{ ok: true } | { ok: false; causa: string; esperaMs: number | null }> {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${token}/${metodo}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (res.ok) return { ok: true };
+      // Tocar el período que ya se ve: Telegram no edita un texto idéntico. No es un error.
+      if (res.status === 400 && (await leerDescripcion(res)).includes('message is not modified')) {
+        return { ok: true };
+      }
       if (res.status === 429) {
         // Si pide esperar más que el tope, reintentar antes solo traería otro 429.
         const esperaMs = (await leerRetryAfter(res)) * 1000;

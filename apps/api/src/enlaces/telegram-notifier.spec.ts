@@ -270,6 +270,98 @@ describe('TelegramNotifier', () => {
     });
   });
 
+  describe('tarjeta de estadísticas', () => {
+    const stats = {
+      periodo: 'semana',
+      desde: '2026-10-12T05:00:00.000Z',
+      hasta: '2026-10-19T05:00:00.000Z',
+      historialDesde: '2026-01-01T00:00:00.000Z',
+      datosParciales: false,
+      totalRecintos: 1,
+      ranking: [],
+      sinCaidas: [{ codigoRecinto: '1', nombreRecinto: 'x', canton: '' }],
+    } as const;
+    const tarjeta = {
+      titulo: 'Esta semana',
+      actual: { ...stats, ranking: [], sinCaidas: [...stats.sinCaidas] },
+      anterior: null,
+      comparaHastaAhora: true,
+    };
+
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+
+    it('con botones, la tarjeta lleva Hoy/Semana/Mes en vez del teclado fijo', async () => {
+      await new TelegramNotifier().enviarTarjetaEstadisticas(tarjeta, true);
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(url).toBe('https://api.telegram.org/bottok123/sendMessage');
+      expect(body.parse_mode).toBe('HTML');
+      expect(body.reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual([
+        'est:dia',
+        'est:semana',
+        'est:mes',
+      ]);
+    });
+
+    it('sin botones (resumen diario), lleva el teclado fijo como los demás mensajes', async () => {
+      await new TelegramNotifier().enviarTarjetaEstadisticas(tarjeta, false);
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.reply_markup.keyboard).toBeDefined();
+    });
+
+    it('editar cambia el mismo mensaje del chat configurado', async () => {
+      await new TelegramNotifier().editarTarjetaEstadisticas(77, tarjeta);
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(url).toBe('https://api.telegram.org/bottok123/editMessageText');
+      expect(body).toEqual(
+        expect.objectContaining({ chat_id: '-100200300', message_id: 77, parse_mode: 'HTML' }),
+      );
+      expect(body.text).toContain('Esta semana');
+      expect(body.reply_markup.inline_keyboard[0][1].text).toBe('• Semana •');
+    });
+
+    it('tocar el período que ya se ve (Telegram: "message is not modified") no es un error ni se reintenta', async () => {
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ ok: false, description: 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same' }),
+      });
+
+      await new TelegramNotifier().editarTarjetaEstadisticas(77, tarjeta);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it('otro 400 al editar sí se registra', async () => {
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ description: 'Bad Request: message to edit not found' }) });
+
+      await new TelegramNotifier().editarTarjetaEstadisticas(77, tarjeta);
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('HTTP 400'));
+      error.mockRestore();
+    });
+
+    it('responder un botón usa answerCallbackQuery con su id', async () => {
+      await new TelegramNotifier().responderBoton('cb-1');
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('https://api.telegram.org/bottok123/answerCallbackQuery');
+      expect(JSON.parse(opts.body)).toEqual({ callback_query_id: 'cb-1' });
+    });
+  });
+
   describe('enviarTexto', () => {
     it('manda el texto tal cual, con el mismo teclado fijo que los demás mensajes', async () => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';

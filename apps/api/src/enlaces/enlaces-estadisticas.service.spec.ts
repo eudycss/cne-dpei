@@ -10,7 +10,7 @@ import {
   parsearFecha,
   rangoPeriodo,
 } from './enlaces-estadisticas.service';
-import { formatearDuracion, formatearEstadisticas } from './telegram-notifier';
+import { barra, formatearDuracion, formatearTarjeta, tecladoPeriodos } from './telegram-notifier';
 
 const iso = (s: string) => new Date(s);
 // Medianoche de Ecuador = 05:00 UTC.
@@ -197,7 +197,10 @@ describe('EnlacesEstadisticasService', () => {
     enlaceRecinto: { findMany: jest.fn().mockResolvedValue([]) },
     configEnlaces: { findUnique: jest.fn().mockResolvedValue({ historialDesde: iso('2026-01-01T00:00:00Z') }) },
   };
-  const telegram = { enviarEstadisticas: jest.fn().mockResolvedValue(undefined) };
+  const telegram = {
+    enviarTarjetaEstadisticas: jest.fn().mockResolvedValue(undefined),
+    editarTarjetaEstadisticas: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new EnlacesEstadisticasService(prisma as never, telegram as never);
 
   beforeEach(() => jest.clearAllMocks());
@@ -214,34 +217,87 @@ describe('EnlacesEstadisticasService', () => {
     expect(r).toEqual(expect.objectContaining({ periodo: 'dia', desde: DIA_14.desde.toISOString() }));
   });
 
-  it('el botón manda hoy, esta semana y este mes', async () => {
+  it('el botón manda la tarjeta de hoy con botones, comparada con ayer', async () => {
     await service.enviarEstadisticasTelegram(iso('2026-10-14T15:00:00Z'));
 
-    const [, secciones] = telegram.enviarEstadisticas.mock.calls[0];
-    expect(secciones.map((s: { titulo: string; stats: EstadisticasEnlacesResponse }) => [s.titulo, s.stats.periodo])).toEqual([
-      ['Hoy', 'dia'],
-      ['Esta semana', 'semana'],
-      ['Este mes', 'mes'],
+    expect(telegram.enviarTarjetaEstadisticas).toHaveBeenCalledTimes(1);
+    const [tarjeta, conBotones] = telegram.enviarTarjetaEstadisticas.mock.calls[0];
+    expect(conBotones).toBe(true);
+    expect(tarjeta.titulo).toBe('Hoy');
+    expect(tarjeta.actual.desde).toBe('2026-10-14T05:00:00.000Z');
+    expect(tarjeta.anterior.desde).toBe('2026-10-13T05:00:00.000Z');
+  });
+
+  it.each([
+    ['semana', 'Esta semana', '2026-10-12T05:00:00.000Z', '2026-10-05T05:00:00.000Z'],
+    ['mes', 'Este mes', '2026-10-01T05:00:00.000Z', '2026-09-01T05:00:00.000Z'],
+  ] as const)('el botón "%s" edita el mismo mensaje con ese período y el anterior', async (periodo, titulo, desde, desdeAnterior) => {
+    await service.mostrarPeriodoTelegram(periodo, 77, iso('2026-10-14T15:00:00Z'));
+
+    const [messageId, tarjeta] = telegram.editarTarjetaEstadisticas.mock.calls[0];
+    expect(messageId).toBe(77);
+    expect(tarjeta.titulo).toBe(titulo);
+    expect(tarjeta.actual.desde).toBe(desde);
+    expect(tarjeta.anterior.desde).toBe(desdeAnterior);
+  });
+
+  it('hoy en curso se compara con ayer hasta la misma hora, no con el día entero', async () => {
+    prisma.enlaceCaida.findMany.mockImplementation(async () => [
+      // Ayer: una caída a las 08:00 (antes de "esta hora") y otra a las 15:00 (después).
+      { codigoRecinto: '1', nombreRecinto: 'A', canton: null, inicio: iso('2026-10-13T13:00:00Z'), fin: iso('2026-10-13T13:10:00Z') },
+      { codigoRecinto: '2', nombreRecinto: 'B', canton: null, inicio: iso('2026-10-13T20:00:00Z'), fin: iso('2026-10-13T20:10:00Z') },
     ]);
+
+    const t = await service.tarjeta('Hoy', 'dia', [2026, 9, 14], iso('2026-10-14T14:00:00Z'));
+
+    expect(t.comparaHastaAhora).toBe(true);
+    expect(t.anterior!.ranking.map((e) => e.codigoRecinto)).toEqual(['1']);
+    prisma.enlaceCaida.findMany.mockResolvedValue([]);
+  });
+
+  it('un período ya cerrado (resumen de ayer) se compara entero', async () => {
+    const t = await service.tarjeta('Ayer', 'dia', [2026, 9, 13], iso('2026-10-14T13:00:00Z'));
+
+    expect(t.comparaHastaAhora).toBe(false);
+    expect(t.anterior!.desde).toBe('2026-10-12T05:00:00.000Z');
+  });
+
+  it('enero se compara con diciembre del año anterior', async () => {
+    const t = await service.tarjeta('Este mes', 'mes', [2027, 0, 10], iso('2027-01-10T15:00:00Z'));
+
+    expect(t.anterior!.desde).toBe('2026-12-01T05:00:00.000Z');
+    expect(t.anterior!.hasta).toBe('2027-01-01T05:00:00.000Z');
+  });
+
+  it('sin historial completo del período anterior no compara (evita "más caídas que ayer" falsos)', async () => {
+    prisma.configEnlaces.findUnique.mockResolvedValue({ historialDesde: iso('2026-10-13T20:00:00Z') });
+
+    const ayerParcial = await service.tarjeta('Hoy', 'dia', [2026, 9, 14], iso('2026-10-14T15:00:00Z'));
+    const hoyParcial = await service.tarjeta('Hoy', 'dia', [2026, 9, 13], iso('2026-10-14T15:00:00Z'));
+
+    expect(ayerParcial.anterior).toBeNull();
+    expect(hoyParcial.anterior).toBeNull();
+    prisma.configEnlaces.findUnique.mockResolvedValue({ historialDesde: iso('2026-01-01T00:00:00Z') });
   });
 
   it.each([
     ['un miércoles: solo ayer', '2026-10-14T13:00:00Z', ['Ayer']],
     ['un lunes: ayer y la semana pasada', '2026-10-19T13:00:00Z', ['Ayer', 'Semana pasada']],
     ['el día 1: ayer y el mes pasado', '2026-10-01T13:00:00Z', ['Ayer', 'Mes pasado']],
-  ])('resumen programado %s', async (_caso, ahora, titulos) => {
+  ])('resumen programado %s, una tarjeta por período y sin botones', async (_caso, ahora, titulos) => {
     await service.enviarResumenProgramado(iso(ahora));
 
-    const [, secciones] = telegram.enviarEstadisticas.mock.calls[0];
-    expect(secciones.map((s: { titulo: string }) => s.titulo)).toEqual(titulos);
+    const llamadas = telegram.enviarTarjetaEstadisticas.mock.calls;
+    expect(llamadas.map(([t]) => t.titulo)).toEqual(titulos);
+    expect(llamadas.every(([, conBotones]) => conBotones === false)).toBe(true);
   });
 
   it('el resumen de la semana pasada cubre de lunes a domingo anteriores', async () => {
     await service.enviarResumenProgramado(iso('2026-10-19T13:00:00Z'));
 
-    const [, secciones] = telegram.enviarEstadisticas.mock.calls[0];
-    expect(secciones[1].stats.desde).toBe('2026-10-12T05:00:00.000Z');
-    expect(secciones[1].stats.hasta).toBe('2026-10-19T05:00:00.000Z');
+    const [semana] = telegram.enviarTarjetaEstadisticas.mock.calls[1];
+    expect(semana.actual.desde).toBe('2026-10-12T05:00:00.000Z');
+    expect(semana.actual.hasta).toBe('2026-10-19T05:00:00.000Z');
   });
 
   it('el resumen no se manda con ENLACES_CRON_ENABLED=false (API local)', async () => {
@@ -249,14 +305,14 @@ describe('EnlacesEstadisticasService', () => {
 
     await service.enviarResumenProgramado(iso('2026-10-14T13:00:00Z'));
 
-    expect(telegram.enviarEstadisticas).not.toHaveBeenCalled();
+    expect(telegram.enviarTarjetaEstadisticas).not.toHaveBeenCalled();
   });
 
-  it('un error al armar el resumen no lanza', async () => {
-    prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
+  it('un error al armar el resumen no lanza ni manda un resumen a medias', async () => {
+    prisma.enlaceCaida.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('base caída'));
 
-    await expect(service.enviarResumenProgramado(iso('2026-10-14T13:00:00Z'))).resolves.toBeUndefined();
-    expect(telegram.enviarEstadisticas).not.toHaveBeenCalled();
+    await expect(service.enviarResumenProgramado(iso('2026-10-19T13:00:00Z'))).resolves.toBeUndefined();
+    expect(telegram.enviarTarjetaEstadisticas).not.toHaveBeenCalled();
   });
 
   function finDelDiaServicio() {
@@ -302,52 +358,121 @@ describe('formato para Telegram', () => {
     sigueCaido,
   });
 
-  it('arma el período con totales, el top numerado y escapa el HTML de la hoja', () => {
-    const texto = formatearEstadisticas('📊 Estadísticas', [
-      { titulo: 'Hoy', stats: stats([item('1207', 'Escuela <Guallupe> & Co', 2, 75, true), item('28', 'UE Ibarra', 1, 10)]) },
-    ]);
+  const tarjeta = (
+    actual: EstadisticasEnlacesResponse,
+    anterior: EstadisticasEnlacesResponse | null = null,
+    titulo = 'Hoy',
+    comparaHastaAhora = false,
+  ) => formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora });
 
-    expect(texto).toContain('<b>Hoy</b> (14/10): 3 caídas · 54 de 56 sin caídas');
-    expect(texto).toContain('1. 1207 (Cot) — Escuela &lt;Guallupe&gt; &amp; Co · 2 caídas · 1 h 15 min 🔴');
-    expect(texto).toContain('2. 28 (Cot) — UE Ibarra · 1 caída · 10 min');
+  it('resume arriba lo que se entiende de un vistazo', () => {
+    const texto = tarjeta(stats([item('1207', 'Escuela', 2, 75, true), item('28', 'UE Ibarra', 1, 10)]));
+
+    expect(texto).toContain('<b>📊 Enlaces CDA · Hoy</b> (14/10)');
+    expect(texto).toContain('✅ <b>54 de 56</b> recintos sin caídas (96 %)');
+    expect(texto).toContain('🔴 2 recintos con caídas · 1 h 25 min sin enlace en total');
+    expect(texto).toContain('🚨 1 sigue caído ahora');
   });
 
-  it('avisa datos parciales y corta el top en 10', () => {
-    const muchos = Array.from({ length: 12 }, (_, i) => item(String(100 + i), 'Recinto', 1, 5));
-    const texto = formatearEstadisticas('x', [
-      { titulo: 'Esta semana', stats: stats(muchos, { periodo: 'semana', hasta: '2026-10-19T05:00:00.000Z', datosParciales: true, historialDesde: '2026-10-14T15:00:00.000Z' }) },
-    ]);
+  it('lista los de más tiempo sin enlace con barra proporcional y escapa el HTML de la hoja', () => {
+    const texto = tarjeta(stats([item('28', 'UE Ibarra', 3, 10), item('1207', 'Escuela <Guallupe> & Co', 1, 80, true)]));
 
-    expect(texto).toContain('(14/10–18/10)');
-    expect(texto).toContain('<i>Datos desde 14/10</i>');
-    expect(texto).toContain('10. 109');
-    expect(texto).not.toContain('11. 110');
-    expect(texto).toContain('… y 2 más');
+    expect(texto).toContain('<b>Más tiempo sin enlace</b>');
+    expect(texto).toContain('1. Escuela &lt;Guallupe&gt; &amp; Co <i>(1207 · Cot)</i>\n██████████ 1 h 20 min · 1 caída 🔴');
+    expect(texto).toContain('2. UE Ibarra <i>(28 · Cot)</i>\n█░░░░░░░░░ 10 min · 3 caídas');
+  });
+
+  it('muestra solo 5 y cuenta el resto', () => {
+    const muchos = Array.from({ length: 8 }, (_, i) => item(String(100 + i), 'Recinto', 1, 50 - i));
+    const texto = tarjeta(stats(muchos));
+
+    expect(texto).toContain('5. Recinto <i>(104 · Cot)</i>');
+    expect(texto).not.toContain('6. Recinto');
+    expect(texto).toContain('… y 3 recintos más con caídas');
+  });
+
+  it('sin caídas lo celebra y no muestra ranking', () => {
+    const texto = tarjeta(stats([]));
+
+    expect(texto).toContain('✅ <b>56 de 56</b> recintos sin caídas (100 %)');
+    expect(texto).toContain('🎉 Ningún enlace se cayó en este período');
+    expect(texto).not.toContain('Más tiempo sin enlace');
+  });
+
+  it.each([
+    [[item('1', 'A', 3, 5)], [item('1', 'A', 1, 5)], '📈 2 caídas más que el día anterior'],
+    [[item('1', 'A', 1, 5)], [item('1', 'A', 2, 5)], '📉 1 caída menos que el día anterior'],
+    [[], [], '➖ Mismo número de caídas que el día anterior'],
+  ])('compara con el período anterior', (actual, anterior, esperado) => {
+    expect(tarjeta(stats(actual), stats(anterior))).toContain(esperado);
+  });
+
+  it('un período en curso se compara "a esta hora"', () => {
+    expect(tarjeta(stats([item('1', 'A', 2, 5)]), stats([]), 'Hoy', true)).toContain('📈 2 caídas más que ayer a esta hora');
+    expect(
+      tarjeta(stats([], { periodo: 'mes' }), stats([item('1', 'A', 1, 5)], { periodo: 'mes' }), 'Este mes', true),
+    ).toContain('📉 1 caída menos que el mes pasado a esta altura');
+  });
+
+  it('con 0 recintos no divide por cero', () => {
+    expect(tarjeta(stats([], { totalRecintos: 0, sinCaidas: [] }))).toContain('<b>0 de 0</b> recintos sin caídas (100 %)');
+  });
+
+  it('una caída recién abierta (0 min) va sin barra llena', () => {
+    expect(tarjeta(stats([item('1', 'A', 1, 0, true)]))).toContain('░░░░░░░░░░ 0 min · 1 caída 🔴');
+  });
+
+  it('sin período anterior no compara', () => {
+    expect(tarjeta(stats([item('1', 'A', 3, 5)]))).not.toMatch(/que el día anterior/);
+  });
+
+  it('semana con rango de fechas, mes con su nombre, y aviso si el registro empezó a mitad', () => {
+    const semana = tarjeta(
+      stats([], { periodo: 'semana', hasta: '2026-10-19T05:00:00.000Z', datosParciales: true, historialDesde: '2026-10-14T15:00:00.000Z' }),
+      null,
+      'Esta semana',
+    );
+    const mes = tarjeta(stats([], { periodo: 'mes', desde: '2026-10-01T05:00:00.000Z', hasta: '2026-11-01T05:00:00.000Z' }), null, 'Este mes');
+    const diciembre = tarjeta(stats([], { periodo: 'mes', desde: '2026-12-01T05:00:00.000Z', hasta: '2027-01-01T05:00:00.000Z' }), null, 'Mes pasado');
+    expect(diciembre).toContain('(diciembre)');
+
+    expect(semana).toContain('Esta semana</b> (14/10–18/10)');
+    expect(semana).toContain('<i>ℹ️ El registro empezó el 14/10: este período aún no está completo.</i>');
+    expect(mes).toContain('Este mes</b> (octubre)');
+    expect(mes).not.toContain('El registro empezó');
   });
 
   it('una caída que venía del período anterior dice "venía caído" en vez de "0 caídas"', () => {
-    const texto = formatearEstadisticas('x', [{ titulo: 'Hoy', stats: stats([item('28', 'UE Ibarra', 0, 300)]) }]);
-
-    expect(texto).toContain('1. 28 (Cot) — UE Ibarra · venía caído · 5 h');
+    expect(tarjeta(stats([item('28', 'UE Ibarra', 0, 300)]))).toContain('5 h · venía caído');
   });
 
   it('recorta nombres largos sin partir un emoji', () => {
-    const nombre = 'A'.repeat(43) + '😀😀😀';
-    const texto = formatearEstadisticas('x', [{ titulo: 'Hoy', stats: stats([item('1', nombre, 1, 5)]) }]);
+    const texto = tarjeta(stats([item('1', 'A'.repeat(43) + '😀😀😀', 1, 5)]));
 
     expect(texto).toContain(`${'A'.repeat(43)}😀…`);
     expect(texto).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
   });
 
-  it('si no cabe en un mensaje de Telegram, achica el top', () => {
-    const largo = 'N'.repeat(45);
-    const muchos = Array.from({ length: 40 }, (_, i) => item(String(1000 + i), largo, 1, 5));
-    const secciones = ['Hoy', 'Esta semana', 'Este mes'].map((titulo) => ({ titulo, stats: stats(muchos) }));
+  it.each([
+    [0, 10, '░░░░░░░░░░'],
+    [1, 1000, '█░░░░░░░░░'],
+    [5, 10, '█████░░░░░'],
+    [10, 10, '██████████'],
+    [3, 0, '░░░░░░░░░░'],
+  ])('barra(%i, %i) → %s', (valor, maximo, esperado) => {
+    expect(barra(valor, maximo)).toBe(esperado);
+  });
 
-    const texto = formatearEstadisticas('x', secciones);
-
-    expect(texto.length).toBeLessThanOrEqual(4000);
-    expect(texto).toContain('… y');
+  it('los botones marcan el período que se está viendo', () => {
+    expect(tecladoPeriodos('semana')).toEqual({
+      inline_keyboard: [
+        [
+          { text: 'Hoy', callback_data: 'est:dia' },
+          { text: '• Semana •', callback_data: 'est:semana' },
+          { text: 'Mes', callback_data: 'est:mes' },
+        ],
+      ],
+    });
   });
 });
 

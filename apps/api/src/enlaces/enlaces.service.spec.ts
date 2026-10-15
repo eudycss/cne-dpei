@@ -37,12 +37,16 @@ describe('EnlacesService', () => {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
-  const estadisticas = { enviarEstadisticasTelegram: jest.fn().mockResolvedValue(undefined) };
+  const estadisticas = {
+    enviarEstadisticasTelegram: jest.fn().mockResolvedValue(undefined),
+    mostrarPeriodoTelegram: jest.fn().mockResolvedValue(undefined),
+  };
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
     enviarRecuperados: jest.fn().mockResolvedValue(undefined),
     enviarTexto: jest.fn().mockResolvedValue(undefined),
+    responderBoton: jest.fn().mockResolvedValue(undefined),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
 
@@ -903,6 +907,81 @@ describe('EnlacesService', () => {
         expect.stringContaining('No se pudieron calcular las estadísticas'),
         expect.any(String),
       );
+    });
+
+    describe('botones Hoy/Semana/Mes de la tarjeta', () => {
+      const boton = (data: string, chatId: string = '-100200300') => ({
+        callback_query: { id: 'cb-1', data, message: { message_id: 77, chat: { id: chatId } } },
+      });
+
+      beforeEach(() => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+      });
+
+      it.each([['est:dia', 'dia'], ['est:semana', 'semana'], ['est:mes', 'mes']])(
+        '"%s" contesta el toque y cambia el mismo mensaje a ese período',
+        async (data, periodo) => {
+          await service.procesarComandoTelegram('secreto123', boton(data));
+
+          expect(telegram.responderBoton).toHaveBeenCalledWith('cb-1');
+          expect(estadisticas.mostrarPeriodoTelegram).toHaveBeenCalledWith(periodo, 77);
+        },
+      );
+
+      it.each([['est:anio'], ['est:dia;x'], ['otra'], ['']])('un callback_data desconocido ("%s") solo se contesta', async (data) => {
+        await service.procesarComandoTelegram('secreto123', boton(data));
+
+        expect(telegram.responderBoton).toHaveBeenCalledWith('cb-1');
+        expect(estadisticas.mostrarPeriodoTelegram).not.toHaveBeenCalled();
+      });
+
+      it('contesta el toque antes de calcular', async () => {
+        await service.procesarComandoTelegram('secreto123', boton('est:mes'));
+
+        expect(telegram.responderBoton.mock.invocationCallOrder[0]).toBeLessThan(
+          estadisticas.mostrarPeriodoTelegram.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('toques seguidos sobre el mismo mensaje no recalculan cada vez', async () => {
+        await service.procesarComandoTelegram('secreto123', boton('est:mes'));
+        await service.procesarComandoTelegram('secreto123', boton('est:semana'));
+
+        expect(telegram.responderBoton).toHaveBeenCalledTimes(2);
+        expect(estadisticas.mostrarPeriodoTelegram).toHaveBeenCalledTimes(1);
+      });
+
+      it('un botón sin mensaje (modo inline) se ignora', async () => {
+        await service.procesarComandoTelegram('secreto123', { callback_query: { id: 'cb-1', data: 'est:mes' } });
+
+        expect(estadisticas.mostrarPeriodoTelegram).not.toHaveBeenCalled();
+      });
+
+      it('un botón desde otro chat se ignora', async () => {
+        await service.procesarComandoTelegram('secreto123', boton('est:mes', '-999'));
+
+        expect(telegram.responderBoton).not.toHaveBeenCalled();
+        expect(estadisticas.mostrarPeriodoTelegram).not.toHaveBeenCalled();
+      });
+
+      it('sin el secreto del webhook se ignora', async () => {
+        await service.procesarComandoTelegram('otro', boton('est:mes'));
+
+        expect(estadisticas.mostrarPeriodoTelegram).not.toHaveBeenCalled();
+      });
+
+      it('si el cálculo falla, avisa en el grupo', async () => {
+        estadisticas.mostrarPeriodoTelegram.mockRejectedValueOnce(new Error('base caída'));
+
+        await service.procesarComandoTelegram('secreto123', boton('est:semana'));
+
+        expect(telegram.responderBoton).toHaveBeenCalledWith('cb-1');
+        expect(telegram.enviarTexto).toHaveBeenCalledWith(
+          expect.stringContaining('No se pudieron calcular las estadísticas'),
+          expect.any(String),
+        );
+      });
     });
 
     it('el botón de estadísticas desde otro chat se ignora', async () => {
