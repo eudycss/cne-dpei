@@ -217,7 +217,7 @@ export class InformeCustodiaService {
       actas.push({
         eventoNombre: datos.evento.nombre,
         codigoUnico: k.codigoUnico,
-        recinto: k.recinto ? `${k.recinto.codigoRecinto} — ${k.recinto.nombre}` : 'Sin recinto',
+        recinto: k.recinto ? `${k.recinto.nombre}, cod: ${k.recinto.codigoRecinto}` : 'Sin recinto',
         canton: k.recinto?.canton?.nombre ?? '—',
         articulos: k.itemsContenido.map((ic) => {
           const r = retorno.get(ic.itemId);

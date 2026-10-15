@@ -8,7 +8,7 @@ function acta(over: Partial<DatosActa> = {}): DatosActa {
   return {
     eventoNombre: 'Elecciones 2027',
     codigoUnico: 'KIT-001',
-    recinto: '1961 — UE García Moreno',
+    recinto: 'UE García Moreno, cod: 1961',
     canton: 'Ibarra',
     articulos: [{ articulo: 'Laptop', serie: '5CD445577S', estadoSalida: 'BUENO', estadoRetorno: null }],
     entrega: { militar, fecha: new Date('2026-11-16T15:00:00Z'), asistente },
@@ -35,7 +35,7 @@ describe('acta de custodia — texto', () => {
     expect(t).toContain('LUIS MIGUEL VILLARREAL VALLEJO con C.C. 0401307459, ASISTENTE ELECTORAL TRANSVERSAL');
     expect(t).toContain('ENTREGA DEL KIT CDA KIT-001 al MILITAR JUAN PÉREZ con C.C. 1002003004');
     expect(t).toContain('OPERADOR CDA PIZARRO VILLACIS CHRISTIAN FEDERICO con C.C. 1002249124');
-    expect(t).toContain('recinto 1961 — UE García Moreno, cantón Ibarra.');
+    expect(t).toContain('recinto UE García Moreno, cod: 1961, cantón Ibarra.');
     expect(t).not.toContain('devuelve');
   });
 
