@@ -17,6 +17,7 @@ import {
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 
 const CONFIG_ID = 1;
@@ -86,6 +87,7 @@ export class EnlacesService {
     private readonly notifications: NotificationsService,
     private readonly estadisticas: EnlacesEstadisticasService,
     private readonly distributivo: DistributivoTecnicosClient,
+    private readonly escalamiento: EnlacesEscalamientoService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -150,13 +152,15 @@ export class EnlacesService {
       }
     }
 
-    await this.reconciliarCaidas(filas);
+    const historial = await this.reconciliarCaidas(filas);
     await this.eliminarRecintosFueraDeLaHoja(filas);
+    // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
+    if (historial.ok) await this.escalamiento.escalar();
 
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarCaidasPorTelegram(caidas, filas);
     await this.notificarRecuperadosPorCorreo(recuperados);
-    await this.notificarRecuperadosPorTelegram(recuperados);
+    await this.notificarRecuperadosPorTelegram(recuperados, historial.minutosCaido);
   }
 
   /** La web, /caidos y la búsqueda por código leen esta tabla, no la hoja: si un
@@ -197,17 +201,28 @@ export class EnlacesService {
    * un corte con la base), el siguiente lo corrige. Sin esto, una caída que no se
    * cerró sumaría tiempo caído para siempre. Abre una caída para cada recinto en
    * FALLO que no tenga una abierta (el índice único parcial evita duplicados) y
-   * cierra las abiertas de los que están ACTIVO. Precisión: la del cron (5 min). */
-  private async reconciliarCaidas(filas: SheetEnlaceRow[]): Promise<void> {
+   * cierra las abiertas de los que están ACTIVO. Precisión: la del cron (5 min).
+   * Devuelve cuánto duró cada caída que se cerró (para "volvió tras 42 min") y
+   * si el historial quedó al día. */
+  private async reconciliarCaidas(
+    filas: SheetEnlaceRow[],
+  ): Promise<{ ok: boolean; minutosCaido: Map<string, number> }> {
+    const minutosCaido = new Map<string, number>();
     try {
       const enFallo = filas.filter((f) => f.estado === 'FALLO');
       const activos = filas.filter((f) => f.estado === 'ACTIVO').map((f) => f.codigoRecinto);
       const abiertas = await this.prisma.enlaceCaida.findMany({
         where: { fin: null },
-        select: { codigoRecinto: true },
+        select: { codigoRecinto: true, inicio: true },
       });
       const conCaidaAbierta = new Set<string>(abiertas.map((a) => a.codigoRecinto));
       const ahora = new Date();
+      const activosSet = new Set<string>(activos);
+      for (const a of abiertas) {
+        if (activosSet.has(a.codigoRecinto)) {
+          minutosCaido.set(a.codigoRecinto, Math.round((ahora.getTime() - a.inicio.getTime()) / 60_000));
+        }
+      }
       const nuevas = enFallo.filter((f) => !conCaidaAbierta.has(f.codigoRecinto));
       if (nuevas.length > 0) {
         await this.prisma.enlaceCaida.createMany({
@@ -226,7 +241,9 @@ export class EnlacesService {
     } catch (e) {
       // El historial nunca frena los avisos; el siguiente ciclo vuelve a intentarlo.
       this.log.error(`No se pudo actualizar el historial de caídas: ${(e as Error)?.message ?? e}`);
+      return { ok: false, minutosCaido };
     }
+    return { ok: true, minutosCaido };
   }
 
   /** Cierra las caídas abiertas (sin fin) de los recintos que cumplen `where`. */
@@ -270,11 +287,14 @@ export class EnlacesService {
     }
   }
 
-  private async notificarRecuperadosPorTelegram(recuperados: EnlaceCaido[]): Promise<void> {
+  private async notificarRecuperadosPorTelegram(
+    recuperados: EnlaceCaido[],
+    minutosCaido: Map<string, number>,
+  ): Promise<void> {
     if (recuperados.length === 0) return;
 
     try {
-      await this.telegram.enviarRecuperados(recuperados);
+      await this.telegram.enviarRecuperados(recuperados, minutosCaido);
     } catch (e) {
       const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando Telegram de enlaces recuperados (${codigos}): ${e}`);

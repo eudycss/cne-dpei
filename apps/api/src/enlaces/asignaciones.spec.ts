@@ -6,6 +6,7 @@ import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import { formatearAsignaciones, TelegramNotifier, TEXTO_BOTON_ASIGNACIONES, type GrupoAsignacion } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
+import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 
 // Solo se reemplaza el notificador de correo; escapeHtml es el real.
 jest.mock('../auth/notifier', () => ({
@@ -15,6 +16,7 @@ jest.mock('../auth/notifier', () => ({
 
 describe('Asignaciones CDA — botón del bot', () => {
   let service: EnlacesService;
+  const escalamiento = { escalar: jest.fn().mockResolvedValue(undefined) };
   const prisma = { enlaceRecinto: { findMany: jest.fn() } };
   const distributivo = { asignaciones: jest.fn() };
   const telegram = {
@@ -36,6 +38,7 @@ describe('Asignaciones CDA — botón del bot', () => {
         { provide: NotificationsService, useValue: {} },
         { provide: EnlacesEstadisticasService, useValue: {} },
         { provide: DistributivoTecnicosClient, useValue: distributivo },
+        { provide: EnlacesEscalamientoService, useValue: escalamiento },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);

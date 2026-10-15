@@ -1,35 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import {
+  ArchivoDriveNoConfigurado,
+  descargarExcelDrive,
+  LecturaCacheada,
+  normalizarEncabezado as normalizar,
+  textoCelda as texto,
+} from './drive-excel';
 
 /** Un recinto CDA con el técnico que responde por él, como en el distributivo. */
 export interface AsignacionTecnico {
   codigoRecinto: string;
   localidad: string;
+  /** Parroquia del recinto ('' si el archivo no la trae): agrupa las caídas por sector. */
+  parroquia: string;
   /** 1, 2, 3… según el orden en que aparece cada técnico en el archivo. */
   numeroTecnico: number;
   tecnico: string;
 }
 
-const TIMEOUT_MS = 15_000;
-const MAX_BYTES = 5 * 1024 * 1024;
-/** El archivo cambia poco: se relee cada 10 min, no en cada toque del botón. */
-const CACHE_MS = 10 * 60 * 1000;
+const VARIABLE = 'DISTRIBUTIVO_TECNICOS_DRIVE_ID';
 
-export class DistributivoNoConfigurado extends Error {
+export class DistributivoNoConfigurado extends ArchivoDriveNoConfigurado {
   constructor() {
-    super('DISTRIBUTIVO_TECNICOS_DRIVE_ID no está configurado');
+    super(VARIABLE);
   }
-}
-
-function texto(valor: ExcelJS.CellValue): string {
-  if (valor === null || valor === undefined) return '';
-  if (typeof valor === 'object' && 'richText' in valor) return valor.richText.map((t) => t.text).join('').trim();
-  if (typeof valor === 'object' && 'result' in valor) return String(valor.result ?? '').trim();
-  return String(valor).trim();
-}
-
-function normalizar(valor: string): string {
-  return valor.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase().replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -43,6 +38,7 @@ export function leerAsignaciones(workbook: ExcelJS.Workbook): AsignacionTecnico[
     let idxCodigo = -1;
     let idxTecnico = -1;
     let idxLocalidad = -1;
+    let idxParroquia = -1;
     let filaEncabezado = -1;
     ws.eachRow((row, n) => {
       if (filaEncabezado !== -1) return;
@@ -55,6 +51,7 @@ export function leerAsignaciones(workbook: ExcelJS.Workbook): AsignacionTecnico[
         idxCodigo = codigo;
         idxTecnico = tecnico;
         idxLocalidad = valores.indexOf('LOCALIDAD');
+        idxParroquia = valores.indexOf('PARROQUIA');
       }
     });
     if (filaEncabezado === -1) continue;
@@ -72,6 +69,7 @@ export function leerAsignaciones(workbook: ExcelJS.Workbook): AsignacionTecnico[
       asignaciones.push({
         codigoRecinto,
         localidad: idxLocalidad === -1 ? '' : texto(valores[idxLocalidad]),
+        parroquia: idxParroquia === -1 ? '' : texto(valores[idxParroquia]),
         numeroTecnico: numeroPorTecnico.get(clave)!,
         tecnico,
       });
@@ -83,44 +81,15 @@ export function leerAsignaciones(workbook: ExcelJS.Workbook): AsignacionTecnico[
 
 @Injectable()
 export class DistributivoTecnicosClient {
-  private readonly log = new Logger('DistributivoTecnicos');
-  private cache: { leidoEn: number; asignaciones: AsignacionTecnico[] } | null = null;
+  private readonly lectura = new LecturaCacheada<AsignacionTecnico[]>(new Logger('DistributivoTecnicos'));
 
-  async asignaciones(ahora = Date.now()): Promise<AsignacionTecnico[]> {
-    if (this.cache && ahora - this.cache.leidoEn < CACHE_MS) return this.cache.asignaciones;
-    try {
-      const asignaciones = leerAsignaciones(await this.descargar());
-      this.cache = { leidoEn: ahora, asignaciones };
-      return asignaciones;
-    } catch (e) {
-      // Si Drive falla, mejor la última versión leída que nada.
-      if (this.cache && !(e instanceof DistributivoNoConfigurado)) {
-        this.log.warn(`No se pudo releer el distributivo, se usa la última copia: ${(e as Error)?.message ?? e}`);
-        return this.cache.asignaciones;
-      }
-      throw e;
-    }
+  asignaciones(ahora = Date.now()): Promise<AsignacionTecnico[]> {
+    return this.lectura.obtener(async () => leerAsignaciones(await this.descargar()), ahora);
   }
 
   /** Descarga por el enlace público de Drive ("cualquier persona con el enlace"). */
   protected async descargar(): Promise<ExcelJS.Workbook> {
-    const id = process.env.DISTRIBUTIVO_TECNICOS_DRIVE_ID?.trim();
-    if (!id) throw new DistributivoNoConfigurado();
-    if (!/^[\w-]{10,100}$/.test(id)) throw new Error('DISTRIBUTIVO_TECNICOS_DRIVE_ID no es un id de Drive válido');
-
-    const res = await fetch(`https://drive.google.com/uc?export=download&id=${id}`, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      redirect: 'follow',
-    });
-    if (!res.ok) throw new Error(`Drive respondió HTTP ${res.status} al descargar el distributivo`);
-    const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length > MAX_BYTES) throw new Error('El distributivo pesa más de 5 MB');
-    // Un .xlsx/.xlsm es un ZIP ("PK"); si no, Drive devolvió una página (sin permiso, por ejemplo).
-    if (buffer.subarray(0, 2).toString() !== 'PK') {
-      throw new Error('Drive no devolvió un Excel: revise que el archivo esté compartido con "cualquier persona con el enlace"');
-    }
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
-    return workbook;
+    if (!process.env[VARIABLE]?.trim()) throw new DistributivoNoConfigurado();
+    return descargarExcelDrive(VARIABLE);
   }
 }

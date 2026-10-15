@@ -1,6 +1,8 @@
 import { Logger } from '@nestjs/common';
 import {
   abreviarCanton,
+  type AlertaRecinto,
+  formatearEscalamiento,
   TelegramNotifier,
   TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
@@ -38,6 +40,103 @@ describe('abreviarCanton', () => {
     ['-', ''],
   ])('un valor raro de la hoja (%p) solo deja letras → %p', (canton, esperado) => {
     expect(abreviarCanton(canton)).toBe(esperado);
+  });
+});
+
+describe('formatearEscalamiento', () => {
+  const alerta = (codigo: string, extra: Partial<AlertaRecinto> = {}): AlertaRecinto => ({
+    codigoRecinto: codigo,
+    nombreRecinto: 'UE García Moreno',
+    canton: 'Cotacachi',
+    parroquia: 'Quiroga',
+    inicio: new Date('2026-10-21T14:00:00Z'),
+    minutosCaido: 30,
+    aviso: 1,
+    caidas24h: 1,
+    caidas7d: 1,
+    inestable: false,
+    encargado: { nombre: 'Ana Pérez', telefono: '+593 99 000 0000' },
+    ...extra,
+  });
+
+  it('un recinto suelto: sector, tiempo caído y encargado para llamarlo', () => {
+    const [texto] = formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }]);
+
+    expect(texto).toBe(
+      [
+        '<b>🚨 Enlaces caídos hace 30 min o más (1)</b>',
+        '',
+        '🔴 <b>1961 · UE García Moreno</b> (Cot · Quiroga)',
+        '⏱ Caído hace 30 min',
+        '📞 Encargado: Ana Pérez · +593 99 000 0000',
+      ].join('\n'),
+    );
+  });
+
+  it('recordatorio, inestable y sin encargado registrado', () => {
+    const [por24h] = formatearEscalamiento([
+      { zona: null, recintos: [alerta('1', { aviso: 3, minutosCaido: 95, inestable: true, caidas24h: 4, encargado: null })] },
+    ]);
+    const [por7d] = formatearEscalamiento([
+      { zona: null, recintos: [alerta('1', { inestable: true, caidas24h: 1, caidas7d: 6 })] },
+    ]);
+
+    expect(por24h).toContain('⏱ Caído hace 1 h 35 min · 3.º aviso');
+    expect(por24h).toContain('⚠️ Inestable: 4 caídas en 24 h');
+    expect(por24h).toContain('📞 Encargado: sin registrar');
+    expect(por7d).toContain('⚠️ Inestable: 6 caídas en 7 días');
+  });
+
+  it('un posible corte de zona va en un bloque, sin repetir el sector en cada recinto', () => {
+    const [texto] = formatearEscalamiento([
+      { zona: 'Quiroga', recintos: [alerta('1961'), alerta('1962')] },
+      { zona: null, recintos: [alerta('28', { canton: 'Ibarra', parroquia: '' })] },
+    ]);
+
+    expect(texto).toContain('(3)');
+    expect(texto).toContain('<b>📍 Posible corte de zona: Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
+    expect(texto).toContain('🔴 <b>1961 · UE García Moreno</b>\n');
+    expect(texto).toContain('🔴 <b>28 · UE García Moreno</b> (Iba)');
+  });
+
+  it('escapa el HTML de la hoja y del archivo de encargados', () => {
+    const [texto] = formatearEscalamiento([
+      {
+        zona: '<Zona>',
+        recintos: [
+          alerta('<1>', { nombreRecinto: 'A & B', parroquia: '<p>', encargado: { nombre: '<i>Ana</i>', telefono: '099' } }),
+          alerta('2'),
+        ],
+      },
+    ]);
+
+    expect(texto).toContain('&lt;Zona&gt;');
+    expect(texto).toContain('&lt;1&gt; · A &amp; B');
+    expect(texto).toContain('&lt;i&gt;Ana&lt;/i&gt;');
+    expect(texto).not.toContain('<i>Ana');
+  });
+
+  it('una zona enorme también se parte, repitiendo el nombre de la zona', () => {
+    const recintos = Array.from({ length: 40 }, (_, i) => alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) }));
+
+    const mensajes = formatearEscalamiento([{ zona: 'Quiroga', recintos }]);
+
+    expect(mensajes.length).toBeGreaterThan(1);
+    expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
+    expect(mensajes[1].startsWith('<b>📍 Zona Quiroga (cont.)</b>')).toBe(true);
+    expect(mensajes.join('\n').match(/🔴/g)).toHaveLength(40);
+  });
+
+  it('si no cabe en un mensaje, parte entre recintos sin perder ninguno', () => {
+    const muchos = Array.from({ length: 40 }, (_, i) =>
+      ({ zona: null, recintos: [alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) })] }),
+    );
+
+    const mensajes = formatearEscalamiento(muchos);
+
+    expect(mensajes.length).toBeGreaterThan(1);
+    expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
+    expect(mensajes.join('\n').match(/🔴/g)).toHaveLength(40);
   });
 });
 
@@ -226,6 +325,24 @@ describe('TelegramNotifier', () => {
       expect(body.text).toContain('✅');
       expect(body.text).toContain('978');
       expect(body.text).toContain('Escuela Central');
+    });
+
+    it('si se conoce, dice cuánto duró la caída', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+
+      await new TelegramNotifier().enviarRecuperados(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '28', nombreRecinto: 'UE Ibarra' },
+        ],
+        new Map([['978', 72]]),
+      );
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.text).toContain('978 — Escuela Central · volvió tras 1 h 12 min');
+      expect(body.text).toMatch(/28 — UE Ibarra$/m);
     });
 
     it('muestra el cantón abreviado y escapa el contenido (va con parse_mode HTML)', async () => {

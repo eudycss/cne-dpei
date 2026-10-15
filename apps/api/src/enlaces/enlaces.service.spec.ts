@@ -10,6 +10,7 @@ import {
 } from './telegram-notifier';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
+import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -21,6 +22,8 @@ jest.mock('../auth/notifier', () => ({
 
 describe('EnlacesService', () => {
   let service: EnlacesService;
+
+  const escalamiento = { escalar: jest.fn().mockResolvedValue(undefined) };
 
   const prisma = {
     enlaceRecinto: {
@@ -61,6 +64,7 @@ describe('EnlacesService', () => {
         { provide: NotificationsService, useValue: notifications },
         { provide: EnlacesEstadisticasService, useValue: estadisticas },
         { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
+        { provide: EnlacesEscalamientoService, useValue: escalamiento },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);
@@ -80,6 +84,7 @@ describe('EnlacesService', () => {
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
       expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      expect(escalamiento.escalar).not.toHaveBeenCalled();
     });
 
     it('también se desactiva con mayúsculas o espacios (" FALSE ")', async () => {
@@ -194,7 +199,7 @@ describe('EnlacesService', () => {
       );
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
         { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' },
-      ]);
+      ], expect.any(Map));
     });
 
     it('un fallo en el envío del correo batcheado no interrumpe el ciclo ni relanza', async () => {
@@ -329,11 +334,11 @@ describe('EnlacesService', () => {
 
       it('abre una caída para cada recinto en FALLO que no tenga una abierta', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('982', 'FALLO'), fila('28', 'ACTIVO')]);
-        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '982' }]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '982', inicio: new Date() }]);
 
         await service.revisarEnlaces();
 
-        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith({ where: { fin: null }, select: { codigoRecinto: true } });
+        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith({ where: { fin: null }, select: { codigoRecinto: true, inicio: true } });
         expect(prisma.enlaceCaida.createMany).toHaveBeenCalledWith({
           data: [{ codigoRecinto: '978', nombreRecinto: 'Recinto 978', canton: 'Ibarra', inicio: expect.any(Date) }],
           skipDuplicates: true,
@@ -342,7 +347,7 @@ describe('EnlacesService', () => {
 
       it('cierra las caídas abiertas de los recintos que están ACTIVO', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO'), fila('28', 'ACTIVO')]);
-        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
 
@@ -353,9 +358,42 @@ describe('EnlacesService', () => {
         expect(prisma.enlaceCaida.createMany).not.toHaveBeenCalled();
       });
 
+      it('al recuperarse, Telegram dice cuánto duró la caída', async () => {
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([
+          { codigoRecinto: '978', inicio: new Date(Date.now() - 42 * 60_000) },
+        ]);
+
+        await service.revisarEnlaces();
+
+        const [, minutos] = telegram.enviarRecuperados.mock.calls[0];
+        expect(minutos.get('978')).toBe(42);
+      });
+
+      it('si el historial no se pudo actualizar, no escala (podría avisar de un enlace que ya volvió)', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
+
+        await service.revisarEnlaces();
+
+        expect(escalamiento.escalar).not.toHaveBeenCalled();
+      });
+
+      it('cada ciclo revisa el escalamiento (avisos de 30 min), después del historial', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+
+        await service.revisarEnlaces();
+
+        expect(escalamiento.escalar).toHaveBeenCalledTimes(1);
+        expect(prisma.enlaceCaida.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+          escalamiento.escalar.mock.invocationCallOrder[0],
+        );
+      });
+
       it('sin cambios no escribe nada (FALLO con caída abierta, ACTIVO sin abierta)', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('28', 'ACTIVO')]);
-        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
 
@@ -365,7 +403,7 @@ describe('EnlacesService', () => {
 
       it('si un ciclo no pudo cerrar la caída, el siguiente la cierra igual (ACTIVO→ACTIVO)', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
-        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978' }]);
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
 
@@ -572,7 +610,7 @@ describe('EnlacesService', () => {
       );
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
-      ]);
+      ], expect.any(Map));
     });
 
     it('NO notifica recuperación si el enlace sigue ACTIVO (no venía de FALLO)', async () => {
@@ -611,7 +649,7 @@ describe('EnlacesService', () => {
       expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
-      ]);
+      ], expect.any(Map));
     });
 
     it('un fallo en el correo o Telegram de recuperación no interrumpe el ciclo', async () => {
