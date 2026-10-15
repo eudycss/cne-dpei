@@ -6,10 +6,15 @@ import type {
   PeriodoEstadisticasEnlaces,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { TelegramNotifier, type SeccionEstadisticas } from './telegram-notifier';
+import { TelegramNotifier, type TarjetaEstadisticas } from './telegram-notifier';
 
 const CONFIG_ID = 1;
 const PERIODOS: readonly PeriodoEstadisticasEnlaces[] = ['dia', 'semana', 'mes'];
+const TITULO_ACTUAL: Record<PeriodoEstadisticasEnlaces, string> = {
+  dia: 'Hoy',
+  semana: 'Esta semana',
+  mes: 'Este mes',
+};
 const MS_MINUTO = 60_000;
 const MS_DIA = 24 * 60 * MS_MINUTO;
 // Ecuador continental no tiene horario de verano: UTC-5 todo el año.
@@ -108,7 +113,8 @@ export function calcularEstadisticas(
   for (const c of caidas) {
     const desde = Math.max(c.inicio.getTime(), rango.desde.getTime());
     const hasta = Math.min((c.fin ?? ahora).getTime(), rango.hasta.getTime(), ahora.getTime());
-    const empezoEnRango = c.inicio >= rango.desde && c.inicio < rango.hasta;
+    // `< ahora`: al comparar "a esta hora", lo que empezó después del corte no cuenta.
+    const empezoEnRango = c.inicio >= rango.desde && c.inicio < rango.hasta && c.inicio < ahora;
     if (hasta <= desde && !empezoEnRango) continue;
 
     const e =
@@ -191,21 +197,51 @@ export class EnlacesEstadisticasService {
     };
   }
 
-  /** Hoy, esta semana y este mes, para el botón "📊 Estadísticas" del bot. */
+  /**
+   * El período y, para comparar, el anterior (ayer, la semana o el mes
+   * anterior), solo si el historial lo cubre completo: comparar contra un
+   * período a medias daría "más caídas que ayer" falsos. Si el período sigue
+   * en curso, el anterior se corta a la misma altura (hoy hasta las 09:00 contra
+   * ayer hasta las 09:00), no contra el día entero.
+   */
+  async tarjeta(
+    titulo: string,
+    periodo: PeriodoEstadisticasEnlaces,
+    dia: [number, number, number],
+    ahora = new Date(),
+  ): Promise<TarjetaEstadisticas> {
+    const actual = await this.estadisticas(periodo, dia, ahora);
+    const comparaHastaAhora = ahora < new Date(actual.hasta);
+    if (actual.datosParciales) return { titulo, actual, anterior: null, comparaHastaAhora };
+    const desdeActual = new Date(actual.desde).getTime();
+    const diaAnterior = diaEcuador(new Date(desdeActual - 1));
+    const desdeAnterior = rangoPeriodo(periodo, diaAnterior).desde.getTime();
+    const corte = comparaHastaAhora ? new Date(ahora.getTime() - (desdeActual - desdeAnterior)) : ahora;
+    const anterior = await this.estadisticas(periodo, diaAnterior, corte);
+    return { titulo, actual, anterior: anterior.datosParciales ? null : anterior, comparaHastaAhora };
+  }
+
+  /** Botón "📊 Estadísticas": la tarjeta de hoy, con botones para ver la semana y el mes. */
   async enviarEstadisticasTelegram(ahora = new Date()): Promise<void> {
-    const dia = diaEcuador(ahora);
-    const secciones: SeccionEstadisticas[] = [
-      { titulo: 'Hoy', stats: await this.estadisticas('dia', dia, ahora) },
-      { titulo: 'Esta semana', stats: await this.estadisticas('semana', dia, ahora) },
-      { titulo: 'Este mes', stats: await this.estadisticas('mes', dia, ahora) },
-    ];
-    await this.telegram.enviarEstadisticas('📊 Estadísticas de enlaces', secciones);
+    const tarjeta = await this.tarjeta(TITULO_ACTUAL.dia, 'dia', diaEcuador(ahora), ahora);
+    await this.telegram.enviarTarjetaEstadisticas(tarjeta, true);
+  }
+
+  /** Botón Hoy/Semana/Mes bajo una tarjeta: la cambia, en el mismo mensaje, por ese período. */
+  async mostrarPeriodoTelegram(
+    periodo: PeriodoEstadisticasEnlaces,
+    messageId: number,
+    ahora = new Date(),
+  ): Promise<void> {
+    const tarjeta = await this.tarjeta(TITULO_ACTUAL[periodo], periodo, diaEcuador(ahora), ahora);
+    await this.telegram.editarTarjetaEstadisticas(messageId, tarjeta);
   }
 
   /**
-   * Resumen automático a las 08:00 (hora de Ecuador): el día anterior; los
-   * lunes también la semana anterior y el día 1 el mes anterior, en un solo
-   * mensaje. Se apaga junto con el cron de enlaces (ENLACES_CRON_ENABLED=false).
+   * Resumen automático a las 08:00 (hora de Ecuador): la tarjeta del día
+   * anterior; los lunes también la de la semana anterior y el día 1 la del mes
+   * anterior. Sin botones: es un registro de ese período, no se cambia. Se
+   * apaga junto con el cron de enlaces (ENLACES_CRON_ENABLED=false).
    */
   @Cron('0 8 * * *', { name: 'resumen-enlaces', timeZone: 'America/Guayaquil' })
   async enviarResumenProgramado(ahora = new Date()): Promise<void> {
@@ -213,17 +249,15 @@ export class EnlacesEstadisticasService {
     try {
       const ayer = diaEcuador(new Date(ahora.getTime() - MS_DIA));
       const [anio, mes, dia] = diaEcuador(ahora);
-      const secciones: SeccionEstadisticas[] = [
-        { titulo: 'Ayer', stats: await this.estadisticas('dia', ayer, ahora) },
-      ];
-      if (new Date(Date.UTC(anio, mes, dia)).getUTCDay() === 1) {
-        secciones.push({ titulo: 'Semana pasada', stats: await this.estadisticas('semana', ayer, ahora) });
-      }
-      if (dia === 1) {
-        secciones.push({ titulo: 'Mes pasado', stats: await this.estadisticas('mes', ayer, ahora) });
-      }
-      await this.telegram.enviarEstadisticas('🗓️ Resumen de enlaces caídos', secciones);
-      this.log.log(`Resumen de enlaces enviado (${secciones.map((s) => s.titulo).join(', ')})`);
+      const periodos: [string, PeriodoEstadisticasEnlaces][] = [['Ayer', 'dia']];
+      if (new Date(Date.UTC(anio, mes, dia)).getUTCDay() === 1) periodos.push(['Semana pasada', 'semana']);
+      if (dia === 1) periodos.push(['Mes pasado', 'mes']);
+
+      // Se calculan todas antes de enviar: si algo falla, no queda un resumen a medias.
+      const tarjetas: TarjetaEstadisticas[] = [];
+      for (const [titulo, periodo] of periodos) tarjetas.push(await this.tarjeta(titulo, periodo, ayer, ahora));
+      for (const t of tarjetas) await this.telegram.enviarTarjetaEstadisticas(t, false);
+      this.log.log(`Resumen de enlaces enviado (${periodos.map(([t]) => t).join(', ')})`);
     } catch (e) {
       this.log.error(`No se pudo armar el resumen de enlaces: ${(e as Error)?.message ?? e}`);
     }

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
+import type { ConfigEnlacesResponse, EnlaceRecinto, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
@@ -9,6 +9,7 @@ import {
   abreviarCanton,
   TelegramNotifier,
   type GrupoAsignacion,
+  PREFIJO_CALLBACK_ESTADISTICAS,
   TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
@@ -30,7 +31,18 @@ export interface TelegramUpdate {
     chat?: { id: number | string };
     from?: { id: number | string };
   };
+  /** Toque de un botón bajo un mensaje del bot (Hoy/Semana/Mes de la tarjeta de estadísticas). */
+  callback_query?: {
+    id: string;
+    data?: string;
+    message?: { message_id: number; chat?: { id: number | string } };
+  };
 }
+
+/** Toques más seguidos que esto sobre el mismo mensaje se ignoran (cada uno son consultas a la base). */
+const PAUSA_ENTRE_TOQUES_MS = 1500;
+
+const CALLBACK_PERIODO = new RegExp(`^${PREFIJO_CALLBACK_ESTADISTICAS}(dia|semana|mes)$`);
 
 /** La hoja se edita a mano y puede traer mayúsculas inconsistentes (COTACACHI vs Cotacachi); se normaliza para que el filtro/dropdown de la web no los trate como cantones distintos. */
 function normalizarCanton(valor: string | null | undefined): string | null {
@@ -64,6 +76,8 @@ export class EnlacesService {
    * limpia, lo peor que pasa es que la persona tenga que tocar el botón de nuevo. */
   private readonly esperandoCodigo = new Map<string, number>();
   private static readonly ESPERA_CODIGO_TTL_MS = 10 * 60 * 1000;
+  /** Último toque de Hoy/Semana/Mes por mensaje (message_id → ms). */
+  private readonly ultimoToque = new Map<number, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -414,7 +428,7 @@ export class EnlacesService {
 
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
    * responde con la lista actual de recintos caídos; `/estadisticas` (o su
-   * botón), con el top de caídas de hoy, la semana y el mes; `/asignaciones`
+   * botón), con la tarjeta de hoy (y botones para la semana y el mes); `/asignaciones`
    * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
@@ -425,6 +439,11 @@ export class EnlacesService {
     const secretEsperado = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!secretEsperado || !secretosCoinciden(secretRecibido, secretEsperado)) {
       this.log.warn('Webhook de Telegram: secreto ausente o inválido — se ignora el update');
+      return;
+    }
+
+    if (update.callback_query) {
+      await this.procesarBotonTelegram(update.callback_query);
       return;
     }
 
@@ -506,6 +525,44 @@ export class EnlacesService {
       this.esperandoCodigo.delete(claveEspera);
       await this.responderCodigoRecinto(textoOriginal);
     }
+  }
+
+  /** Botones Hoy/Semana/Mes de la tarjeta de estadísticas: cambian el mismo
+   * mensaje al período tocado. Solo en el chat configurado y con un
+   * callback_data conocido; cualquier otra cosa se ignora. */
+  private async procesarBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
+    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
+    const chatId = boton.message?.chat?.id;
+    if (!chatConfigurado || chatId === undefined || String(chatId) !== chatConfigurado) {
+      this.log.warn(`Webhook de Telegram: botón desde un chat no autorizado (${chatId}) — se ignora`);
+      return;
+    }
+    // Primero se contesta el toque (aunque luego se ignore), para que el botón no
+    // quede "cargando" en el cliente de quien lo tocó.
+    await this.telegram.responderBoton(boton.id);
+    const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
+    const messageId = boton.message?.message_id;
+    if (!periodo || typeof messageId !== 'number') return;
+    if (this.toqueDemasiadoSeguido(messageId)) return;
+    try {
+      await this.estadisticas.mostrarPeriodoTelegram(periodo, messageId);
+    } catch (e) {
+      this.log.error(`No se pudieron calcular las estadísticas para Telegram: ${(e as Error)?.message ?? e}`);
+      await this.telegram.enviarTexto(
+        '⚠️ No se pudieron calcular las estadísticas en este momento. Intente de nuevo en unos minutos.',
+        'el aviso de error de estadísticas',
+      );
+    }
+  }
+
+  /** true si ese mensaje se tocó hace menos de PAUSA_ENTRE_TOQUES_MS (y si no, lo registra). */
+  private toqueDemasiadoSeguido(messageId: number, ahora = Date.now()): boolean {
+    const anterior = this.ultimoToque.get(messageId);
+    if (anterior !== undefined && ahora - anterior < PAUSA_ENTRE_TOQUES_MS) return true;
+    // Solo importan los toques recientes: el mapa no crece sin límite.
+    for (const [id, t] of this.ultimoToque) if (ahora - t >= PAUSA_ENTRE_TOQUES_MS) this.ultimoToque.delete(id);
+    this.ultimoToque.set(messageId, ahora);
+    return false;
   }
 
   /** true si la persona tocó "Ingresar código" hace menos de ESPERA_CODIGO_TTL_MS.
