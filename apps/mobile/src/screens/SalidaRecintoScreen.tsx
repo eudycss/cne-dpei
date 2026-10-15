@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,12 @@ import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
 import { capturarYSubirActa, limpiarActas, reintentarSubidaActa, restaurarActas } from '../lib/offline-actas';
 import {
+  leerPruebaConexionLocal,
+  limpiarPruebaConexion,
+  reconciliarPruebaConexion,
+  registrarPruebaConexion,
+} from '../lib/prueba-conexion';
+import {
   activarRastreoSegundoPlano,
   asegurarServiciosUbicacion,
   LocationPermissionDeniedError,
@@ -30,7 +36,7 @@ import {
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 
-type Paso = 1 | 2;
+type Paso = 1 | 2 | 3;
 type TipoActa = 'instalacion' | 'escrutinio';
 type Styles = ReturnType<typeof makeStyles>;
 
@@ -56,7 +62,12 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [paso, setPaso] = useState<Paso>(1);
 
-  // Paso 1: actas obligatorias (instalación + escrutinio). A diferencia de
+  // Paso 1: prueba de conexión (obligatoria en la app). 'registrada' cuando el
+  // servidor la tiene pero este teléfono no guardó la hora.
+  const [pruebaConexion, setPruebaConexion] = useState<string | null>(null);
+  const [registrandoPrueba, setRegistrandoPrueba] = useState(false);
+
+  // Paso 2: actas obligatorias (instalación + escrutinio). A diferencia de
   // fotoMilitarUrl (que se puede resumir desde el servidor), las URLs de las
   // actas solo se graban de forma permanente cuando se confirma la salida del
   // recinto — por eso se persisten localmente (offline-actas.ts) apenas se
@@ -65,7 +76,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   const [escrutinio, setEscrutinio] = useState<ActaState>(ACTA_INICIAL);
   const [mostrarCamara, setMostrarCamara] = useState<TipoActa | null>(null);
 
-  // Paso 2: checklist de kits + confirmar (ya existente)
+  // Paso 3: checklist de kits + confirmar (ya existente)
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const [registrando, setRegistrando] = useState(false);
 
@@ -94,6 +105,45 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   // asignación) y el mismo teléfono se reutiliza, se podrían reusar por error
   // las actas de OTRO recinto/evento sin volver a tomar fotos.
   const contextoId = asignacion ? `${asignacion.eventoId}_${asignacion.recinto.id}` : null;
+  const pruebaEnServidor = !!asignacion?.yaRegistroPruebaConexion;
+
+  // Si la prueba ya está hecha (en el servidor o guardada en este teléfono sin
+  // sincronizar), no se repite: al abrir la pantalla se arranca en el paso de
+  // los reportes. Ese salto es solo la primera vez; si luego un refresco trae la
+  // prueba del servidor, solo se habilita "Continuar" (no se mueve al operador).
+  const saltoInicialHecho = useRef(false);
+  useEffect(() => {
+    if (!contextoId) return;
+    let cancelado = false;
+    (async () => {
+      const local = await leerPruebaConexionLocal(contextoId);
+      if (cancelado) return;
+      const primeraVez = !saltoInicialHecho.current;
+      saltoInicialHecho.current = true;
+      if (primeraVez) reconciliarPruebaConexion(contextoId, pruebaEnServidor);
+      if (!local && !pruebaEnServidor) return;
+      setPruebaConexion((actual) => actual ?? local ?? 'registrada');
+      if (primeraVez) setPaso((p) => (p === 1 ? 2 : p));
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [contextoId, pruebaEnServidor]);
+
+  async function verificarConexion() {
+    if (!contextoId) return;
+    setRegistrandoPrueba(true);
+    try {
+      setPruebaConexion(await registrarPruebaConexion(contextoId));
+    } catch (e: any) {
+      Alert.alert(
+        'No se pudo registrar',
+        e?.response?.data?.message ?? 'No se pudo registrar la prueba de conexión. Intenta de nuevo.',
+      );
+    } finally {
+      setRegistrandoPrueba(false);
+    }
+  }
 
   const aplicarResultadoActa = useCallback(
     (tipo: TipoActa, resultado: { uri: string; url: string | null; error: string | null }) => {
@@ -247,6 +297,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       // Las actas ya quedaron referenciadas en el registro de salida (guardado
       // o encolado); la copia local de las fotos ya no hace falta.
       await limpiarActas(contextoId);
+      await limpiarPruebaConexion(contextoId);
 
       // HU4-CA3: iniciar rastreo continuo en segundo plano. Es "best-effort":
       // la salida ya quedó registrada (o encolada), así que si esto falla o tarda
@@ -273,6 +324,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       } else if (e?.response?.status === 409) {
         Alert.alert('Salida ya registrada', 'Ya habías registrado tu salida del recinto.');
         await limpiarActas(contextoId);
+        await limpiarPruebaConexion(contextoId);
         onSalidaRegistrada();
       } else {
         Alert.alert(
@@ -322,12 +374,21 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         <Text style={styles.title}>Salida del recinto electoral</Text>
 
         <View style={styles.stepper}>
-          <StepBadge n={1} label="Reportes obligatorios" active={paso === 1} done={paso > 1} styles={styles} />
+          <StepBadge n={1} label="Prueba de conexión" active={paso === 1} done={paso > 1} styles={styles} />
           <View style={styles.stepLine} />
-          <StepBadge n={2} label="Confirmar salida" active={paso === 2} done={false} styles={styles} />
+          <StepBadge n={2} label="Reportes obligatorios" active={paso === 2} done={paso > 2} styles={styles} />
+          <View style={styles.stepLine} />
+          <StepBadge n={3} label="Confirmar salida" active={paso === 3} done={false} styles={styles} />
         </View>
 
         {paso === 1 ? (
+          <PasoConexion
+            pruebaConexion={pruebaConexion}
+            registrando={registrandoPrueba}
+            onVerificar={verificarConexion}
+            styles={styles}
+          />
+        ) : paso === 2 ? (
           <PasoActas
             instalacion={instalacion}
             escrutinio={escrutinio}
@@ -380,12 +441,27 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
 
         {paso === 1 ? (
           <Pressable
-            style={[styles.btnPrimary, !ambasActasListas && styles.btnDisabled]}
-            disabled={!ambasActasListas}
+            style={[styles.btnPrimary, !pruebaConexion && styles.btnDisabled]}
+            disabled={!pruebaConexion}
             onPress={() => setPaso(2)}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !pruebaConexion }}
           >
             <Text style={styles.btnPrimaryText}>Continuar</Text>
           </Pressable>
+        ) : paso === 2 ? (
+          <>
+            <Pressable
+              style={[styles.btnPrimary, !ambasActasListas && styles.btnDisabled]}
+              disabled={!ambasActasListas}
+              onPress={() => setPaso(3)}
+            >
+              <Text style={styles.btnPrimaryText}>Continuar</Text>
+            </Pressable>
+            <Pressable style={styles.linkBack} onPress={() => setPaso(1)}>
+              <Text style={styles.linkBackText}>← Paso anterior</Text>
+            </Pressable>
+          </>
         ) : (
           <>
             <Pressable
@@ -399,7 +475,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
                 <Text style={styles.btnPrimaryText}>Registrar Salida de Recinto Electoral</Text>
               )}
             </Pressable>
-            <Pressable style={styles.linkBack} onPress={() => setPaso(1)}>
+            <Pressable style={styles.linkBack} onPress={() => setPaso(2)}>
               <Text style={styles.linkBackText}>← Paso anterior</Text>
             </Pressable>
           </>
@@ -446,6 +522,62 @@ function StepBadge({
       </View>
       <Text style={[styles.stepLabel, active && styles.stepLabelActive]}>{label}</Text>
     </View>
+  );
+}
+
+function horaCorta(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function PasoConexion({
+  pruebaConexion,
+  registrando,
+  onVerificar,
+  styles,
+}: {
+  pruebaConexion: string | null;
+  registrando: boolean;
+  onVerificar: () => void;
+  styles: Styles;
+}) {
+  return (
+    <>
+      <Text style={styles.subtitle}>
+        Verifica a la vista que el recinto tenga conexión y confírmalo. Sin esta prueba no podrás
+        continuar.
+      </Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Prueba de conexión</Text>
+        {pruebaConexion ? (
+          <View style={styles.fotoConfirm} accessible accessibilityRole="text" accessibilityLiveRegion="polite">
+            <View style={styles.fotoConfirmIcon}>
+              <Text style={styles.fotoConfirmCheck}>✓</Text>
+            </View>
+            <Text style={styles.fotoConfirmText}>
+              {pruebaConexion === 'registrada'
+                ? 'Conexión verificada'
+                : `Conexión verificada a las ${horaCorta(pruebaConexion)}`}
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            style={[styles.btnPrimary, styles.btnConexion, registrando && { opacity: 0.6 }]}
+            onPress={onVerificar}
+            disabled={registrando}
+            accessibilityRole="button"
+            accessibilityLabel="Conexión verificada"
+            accessibilityHint="Registra la hora en que confirmaste que el recinto tiene conexión"
+            accessibilityState={{ disabled: registrando, busy: registrando }}
+          >
+            {registrando ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>Conexión verificada</Text>
+            )}
+          </Pressable>
+        )}
+      </View>
+    </>
   );
 }
 
@@ -676,6 +808,8 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     marginTop: 0,
   },
   btnDisabled: { backgroundColor: c.primaryDisabled },
+  // Botón grande (objetivo táctil ≥ 44 px, WCAG 2.5.8) para usar de pie en el recinto.
+  btnConexion: { minHeight: 56, justifyContent: 'center', marginTop: 8 },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 15 },
   btnSecondary: { paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', marginTop: 12 },
   btnSecondaryText: { color: c.textSecondary, fontFamily: fontFamily.medium },

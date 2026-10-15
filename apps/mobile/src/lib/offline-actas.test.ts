@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { subirFotoActa } from './queries/retorno';
+import { comprimirFoto } from './comprimir-foto';
 import {
   capturarYSubirActa,
   limpiarActas,
@@ -13,7 +14,13 @@ jest.mock('expo-file-system', () => ({
   getInfoAsync: jest.fn(),
   makeDirectoryAsync: jest.fn(),
   copyAsync: jest.fn(),
+  writeAsStringAsync: jest.fn(),
   deleteAsync: jest.fn(),
+  EncodingType: { Base64: 'base64' },
+}));
+
+jest.mock('./comprimir-foto', () => ({
+  comprimirFoto: jest.fn(),
 }));
 
 jest.mock('./queries/retorno', () => ({
@@ -30,6 +37,9 @@ describe('offline-actas', () => {
     (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: true });
     (FileSystem.copyAsync as jest.Mock).mockResolvedValue(undefined);
     (FileSystem.deleteAsync as jest.Mock).mockResolvedValue(undefined);
+    (FileSystem.writeAsStringAsync as jest.Mock).mockResolvedValue(undefined);
+    // Por defecto la compresión no está disponible: se guarda la foto original.
+    (comprimirFoto as jest.Mock).mockResolvedValue(null);
   });
 
   describe('capturarYSubirActa', () => {
@@ -48,6 +58,21 @@ describe('offline-actas', () => {
         url: 'actas/instalacion-abc.bin',
         error: null,
       });
+    });
+
+    it('guarda la foto comprimida (no la original) cuando se puede reducir', async () => {
+      (comprimirFoto as jest.Mock).mockResolvedValueOnce('QkFTRTY0');
+      (subirFotoActa as jest.Mock).mockResolvedValue({ url: 'actas/instalacion-abc.bin' });
+
+      const resultado = await capturarYSubirActa(CONTEXTO, 'instalacion', 'file:///cache/camara-tmp.jpg');
+
+      expect(comprimirFoto).toHaveBeenCalledWith('file:///cache/camara-tmp.jpg');
+      expect(FileSystem.writeAsStringAsync).toHaveBeenCalledWith(`${DIRECTORIO}instalacion.jpg`, 'QkFTRTY0', {
+        encoding: 'base64',
+      });
+      expect(FileSystem.copyAsync).not.toHaveBeenCalled();
+      expect(subirFotoActa).toHaveBeenCalledWith(`${DIRECTORIO}instalacion.jpg`);
+      expect(resultado.url).toBe('actas/instalacion-abc.bin');
     });
 
     it('crea el directorio si todavía no existe', async () => {

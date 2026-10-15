@@ -60,6 +60,7 @@ enum TipoTracking {
   SALIDA_RECINTO
   LLEGADA_DPI
   LLEGADA_NO_CDA
+  PRUEBA_CONEXION
 
   @@map("tipo_tracking")
 }

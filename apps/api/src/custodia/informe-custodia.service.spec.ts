@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../common/roles.decorator';
 import { CustodiaController, filtrosInforme } from './custodia.controller';
 import { InformeCustodiaService, MAX_ACTAS_POR_PDF } from './informe-custodia.service';
+import * as actaPdf from './acta-custodia.pdf';
 import { generarActasPdf } from './acta-custodia.pdf';
 
 const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -181,6 +182,41 @@ describe('InformeCustodiaService', () => {
     ]);
     await service.actas({});
     expect(storage.readDecrypted.mock.calls).toEqual([['militares/a.bin'], ['militares/b.bin']]);
+  });
+
+  describe('asistente del acta sin entrega ni devolución', () => {
+    const sinPasos = () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow({ entregaCustodio: null })]);
+      prisma.recepcionDpiKit.findMany.mockResolvedValueOnce([]);
+    };
+    const asistenteDelActa = async () => {
+      const spy = jest.spyOn(actaPdf, 'generarActasPdf');
+      await service.actas({});
+      const [[acta]] = spy.mock.calls[0];
+      spy.mockRestore();
+      return acta.asistente;
+    };
+
+    it('si hay un solo asistente transversal activo, es quien sale en el acta', async () => {
+      sinPasos();
+      prisma.usuario.findMany.mockResolvedValueOnce([operador]).mockResolvedValueOnce([asistente]);
+
+      expect(await asistenteDelActa()).toEqual({ nombre: 'Leal Jairo', cedula: '1003004005' });
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { activo: true, roles: { some: { rol: { nombre: 'ASISTENTE_TRANSVERSAL' } } } },
+        }),
+      );
+    });
+
+    it('si hay varios, queda en blanco (no se adivina)', async () => {
+      sinPasos();
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([operador])
+        .mockResolvedValueOnce([asistente, { ...asistente, id: 'as2' }]);
+
+      expect(await asistenteDelActa()).toBeNull();
+    });
   });
 
   it('un kit de otro evento no tiene acta (404)', async () => {

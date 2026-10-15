@@ -1,4 +1,4 @@
-import PDFDocument from 'pdfkit';
+import { ANCHO, asegurarEspacio, encabezado, fecha, GRIS, LINEA, MARGEN, nuevoPdf, tabla, titulo } from '../common/pdf';
 
 /** Todo lo que lleva el acta de un kit (ya resuelto: nombres, fechas, foto). */
 export interface DatosActa {
@@ -22,23 +22,37 @@ export interface Persona {
   cedula: string;
 }
 
-const MARGEN = 48;
-const ANCHO = 595.28 - MARGEN * 2; // A4
-const GRIS = '#6b7280';
-const LINEA = '#9ca3af';
 const ESTADO: Record<string, string> = { BUENO: 'Bueno', REGULAR: 'Regular', MALO: 'Malo' };
 
-function fecha(d: Date): string {
-  // dd/mm/aaaa hh:mm, hora de Ecuador continental.
-  return d.toLocaleString('es-EC', {
-    timeZone: 'America/Guayaquil',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+const BLANCO = '____________________';
+
+/** "16 de noviembre del 2026", hora de Ecuador continental (como la plantilla en Word). */
+export function fechaLarga(d: Date): string {
+  const [dia, mes, anio] = d
+    .toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil', day: 'numeric', month: 'long', year: 'numeric' })
+    .split(' de ');
+  return `${dia} de ${mes} del ${anio}`;
+}
+
+function quien(p: Persona | null): string {
+  return p ? `${p.nombre} con C.C. ${p.cedula}` : `${BLANCO} con C.C. ${BLANCO}`;
+}
+
+/**
+ * Párrafo inicial del acta, al estilo de la plantilla en Word ("En la ciudad
+ * de Ibarra al día…"), con la cadena de custodia en una sola narración. Lo que
+ * aún no se registró queda en blanco para llenarlo a mano.
+ */
+export function textoActa(a: DatosActa): string {
+  const dia = a.entrega?.fecha ?? a.recepcion?.fecha;
+  let texto =
+    `En la ciudad de Ibarra, al día ${dia ? fechaLarga(dia) : BLANCO}, el/la Sr./Srta. ${quien(a.entrega?.asistente ?? a.asistente)}, ` +
+    `ASISTENTE ELECTORAL TRANSVERSAL, realiza la ENTREGA DEL KIT CDA ${a.codigoUnico} al MILITAR ${quien(a.militar)}, ` +
+    `quien lo traslada y entrega al OPERADOR CDA ${quien(a.operador)} en el recinto ${a.recinto}, cantón ${a.canton}.`;
+  if (a.devolucion) {
+    texto += ' Concluida la jornada, el OPERADOR CDA devuelve el kit al ASISTENTE ELECTORAL TRANSVERSAL en la Delegación.';
+  }
+  return texto;
 }
 
 /**
@@ -48,13 +62,7 @@ function fecha(d: Date): string {
  * la cadena de custodia completa (3 entregas) y las firmas.
  */
 export async function generarActasPdf(actas: DatosActa[]): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'A4', margin: MARGEN, autoFirstPage: false });
-  const chunks: Buffer[] = [];
-  const terminado = new Promise<Buffer>((resolve, reject) => {
-    doc.on('data', (c: Buffer) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-  });
+  const { doc, terminado } = nuevoPdf();
   // De a una: cada foto se descarga justo antes de dibujar su acta y se suelta.
   for (const acta of actas) {
     const foto = acta.recepcion ? await acta.recepcion.foto() : null;
@@ -68,27 +76,15 @@ export async function generarActasPdf(actas: DatosActa[]): Promise<Buffer> {
   return terminado;
 }
 
-/** Si lo que sigue (alto en pt) no cabe en la página, pasa a una nueva. */
-function asegurarEspacio(doc: PDFKit.PDFDocument, alto: number): void {
-  if (doc.y + alto > doc.page.height - MARGEN) {
-    doc.addPage();
-    doc.x = MARGEN;
-    doc.y = MARGEN;
-  }
-}
-
 function dibujarActa(doc: PDFKit.PDFDocument, a: DatosActa, foto: Buffer | null): void {
   doc.addPage();
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(GRIS)
-    .text('CONSEJO NACIONAL ELECTORAL — DELEGACIÓN PROVINCIAL DE IMBABURA', { align: 'center' });
-  doc.moveDown(0.3);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000')
-    .text('ACTA DE ENTREGA Y RECEPCIÓN DEL KIT CDA', { align: 'center' });
-  doc.moveDown(0.4);
+  encabezado(doc, ANCHO, 'ACTA DE ENTREGA Y RECEPCIÓN DEL KIT CDA');
   doc.font('Helvetica').fontSize(9.5)
     .text(`${a.eventoNombre}  ·  Kit ${a.codigoUnico}  ·  ${a.recinto}  ·  Cantón ${a.canton}`, { align: 'center' });
   doc.moveDown(0.8);
+  doc.font('Helvetica').fontSize(9.5).text(textoActa(a), { width: ANCHO, align: 'justify' });
+  doc.moveDown(0.4);
 
   // 1. Contenido del kit (una sola vez)
   titulo(doc, 'Contenido del kit');
@@ -183,41 +179,4 @@ function dibujarActa(doc: PDFKit.PDFDocument, a: DatosActa, foto: Buffer | null)
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GRIS).text(cargo, x, doc.y, { width: anchoFirma, align: 'center' });
     doc.fillColor('#000');
   });
-}
-
-function titulo(doc: PDFKit.PDFDocument, texto: string): void {
-  doc.x = MARGEN;
-  doc.moveDown(0.4);
-  doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#000').text(texto.toUpperCase());
-  doc.moveDown(0.25);
-}
-
-function tabla(
-  doc: PDFKit.PDFDocument,
-  encabezados: string[],
-  proporciones: number[],
-  filas: string[][],
-  ancho = ANCHO,
-): void {
-  const anchos = proporciones.map((p) => p * ancho);
-  const pad = 4;
-  const dibujarFila = (celdas: string[], negrita: boolean) => {
-    doc.font(negrita ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
-    const alto =
-      Math.max(...celdas.map((c, i) => doc.heightOfString(c, { width: anchos[i] - pad * 2 }))) + pad * 2;
-    asegurarEspacio(doc, alto);
-    const y = doc.y;
-    let x = MARGEN;
-    celdas.forEach((c, i) => {
-      if (negrita) doc.rect(x, y, anchos[i], alto).fillAndStroke('#f3f4f6', LINEA).fillColor('#000');
-      else doc.rect(x, y, anchos[i], alto).stroke(LINEA);
-      doc.text(c, x + pad, y + pad, { width: anchos[i] - pad * 2 });
-      x += anchos[i];
-    });
-    doc.x = MARGEN;
-    doc.y = y + alto;
-  };
-  dibujarFila(encabezados, true);
-  for (const f of filas) dibujarFila(f, false);
-  doc.moveDown(0.3);
 }

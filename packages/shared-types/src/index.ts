@@ -402,6 +402,8 @@ export interface MiAsignacionResponse {
   kits: MiAsignacionKit[];
   yaRegistroSalida: boolean;
   yaRegistroLlegada: boolean;
+  /** El operador ya confirmó que el recinto tiene conexión (después de la llegada). */
+  yaRegistroPruebaConexion: boolean;
   yaRegistroSalidaRecinto: boolean;
   yaRegistroLlegadaDpi: boolean;
   fotoMilitarUrl: string | null;
@@ -538,6 +540,19 @@ export interface SalidaDpiResponse {
   ocurridoEn: string;
 }
 
+// Prueba de conexión (después de la llegada al recinto)
+
+export interface PruebaConexionRequest {
+  ocurridoEn: string;
+  /** true si la acción se reenvió desde la cola offline del móvil. */
+  desdeOffline?: boolean;
+}
+
+export interface PruebaConexionResponse {
+  id: string;
+  ocurridoEn: string;
+}
+
 // HU4 — Salida del recinto y rastreo continuo
 
 export interface SalidaRecintoRequest {
@@ -660,13 +675,24 @@ export interface ReporteFlujoItem {
   cdaId: string;
   cdaCodigo: string;
   cdaNombre: string;
+  cantonId: number | null;
+  cantonNombre: string;
+  operadorId: string;
   operadorNombre: string;
   operadorCedula: string;
   kitsCodigos: string[];
   salidaDpiEn: string | null;
   llegadaRecintoEn: string | null;
+  pruebaConexionEn: string | null;
   salidaRecintoEn: string | null;
   llegadaDpiEn: string | null;
+}
+
+/** Usuario que puede firmar el Informe del Operador CDA como responsable. */
+export interface ResponsableInforme {
+  id: string;
+  nombre: string;
+  cedula: string;
 }
 
 // ===================================================================

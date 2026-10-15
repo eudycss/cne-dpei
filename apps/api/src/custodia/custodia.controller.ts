@@ -27,6 +27,7 @@ import type {
   ValidarKitRequest,
 } from '@cne/shared-types';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -136,14 +137,6 @@ export function filtrosInforme(cantonId: unknown, recintoId: unknown): FiltrosIn
   const canton = typeof cantonId === 'string' && /^\d{1,6}$/.test(cantonId) ? Number(cantonId) : undefined;
   const recinto = typeof recintoId === 'string' && UUID.test(recintoId) ? recintoId : undefined;
   return { cantonId: canton, recintoId: recinto };
-}
-
-function enviarPdf(res: Response, pdf: Buffer, archivo: string) {
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${archivo}"`);
-  // Lleva cédulas y la foto del militar: que ningún caché lo guarde.
-  res.setHeader('Cache-Control', 'no-store');
-  res.send(pdf);
 }
 
 /** ?buscar= puede llegar repetido (arreglo) o ausente: solo se acepta un texto, recortado. */

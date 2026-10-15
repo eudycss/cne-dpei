@@ -1,5 +1,5 @@
 import { act, create, ReactTestRenderer, TestInstance } from 'react-test-renderer';
-import { Alert, Pressable } from 'react-native';
+import { Alert, Pressable, RefreshControl } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 
 // react-native-testing-library no está instalado en este proyecto; se usa
@@ -19,6 +19,13 @@ jest.mock('../lib/offline-actas', () => ({
   capturarYSubirActa: jest.fn(),
   reintentarSubidaActa: jest.fn(),
   limpiarActas: jest.fn(),
+}));
+
+jest.mock('../lib/prueba-conexion', () => ({
+  leerPruebaConexionLocal: jest.fn(),
+  registrarPruebaConexion: jest.fn(),
+  limpiarPruebaConexion: jest.fn(),
+  reconciliarPruebaConexion: jest.fn(),
 }));
 
 jest.mock('../lib/location', () => {
@@ -53,6 +60,12 @@ import {
   reintentarSubidaActa,
   limpiarActas,
 } from '../lib/offline-actas';
+import {
+  leerPruebaConexionLocal,
+  limpiarPruebaConexion,
+  reconciliarPruebaConexion,
+  registrarPruebaConexion,
+} from '../lib/prueba-conexion';
 import { activarRastreoSegundoPlano, asegurarServiciosUbicacion, obtenerUbicacionPuntual } from '../lib/location';
 import { CameraFoto } from '../components/CameraFoto';
 
@@ -86,6 +99,9 @@ const asignacionFixture: MiAsignacionResponse = {
   kits: [{ id: 'k1', codigoUnico: 'K001', nombre: 'Kit 1', contenidos: null, items: [], recibido: true }],
   yaRegistroSalida: true,
   yaRegistroLlegada: true,
+  // La mayoría de las pruebas parten del paso de los reportes (prueba ya hecha);
+  // el paso 1 tiene su propio describe más abajo.
+  yaRegistroPruebaConexion: true,
   yaRegistroSalidaRecinto: false,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: null,
@@ -136,6 +152,8 @@ describe('SalidaRecintoScreen', () => {
     (postSalidaRecinto as jest.Mock).mockResolvedValue({ id: 'salida-1' });
     (restaurarActas as jest.Mock).mockResolvedValue({}); // sin actas pendientes de una sesión anterior
     (limpiarActas as jest.Mock).mockResolvedValue(undefined);
+    (leerPruebaConexionLocal as jest.Mock).mockResolvedValue(null);
+    (limpiarPruebaConexion as jest.Mock).mockResolvedValue(undefined);
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
       const target = (buttons ?? []).find((b) => b.text !== 'Cancelar');
       target?.onPress?.();
@@ -235,6 +253,7 @@ describe('SalidaRecintoScreen', () => {
     );
     expect(limpiarActas).toHaveBeenCalledTimes(1);
     expect(limpiarActas).toHaveBeenCalledWith('ev1_r1');
+    expect(limpiarPruebaConexion).toHaveBeenCalledWith('ev1_r1');
   });
 
   it('al montar, restaura las actas persistidas con el contextoId correcto (recinto+evento activo)', async () => {
@@ -332,5 +351,96 @@ describe('SalidaRecintoScreen', () => {
 
     await act(async () => checkbox().props.onPress());
     expect(checkbox().props.accessibilityState).toEqual({ checked: true });
+  });
+
+  describe('paso 1: prueba de conexión', () => {
+    const sinPrueba = { ...asignacionFixture, yaRegistroPruebaConexion: false };
+
+    async function montar() {
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+        await flushPromises();
+      });
+      return renderer;
+    }
+
+    beforeEach(() => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue(sinPrueba);
+    });
+
+    it('arranca en la prueba y no deja continuar hasta confirmar la conexión', async () => {
+      (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
+      const renderer = await montar();
+
+      expect(renderer.root.findAllByProps({ children: 'Reporte de instalación' })).toHaveLength(0);
+      expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(true);
+
+      const boton = renderer.root.findByProps({ accessibilityLabel: 'Conexión verificada' });
+      await act(async () => {
+        boton.props.onPress();
+        await flushPromises();
+      });
+
+      expect(registrarPruebaConexion).toHaveBeenCalledWith('ev1_r1');
+      const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
+      expect(continuar.props.disabled).toBe(false);
+
+      await act(async () => {
+        continuar.props.onPress();
+        await flushPromises();
+      });
+      expect(renderer.root.findByProps({ children: 'Reporte de instalación' })).toBeTruthy();
+    });
+
+    it('si la prueba quedó guardada en el teléfono (sin sincronizar), no se repite', async () => {
+      (leerPruebaConexionLocal as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
+      const renderer = await montar();
+
+      expect(leerPruebaConexionLocal).toHaveBeenCalledWith('ev1_r1');
+      expect(renderer.root.findByProps({ children: 'Reporte de instalación' })).toBeTruthy();
+    });
+
+    it('al abrir, intenta reconciliar la prueba local con el servidor una sola vez', async () => {
+      const renderer = await montar();
+      await act(async () => {
+        renderer.root.findByType(RefreshControl).props.onRefresh();
+        await flushPromises();
+      });
+
+      expect(reconciliarPruebaConexion).toHaveBeenCalledTimes(1);
+      expect(reconciliarPruebaConexion).toHaveBeenCalledWith('ev1_r1', false);
+    });
+
+    it('si un refresco trae la prueba del servidor, habilita Continuar sin saltar de paso', async () => {
+      const renderer = await montar();
+      (getMiAsignacion as jest.Mock).mockResolvedValue({ ...sinPrueba, yaRegistroPruebaConexion: true });
+
+      await act(async () => {
+        renderer.root.findByType(RefreshControl).props.onRefresh();
+        await flushPromises();
+      });
+
+      expect(renderer.root.findAllByProps({ children: 'Reporte de instalación' })).toHaveLength(0);
+      expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(false);
+    });
+
+    it('si el servidor la rechaza, avisa y sigue sin dejar continuar', async () => {
+      (registrarPruebaConexion as jest.Mock).mockRejectedValue({
+        response: { data: { message: 'Debes registrar la llegada al recinto antes de la prueba de conexión' } },
+      });
+      const renderer = await montar();
+
+      await act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: 'Conexión verificada' }).props.onPress();
+        await flushPromises();
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'No se pudo registrar',
+        'Debes registrar la llegada al recinto antes de la prueba de conexión',
+      );
+      expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(true);
+    });
   });
 });

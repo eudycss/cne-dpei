@@ -42,6 +42,7 @@ export class CatalogController {
     @Query('tipo') tipo?: 'CDA' | 'NO_CDA',
     @Query('cdaDestinoId') cdaDestinoId?: string,
     @Query('conOrigenes') conOrigenes?: 'true' | 'false',
+    @Query('sinCda') sinCda?: 'true' | 'false',
   ) {
     return this.recintos.listRecintos({
       page: page ? Number(page) : 1,
@@ -51,6 +52,7 @@ export class CatalogController {
       tipo,
       cdaDestinoId,
       conOrigenes,
+      sinCda,
     });
   }
 

@@ -1,6 +1,8 @@
 import type {
   LlegadaNoCdaResponse,
   MiAsignacionResponse,
+  PruebaConexionRequest,
+  PruebaConexionResponse,
   SalidaDpiRequest,
   SalidaDpiResponse,
 } from '@cne/shared-types';
@@ -22,6 +24,13 @@ export async function postSalidaDpi(body: SalidaDpiRequest): Promise<SalidaDpiRe
 export async function postLlegadaNoCda(recintoId: string): Promise<LlegadaNoCdaResponse | null> {
   return withOffline('/tracking/llegada-no-cda', 'post', { recintoId }, async () => {
     const { data } = await api.post<LlegadaNoCdaResponse>('/tracking/llegada-no-cda', { recintoId });
+    return data;
+  });
+}
+
+export async function postPruebaConexion(body: PruebaConexionRequest): Promise<PruebaConexionResponse | null> {
+  return withOffline('/tracking/prueba-conexion', 'post', body, async () => {
+    const { data } = await api.post<PruebaConexionResponse>('/tracking/prueba-conexion', body);
     return data;
   });
 }

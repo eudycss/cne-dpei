@@ -23,6 +23,8 @@ import type {
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
   MiAsignacionResponse,
+  PruebaConexionRequest,
+  PruebaConexionResponse,
   OperadorEnRetorno,
   OperadorEnRetornoKit,
   RecepcionKitRequest,
@@ -46,6 +48,7 @@ import {
   llegadaNoCdaSchema,
   llegadaRecintoManualSchema,
   llegadaRecintoSchema,
+  pruebaConexionSchema,
   recepcionKitSchema,
   salidaDpiSchema,
   salidaRecintoSchema,
@@ -180,6 +183,7 @@ export class TrackingService {
     const [
       salidaPrevia,
       llegadaPrevia,
+      pruebaConexionPrevia,
       salidaRecintoPrevia,
       llegadaDpiPrevia,
       recepciones,
@@ -191,6 +195,10 @@ export class TrackingService {
       }),
       this.prisma.eventoTracking.findFirst({
         where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
+        select: { id: true },
+      }),
+      this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
         select: { id: true },
       }),
       this.prisma.eventoTracking.findFirst({
@@ -269,6 +277,7 @@ export class TrackingService {
       })),
       yaRegistroSalida: !!salidaPrevia,
       yaRegistroLlegada: !!llegadaPrevia,
+      yaRegistroPruebaConexion: !!pruebaConexionPrevia,
       yaRegistroSalidaRecinto: !!salidaRecintoPrevia,
       yaRegistroLlegadaDpi: !!llegadaDpiPrevia,
       fotoMilitarUrl,
@@ -1048,6 +1057,63 @@ export class TrackingService {
    * y notifica a supervisor y administradores. A partir de aquí el móvil arranca
    * el rastreo continuo. Rechaza segundo POST con 409.
    */
+  /**
+   * Prueba de conexión: el operador confirma a la vista que el recinto tiene
+   * conexión. Exige la llegada al recinto; es idempotente (la cola offline puede
+   * reenviarla) y devuelve la ya registrada. La app la exige antes de la salida
+   * del recinto; el servidor no, para no bloquear a las APK que no la tienen.
+   */
+  async registrarPruebaConexion(
+    operadorId: string,
+    input: PruebaConexionRequest,
+  ): Promise<PruebaConexionResponse> {
+    const parsed = pruebaConexionSchema.parse(input);
+
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+    });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const existente = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
+      select: { id: true, ocurridoEn: true },
+    });
+    if (existente) return { id: existente.id, ocurridoEn: existente.ocurridoEn.toISOString() };
+
+    const llegada = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
+      select: { recintoId: true },
+    });
+    if (!llegada) {
+      throw new BadRequestException('Debes registrar la llegada al recinto antes de la prueba de conexión');
+    }
+
+    try {
+      const creado = await this.prisma.eventoTracking.create({
+        data: {
+          eventoId: evento.id,
+          operadorId,
+          tipo: 'PRUEBA_CONEXION',
+          recintoId: llegada.recintoId,
+          ocurridoEn: new Date(parsed.ocurridoEn),
+          desdeOffline: parsed.desdeOffline ?? false,
+        },
+        select: { id: true, ocurridoEn: true },
+      });
+      return { id: creado.id, ocurridoEn: creado.ocurridoEn.toISOString() };
+    } catch (e) {
+      // Carrera con otra petición (índice único uq_tracking_prueba_conexion):
+      // se devuelve la que ganó, igual que en el reenvío normal.
+      if ((e as { code?: string })?.code !== 'P2002') throw e;
+      const ganadora = await this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
+        select: { id: true, ocurridoEn: true },
+      });
+      if (!ganadora) throw e;
+      return { id: ganadora.id, ocurridoEn: ganadora.ocurridoEn.toISOString() };
+    }
+  }
+
   async registrarSalidaRecinto(
     operadorId: string,
     input: SalidaRecintoRequest,
@@ -1623,6 +1689,7 @@ export class TrackingService {
 
     const cdas = await this.prisma.recinto.findMany({
       where: { id: { in: cdaIds }, tipo: 'CDA' },
+      include: { canton: { select: { id: true, nombre: true } } },
       orderBy: { codigoRecinto: 'asc' },
     });
     if (cdas.length === 0) return [];
@@ -1638,7 +1705,7 @@ export class TrackingService {
       where: {
         eventoId: evento.id,
         operadorId: { in: operadorIds },
-        tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
+        tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'PRUEBA_CONEXION', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
       },
       select: { operadorId: true, tipo: true, ocurridoEn: true },
     });
@@ -1658,11 +1725,15 @@ export class TrackingService {
         cdaId: cda.id,
         cdaCodigo: cda.codigoRecinto,
         cdaNombre: cda.nombre,
+        cantonId: cda.canton?.id ?? null,
+        cantonNombre: cda.canton?.nombre ?? '—',
+        operadorId,
         operadorNombre: usuario ? `${usuario.nombres} ${usuario.apellidos}` : 'Operador',
         operadorCedula: usuario?.cedula ?? '—',
         kitsCodigos: kitsPorRecinto.get(cda.id) ?? [],
         salidaDpiEn: mapa?.get('SALIDA_DPI')?.toISOString() ?? null,
         llegadaRecintoEn: mapa?.get('LLEGADA_RECINTO')?.toISOString() ?? null,
+        pruebaConexionEn: mapa?.get('PRUEBA_CONEXION')?.toISOString() ?? null,
         salidaRecintoEn: mapa?.get('SALIDA_RECINTO')?.toISOString() ?? null,
         llegadaDpiEn: mapa?.get('LLEGADA_DPI')?.toISOString() ?? null,
       };

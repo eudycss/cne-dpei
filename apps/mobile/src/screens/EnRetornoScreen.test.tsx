@@ -80,6 +80,7 @@ const asignacionFixture: MiAsignacionResponse = {
   kits: [],
   yaRegistroSalida: true,
   yaRegistroLlegada: true,
+  yaRegistroPruebaConexion: true,
   yaRegistroSalidaRecinto: true,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: null,

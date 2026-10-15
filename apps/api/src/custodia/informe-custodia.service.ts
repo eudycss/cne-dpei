@@ -162,7 +162,7 @@ export class InformeCustodiaService {
       const ids = [c.valorAnterior, c.valorNuevo].filter((x): x is string => !!x);
       for (const id of ids) (c.campo === 'MILITAR' ? idsMilitar : idsUsuario).add(id);
     }
-    const [usuarios, militares] = await Promise.all([
+    const [usuarios, militares, asistentes] = await Promise.all([
       this.prisma.usuario.findMany({
         where: { id: { in: [...idsUsuario] } },
         select: { id: true, nombres: true, apellidos: true, cedula: true },
@@ -170,6 +170,13 @@ export class InformeCustodiaService {
       this.prisma.militar.findMany({
         where: { id: { in: [...idsMilitar] } },
         select: { id: true, nombres: true, apellidos: true, cedula: true },
+      }),
+      // Para kits sin entrega ni devolución registradas: si hay un solo
+      // asistente transversal activo, es quien firma (como en la plantilla en Word).
+      this.prisma.usuario.findMany({
+        where: { activo: true, roles: { some: { rol: { nombre: 'ASISTENTE_TRANSVERSAL' } } } },
+        select: { id: true, nombres: true, apellidos: true, cedula: true },
+        take: 2,
       }),
     ]);
     const usuarioPorId = new Map<string, Usuario>(usuarios.map((u) => [u.id, u]));
@@ -184,6 +191,7 @@ export class InformeCustodiaService {
       correcciones,
       usuarioPorId,
       militarPorId,
+      asistenteUnico: asistentes.length === 1 ? asistentes[0] : null,
       nombreUsuario: (id: string) => {
         const u = usuarioPorId.get(id);
         return u ? nombre(u) : '—';
@@ -258,8 +266,9 @@ export class InformeCustodiaService {
         }),
         operador: persona(operadorRecepcion ?? k.operador),
         militar: persona(entrega?.militar),
-        // Firma quien recibe al retorno; si aún no hay retorno, quien entregó.
-        asistente: persona(asistenteDevolucion ?? asistenteEntrega),
+        // Firma quien recibe al retorno; si aún no hay retorno, quien entregó;
+        // si no hay ninguno, el único asistente transversal activo.
+        asistente: persona(asistenteDevolucion ?? asistenteEntrega ?? datos.asistenteUnico),
       });
     }
     return actas;

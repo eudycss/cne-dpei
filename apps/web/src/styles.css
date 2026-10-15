@@ -405,3 +405,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .maplibregl-ctrl-attrib a { color: var(--text-muted) !important; }
 [data-theme="dark"] .maplibregl-ctrl-attrib { background: rgba(15,23,42,0.7) !important; }
 [data-theme="dark"] .maplibregl-ctrl-icon { filter: invert(1); }
+
+/* Logo de las Elecciones 2027: sus letras son azul oscuro y negro; en tema
+   oscuro va sobre una placa blanca para que se lea (contraste WCAG 1.4.11). */
+.logo-2027 { display: inline-block; border-radius: var(--radius-md); }
+[data-theme="dark"] .logo-2027 { background: #fff; padding: 0.35rem 0.6rem; }
+@media print { [data-theme="dark"] .logo-2027 { padding: 0; } }
