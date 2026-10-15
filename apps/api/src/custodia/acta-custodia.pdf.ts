@@ -4,7 +4,7 @@ import { ANCHO, asegurarEspacio, encabezado, fecha, GRIS, LINEA, MARGEN, nuevoPd
 export interface DatosActa {
   eventoNombre: string;
   codigoUnico: string;
-  recinto: string; // "28 — Escuela Central"
+  recinto: string; // "Escuela Central, cod: 28"
   canton: string;
   articulos: { articulo: string; serie: string | null; estadoSalida: string; estadoRetorno: string | null }[];
   entrega: { militar: Persona; fecha: Date; asistente: Persona } | null;
@@ -80,11 +80,14 @@ function dibujarActa(doc: PDFKit.PDFDocument, a: DatosActa, foto: Buffer | null)
   doc.addPage();
 
   encabezado(doc, ANCHO, 'ACTA DE ENTREGA Y RECEPCIÓN DEL KIT CDA');
-  doc.font('Helvetica').fontSize(9.5)
-    .text(`${a.eventoNombre}  ·  Kit ${a.codigoUnico}  ·  ${a.recinto}  ·  Cantón ${a.canton}`, { align: 'center' });
-  doc.moveDown(0.8);
   doc.font('Helvetica').fontSize(9.5).text(textoActa(a), { width: ANCHO, align: 'justify' });
-  doc.moveDown(0.4);
+  doc.moveDown(0.6);
+  tabla(
+    doc,
+    ['Proceso electoral', 'Kit', 'Recinto', 'Cantón'],
+    [0.24, 0.14, 0.44, 0.18],
+    [[a.eventoNombre, a.codigoUnico, a.recinto, a.canton]],
+  );
 
   // 1. Contenido del kit (una sola vez)
   titulo(doc, 'Contenido del kit');
@@ -163,12 +166,11 @@ function dibujarActa(doc: PDFKit.PDFDocument, a: DatosActa, foto: Buffer | null)
   const ALTO_FIRMAS = 50 + 45;
   asegurarEspacio(doc, ALTO_FIRMAS);
   const yFirmas = Math.max(doc.y + 50, Math.min(680, doc.page.height - MARGEN - 45));
-  const anchoFirma = ANCHO / 3;
   const firmas: [string, Persona | null][] = [
     ['ASISTENTE ELECTORAL TRANSVERSAL', a.asistente],
-    ['MILITAR', a.militar],
     ['OPERADOR CDA', a.operador],
   ];
+  const anchoFirma = ANCHO / firmas.length;
   firmas.forEach(([cargo, p], i) => {
     const x = MARGEN + i * anchoFirma;
     doc.moveTo(x + 10, yFirmas).lineTo(x + anchoFirma - 10, yFirmas).stroke(LINEA);
