@@ -1,17 +1,30 @@
 import { timingSafeEqual } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
+import type {
+  AvisosEnlacesRequest,
+  ConfigEnlacesResponse,
+  EnlaceRecinto,
+  PeriodoEstadisticasEnlaces,
+} from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
-import { SheetsEnlacesClient } from './sheets-enlaces.client';
+import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
   abreviarCanton,
   TelegramNotifier,
+  type GrupoAsignacion,
+  PREFIJO_CALLBACK_ESTADISTICAS,
+  TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
+  TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MINUTOS_AVISO_POR_DEFECTO } from './enlaces-escalamiento.service';
+import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
+import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
+import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -25,7 +38,18 @@ export interface TelegramUpdate {
     chat?: { id: number | string };
     from?: { id: number | string };
   };
+  /** Toque de un botón bajo un mensaje del bot (Hoy/Semana/Mes de la tarjeta de estadísticas). */
+  callback_query?: {
+    id: string;
+    data?: string;
+    message?: { message_id: number; chat?: { id: number | string } };
+  };
 }
+
+/** Toques más seguidos que esto sobre el mismo mensaje se ignoran (cada uno son consultas a la base). */
+const PAUSA_ENTRE_TOQUES_MS = 1500;
+
+const CALLBACK_PERIODO = new RegExp(`^${PREFIJO_CALLBACK_ESTADISTICAS}(dia|semana|mes)$`);
 
 /** La hoja se edita a mano y puede traer mayúsculas inconsistentes (COTACACHI vs Cotacachi); se normaliza para que el filtro/dropdown de la web no los trate como cantones distintos. */
 function normalizarCanton(valor: string | null | undefined): string | null {
@@ -59,12 +83,17 @@ export class EnlacesService {
    * limpia, lo peor que pasa es que la persona tenga que tocar el botón de nuevo. */
   private readonly esperandoCodigo = new Map<string, number>();
   private static readonly ESPERA_CODIGO_TTL_MS = 10 * 60 * 1000;
+  /** Último toque de Hoy/Semana/Mes por mensaje (message_id → ms). */
+  private readonly ultimoToque = new Map<number, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly sheetsClient: SheetsEnlacesClient,
     private readonly telegram: TelegramNotifier,
     private readonly notifications: NotificationsService,
+    private readonly estadisticas: EnlacesEstadisticasService,
+    private readonly distributivo: DistributivoTecnicosClient,
+    private readonly escalamiento: EnlacesEscalamientoService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -129,12 +158,15 @@ export class EnlacesService {
       }
     }
 
+    const historial = await this.reconciliarCaidas(filas);
     await this.eliminarRecintosFueraDeLaHoja(filas);
+    // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
+    if (historial.ok) await this.escalamiento.escalar();
 
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarCaidasPorTelegram(caidas, filas);
     await this.notificarRecuperadosPorCorreo(recuperados);
-    await this.notificarRecuperadosPorTelegram(recuperados);
+    await this.notificarRecuperadosPorTelegram(recuperados, historial.minutosCaido);
   }
 
   /** La web, /caidos y la búsqueda por código leen esta tabla, no la hoja: si un
@@ -162,8 +194,70 @@ export class EnlacesService {
 
       const { count } = await this.prisma.enlaceRecinto.deleteMany({ where });
       this.log.log(`Se eliminaron ${count} recinto(s) que ya no están en la hoja de enlaces`);
+      // Un recinto que sale de la hoja deja de monitorearse: su caída abierta se
+      // cierra aquí para que no siga sumando tiempo caído para siempre.
+      await this.cerrarCaidas(where);
     } catch (e) {
       this.log.error(`Error eliminando recintos que ya no están en la hoja de enlaces: ${e}`);
+    }
+  }
+
+  /** Historial para las estadísticas, alineado con la hoja en cada ciclo (no
+   * solo en la transición): si un ciclo no pudo abrir o cerrar una caída (p. ej.
+   * un corte con la base), el siguiente lo corrige. Sin esto, una caída que no se
+   * cerró sumaría tiempo caído para siempre. Abre una caída para cada recinto en
+   * FALLO que no tenga una abierta (el índice único parcial evita duplicados) y
+   * cierra las abiertas de los que están ACTIVO. Precisión: la del cron (5 min).
+   * Devuelve cuánto duró cada caída que se cerró (para "volvió tras 42 min") y
+   * si el historial quedó al día. */
+  private async reconciliarCaidas(
+    filas: SheetEnlaceRow[],
+  ): Promise<{ ok: boolean; minutosCaido: Map<string, number> }> {
+    const minutosCaido = new Map<string, number>();
+    try {
+      const enFallo = filas.filter((f) => f.estado === 'FALLO');
+      const activos = filas.filter((f) => f.estado === 'ACTIVO').map((f) => f.codigoRecinto);
+      const abiertas = await this.prisma.enlaceCaida.findMany({
+        where: { fin: null },
+        select: { codigoRecinto: true, inicio: true },
+      });
+      const conCaidaAbierta = new Set<string>(abiertas.map((a) => a.codigoRecinto));
+      const ahora = new Date();
+      const activosSet = new Set<string>(activos);
+      for (const a of abiertas) {
+        if (activosSet.has(a.codigoRecinto)) {
+          minutosCaido.set(a.codigoRecinto, Math.round((ahora.getTime() - a.inicio.getTime()) / 60_000));
+        }
+      }
+      const nuevas = enFallo.filter((f) => !conCaidaAbierta.has(f.codigoRecinto));
+      if (nuevas.length > 0) {
+        await this.prisma.enlaceCaida.createMany({
+          data: nuevas.map((f) => ({
+            codigoRecinto: f.codigoRecinto,
+            nombreRecinto: f.nombreRecinto,
+            canton: normalizarCanton(f.canton),
+            inicio: ahora,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      if (activos.some((c) => conCaidaAbierta.has(c))) {
+        await this.cerrarCaidas({ codigoRecinto: { in: activos } });
+      }
+    } catch (e) {
+      // El historial nunca frena los avisos; el siguiente ciclo vuelve a intentarlo.
+      this.log.error(`No se pudo actualizar el historial de caídas: ${(e as Error)?.message ?? e}`);
+      return { ok: false, minutosCaido };
+    }
+    return { ok: true, minutosCaido };
+  }
+
+  /** Cierra las caídas abiertas (sin fin) de los recintos que cumplen `where`. */
+  private async cerrarCaidas(where: { codigoRecinto: { in: string[] } | { notIn: string[] } }): Promise<void> {
+    try {
+      await this.prisma.enlaceCaida.updateMany({ where: { ...where, fin: null }, data: { fin: new Date() } });
+    } catch (e) {
+      this.log.error(`No se pudo cerrar la caída de enlaces: ${(e as Error)?.message ?? e}`);
     }
   }
 
@@ -199,11 +293,14 @@ export class EnlacesService {
     }
   }
 
-  private async notificarRecuperadosPorTelegram(recuperados: EnlaceCaido[]): Promise<void> {
+  private async notificarRecuperadosPorTelegram(
+    recuperados: EnlaceCaido[],
+    minutosCaido: Map<string, number>,
+  ): Promise<void> {
     if (recuperados.length === 0) return;
 
     try {
-      await this.telegram.enviarRecuperados(recuperados);
+      await this.telegram.enviarRecuperados(recuperados, minutosCaido);
     } catch (e) {
       const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando Telegram de enlaces recuperados (${codigos}): ${e}`);
@@ -255,8 +352,18 @@ export class EnlacesService {
   }
 
   async getConfig(): Promise<ConfigEnlacesResponse> {
-    const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
-    return { correos: config?.correos ?? [] };
+    return respuestaConfig(await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } }));
+  }
+
+  /** Cada cuánto avisa el bot de los enlaces caídos; aplica desde el siguiente ciclo del cron. */
+  async guardarAvisos({ minutosPrimerAviso, minutosRepetirAviso }: AvisosEnlacesRequest): Promise<ConfigEnlacesResponse> {
+    const frecuencia = { minutosPrimerAviso, minutosRepetirAviso };
+    const saved = await this.prisma.configEnlaces.upsert({
+      where: { id: CONFIG_ID },
+      create: { id: CONFIG_ID, ...frecuencia },
+      update: frecuencia,
+    });
+    return respuestaConfig(saved);
   }
 
   async addCorreo(correo: string): Promise<ConfigEnlacesResponse> {
@@ -312,8 +419,53 @@ export class EnlacesService {
     return { enviados: caidas.length };
   }
 
+  /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
+   * el estado actual del enlace de cada uno. Los recintos monitoreados que no
+   * están en el distributivo (p. ej. el CPE) van al final como "Sin técnico
+   * asignado". */
+  async enviarAsignacionesTelegram(): Promise<void> {
+    const [asignaciones, enlaces] = await Promise.all([
+      this.distributivo.asignaciones(),
+      this.prisma.enlaceRecinto.findMany({
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
+        orderBy: { codigoRecinto: 'asc' },
+      }),
+    ]);
+    // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
+    const enlacePorCodigo = new Map<string, (typeof enlaces)[number]>(enlaces.map((e) => [e.codigoRecinto, e]));
+
+    // El número de cada técnico es el orden en que aparece en el archivo.
+    const grupos = new Map<number, GrupoAsignacion>();
+    for (const a of [...asignaciones].sort((x, y) => x.numeroTecnico - y.numeroTecnico)) {
+      const grupo = grupos.get(a.numeroTecnico) ?? { numeroTecnico: a.numeroTecnico, tecnico: a.tecnico, recintos: [] };
+      const enlace = enlacePorCodigo.get(a.codigoRecinto);
+      grupo.recintos.push({
+        codigoRecinto: a.codigoRecinto,
+        nombreRecinto: enlace?.nombreRecinto ?? (a.localidad || 'Sin enlace monitoreado'),
+        canton: enlace?.canton ?? null,
+        estado: enlace?.estado ?? null,
+      });
+      grupos.set(a.numeroTecnico, grupo);
+    }
+
+    const asignados = new Set(asignaciones.map((a) => a.codigoRecinto));
+    const sinTecnico = enlaces
+      .filter((e) => !asignados.has(e.codigoRecinto))
+      .map((e) => ({ codigoRecinto: e.codigoRecinto, nombreRecinto: e.nombreRecinto, canton: e.canton, estado: e.estado }));
+
+    const lista = [...grupos.values()];
+    if (sinTecnico.length > 0) lista.push({ numeroTecnico: null, tecnico: '', recintos: sinTecnico });
+    if (lista.length === 0) {
+      await this.telegram.enviarTexto('El distributivo no tiene asignaciones de técnicos.', 'el aviso de asignaciones vacías');
+      return;
+    }
+    await this.telegram.enviarAsignaciones(lista);
+  }
+
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
-   * responde con la lista actual de recintos caídos; el botón "Ingresar código"
+   * responde con la lista actual de recintos caídos; `/estadisticas` (o su
+   * botón), con la tarjeta de hoy (y botones para la semana y el mes); `/asignaciones`
+   * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
    * distinto al configurado, texto que no matchea nada de esto) se ignora en
@@ -323,6 +475,11 @@ export class EnlacesService {
     const secretEsperado = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!secretEsperado || !secretosCoinciden(secretRecibido, secretEsperado)) {
       this.log.warn('Webhook de Telegram: secreto ausente o inválido — se ignora el update');
+      return;
+    }
+
+    if (update.callback_query) {
+      await this.procesarBotonTelegram(update.callback_query);
       return;
     }
 
@@ -366,10 +523,82 @@ export class EnlacesService {
       return;
     }
 
+    const esComandoAsignaciones =
+      texto.startsWith('/asignaciones') || texto === TEXTO_BOTON_ASIGNACIONES.toLowerCase();
+    if (esComandoAsignaciones) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.enviarAsignacionesTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron armar las asignaciones para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          e instanceof DistributivoNoConfigurado
+            ? '⚠️ El distributivo de técnicos todavía no está configurado en el servidor.'
+            : '⚠️ No se pudieron consultar las asignaciones en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de asignaciones',
+        );
+      }
+      return;
+    }
+
+    const esComandoEstadisticas =
+      texto.startsWith('/estadisticas') || texto === TEXTO_BOTON_ESTADISTICAS.toLowerCase();
+    if (esComandoEstadisticas) {
+      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      try {
+        await this.estadisticas.enviarEstadisticasTelegram();
+      } catch (e) {
+        this.log.error(`No se pudieron calcular las estadísticas para Telegram: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          '⚠️ No se pudieron calcular las estadísticas en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error de estadísticas',
+        );
+      }
+      return;
+    }
+
     if (claveEspera && this.tieneEsperaCodigoVigente(claveEspera)) {
       this.esperandoCodigo.delete(claveEspera);
       await this.responderCodigoRecinto(textoOriginal);
     }
+  }
+
+  /** Botones Hoy/Semana/Mes de la tarjeta de estadísticas: cambian el mismo
+   * mensaje al período tocado. Solo en el chat configurado y con un
+   * callback_data conocido; cualquier otra cosa se ignora. */
+  private async procesarBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
+    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
+    const chatId = boton.message?.chat?.id;
+    if (!chatConfigurado || chatId === undefined || String(chatId) !== chatConfigurado) {
+      this.log.warn(`Webhook de Telegram: botón desde un chat no autorizado (${chatId}) — se ignora`);
+      return;
+    }
+    // Primero se contesta el toque (aunque luego se ignore), para que el botón no
+    // quede "cargando" en el cliente de quien lo tocó.
+    await this.telegram.responderBoton(boton.id);
+    const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
+    const messageId = boton.message?.message_id;
+    if (!periodo || typeof messageId !== 'number') return;
+    if (this.toqueDemasiadoSeguido(messageId)) return;
+    try {
+      await this.estadisticas.mostrarPeriodoTelegram(periodo, messageId);
+    } catch (e) {
+      this.log.error(`No se pudieron calcular las estadísticas para Telegram: ${(e as Error)?.message ?? e}`);
+      await this.telegram.enviarTexto(
+        '⚠️ No se pudieron calcular las estadísticas en este momento. Intente de nuevo en unos minutos.',
+        'el aviso de error de estadísticas',
+      );
+    }
+  }
+
+  /** true si ese mensaje se tocó hace menos de PAUSA_ENTRE_TOQUES_MS (y si no, lo registra). */
+  private toqueDemasiadoSeguido(messageId: number, ahora = Date.now()): boolean {
+    const anterior = this.ultimoToque.get(messageId);
+    if (anterior !== undefined && ahora - anterior < PAUSA_ENTRE_TOQUES_MS) return true;
+    // Solo importan los toques recientes: el mapa no crece sin límite.
+    for (const [id, t] of this.ultimoToque) if (ahora - t >= PAUSA_ENTRE_TOQUES_MS) this.ultimoToque.delete(id);
+    this.ultimoToque.set(messageId, ahora);
+    return false;
   }
 
   /** true si la persona tocó "Ingresar código" hace menos de ESPERA_CODIGO_TTL_MS.
@@ -438,6 +667,16 @@ export class EnlacesService {
       create: { id: CONFIG_ID, correos },
       update: { correos },
     });
-    return { correos: saved.correos };
+    return respuestaConfig(saved);
   }
+}
+
+function respuestaConfig(
+  config: { correos: string[]; minutosPrimerAviso: number; minutosRepetirAviso: number } | null,
+): ConfigEnlacesResponse {
+  return {
+    correos: config?.correos ?? [],
+    minutosPrimerAviso: config?.minutosPrimerAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+    minutosRepetirAviso: config?.minutosRepetirAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+  };
 }

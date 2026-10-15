@@ -21,7 +21,11 @@ const enlaces: EnlaceRecinto[] = [
 ];
 
 let correosActuales: string[];
-const config = (): ConfigEnlacesResponse => ({ correos: correosActuales });
+const config = (): ConfigEnlacesResponse => ({
+  correos: correosActuales,
+  minutosPrimerAviso: 120,
+  minutosRepetirAviso: 120,
+});
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -43,6 +47,36 @@ describe('EnlacesPage', () => {
     });
   });
 
+  it('el botón Estadísticas cambia a la vista de los enlaces que más se caen', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/enlaces/estadisticas') {
+        return Promise.resolve({
+          data: {
+            periodo: 'dia',
+            desde: '2026-10-14T05:00:00.000Z',
+            hasta: '2026-10-15T05:00:00.000Z',
+            historialDesde: '2026-10-01T05:00:00.000Z',
+            datosParciales: false,
+            totalRecintos: 2,
+            ranking: [],
+            sinCaidas: [],
+          },
+        });
+      }
+      if (url === '/enlaces') return Promise.resolve({ data: enlaces });
+      return Promise.resolve({ data: config() });
+    });
+    renderPage();
+    await screen.findByText('Escuela Central');
+
+    await user.click(screen.getByRole('button', { name: 'Estadísticas' }));
+
+    expect(await screen.findByRole('heading', { name: 'Enlaces que más se caen' })).toBeInTheDocument();
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Estadísticas' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('lista los enlaces con su estado', async () => {
     renderPage();
 
@@ -52,12 +86,12 @@ describe('EnlacesPage', () => {
     expect(screen.getByText('ACTIVO')).toBeInTheDocument();
   });
 
-  it('muestra la cantidad de correos configurados en el botón y abre el modal al hacer clic', async () => {
+  it('muestra la frecuencia de Telegram y los correos en el botón y abre el modal al hacer clic', async () => {
     const user = userEvent.setup();
     correosActuales = ['admin@cne.gob.ec', 'otro@cne.gob.ec'];
     renderPage();
 
-    const boton = await screen.findByRole('button', { name: 'Correos de aviso (2)' });
+    const boton = await screen.findByRole('button', { name: 'Avisos · Telegram cada 2 h · 2 correos' });
     expect(screen.queryByText('admin@cne.gob.ec')).not.toBeInTheDocument();
 
     await user.click(boton);

@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Headers, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Logger, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { AddCorreoEnlaceRequest } from '@cne/shared-types';
-import { addCorreoEnlaceSchema } from '@cne/shared-validation';
+import type { AddCorreoEnlaceRequest, AvisosEnlacesRequest } from '@cne/shared-types';
+import { addCorreoEnlaceSchema, avisosEnlacesSchema } from '@cne/shared-validation';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
+import { EnlacesEstadisticasService, filtroEstadisticas } from './enlaces-estadisticas.service';
 import { EnlacesService, type TelegramUpdate } from './enlaces.service';
 
 @ApiTags('enlaces')
@@ -13,7 +14,12 @@ import { EnlacesService, type TelegramUpdate } from './enlaces.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('enlaces')
 export class EnlacesController {
-  constructor(private readonly enlaces: EnlacesService) {}
+  private readonly log = new Logger('EnlacesController');
+
+  constructor(
+    private readonly enlaces: EnlacesService,
+    private readonly estadisticas: EnlacesEstadisticasService,
+  ) {}
 
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
@@ -22,9 +28,19 @@ export class EnlacesController {
     return this.enlaces.list();
   }
 
+  @Get('estadisticas')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @ApiOperation({
+    summary: 'Caídas y tiempo caído por recinto en un día, semana (lunes-domingo) o mes, hora de Ecuador',
+  })
+  estadisticasPeriodo(@Query('periodo') periodo?: unknown, @Query('fecha') fecha?: unknown) {
+    const filtro = filtroEstadisticas(periodo, fecha);
+    return this.estadisticas.estadisticas(filtro.periodo, filtro.dia);
+  }
+
   @Get('config')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Ver la configuración de correos para avisos de enlaces caídos' })
+  @ApiOperation({ summary: 'Ver la configuración de avisos de enlaces caídos (correos y frecuencia de Telegram)' })
   getConfig() {
     return this.enlaces.getConfig();
   }
@@ -43,6 +59,13 @@ export class EnlacesController {
     return this.enlaces.removeCorreo(body.correo);
   }
 
+  @Put('config/avisos')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Cambiar cada cuánto avisa el bot de Telegram de los enlaces caídos' })
+  guardarAvisos(@Body(new ZodValidationPipe(avisosEnlacesSchema)) body: AvisosEnlacesRequest) {
+    return this.enlaces.guardarAvisos(body);
+  }
+
   @Post('telegram/reenviar')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'Reenviar a Telegram la lista actual de enlaces caídos' })
@@ -56,11 +79,16 @@ export class EnlacesController {
     summary:
       'Webhook de Telegram: procesa comandos entrantes (/caidos, el botón fijo del teclado, o el flujo de ingresar código)',
   })
-  async telegramWebhook(
+  telegramWebhook(
     @Headers('x-telegram-bot-api-secret-token') secretToken: string | undefined,
     @Body() update: TelegramUpdate,
-  ): Promise<{ ok: true }> {
-    await this.enlaces.procesarComandoTelegram(secretToken, update);
+  ): { ok: true } {
+    // Se contesta a Telegram al instante y la respuesta del bot sale en segundo
+    // plano: si Telegram espera demasiado (envío lento o con reintento), da el
+    // update por fallido y lo reenvía, y el grupo recibe la respuesta repetida.
+    void this.enlaces
+      .procesarComandoTelegram(secretToken, update)
+      .catch((e) => this.log.error(`Error procesando un update de Telegram: ${(e as Error)?.message ?? e}`));
     return { ok: true };
   }
 }

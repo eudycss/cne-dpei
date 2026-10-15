@@ -1,4 +1,10 @@
-import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
+import type {
+  AvisosEnlacesRequest,
+  ConfigEnlacesResponse,
+  EnlaceRecinto,
+  EstadisticasEnlacesResponse,
+  PeriodoEstadisticasEnlaces,
+} from '@cne/shared-types';
 import { api } from '../api';
 
 export async function getEnlaces(): Promise<EnlaceRecinto[]> {
@@ -21,7 +27,20 @@ export async function removeCorreoEnlace(correo: string): Promise<ConfigEnlacesR
   return data;
 }
 
+export async function guardarAvisosEnlaces(avisos: AvisosEnlacesRequest): Promise<ConfigEnlacesResponse> {
+  const { data } = await api.put<ConfigEnlacesResponse>('/enlaces/config/avisos', avisos);
+  return data;
+}
+
 export async function reenviarListaTelegram(): Promise<{ enviados: number }> {
   const { data } = await api.post<{ enviados: number }>('/enlaces/telegram/reenviar');
+  return data;
+}
+
+export async function getEstadisticasEnlaces(
+  periodo: PeriodoEstadisticasEnlaces,
+  fecha: string,
+): Promise<EstadisticasEnlacesResponse> {
+  const { data } = await api.get<EstadisticasEnlacesResponse>('/enlaces/estadisticas', { params: { periodo, fecha } });
   return data;
 }
