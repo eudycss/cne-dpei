@@ -21,7 +21,11 @@ const enlaces: EnlaceRecinto[] = [
 ];
 
 let correosActuales: string[];
-const config = (): ConfigEnlacesResponse => ({ correos: correosActuales });
+const config = (): ConfigEnlacesResponse => ({
+  correos: correosActuales,
+  minutosPrimerAviso: 120,
+  minutosRepetirAviso: 120,
+});
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -82,12 +86,12 @@ describe('EnlacesPage', () => {
     expect(screen.getByText('ACTIVO')).toBeInTheDocument();
   });
 
-  it('muestra la cantidad de correos configurados en el botón y abre el modal al hacer clic', async () => {
+  it('muestra la frecuencia de Telegram y los correos en el botón y abre el modal al hacer clic', async () => {
     const user = userEvent.setup();
     correosActuales = ['admin@cne.gob.ec', 'otro@cne.gob.ec'];
     renderPage();
 
-    const boton = await screen.findByRole('button', { name: 'Correos de aviso (2)' });
+    const boton = await screen.findByRole('button', { name: 'Avisos · Telegram cada 2 h · 2 correos' });
     expect(screen.queryByText('admin@cne.gob.ec')).not.toBeInTheDocument();
 
     await user.click(boton);

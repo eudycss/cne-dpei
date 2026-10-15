@@ -1,4 +1,5 @@
 import type {
+  AvisosEnlacesRequest,
   ConfigEnlacesResponse,
   EnlaceRecinto,
   EstadisticasEnlacesResponse,
@@ -23,6 +24,11 @@ export async function addCorreoEnlace(correo: string): Promise<ConfigEnlacesResp
 
 export async function removeCorreoEnlace(correo: string): Promise<ConfigEnlacesResponse> {
   const { data } = await api.delete<ConfigEnlacesResponse>('/enlaces/config/correos', { data: { correo } });
+  return data;
+}
+
+export async function guardarAvisosEnlaces(avisos: AvisosEnlacesRequest): Promise<ConfigEnlacesResponse> {
+  const { data } = await api.put<ConfigEnlacesResponse>('/enlaces/config/avisos', avisos);
   return data;
 }
 

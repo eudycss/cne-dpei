@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, Headers, Logger, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Logger, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { AddCorreoEnlaceRequest } from '@cne/shared-types';
-import { addCorreoEnlaceSchema } from '@cne/shared-validation';
+import type { AddCorreoEnlaceRequest, AvisosEnlacesRequest } from '@cne/shared-types';
+import { addCorreoEnlaceSchema, avisosEnlacesSchema } from '@cne/shared-validation';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
@@ -40,7 +40,7 @@ export class EnlacesController {
 
   @Get('config')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Ver la configuración de correos para avisos de enlaces caídos' })
+  @ApiOperation({ summary: 'Ver la configuración de avisos de enlaces caídos (correos y frecuencia de Telegram)' })
   getConfig() {
     return this.enlaces.getConfig();
   }
@@ -57,6 +57,13 @@ export class EnlacesController {
   @ApiOperation({ summary: 'Quitar un correo de la lista de avisos de enlaces caídos' })
   removeCorreo(@Body(new ZodValidationPipe(addCorreoEnlaceSchema)) body: AddCorreoEnlaceRequest) {
     return this.enlaces.removeCorreo(body.correo);
+  }
+
+  @Put('config/avisos')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Cambiar cada cuánto avisa el bot de Telegram de los enlaces caídos' })
+  guardarAvisos(@Body(new ZodValidationPipe(avisosEnlacesSchema)) body: AvisosEnlacesRequest) {
+    return this.enlaces.guardarAvisos(body);
   }
 
   @Post('telegram/reenviar')

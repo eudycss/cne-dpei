@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MARGEN_LLEGADA_MAX_METROS,
   cedulaSchema,
+  avisosEnlacesSchema,
   configAlertasSchema,
   isValidCedulaEcuatoriana,
   llegadaDpiSchema,
@@ -146,5 +147,22 @@ describe('desdeOffline en los schemas de tracking que pasan por la cola offline'
 
   it.each(casos)('%s rechaza un desdeOffline no booleano', (_nombre, schema, base) => {
     expect(schema.safeParse({ ...base, desdeOffline: 'true' }).success).toBe(false);
+  });
+});
+
+describe('avisosEnlacesSchema', () => {
+  it('acepta las opciones de la lista, incluido 10 min para el día de votaciones', () => {
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 10, minutosRepetirAviso: 240 }).success).toBe(true);
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 120, minutosRepetirAviso: 120 }).success).toBe(true);
+  });
+
+  it.each([5, 0, -10, 45, 10.5, 1_000_000])('rechaza %p minutos (fuera de la lista)', (minutos) => {
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: minutos, minutosRepetirAviso: 120 }).success).toBe(false);
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 120, minutosRepetirAviso: minutos }).success).toBe(false);
+  });
+
+  it('rechaza texto o campos faltantes', () => {
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: '120', minutosRepetirAviso: 120 }).success).toBe(false);
+    expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 120 }).success).toBe(false);
   });
 });

@@ -60,7 +60,7 @@ describe('formatearEscalamiento', () => {
   });
 
   it('un recinto suelto: sector, tiempo caído y encargado para llamarlo', () => {
-    const [texto] = formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }]);
+    const [texto] = formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 30);
 
     expect(texto).toBe(
       [
@@ -73,13 +73,22 @@ describe('formatearEscalamiento', () => {
     );
   });
 
+  it('el encabezado dice el tiempo configurado del primer aviso', () => {
+    expect(formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 120)[0]).toContain(
+      '<b>🚨 Enlaces caídos hace 2 h o más (1)</b>',
+    );
+    expect(formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 10)[0]).toContain(
+      '<b>🚨 Enlaces caídos hace 10 min o más (1)</b>',
+    );
+  });
+
   it('recordatorio, inestable y sin encargado registrado', () => {
     const [por24h] = formatearEscalamiento([
       { zona: null, recintos: [alerta('1', { aviso: 3, minutosCaido: 95, inestable: true, caidas24h: 4, encargado: null })] },
-    ]);
+    ], 30);
     const [por7d] = formatearEscalamiento([
       { zona: null, recintos: [alerta('1', { inestable: true, caidas24h: 1, caidas7d: 6 })] },
-    ]);
+    ], 30);
 
     expect(por24h).toContain('⏱ Caído hace 1 h 35 min · 3.º aviso');
     expect(por24h).toContain('⚠️ Inestable: 4 caídas en 24 h');
@@ -91,7 +100,7 @@ describe('formatearEscalamiento', () => {
     const [texto] = formatearEscalamiento([
       { zona: 'Quiroga', recintos: [alerta('1961'), alerta('1962')] },
       { zona: null, recintos: [alerta('28', { canton: 'Ibarra', parroquia: '' })] },
-    ]);
+    ], 30);
 
     expect(texto).toContain('(3)');
     expect(texto).toContain('<b>📍 Posible corte de zona: Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
@@ -108,7 +117,7 @@ describe('formatearEscalamiento', () => {
           alerta('2'),
         ],
       },
-    ]);
+    ], 30);
 
     expect(texto).toContain('&lt;Zona&gt;');
     expect(texto).toContain('&lt;1&gt; · A &amp; B');
@@ -119,7 +128,7 @@ describe('formatearEscalamiento', () => {
   it('una zona enorme también se parte, repitiendo el nombre de la zona', () => {
     const recintos = Array.from({ length: 40 }, (_, i) => alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) }));
 
-    const mensajes = formatearEscalamiento([{ zona: 'Quiroga', recintos }]);
+    const mensajes = formatearEscalamiento([{ zona: 'Quiroga', recintos }], 30);
 
     expect(mensajes.length).toBeGreaterThan(1);
     expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
@@ -132,7 +141,7 @@ describe('formatearEscalamiento', () => {
       ({ zona: null, recintos: [alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) })] }),
     );
 
-    const mensajes = formatearEscalamiento(muchos);
+    const mensajes = formatearEscalamiento(muchos, 30);
 
     expect(mensajes.length).toBeGreaterThan(1);
     expect(mensajes.every((m) => m.length <= 4000)).toBe(true);

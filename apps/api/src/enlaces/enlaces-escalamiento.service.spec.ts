@@ -98,6 +98,7 @@ describe('agruparPorZona', () => {
 
 describe('EnlacesEscalamientoService', () => {
   const prisma = {
+    configEnlaces: { findUnique: jest.fn() },
     enlaceCaida: {
       findMany: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -124,6 +125,8 @@ describe('EnlacesEscalamientoService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Las pruebas de abajo usan 30 min; la frecuencia propia se prueba aparte.
+    prisma.configEnlaces.findUnique.mockResolvedValue({ minutosPrimerAviso: 30, minutosRepetirAviso: 30 });
     encargados.encargados.mockResolvedValue(new Map([['1961', { nombre: 'Ana Pérez', telefono: '+593 99 000 0000' }]]));
     distributivo.asignaciones.mockResolvedValue([
       { codigoRecinto: '1961', localidad: '', parroquia: 'Quiroga', numeroTecnico: 1, tecnico: 'X' },
@@ -145,6 +148,55 @@ describe('EnlacesEscalamientoService', () => {
     expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
   });
 
+  it('usa la frecuencia configurada: primer aviso a los N min y repetición cada M min', async () => {
+    prisma.configEnlaces.findUnique.mockResolvedValue({ minutosPrimerAviso: 120, minutosRepetirAviso: 10 });
+    prisma.enlaceCaida.findMany.mockResolvedValueOnce([]);
+
+    await service.escalar(AHORA);
+
+    expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          fin: null,
+          inicio: { lte: iso('2026-10-21T13:01:00Z') },
+          OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: iso('2026-10-21T14:51:00Z') } }],
+        },
+      }),
+    );
+  });
+
+  it('día de votaciones (10 min): con el cron cada 5 min, avisa desde los 9 min y repite cada 10 min, no cada 5', async () => {
+    prisma.configEnlaces.findUnique.mockResolvedValue({ minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+    prisma.enlaceCaida.findMany.mockResolvedValueOnce([]);
+
+    await service.escalar(AHORA);
+
+    // 15:00 − 10 min + 1 min de margen = 14:51.
+    const limite = iso('2026-10-21T14:51:00Z');
+    const { where } = prisma.enlaceCaida.findMany.mock.calls[0][0];
+    expect(where.inicio.lte).toEqual(limite);
+    expect(where.OR[1].ultimoAviso.lte).toEqual(limite);
+    // Caída hace 9 min: entra. Hace 8 min: no. Último aviso hace 5 min (un ciclo): no se repite.
+    expect(iso('2026-10-21T14:51:00Z').getTime()).toBeLessThanOrEqual(limite.getTime());
+    expect(iso('2026-10-21T14:52:00Z').getTime()).toBeGreaterThan(limite.getTime());
+    expect(iso('2026-10-21T14:55:00Z').getTime()).toBeGreaterThan(limite.getTime());
+  });
+
+  it('sin configuración guardada, avisa a las 2 h y cada 2 h', async () => {
+    prisma.configEnlaces.findUnique.mockResolvedValue(null);
+    prisma.enlaceCaida.findMany.mockResolvedValueOnce([caida('c1', '1961', '2026-10-21T12:00:00Z')]).mockResolvedValueOnce([]);
+
+    await service.escalar(AHORA);
+
+    const limite = iso('2026-10-21T13:01:00Z');
+    expect(prisma.enlaceCaida.findMany.mock.calls[0][0].where).toEqual({
+      fin: null,
+      inicio: { lte: limite },
+      OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }],
+    });
+    expect(telegram.enviarEscalamiento).toHaveBeenCalledWith(expect.any(Array), 120);
+  });
+
   it('avisa con el encargado, la parroquia, cuántas veces se cayó y marca el aviso', async () => {
     prisma.enlaceCaida.findMany
       .mockResolvedValueOnce([caida('c1', '1961', '2026-10-21T14:25:00Z', 1)])
@@ -157,7 +209,8 @@ describe('EnlacesEscalamientoService', () => {
 
     await service.escalar(AHORA);
 
-    const [grupos] = telegram.enviarEscalamiento.mock.calls[0];
+    const [grupos, minutosPrimerAviso] = telegram.enviarEscalamiento.mock.calls[0];
+    expect(minutosPrimerAviso).toBe(30);
     expect(grupos).toEqual([
       {
         zona: null,
@@ -203,17 +256,19 @@ describe('EnlacesEscalamientoService', () => {
 
   it('si el ciclo anterior sigue en curso, no se solapa (evita avisos duplicados) y luego sigue normal', async () => {
     let liberar!: () => void;
-    prisma.enlaceCaida.findMany
-      .mockReturnValueOnce(new Promise((r) => (liberar = () => r([]))))
-      .mockResolvedValueOnce([]);
+    prisma.configEnlaces.findUnique.mockReturnValueOnce(
+      new Promise((r) => (liberar = () => r({ minutosPrimerAviso: 30, minutosRepetirAviso: 30 }))),
+    );
+    prisma.enlaceCaida.findMany.mockResolvedValue([]);
 
     const primero = service.escalar(AHORA);
     await service.escalar(AHORA);
-    expect(prisma.enlaceCaida.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.configEnlaces.findUnique).toHaveBeenCalledTimes(1);
 
     liberar();
     await primero;
     await service.escalar(AHORA);
+    expect(prisma.configEnlaces.findUnique).toHaveBeenCalledTimes(2);
     expect(prisma.enlaceCaida.findMany).toHaveBeenCalledTimes(2);
   });
 
