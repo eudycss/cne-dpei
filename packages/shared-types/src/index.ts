@@ -791,6 +791,15 @@ export interface EnlaceRecinto {
 
 export interface ConfigEnlacesResponse {
   correos: string[];
+  /** Minutos caído antes del primer aviso por Telegram. */
+  minutosPrimerAviso: number;
+  /** Minutos entre un aviso y el siguiente mientras siga caído. */
+  minutosRepetirAviso: number;
+}
+
+export interface AvisosEnlacesRequest {
+  minutosPrimerAviso: number;
+  minutosRepetirAviso: number;
 }
 
 export interface AddCorreoEnlaceRequest {

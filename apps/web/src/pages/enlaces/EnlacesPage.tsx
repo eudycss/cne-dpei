@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { EnlaceRecinto } from '@cne/shared-types';
+import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { getConfigEnlaces, getEnlaces } from '../../lib/queries/enlaces';
 import { formatearFechaHora } from '../../lib/notifications';
 import { CorreosAvisoModal } from './CorreosAvisoModal';
+import { textoMinutos } from './FrecuenciaAvisosTelegram';
 import { EstadisticasEnlaces } from './EstadisticasEnlaces';
 
 const ESTADO_COLOR: Record<EnlaceRecinto['estado'], string> = {
@@ -102,7 +103,7 @@ export function EnlacesPage() {
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h2 style={{ margin: 0 }}>Enlaces (CDAs Imbabura)</h2>
         <button className="btn secondary" onClick={() => setMostrarCorreos(true)}>
-          Correos de aviso ({(config?.correos ?? []).length})
+          {textoBotonAvisos(config)}
         </button>
       </div>
 
@@ -236,4 +237,17 @@ export function EnlacesPage() {
       )}
     </>
   );
+}
+
+/** "Avisos · Telegram cada 2 h · 2 correos": a la vista sin abrir el modal (útil el día de votaciones). */
+function textoBotonAvisos(config: ConfigEnlacesResponse | undefined): string {
+  const correos = config?.correos.length ?? 0;
+  const textoCorreos = `${correos} ${correos === 1 ? 'correo' : 'correos'}`;
+  if (!config) return `Avisos · ${textoCorreos}`;
+  const { minutosPrimerAviso: primer, minutosRepetirAviso: repetir } = config;
+  const telegram =
+    primer === repetir
+      ? `Telegram cada ${textoMinutos(repetir)}`
+      : `Telegram a los ${textoMinutos(primer)}, luego cada ${textoMinutos(repetir)}`;
+  return `Avisos · ${telegram} · ${textoCorreos}`;
 }

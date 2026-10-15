@@ -713,6 +713,33 @@ describe('EnlacesService', () => {
     });
   });
 
+  describe('frecuencia de avisos por Telegram', () => {
+    it('getConfig devuelve la frecuencia guardada', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], minutosPrimerAviso: 10, minutosRepetirAviso: 30 });
+
+      await expect(service.getConfig()).resolves.toEqual({ correos: [], minutosPrimerAviso: 10, minutosRepetirAviso: 30 });
+    });
+
+    it('sin configuración guardada, getConfig devuelve 2 h y 2 h', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue(null);
+
+      await expect(service.getConfig()).resolves.toEqual({ correos: [], minutosPrimerAviso: 120, minutosRepetirAviso: 120 });
+    });
+
+    it('guardarAvisos guarda solo la frecuencia (no toca los correos) y devuelve la config completa', async () => {
+      prisma.configEnlaces.upsert.mockResolvedValue({ id: 1, correos: ['a@b.com'], minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+
+      const result = await service.guardarAvisos({ minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith({
+        where: { id: 1 },
+        create: { id: 1, minutosPrimerAviso: 10, minutosRepetirAviso: 10 },
+        update: { minutosPrimerAviso: 10, minutosRepetirAviso: 10 },
+      });
+      expect(result).toEqual({ correos: ['a@b.com'], minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+    });
+  });
+
   describe('config de correos', () => {
     beforeEach(() => {
       // Por defecto, sin recintos caídos, para que los tests de esta sección

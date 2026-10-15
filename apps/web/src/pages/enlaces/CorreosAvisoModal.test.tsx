@@ -21,7 +21,11 @@ const sileoErrorMock = sileo.error as unknown as ReturnType<typeof vi.fn>;
 const sileoSuccessMock = sileo.success as unknown as ReturnType<typeof vi.fn>;
 
 let correosActuales: string[];
-const config = (): ConfigEnlacesResponse => ({ correos: correosActuales });
+const config = (): ConfigEnlacesResponse => ({
+  correos: correosActuales,
+  minutosPrimerAviso: 120,
+  minutosRepetirAviso: 120,
+});
 
 function renderModal(onClose = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

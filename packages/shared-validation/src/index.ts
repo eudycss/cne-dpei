@@ -541,6 +541,19 @@ export const addCorreoEnlaceSchema = z.object({
   correo: emailSchema,
 });
 
+/** Opciones de los avisos por Telegram: 10 min (día de votaciones) a 4 h. El cron corre cada 5 min. */
+export const MINUTOS_AVISO_ENLACES = [10, 15, 30, 60, 120, 240] as const;
+const minutosAvisoSchema = z
+  .number()
+  .int()
+  .refine((m) => (MINUTOS_AVISO_ENLACES as readonly number[]).includes(m), {
+    message: `Elija uno de: ${MINUTOS_AVISO_ENLACES.join(', ')} minutos`,
+  });
+export const avisosEnlacesSchema = z.object({
+  minutosPrimerAviso: minutosAvisoSchema,
+  minutosRepetirAviso: minutosAvisoSchema,
+});
+
 // --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---
 const motivoCorreccionSchema = z
   .string()

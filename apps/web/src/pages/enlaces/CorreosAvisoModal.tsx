@@ -7,6 +7,7 @@ import {
   reenviarListaTelegram,
   removeCorreoEnlace,
 } from '../../lib/queries/enlaces';
+import { FrecuenciaAvisosTelegram } from './FrecuenciaAvisosTelegram';
 
 interface Props {
   onClose: () => void;
@@ -85,7 +86,9 @@ export function CorreosAvisoModal({ onClose }: Props) {
         aria-labelledby="correos-aviso-titulo"
         onClick={(e) => e.stopPropagation()}
       >
-        <h1 id="correos-aviso-titulo">Correos que reciben el aviso de enlace caído</h1>
+        <h1 id="correos-aviso-titulo">Avisos de enlaces caídos</h1>
+        <FrecuenciaAvisosTelegram config={config} />
+        <h2 style={{ fontSize: '1rem', margin: '0 0 0.5rem' }}>Correos que reciben el aviso de enlace caído</h2>
         <ul style={{ paddingLeft: '1.1rem' }}>
           {(config?.correos ?? []).map((correo) => (
             <li key={correo} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>

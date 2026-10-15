@@ -612,6 +612,10 @@ model ConfigEnlaces {
   correos        String[] @default([])
   /// Desde cuándo se registra el historial de caídas (antes no hay datos).
   historialDesde DateTime @default(now()) @map("historial_desde") @db.Timestamptz(6)
+  /// Avisos por Telegram de enlaces caídos: el primero a los N min de caído,
+  /// luego cada M min mientras siga caído. Se cambian desde la web.
+  minutosPrimerAviso  Int @default(120) @map("minutos_primer_aviso")
+  minutosRepetirAviso Int @default(120) @map("minutos_repetir_aviso")
 
   @@map("config_enlaces")
 }

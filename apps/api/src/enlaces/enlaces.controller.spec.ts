@@ -24,3 +24,21 @@ describe('EnlacesController — webhook de Telegram', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('base caída'));
   });
 });
+
+describe('EnlacesController — frecuencia de avisos', () => {
+  const metadatos = (metodo: keyof EnlacesController) =>
+    Reflect.getMetadata('roles', EnlacesController.prototype[metodo] as object) as string[] | undefined;
+
+  it('solo ADMINISTRADOR puede cambiar cada cuánto avisa el bot', () => {
+    expect(metadatos('guardarAvisos')).toEqual(['ADMINISTRADOR']);
+  });
+
+  it('pasa la frecuencia validada al servicio', async () => {
+    const guardarAvisos = jest.fn().mockResolvedValue({ correos: [], minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+    const controller = new EnlacesController({ guardarAvisos } as unknown as EnlacesService, {} as never);
+
+    await controller.guardarAvisos({ minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+
+    expect(guardarAvisos).toHaveBeenCalledWith({ minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+  });
+});

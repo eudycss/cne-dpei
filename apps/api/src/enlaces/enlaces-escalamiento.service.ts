@@ -6,8 +6,12 @@ import { EncargadosRecintosClient, type EncargadoRecinto } from './encargados-re
 import { TelegramNotifier, type AlertaRecinto, type GrupoAlerta } from './telegram-notifier';
 
 const MS_MINUTO = 60_000;
-/** Primer aviso al encargado a los 30 min de caído; luego cada 30 min mientras siga caído. */
-export const MINUTOS_AVISO = 30;
+/**
+ * Si no hay configuración guardada: primer aviso a las 2 h de caído y luego
+ * cada 2 h. Se cambia desde la web (config_enlaces).
+ */
+export const MINUTOS_AVISO_POR_DEFECTO = 120;
+const CONFIG_ID = 1;
 /** El cron corre cada 5 min y no exactamente a la misma hora: sin este margen, 30 min se volverían 35. */
 const MARGEN_MS = MS_MINUTO;
 /** Caídas de la misma parroquia (o cantón) con menos de esto entre una y otra = posible corte de zona. */
@@ -75,7 +79,8 @@ export function agruparPorZona(alertas: AlertaRecinto[]): GrupoAlerta[] {
 
 /**
  * Escalamiento de enlaces caídos: en cada ciclo del cron busca las caídas
- * abiertas hace 30 min o más que no se avisaron en los últimos 30 min, y
+ * abiertas hace N min o más que no se avisaron en los últimos M min (N y M
+ * configurables desde la web), y
  * manda un solo mensaje con el encargado de cada recinto (para llamarlo),
  * si es inestable y si parece un corte de zona.
  */
@@ -99,9 +104,14 @@ export class EnlacesEscalamientoService {
     }
     this.enCurso = true;
     try {
-      const limite = new Date(ahora.getTime() - MINUTOS_AVISO * MS_MINUTO + MARGEN_MS);
+      const { minutosPrimerAviso, minutosRepetirAviso } = await this.frecuencia();
+      const hace = (minutos: number) => new Date(ahora.getTime() - minutos * MS_MINUTO + MARGEN_MS);
       const pendientes = await this.prisma.enlaceCaida.findMany({
-        where: { fin: null, inicio: { lte: limite }, OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }] },
+        where: {
+          fin: null,
+          inicio: { lte: hace(minutosPrimerAviso) },
+          OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: hace(minutosRepetirAviso) } }],
+        },
         select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
         orderBy: { inicio: 'asc' },
       });
@@ -142,13 +152,25 @@ export class EnlacesEscalamientoService {
         where: { id: { in: pendientes.map((p) => p.id) } },
         data: { ultimoAviso: ahora, avisos: { increment: 1 } },
       });
-      await this.telegram.enviarEscalamiento(agruparPorZona(alertas));
+      await this.telegram.enviarEscalamiento(agruparPorZona(alertas), minutosPrimerAviso);
     } catch (e) {
       // El escalamiento nunca frena el resto del cron; el siguiente ciclo lo reintenta.
       this.log.error(`No se pudo escalar los enlaces caídos: ${(e as Error)?.message ?? e}`);
     } finally {
       this.enCurso = false;
     }
+  }
+
+  /** La frecuencia guardada desde la web; sin fila (base recién creada), la de por defecto. */
+  private async frecuencia(): Promise<{ minutosPrimerAviso: number; minutosRepetirAviso: number }> {
+    const config = await this.prisma.configEnlaces.findUnique({
+      where: { id: CONFIG_ID },
+      select: { minutosPrimerAviso: true, minutosRepetirAviso: true },
+    });
+    return {
+      minutosPrimerAviso: config?.minutosPrimerAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+      minutosRepetirAviso: config?.minutosRepetirAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+    };
   }
 
   /** Sin el archivo de encargados el aviso sale igual, con "Encargado: sin registrar". */

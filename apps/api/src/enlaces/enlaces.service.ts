@@ -1,7 +1,12 @@
 import { timingSafeEqual } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { ConfigEnlacesResponse, EnlaceRecinto, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
+import type {
+  AvisosEnlacesRequest,
+  ConfigEnlacesResponse,
+  EnlaceRecinto,
+  PeriodoEstadisticasEnlaces,
+} from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
@@ -16,6 +21,7 @@ import {
   TEXTO_BOTON_INGRESAR_CODIGO,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MINUTOS_AVISO_POR_DEFECTO } from './enlaces-escalamiento.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
@@ -346,8 +352,18 @@ export class EnlacesService {
   }
 
   async getConfig(): Promise<ConfigEnlacesResponse> {
-    const config = await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } });
-    return { correos: config?.correos ?? [] };
+    return respuestaConfig(await this.prisma.configEnlaces.findUnique({ where: { id: CONFIG_ID } }));
+  }
+
+  /** Cada cuánto avisa el bot de los enlaces caídos; aplica desde el siguiente ciclo del cron. */
+  async guardarAvisos({ minutosPrimerAviso, minutosRepetirAviso }: AvisosEnlacesRequest): Promise<ConfigEnlacesResponse> {
+    const frecuencia = { minutosPrimerAviso, minutosRepetirAviso };
+    const saved = await this.prisma.configEnlaces.upsert({
+      where: { id: CONFIG_ID },
+      create: { id: CONFIG_ID, ...frecuencia },
+      update: frecuencia,
+    });
+    return respuestaConfig(saved);
   }
 
   async addCorreo(correo: string): Promise<ConfigEnlacesResponse> {
@@ -651,6 +667,16 @@ export class EnlacesService {
       create: { id: CONFIG_ID, correos },
       update: { correos },
     });
-    return { correos: saved.correos };
+    return respuestaConfig(saved);
   }
+}
+
+function respuestaConfig(
+  config: { correos: string[]; minutosPrimerAviso: number; minutosRepetirAviso: number } | null,
+): ConfigEnlacesResponse {
+  return {
+    correos: config?.correos ?? [],
+    minutosPrimerAviso: config?.minutosPrimerAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+    minutosRepetirAviso: config?.minutosRepetirAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+  };
 }

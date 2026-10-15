@@ -31,7 +31,7 @@ export interface GrupoAsignacion {
   recintos: { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' | null }[];
 }
 
-/** Un recinto caído hace 30 min o más, con lo necesario para llamar a su encargado. */
+/** Un recinto caído hace rato (según la configuración de avisos), con lo necesario para llamar a su encargado. */
 export interface AlertaRecinto {
   codigoRecinto: string;
   nombreRecinto: string;
@@ -318,9 +318,9 @@ function lineasAlerta(a: AlertaRecinto, enZona: boolean): string[] {
  * después los recintos sueltos, cada uno con su encargado para llamarlo. Si no
  * cabe en un mensaje de Telegram, se parte entre grupos.
  */
-export function formatearEscalamiento(grupos: GrupoAlerta[]): string[] {
+export function formatearEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso: number): string[] {
   const total = grupos.reduce((n, g) => n + g.recintos.length, 0);
-  const encabezado = `<b>🚨 Enlaces caídos hace 30 min o más (${total})</b>`;
+  const encabezado = `<b>🚨 Enlaces caídos hace ${formatearDuracion(minutosPrimerAviso)} o más (${total})</b>`;
   // Una unidad por recinto; el título de la zona va pegado a su primer recinto y,
   // si la zona no cabe en un mensaje, se repite con "(cont.)" en el siguiente.
   const unidades = grupos.flatMap((g) => {
@@ -446,11 +446,11 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
   }
 
-  /** Aviso de enlaces caídos hace 30 min o más; uno o más mensajes, en orden. */
-  async enviarEscalamiento(grupos: GrupoAlerta[]): Promise<void> {
+  /** Aviso de enlaces caídos hace `minutosPrimerAviso` o más; uno o más mensajes, en orden. */
+  async enviarEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso: number): Promise<void> {
     if (grupos.length === 0) return;
-    for (const mensaje of formatearEscalamiento(grupos)) {
-      await this.enviarMensaje(mensaje, 'el aviso de enlaces caídos hace 30 min', 'HTML');
+    for (const mensaje of formatearEscalamiento(grupos, minutosPrimerAviso)) {
+      await this.enviarMensaje(mensaje, 'el aviso de enlaces caídos', 'HTML');
     }
   }
 
