@@ -7,7 +7,6 @@ import { Logo } from './Logo';
 import { MiRecintoModal } from './MiRecintoModal';
 import { ReportarIncidenciaModal } from './ReportarIncidenciaModal';
 import { NotificacionesModal } from './NotificacionesModal';
-import { EnlaceCaidoBanner } from './EnlaceCaidoBanner';
 import { getMisNotificaciones, marcarNotificacionLeida } from '../lib/notifications';
 import { usePendingCount } from '../lib/offline-queue';
 import { fontFamily } from '../theme/typography';
@@ -47,15 +46,6 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
   const recibeNotif = !!user && !esOperador;
   const pendientes = usePendingCount();
   const spin = useRef(new Animated.Value(0)).current;
-  const [enlacesPendientes, setEnlacesPendientes] = useState<NotificacionItem[]>([]);
-
-  // `enlacesPendientes` NO sale de `notifs` (que solo trae la página 1 de 10
-  // notificaciones, la más reciente primero): si el usuario acumula 10+
-  // notificaciones más nuevas que un enlace caído sin leer, este quedaría
-  // fuera de esa página y el modal jamás lo mostraría. Se pide aparte con
-  // `soloNoLeidas` y un pageSize amplio, con su propio polling (no se pausa
-  // con `showNotif`, porque es independiente de la lista manual).
-  const pendientesEnlace = enlacesPendientes.filter((n) => !n.leidaEn);
 
   useEffect(() => {
     if (!recibeNotif) return;
@@ -82,46 +72,6 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
       clearInterval(id);
     };
   }, [recibeNotif, showNotif]);
-
-  useEffect(() => {
-    if (!recibeNotif) return;
-    let activo = true;
-    const cargarPendientesEnlace = () => {
-      getMisNotificaciones({ soloNoLeidas: true, pageSize: 100 })
-        .then((d) => {
-          if (!activo) return;
-          setEnlacesPendientes(d.items.filter((n) => n.tipoEvento === 'ENLACE_CAIDO'));
-        })
-        .catch(() => {});
-    };
-    cargarPendientesEnlace();
-    const id = setInterval(cargarPendientesEnlace, 30_000);
-    return () => {
-      activo = false;
-      clearInterval(id);
-    };
-  }, [recibeNotif]);
-
-  const confirmarEnlacesCaidos = async () => {
-    const objetivo = pendientesEnlace;
-    // allSettled (no all): si un PATCH falla no debe perderse la confirmación
-    // de los demás — las que sí se confirman se cierran, las que fallan
-    // siguen en el modal (nunca se descartan silenciosamente).
-    const resultados = await Promise.allSettled(
-      objetivo.map((n) => marcarNotificacionLeida(n.id).then(() => n.id)),
-    );
-    const confirmadas = new Set(
-      resultados
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-        .map((r) => r.value),
-    );
-    const marcarComoLeida = (n: NotificacionItem) =>
-      confirmadas.has(n.id) ? { ...n, leidaEn: new Date().toISOString() } : n;
-
-    setEnlacesPendientes((prev) => prev.map(marcarComoLeida));
-    setNotifs((prev) => prev.map(marcarComoLeida));
-    setNoLeidas((prev) => Math.max(0, prev - confirmadas.size));
-  };
 
   const cargarMasNotifs = async () => {
     if (cargandoMasNotifs || notifs.length >= totalNotifs) return;
@@ -214,10 +164,6 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           />
         </Pressable>
       </View>
-
-      {pendientesEnlace.length > 0 && (
-        <EnlaceCaidoBanner items={pendientesEnlace} onConfirmar={confirmarEnlacesCaidos} />
-      )}
 
       {esOperador && <MiRecintoModal visible={showMiRecinto} onClose={() => setShowMiRecinto(false)} />}
       {esOperador && (

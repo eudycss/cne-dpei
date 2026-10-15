@@ -21,8 +21,6 @@ import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
-import { EnlaceCaidoBanner } from '../components/EnlaceCaidoBanner';
-import { useEnlacesCaidosPendientes } from '../lib/useEnlacesCaidosPendientes';
 import { esSoloAsistente, etiquetaRol } from '../lib/roles';
 
 export function Layout() {
@@ -30,11 +28,6 @@ export function Layout() {
   const { theme, toggle } = useTheme();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
-  // Mismo hook para todos los que pueden ver notificaciones — el banner es
-  // full-width, arriba de TODO el layout (sidebar incluido), así nunca tapa
-  // los controles del topbar (a diferencia de un position:fixed superpuesto).
-  const { pendientes: enlacesPendientes, confirmar: confirmarEnlacesCaidos } =
-    useEnlacesCaidosPendientes({ enabled: puedeVerNotificaciones });
   const puedeVerAlertas =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
   const puedeVerEnlaces = user?.roles.includes('ADMINISTRADOR') ?? false;
@@ -48,9 +41,6 @@ export function Layout() {
 
   return (
     <>
-      {enlacesPendientes.length > 0 ? (
-        <EnlaceCaidoBanner items={enlacesPendientes} onConfirmar={confirmarEnlacesCaidos} />
-      ) : null}
       <div className="app-shell">
         <aside className="sidebar">
           <div className="brand">
