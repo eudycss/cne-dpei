@@ -112,7 +112,7 @@ export class MilitaresService {
     // Mapa codigo_recinto -> id (una sola consulta)
     const codigos = [...new Set(rows.map((r) => String(r.codigo_recinto ?? '').trim()))];
     const recintos = await this.prisma.recinto.findMany({
-      where: { codigoRecinto: { in: codigos } },
+      where: { codigoRecinto: { in: codigos }, activo: true },
       select: { id: true, codigoRecinto: true },
     });
     const recintoByCodigo = new Map<string, string>(
@@ -180,7 +180,7 @@ export class MilitaresService {
   // ---- internos ----
   private async assertRecinto(recintoId: string) {
     const r = await this.prisma.recinto.findUnique({ where: { id: recintoId } });
-    if (!r) throw new BadRequestException('El recinto indicado no existe');
+    if (!r || r.activo === false) throw new BadRequestException('El recinto indicado no existe');
   }
 
   private async parseRows(

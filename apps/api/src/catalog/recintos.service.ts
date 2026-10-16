@@ -35,7 +35,8 @@ export class RecintosService {
   }): Promise<Paginated<Recinto>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
-    const where: any = {};
+    // Los recintos que salieron del Google Sheet no se listan (siguen en la base por el historial).
+    const where: any = { activo: true };
     if (opts.search) {
       where.OR = [
         { nombre: { contains: opts.search, mode: 'insensitive' } },
@@ -46,8 +47,8 @@ export class RecintosService {
     if (opts.cantonId) where.cantonId = opts.cantonId;
     if (opts.tipo) where.tipo = opts.tipo;
     if (opts.cdaDestinoId) where.cdaDestinoId = opts.cdaDestinoId;
-    if (opts.conOrigenes === 'true') where.origenes = { some: {} };
-    if (opts.conOrigenes === 'false') where.origenes = { none: {} };
+    if (opts.conOrigenes === 'true') where.origenes = { some: { activo: true } };
+    if (opts.conOrigenes === 'false') where.origenes = { none: { activo: true } };
     if (opts.sinCda === 'true') {
       where.tipo = 'NO_CDA';
       where.cdaDestinoId = null;
@@ -57,7 +58,7 @@ export class RecintosService {
       this.prisma.recinto.count({ where }),
       this.prisma.recinto.findMany({
         where,
-        include: { canton: true, _count: { select: { origenes: true } } },
+        include: { canton: true, _count: { select: { origenes: { where: { activo: true } } } } },
         orderBy: { nombre: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -235,7 +236,9 @@ export class RecintosService {
               cobertura_movil = ${d.cobertura_movil ?? false},
               numero_electores = ${d.numero_electores ?? null},
               juntas_femeninas = ${d.juntas_femeninas ?? null},
-              juntas_masculinas = ${d.juntas_masculinas ?? null}
+              juntas_masculinas = ${d.juntas_masculinas ?? null},
+              -- Si estaba oculto (salió del Google Sheet), cargarlo a mano lo recupera.
+              activo = true
             WHERE codigo_recinto = ${d.codigo_recinto}
           `;
           actualizados++;
@@ -274,6 +277,11 @@ export class RecintosService {
 
   private async assertCodigoDisponible(codigoRecinto: string) {
     const dup = await this.prisma.recinto.findUnique({ where: { codigoRecinto } });
+    if (dup?.activo === false) {
+      throw new ConflictException(
+        `El código ${codigoRecinto} pertenece a un recinto oculto porque ya no está en el Google Sheet: agréguelo al Sheet y sincronice para recuperarlo`,
+      );
+    }
     if (dup) throw new ConflictException(`Ya existe un recinto con código ${codigoRecinto}`);
   }
 

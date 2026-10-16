@@ -182,6 +182,51 @@ export interface UpdateRecintoRequest {
   esDificilAcceso?: boolean;
 }
 
+// --- Sincronización de recintos desde el Google Sheet ---
+
+export type AccionSyncRecinto = 'CREAR' | 'ACTUALIZAR' | 'REACTIVAR' | 'OCULTAR';
+
+export interface CambioCampoRecinto {
+  campo: string;
+  antes: string;
+  despues: string;
+}
+
+export interface CambioSyncRecinto {
+  codigoRecinto: string;
+  nombre: string;
+  accion: AccionSyncRecinto;
+  cambios: CambioCampoRecinto[];
+  /** Aclaración, p. ej. que el CDA destino se tomó del CDA que reemplazó al anterior. */
+  nota?: string;
+}
+
+export interface ErrorSyncRecinto {
+  codigoRecinto: string;
+  nombre: string;
+  error: string;
+}
+
+export interface SyncRecintosPreview {
+  leidos: { cda: number; noCda: number };
+  sinCambios: number;
+  cambios: CambioSyncRecinto[];
+  /** Recintos que no se tocarán hasta que se corrija el Sheet o el sistema. */
+  errores: ErrorSyncRecinto[];
+  /** Jornada electoral en curso: se puede ver la vista previa, pero no aplicar. */
+  congelado: boolean;
+  /** Se ocultarían demasiados recintos de una vez (¿Sheet incompleto?): no se puede aplicar. */
+  ocultamientoMasivo: boolean;
+}
+
+export interface SyncRecintosResultado {
+  aplicados: number;
+  creados: number;
+  actualizados: number;
+  ocultados: number;
+  errores: ErrorSyncRecinto[];
+}
+
 export interface Militar {
   id: string;
   cedula: string;
