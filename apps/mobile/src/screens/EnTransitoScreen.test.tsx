@@ -8,9 +8,14 @@ import type { MiAsignacionResponse } from '@cne/shared-types';
 // vez que se transforma cada módulo nativo mockeado.
 jest.setTimeout(30000);
 
-jest.mock('../lib/queries/tracking', () => ({
-  getMiAsignacion: jest.fn(),
-}));
+jest.mock('../lib/queries/tracking', () => {
+  const getMiAsignacion = jest.fn();
+  return {
+    getMiAsignacion,
+    // Mismo comportamiento con señal: delega en el mock de getMiAsignacion.
+    getMiAsignacionConOrigen: jest.fn(async () => ({ data: await getMiAsignacion(), desdeCache: false })),
+  };
+});
 
 jest.mock('../lib/location', () => {
   class LocationPermissionDeniedError extends Error {}

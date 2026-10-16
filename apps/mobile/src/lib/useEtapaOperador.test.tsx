@@ -1,10 +1,22 @@
 import { act, create } from 'react-test-renderer';
 import { Alert, AppState, Text } from 'react-native';
 
-jest.mock('./queries/tracking', () => ({ getMiAsignacion: jest.fn() }));
+jest.mock('./queries/tracking', () => {
+  const getMiAsignacion = jest.fn();
+  return {
+    getMiAsignacion,
+    // Mismo comportamiento con señal: delega en el mock de getMiAsignacion.
+    getMiAsignacionConOrigen: jest.fn(async () => ({ data: await getMiAsignacion(), desdeCache: false })),
+  };
+});
 
+jest.mock('./offline-queue', () => ({ contarPendientes: jest.fn().mockResolvedValue(0) }));
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEtapaOperador } from './useEtapaOperador';
-import { getMiAsignacion } from './queries/tracking';
+import { getMiAsignacion, getMiAsignacionConOrigen } from './queries/tracking';
+import { contarPendientes } from './offline-queue';
+import { guardarEtapa, leerEtapa } from './cache-jornada';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -166,4 +178,88 @@ describe('useEtapaOperador', () => {
     act(() => renderer.unmount());
     expect(remove).toHaveBeenCalledTimes(1);
   });
+
+  describe('etapa guardada en el celular (abrir sin señal)', () => {
+    const conEvento = (n: number, eventoId = 'ev1') => ({ ...registros(n), eventoId });
+
+    beforeEach(async () => {
+      await AsyncStorage.clear();
+      (contarPendientes as jest.Mock).mockResolvedValue(0);
+    });
+
+    it('sin señal retoma la etapa guardada del mismo evento en vez de volver a SALIDA', async () => {
+      await guardarEtapa('ev1', 'EN_RECINTO');
+      // Copia local desactualizada: se guardó antes de registrar la salida del DPI.
+      (getMiAsignacionConOrigen as jest.Mock).mockResolvedValueOnce({ data: conEvento(0), desdeCache: true });
+
+      await montar();
+
+      expect(ultimo?.etapa).toBe('EN_RECINTO');
+    });
+
+    it('ignora la etapa guardada de otro evento', async () => {
+      await guardarEtapa('ev-viejo', 'RETORNADO');
+      (getMiAsignacionConOrigen as jest.Mock).mockResolvedValueOnce({ data: conEvento(1), desdeCache: true });
+
+      await montar();
+
+      expect(ultimo?.etapa).toBe('EN_TRANSITO');
+    });
+
+    it('con señal y nada pendiente manda el servidor (p. ej. tras "Resetear estado")', async () => {
+      await guardarEtapa('ev1', 'EN_RETORNO');
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(0));
+
+      await montar();
+
+      expect(ultimo?.etapa).toBe('SALIDA');
+    });
+
+    it('con señal pero acciones pendientes de enviar conserva la etapa guardada', async () => {
+      await guardarEtapa('ev1', 'EN_RECINTO');
+      (contarPendientes as jest.Mock).mockResolvedValue(1);
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(1));
+
+      await montar();
+
+      expect(ultimo?.etapa).toBe('EN_RECINTO');
+    });
+
+    it('guarda cada avance con el evento de la asignación', async () => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(1));
+      await montar();
+
+      await act(async () => {
+        ultimo!.avanzarA('LLEGADA');
+        await flushPromises();
+      });
+
+      await expect(leerEtapa()).resolves.toEqual({ eventoId: 'ev1', etapa: 'LLEGADA' });
+    });
+
+    it('cuenta lo pendiente antes de pedir la asignación (evita retroceder por un flush concurrente)', async () => {
+      await guardarEtapa('ev1', 'EN_RECINTO');
+      // La cola tenía 1 acción al abrir; mientras se esperaba al servidor, un flush la vació.
+      (contarPendientes as jest.Mock).mockResolvedValueOnce(1).mockResolvedValue(0);
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(1));
+
+      await montar();
+
+      expect(ultimo?.etapa).toBe('EN_RECINTO');
+    });
+
+    it('si cambia el evento, la etapa del anterior no se arrastra ni se guarda con el nuevo', async () => {
+      (getMiAsignacion as jest.Mock)
+        .mockResolvedValueOnce(conEvento(4, 'ev1'))
+        .mockResolvedValueOnce(conEvento(0, 'ev2'));
+      await montar();
+      expect(ultimo?.etapa).toBe('RETORNADO');
+
+      await volverAlForeground();
+
+      expect(ultimo?.etapa).toBe('SALIDA');
+      await expect(leerEtapa()).resolves.toEqual({ eventoId: 'ev2', etapa: 'SALIDA' });
+    });
+  });
 });
+

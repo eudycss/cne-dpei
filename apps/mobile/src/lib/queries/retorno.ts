@@ -12,6 +12,7 @@ import type {
 } from '@cne/shared-types';
 import { api } from '../api';
 import { withOffline } from '../offline-queue';
+import { actualizarCopia } from '../cache-jornada';
 
 // subirFotoActa NO tiene soporte offline: las URLs de las actas son requeridas
 // por postSalidaRecinto (mismo criterio que subirFotoMilitar en llegada.ts).
@@ -33,10 +34,12 @@ export async function subirFotoActa(uri: string): Promise<{ url: string }> {
 }
 
 export async function postSalidaRecinto(body: SalidaRecintoRequest): Promise<SalidaRecintoResponse | null> {
-  return withOffline('/tracking/salida-recinto', 'post', body, async () => {
+  const result = await withOffline('/tracking/salida-recinto', 'post', body, async () => {
     const { data } = await api.post<SalidaRecintoResponse>('/tracking/salida-recinto', body);
     return data;
   });
+  await actualizarCopia((a) => ({ ...a, yaRegistroSalidaRecinto: true }));
+  return result;
 }
 
 export async function postPosiciones(body: IngestaPosicionesRequest): Promise<IngestaPosicionesResponse | null> {
@@ -47,10 +50,12 @@ export async function postPosiciones(body: IngestaPosicionesRequest): Promise<In
 }
 
 export async function postLlegadaDpi(body: LlegadaDpiRequest): Promise<LlegadaDpiResponse | null> {
-  return withOffline('/tracking/llegada-dpi', 'post', body, async () => {
+  const result = await withOffline('/tracking/llegada-dpi', 'post', body, async () => {
     const { data } = await api.post<LlegadaDpiResponse>('/tracking/llegada-dpi', body);
     return data;
   });
+  await actualizarCopia((a) => ({ ...a, yaRegistroLlegadaDpi: true }));
+  return result;
 }
 
 // validarKitRetorno y verificarKitRetorno requieren respuesta del servidor — NO se envuelven con offline.

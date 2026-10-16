@@ -89,11 +89,17 @@ export async function sincronizarPendientes(): Promise<number> {
   return (await getQueue()).length;
 }
 
+/** Acciones aún sin enviar, sin intentar enviarlas (a diferencia de sincronizarPendientes). */
+export async function contarPendientes(): Promise<number> {
+  return (await getQueue()).length;
+}
+
 export function isNetworkError(e: unknown): boolean {
   return axios.isAxiosError(e) && !e.response;
 }
 
-function isTransientError(e: unknown): boolean {
+/** Sin red o error del servidor (5xx, p. ej. Render despertando): vale la pena reintentar. */
+export function isTransientError(e: unknown): boolean {
   if (!axios.isAxiosError(e)) return false;
   return isNetworkError(e) || (e.response?.status ?? 0) >= 500;
 }

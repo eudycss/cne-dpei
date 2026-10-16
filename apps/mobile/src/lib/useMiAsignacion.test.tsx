@@ -2,10 +2,17 @@ import { act, create } from 'react-test-renderer';
 import { AppState, Text } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 
-jest.mock('./queries/tracking', () => ({ getMiAsignacion: jest.fn() }));
+jest.mock('./queries/tracking', () => {
+  const getMiAsignacion = jest.fn();
+  return {
+    getMiAsignacion,
+    // Mismo comportamiento con señal: delega en el mock de getMiAsignacion.
+    getMiAsignacionConOrigen: jest.fn(async () => ({ data: await getMiAsignacion(), desdeCache: false })),
+  };
+});
 
 import { useMiAsignacion } from './useMiAsignacion';
-import { getMiAsignacion } from './queries/tracking';
+import { getMiAsignacion, getMiAsignacionConOrigen } from './queries/tracking';
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 const networkError = { isAxiosError: true, response: undefined };
@@ -136,6 +143,18 @@ describe('useMiAsignacion', () => {
     });
     await act(async () => {
       await ultimoResultado!.recargar();
+    });
+
+    expect(ultimoResultado!.asignacion).toEqual(asignacionFixture);
+    expect(ultimoResultado!.sinConexion).toBe(true);
+  });
+
+  it('sin señal muestra la copia guardada y mantiene el aviso de sin conexión', async () => {
+    (getMiAsignacionConOrigen as jest.Mock).mockResolvedValueOnce({ data: asignacionFixture, desdeCache: true });
+
+    await act(async () => {
+      create(<Harness />);
+      await flushPromises();
     });
 
     expect(ultimoResultado!.asignacion).toEqual(asignacionFixture);

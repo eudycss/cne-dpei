@@ -9,6 +9,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
 import { api, onSessionExpired, tokenStore } from '../lib/api';
+import { limpiarCacheJornada, prepararCacheParaUsuario } from '../lib/cache-jornada';
 import {
   guardarVerificadorOffline,
   limpiarVerificadorOffline,
@@ -73,6 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post<LoginResponse>('/auth/login', { email, password });
     await tokenStore.set(data.accessToken, data.refreshToken);
+    // La copia local de la jornada se conserva si es del mismo operador (p. ej.
+    // volvió a entrar tras expirar la sesión) y se descarta si es de otro.
+    await prepararCacheParaUsuario(data.user.id).catch(() => {});
     setUser(data.user);
     // Solo se guarda si no hay cambio de contraseña pendiente: si no, el
     // gate de "cambiar contraseña obligatoria" quedaría sin efecto offline
@@ -94,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginOffline = useCallback(async (email: string, password: string) => {
     const resultado = await verificarLoginOffline(email, password);
     if (!resultado.ok) return resultado;
+    await prepararCacheParaUsuario(resultado.usuario.id).catch(() => {});
     setUser(resultado.usuario);
     return { ok: true } as const;
   }, []);
@@ -111,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // para poder reingresar offline), un logout explícito debe cerrar
     // también la puerta de reingreso sin conexión.
     await limpiarVerificadorOffline();
+    await limpiarCacheJornada().catch(() => {});
     setUser(null);
   }, []);
 

@@ -8,6 +8,7 @@ import type {
 } from '@cne/shared-types';
 import { api } from '../api';
 import { withOffline } from '../offline-queue';
+import { actualizarCopia } from '../cache-jornada';
 
 // subirFotoMilitar NO tiene soporte offline: la URL de la foto es requerida por confirmarRecepcionKit.
 export async function subirFotoMilitar(uri: string): Promise<FotoMilitarResponse> {
@@ -34,15 +35,23 @@ export async function validarKit(codigo: string): Promise<ValidarKitResponse> {
 }
 
 export async function confirmarRecepcionKit(body: RecepcionKitRequest): Promise<RecepcionKitResponse | null> {
-  return withOffline('/tracking/recepcion-kit', 'post', body, async () => {
+  const result = await withOffline('/tracking/recepcion-kit', 'post', body, async () => {
     const { data } = await api.post<RecepcionKitResponse>('/tracking/recepcion-kit', body);
     return data;
   });
+  await actualizarCopia((a) => ({
+    ...a,
+    fotoMilitarUrl: a.fotoMilitarUrl ?? body.fotoMilitarUrl,
+    kits: a.kits.map((k) => (k.id === body.kitId ? { ...k, recibido: true } : k)),
+  }));
+  return result;
 }
 
 export async function registrarLlegadaRecinto(body: LlegadaRecintoRequest): Promise<LlegadaRecintoResponse | null> {
-  return withOffline('/tracking/llegada-recinto', 'post', body, async () => {
+  const result = await withOffline('/tracking/llegada-recinto', 'post', body, async () => {
     const { data } = await api.post<LlegadaRecintoResponse>('/tracking/llegada-recinto', body);
     return data;
   });
+  await actualizarCopia((a) => ({ ...a, yaRegistroLlegada: true }));
+  return result;
 }
