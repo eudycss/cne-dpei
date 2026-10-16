@@ -110,6 +110,38 @@ describe('useMiAsignacion', () => {
     expect(getMiAsignacion).toHaveBeenCalledTimes(1);
   });
 
+  it('recargar trae de nuevo la asignación (p. ej. margen cambiado por el admin)', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValueOnce(asignacionFixture);
+    (getMiAsignacion as jest.Mock).mockResolvedValueOnce({ ...asignacionFixture, margenLlegadaMetros: 700 });
+
+    await act(async () => {
+      create(<Harness />);
+      await flushPromises();
+    });
+    await act(async () => {
+      await ultimoResultado!.recargar();
+    });
+
+    expect(getMiAsignacion).toHaveBeenCalledTimes(2);
+    expect(ultimoResultado!.asignacion?.margenLlegadaMetros).toBe(700);
+  });
+
+  it('si recargar falla por red conserva la asignación ya cargada', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValueOnce(asignacionFixture);
+    (getMiAsignacion as jest.Mock).mockRejectedValueOnce(networkError);
+
+    await act(async () => {
+      create(<Harness />);
+      await flushPromises();
+    });
+    await act(async () => {
+      await ultimoResultado!.recargar();
+    });
+
+    expect(ultimoResultado!.asignacion).toEqual(asignacionFixture);
+    expect(ultimoResultado!.sinConexion).toBe(true);
+  });
+
   it('limpia el listener de AppState al desmontar', async () => {
     (getMiAsignacion as jest.Mock).mockResolvedValue(asignacionFixture);
 

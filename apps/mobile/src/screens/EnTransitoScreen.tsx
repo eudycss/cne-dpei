@@ -22,7 +22,7 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { asignacion, sinConexion } = useMiAsignacion();
+  const { asignacion, sinConexion, recargar } = useMiAsignacion();
   const rastreo = useEstadoRastreo();
 
   useEffect(() => {
@@ -59,6 +59,14 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino]);
 
+  // Además de releer el GPS, trae de nuevo margen y coordenadas: si el
+  // administrador los cambió, se aplican sin cerrar sesión. Si cambian las
+  // coordenadas, el efecto de arriba vuelve a medir contra las nuevas.
+  function actualizar() {
+    void recargar();
+    void verificar();
+  }
+
   // Si no se pudo verificar la cercanía (sin coords del recinto, sin permiso de
   // GPS, etc.) no bloqueamos: el servidor vuelve a validar al confirmar la
   // llegada en el paso siguiente.
@@ -87,7 +95,7 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
             info={info}
             verificando={verificando}
             error={error}
-            onActualizar={verificar}
+            onActualizar={actualizar}
             destinoLabel="el recinto"
           />
         ) : null}

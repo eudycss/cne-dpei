@@ -15,9 +15,11 @@ jest.mock('../lib/queries/tracking', () => ({
 jest.mock('../lib/location', () => {
   class LocationPermissionDeniedError extends Error {}
   class LocationServicesDisabledError extends Error {}
+  class UbicacionNoDisponibleError extends Error {}
   return {
     LocationPermissionDeniedError,
     LocationServicesDisabledError,
+    UbicacionNoDisponibleError,
     iniciarRastreoPrimerPlano: jest.fn(),
     obtenerUbicacionPuntual: jest.fn(),
   };
@@ -175,6 +177,31 @@ describe('EnTransitoScreen', () => {
     });
 
     expect(onMarcarLlegada).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Actualizar ubicación" aplica el margen nuevo del evento sin cerrar sesión', async () => {
+    // Caso real 2026-10-16: el operador estaba a ~600 m y el admin subió el
+    // margen a 700 m; la app seguía con el margen viejo hasta reiniciar sesión.
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: -0.3446, longitud: -78.12, precisionMetros: 5 });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnTransitoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    const boton = () => pressableAncestor(renderer.root.findByProps({ children: 'Ya estoy en el recinto' }));
+    expect(boton().props.disabled).toBe(true);
+
+    (getMiAsignacion as jest.Mock).mockResolvedValue({ ...asignacionFixture, margenLlegadaMetros: 700 });
+    await act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Actualizar ubicación' }).props.onPress();
+      await flushPromises();
+    });
+
+    expect(getMiAsignacion).toHaveBeenCalledTimes(2);
+    expect(boton().props.disabled).toBe(false);
   });
 
   it('no bloquea el botón si no se pudo verificar la ubicación (sin permiso de GPS)', async () => {

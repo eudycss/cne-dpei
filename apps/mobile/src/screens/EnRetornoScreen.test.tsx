@@ -15,9 +15,11 @@ jest.mock('../lib/queries/tracking', () => ({
 jest.mock('../lib/location', () => {
   class LocationPermissionDeniedError extends Error {}
   class LocationServicesDisabledError extends Error {}
+  class UbicacionNoDisponibleError extends Error {}
   return {
     LocationPermissionDeniedError,
     LocationServicesDisabledError,
+    UbicacionNoDisponibleError,
     iniciarRastreoPrimerPlano: jest.fn(),
     obtenerUbicacionPuntual: jest.fn(),
   };
@@ -161,6 +163,32 @@ describe('EnRetornoScreen', () => {
     });
 
     expect(onMarcarLlegada).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Actualizar ubicación" aplica el margen nuevo y lee el GPS una sola vez si la Delegación no cambió', async () => {
+    (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+    // ~600 m al norte de la Delegación fixture; margen inicial 150 m.
+    (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.3639, longitud: -78.11886, precisionMetros: 5 });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<EnRetornoScreen onMarcarLlegada={jest.fn()} />);
+      await flushPromises();
+    });
+
+    const boton = () => pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    expect(boton().props.disabled).toBe(true);
+    expect(obtenerUbicacionPuntual).toHaveBeenCalledTimes(1);
+
+    (getMiAsignacion as jest.Mock).mockResolvedValue({ ...asignacionFixture, margenLlegadaDpiMetros: 700 });
+    await act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Actualizar ubicación' }).props.onPress();
+      await flushPromises();
+    });
+
+    expect(getMiAsignacion).toHaveBeenCalledTimes(2);
+    expect(obtenerUbicacionPuntual).toHaveBeenCalledTimes(2);
+    expect(boton().props.disabled).toBe(false);
   });
 
   it('no bloquea el botón cuando la Delegación todavía no tiene coordenada configurada', async () => {
