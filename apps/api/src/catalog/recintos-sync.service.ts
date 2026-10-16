@@ -123,7 +123,8 @@ export class RecintosSyncService {
 
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(${LOCK_SYNC_RECINTOS})`;
+        // $executeRaw y no $queryRaw: la función devuelve void y Prisma no sabe leer ese tipo.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_SYNC_RECINTOS})`;
         // Entre la vista previa y este punto alguien pudo asignar un kit.
         const evento =
           sinKits.length > 0

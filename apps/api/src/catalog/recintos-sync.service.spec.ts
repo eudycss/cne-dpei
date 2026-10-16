@@ -63,7 +63,10 @@ describe('RecintosSyncService', () => {
     recinto: { findMany: jest.fn(), updateMany: jest.fn() },
     eventoElectoral: { findFirst: jest.fn(async () => evento) },
     kitElectoral: { findFirst: jest.fn(async () => null) },
-    $queryRaw: jest.fn(),
+    // Como Prisma con pg_advisory_xact_lock (devuelve void): el lock debe ir por $executeRaw.
+    $queryRaw: jest.fn(async () => {
+      throw new Error("Failed to deserialize column of type 'void'");
+    }),
     $executeRaw: jest.fn(),
   };
   const prisma = {
@@ -303,7 +306,9 @@ describe('RecintosSyncService', () => {
       const r = await service.aplicar();
 
       expect(r).toEqual({ aplicados: 2, creados: 2, actualizados: 0, ocultados: 0, errores: [] });
-      const inserts = tx.$executeRaw.mock.calls.map((c) => c.slice(1) as unknown[]);
+      const inserts = tx.$executeRaw.mock.calls
+        .filter((c) => (c[0] as string[]).join('').includes('INSERT'))
+        .map((c) => c.slice(1) as unknown[]);
       expect(inserts[0]).toContain('8587');
       expect(inserts[1]).toContain('9000');
       const idCda = inserts[0][0];
@@ -352,7 +357,7 @@ describe('RecintosSyncService', () => {
       tx.kitElectoral.findFirst.mockResolvedValueOnce({ recinto: { codigoRecinto: '500' } } as never);
 
       await expect(service.aplicar()).rejects.toThrow(/Se asignó un kit al recinto 500/);
-      expect(tx.$queryRaw).toHaveBeenCalled();
+      expect((tx.$executeRaw.mock.calls[0][0] as string[]).join('')).toContain('pg_advisory_xact_lock');
       expect(tx.kitElectoral.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { recintoId: { in: ['id-500'] }, eventoId: 'ev' } }),
       );
