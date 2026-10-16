@@ -256,6 +256,9 @@ model Recinto {
   juntasFemeninas    Int?        @map("juntas_femeninas")
   juntasMasculinas   Int?        @map("juntas_masculinas")
   esDificilAcceso    Boolean     @default(false) @map("es_dificil_acceso")
+  /// false = ya no está en el Google Sheet de recintos: se oculta de listas y
+  /// asignaciones, pero se conserva por el historial (kits, tracking, actas).
+  activo             Boolean     @default(true)
 
   canton     Canton         @relation(fields: [cantonId], references: [id])
   cdaDestino Recinto?       @relation("CdaDestino", fields: [cdaDestinoId], references: [id])
@@ -265,6 +268,7 @@ model Recinto {
 
   @@index([cantonId], map: "idx_recintos_canton")
   @@index([tipo], map: "idx_recintos_tipo")
+  @@index([activo], map: "idx_recintos_activo")
   @@map("recintos")
 }
 

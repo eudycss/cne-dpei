@@ -51,6 +51,8 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',   pathRegex: /^\/items-kit$/,        accion: 'ITEM_KIT_CREATE', entidad: 'item_kit' },
   { method: 'PATCH',  pathRegex: /^\/items-kit\/[^/]+$/, accion: 'ITEM_KIT_UPDATE', entidad: 'item_kit' },
   { method: 'DELETE', pathRegex: /^\/items-kit\/[^/]+$/, accion: 'ITEM_KIT_DELETE', entidad: 'item_kit' },
+  // Recintos sincronizados desde el Google Sheet
+  { method: 'POST', pathRegex: /^\/recintos\/sync$/, accion: 'RECINTOS_SYNC', entidad: 'recinto' },
   // HU12 — asignación de kits a recintos/operadores (incluye freeze CA6)
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/asignar$/, accion: 'KIT_ASIGNAR', entidad: 'kit' },
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/desasignar$/, accion: 'KIT_DESASIGNAR', entidad: 'kit' },

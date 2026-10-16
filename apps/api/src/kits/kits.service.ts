@@ -92,7 +92,7 @@ export class KitsService {
     if (!evento) throw new NotFoundException('Evento no encontrado');
 
     const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
-    if (!recinto) throw new NotFoundException('Recinto no encontrado');
+    if (!recinto || recinto.activo === false) throw new NotFoundException('Recinto no encontrado');
 
     // Un recinto solo puede tener un kit real (no de prueba) por evento —
     // los kits de prueba no cuentan como "ocupando" el recinto.
@@ -217,7 +217,7 @@ export class KitsService {
 
     if (parsed.recintoId !== undefined) {
       const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
-      if (!recinto) throw new NotFoundException('Recinto no encontrado');
+      if (!recinto || recinto.activo === false) throw new NotFoundException('Recinto no encontrado');
 
       if (!kit.esPrueba) {
         const ocupado = await this.prisma.kitElectoral.findFirst({
@@ -361,7 +361,10 @@ export class KitsService {
     const operadorPorCedula = new Map<string, string>(
       operadores.map((o): [string, string] => [o.cedula.trim(), o.id]),
     );
-    const recintos = await this.prisma.recinto.findMany({ select: { id: true, codigoRecinto: true } });
+    const recintos = await this.prisma.recinto.findMany({
+      where: { activo: true },
+      select: { id: true, codigoRecinto: true },
+    });
     const recintoPorCodigo = new Map<string, string>(
       recintos.map((r): [string, string] => [r.codigoRecinto.toLowerCase().trim(), r.id]),
     );

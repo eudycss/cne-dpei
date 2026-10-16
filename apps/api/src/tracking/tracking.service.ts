@@ -170,7 +170,7 @@ export class TrackingService {
       : null;
 
     const noCdas = await this.prisma.recinto.findMany({
-      where: { cdaDestinoId: recinto.id },
+      where: { cdaDestinoId: recinto.id, activo: true },
       include: { canton: true },
       orderBy: { nombre: 'asc' },
     });
@@ -1613,7 +1613,7 @@ export class TrackingService {
     const usuarioPorId = new Map<string, (typeof usuarios)[number]>(usuarios.map((u) => [u.id, u]));
 
     const noCdas = await this.prisma.recinto.findMany({
-      where: { cdaDestinoId: { in: cdaIds } },
+      where: { cdaDestinoId: { in: cdaIds }, activo: true },
       orderBy: { nombre: 'asc' },
     });
     const noCdasPorCda = new Map<string, typeof noCdas>();

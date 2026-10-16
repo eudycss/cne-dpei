@@ -15,7 +15,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CreateRecintoRequest, UpdateRecintoRequest } from '@cne/shared-types';
+import { Throttle } from '@nestjs/throttler';
 import { RecintosService } from './recintos.service';
+import { RecintosSyncService } from './recintos-sync.service';
 import { TiposEventoService } from './tipos-evento.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -29,6 +31,7 @@ export class CatalogController {
   constructor(
     private readonly recintos: RecintosService,
     private readonly tiposEvento: TiposEventoService,
+    private readonly recintosSync: RecintosSyncService,
   ) {}
 
   @Get('recintos')
@@ -63,6 +66,23 @@ export class CatalogController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   bulkRecintos(@UploadedFile() file: Express.Multer.File) {
     return this.recintos.bulkUpload(file);
+  }
+
+  // Cada llamada descarga el Sheet de Drive: límite estricto para no golpearlo.
+  @Get('recintos/sync/preview')
+  @Roles('ADMINISTRADOR')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Vista previa de los cambios de recintos según el Google Sheet (no escribe nada)' })
+  previewSyncRecintos() {
+    return this.recintosSync.preview();
+  }
+
+  @Post('recintos/sync')
+  @Roles('ADMINISTRADOR')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Aplica los cambios de recintos del Google Sheet (los que no tienen error)' })
+  syncRecintos() {
+    return this.recintosSync.aplicar();
   }
 
   @Get('recintos/:id')

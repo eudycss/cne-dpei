@@ -138,6 +138,15 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
+    it('trata como inexistente un recinto oculto (salió del Google Sheet)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, activo: false });
+      await expect(
+        service.create({ eventoId, nombre: 'Kit 1', recintoId } as any),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
     it('lanza ConflictException si el recinto ya tiene un kit real en este evento', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });

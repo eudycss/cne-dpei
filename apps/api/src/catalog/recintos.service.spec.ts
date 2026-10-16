@@ -90,6 +90,13 @@ describe('RecintosService', () => {
       expect(prisma.$executeRaw).not.toHaveBeenCalled();
     });
 
+    it('si el código es de un recinto oculto, explica cómo recuperarlo', async () => {
+      prisma.canton.findUnique.mockResolvedValueOnce({ id: 1 });
+      prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow({ activo: false }));
+      await expect(service.create(validInput as any)).rejects.toThrow(/recinto oculto .* Google Sheet/);
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+
     it('inserta el recinto cuando el cantón existe y el código está libre', async () => {
       prisma.canton.findUnique.mockResolvedValueOnce({ id: 1 });
       prisma.recinto.findUnique
@@ -197,6 +204,20 @@ describe('RecintosService', () => {
 
       expect(prisma.recinto.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ tipo: 'NO_CDA', cdaDestinoId: null }) }),
+      );
+    });
+
+    it('no lista los recintos ocultos ni los cuenta como NO-CDA de un CDA', async () => {
+      prisma.recinto.count.mockResolvedValueOnce(0);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+
+      await service.listRecintos({ conOrigenes: 'true' });
+
+      expect(prisma.recinto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ activo: true, origenes: { some: { activo: true } } }),
+          include: expect.objectContaining({ _count: { select: { origenes: { where: { activo: true } } } } }),
+        }),
       );
     });
   });
