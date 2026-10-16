@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
@@ -54,7 +55,8 @@ type Props = {
 };
 
 export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const cerrarSesion = useCerrarSesion();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
@@ -481,7 +483,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
           </>
         )}
 
-        <Pressable style={styles.btnSecondary} onPress={() => logout()}>
+        <Pressable style={styles.btnSecondary} onPress={cerrarSesion}>
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </ScrollView>

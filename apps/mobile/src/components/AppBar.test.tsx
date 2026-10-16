@@ -6,7 +6,7 @@ jest.mock('../lib/notifications', () => ({
   describirNotificacion: jest.requireActual('../lib/notifications').describirNotificacion,
   formatearFechaHora: jest.requireActual('../lib/notifications').formatearFechaHora,
 }));
-jest.mock('../lib/offline-queue', () => ({ usePendingCount: () => 0 }));
+jest.mock('./EstadoSincronizacion', () => ({ EstadoSincronizacion: () => null }));
 jest.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ user: { roles: ['ADMINISTRADOR'] } }),
 }));

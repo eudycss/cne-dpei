@@ -1,16 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
+import { FotoMilitarPerdidaError, resolverFotoMilitarEnPayload } from './offline-foto-militar';
 import {
+  contarPendientes,
+  descartarRechazadas,
   enqueue,
   flushQueue,
   isNetworkError,
+  leerRechazadas,
   sincronizarPendientes,
+  vaciarCola,
   withOffline,
 } from './offline-queue';
 
 jest.mock('./api', () => ({
   api: { post: jest.fn(), patch: jest.fn() },
 }));
+
+jest.mock('./offline-foto-militar', () => {
+  class FotoMilitarPerdidaError extends Error {}
+  return {
+    FotoMilitarPerdidaError,
+    resolverFotoMilitarEnPayload: jest.fn(async (p: object) => p),
+  };
+});
 
 const networkError = { isAxiosError: true, response: undefined };
 const badRequestError = { isAxiosError: true, response: { status: 400 } };
@@ -60,15 +73,43 @@ describe('enqueue + flushQueue', () => {
     expect(api.post).toHaveBeenCalledTimes(1); // seguía en cola, se reintentó
   });
 
-  it('descarta la acción si el servidor responde 4xx (error de validación, no reintentable)', async () => {
-    (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
+  it('con 4xx no reintenta la acción, pero la guarda como rechazada con el motivo del servidor', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 400, data: { message: 'Estás a 900 m del recinto.' } },
+    });
 
-    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
     await flushQueue();
 
     (api.post as jest.Mock).mockClear();
     await flushQueue();
-    expect(api.post).not.toHaveBeenCalled(); // se descartó, no quedó en cola
+    expect(api.post).not.toHaveBeenCalled(); // no quedó en cola
+    const rechazadas = await leerRechazadas();
+    expect(rechazadas).toHaveLength(1);
+    expect(rechazadas[0]).toMatchObject({ endpoint: '/tracking/llegada-recinto', motivo: 'Estás a 900 m del recinto.' });
+  });
+
+  it('usa un motivo genérico si el 4xx no trae mensaje, y une los mensajes en lista', async () => {
+    (api.post as jest.Mock)
+      .mockRejectedValueOnce(badRequestError)
+      .mockRejectedValueOnce({ isAxiosError: true, response: { status: 400, data: { message: ['a', 'b'] } } });
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await enqueue({ endpoint: '/incidencias', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    expect((await leerRechazadas()).map((r) => r.motivo)).toEqual(['El servidor no aceptó el registro.', 'a. b']);
+  });
+
+  it('descartarRechazadas vacía la lista de rechazos', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await flushQueue();
+
+    await descartarRechazadas();
+
+    await expect(leerRechazadas()).resolves.toEqual([]);
   });
 
   it('mantiene la acción en cola si el servidor responde 5xx (falla transitoria, ej. cold start)', async () => {
@@ -231,5 +272,132 @@ describe('withOffline', () => {
 
     await flushQueue();
     expect(api.post).toHaveBeenCalledWith('/tracking/salida-dpi', { foo: 'bar', desdeOffline: true });
+  });
+});
+
+describe('foto del militar pendiente en la cola', () => {
+  it('sube la foto antes de enviar la recepción del kit y manda la URL real', async () => {
+    (resolverFotoMilitarEnPayload as jest.Mock).mockImplementationOnce(async (p: object) => ({
+      ...p,
+      fotoMilitarUrl: 'militares/abc.bin',
+    }));
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    await enqueue({
+      endpoint: '/tracking/recepcion-kit',
+      method: 'post',
+      payload: { kitId: 'k1', fotoMilitarUrl: 'pendiente:foto-militar:ev1_r1' },
+    });
+
+    await flushQueue();
+
+    expect(api.post).toHaveBeenCalledWith('/tracking/recepcion-kit', { kitId: 'k1', fotoMilitarUrl: 'militares/abc.bin' });
+    await expect(sincronizarPendientes()).resolves.toBe(0);
+  });
+
+  it('si la foto aún no sube por falta de señal, conserva la recepción y lo que viene detrás', async () => {
+    (resolverFotoMilitarEnPayload as jest.Mock).mockRejectedValueOnce(networkError);
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'k1' } });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    expect(api.post).not.toHaveBeenCalled();
+    (resolverFotoMilitarEnPayload as jest.Mock).mockRejectedValueOnce(networkError);
+    await expect(sincronizarPendientes()).resolves.toBe(2);
+  });
+
+  it('si la foto guardada se perdió, la recepción queda como rechazada con el motivo (no en silencio)', async () => {
+    (resolverFotoMilitarEnPayload as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new FotoMilitarPerdidaError(), { message: 'Vuelve a tomar la foto.' }),
+    );
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'k1' } });
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/tracking/salida-dpi', {});
+    expect(await leerRechazadas()).toEqual([
+      expect.objectContaining({ endpoint: '/tracking/recepcion-kit', motivo: 'Vuelve a tomar la foto.' }),
+    ]);
+  });
+});
+
+describe('withOffline respeta el orden de la cola', () => {
+  it('con acciones pendientes que sí se envían, las manda primero y luego ejecuta fn()', async () => {
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'k1' } });
+    const orden: string[] = [];
+    (api.post as jest.Mock).mockImplementation(async (endpoint: string) => {
+      orden.push(endpoint);
+      return { data: {} };
+    });
+    const fn = jest.fn(async () => {
+      orden.push('/tracking/llegada-recinto');
+      return { id: 'l1' };
+    });
+
+    await expect(withOffline('/tracking/llegada-recinto', 'post', {}, fn)).resolves.toEqual({ id: 'l1' });
+    expect(orden).toEqual(['/tracking/recepcion-kit', '/tracking/llegada-recinto']);
+  });
+
+  it('si lo pendiente no se puede enviar, encola la acción detrás sin llamar a fn()', async () => {
+    (api.post as jest.Mock).mockRejectedValue(networkError);
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'k1' } });
+    const fn = jest.fn();
+
+    await expect(withOffline('/tracking/llegada-recinto', 'post', { lat: 1 }, fn)).resolves.toBeNull();
+
+    expect(fn).not.toHaveBeenCalled();
+    (api.post as jest.Mock).mockReset();
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect((api.post as jest.Mock).mock.calls.map((c) => c[0])).toEqual([
+      '/tracking/recepcion-kit',
+      '/tracking/llegada-recinto',
+    ]);
+    expect(api.post).toHaveBeenLastCalledWith('/tracking/llegada-recinto', { lat: 1, desdeOffline: true });
+  });
+});
+
+describe('flushQueue concurrente', () => {
+  it('dos envíos a la vez comparten el mismo envío y no duplican el POST', async () => {
+    let responder!: (v: unknown) => void;
+    (api.post as jest.Mock).mockReturnValueOnce(new Promise((r) => (responder = r)));
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+
+    const a = flushQueue();
+    const b = flushQueue();
+    responder({ data: {} });
+    await Promise.all([a, b]);
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    await expect(contarPendientes()).resolves.toBe(0);
+  });
+});
+
+describe('withOffline con enOrden: false', () => {
+  it('envía de inmediato aunque haya acciones en cola (posiciones GPS, incidencias)', async () => {
+    (api.post as jest.Mock).mockRejectedValue(networkError);
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+    const fn = jest.fn().mockResolvedValue({ ok: true });
+
+    await expect(withOffline('/tracking/posiciones', 'post', {}, fn, { enOrden: false })).resolves.toEqual({ ok: true });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('vaciarCola', () => {
+  it('borra lo pendiente y los rechazos (son del operador anterior)', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await flushQueue();
+    await enqueue({ endpoint: '/tracking/llegada-dpi', method: 'post', payload: {} });
+
+    await vaciarCola();
+
+    await expect(contarPendientes()).resolves.toBe(0);
+    await expect(leerRechazadas()).resolves.toEqual([]);
   });
 });

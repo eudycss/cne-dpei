@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import type { OperadorEtapa } from './etapa-operador';
+import { limpiarFotosMilitar } from './offline-foto-militar';
+import { vaciarCola } from './offline-queue';
 
 /**
  * Copia local de la jornada del operador para trabajar sin señal (recintos
@@ -92,6 +94,10 @@ export function limpiarCacheJornada(): Promise<void> {
       AsyncStorage.removeItem(ASIGNACION_KEY),
       AsyncStorage.removeItem(ETAPA_KEY),
       AsyncStorage.removeItem(USUARIO_KEY),
+      // La cola y la foto del militar guardadas sin señal son del operador
+      // anterior: no deben enviarse con la sesión de otro.
+      vaciarCola().catch(() => undefined),
+      limpiarFotosMilitar().catch(() => undefined),
     ]);
   });
 }

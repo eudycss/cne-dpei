@@ -10,6 +10,12 @@ import {
   prepararCacheParaUsuario,
 } from './cache-jornada';
 
+jest.mock('./offline-queue', () => ({ vaciarCola: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('./offline-foto-militar', () => ({ limpiarFotosMilitar: jest.fn().mockResolvedValue(undefined) }));
+
+import { vaciarCola } from './offline-queue';
+import { limpiarFotosMilitar } from './offline-foto-militar';
+
 const asignacion = { eventoId: 'ev1', margenLlegadaMetros: 150 } as MiAsignacionResponse;
 
 describe('cache-jornada', () => {
@@ -80,5 +86,12 @@ describe('cache-jornada', () => {
 
     await prepararCacheParaUsuario('u2');
     await expect(leerAsignacion()).resolves.toBeNull();
+  });
+
+  it('limpiarCacheJornada también vacía la cola y borra las fotos del militar del operador anterior', async () => {
+    await limpiarCacheJornada();
+
+    expect(vaciarCola).toHaveBeenCalled();
+    expect(limpiarFotosMilitar).toHaveBeenCalled();
   });
 });

@@ -46,7 +46,7 @@ export async function postPosiciones(body: IngestaPosicionesRequest): Promise<In
   return withOffline('/tracking/posiciones', 'post', body, async () => {
     const { data } = await api.post<IngestaPosicionesResponse>('/tracking/posiciones', body);
     return data;
-  });
+  }, { enOrden: false });
 }
 
 export async function postLlegadaDpi(body: LlegadaDpiRequest): Promise<LlegadaDpiResponse | null> {

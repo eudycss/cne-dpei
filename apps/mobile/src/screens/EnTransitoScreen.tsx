@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LocationSubscription } from 'expo-location';
 import { useAuth } from '../auth/AuthContext';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
@@ -19,7 +20,8 @@ interface Props {
 }
 
 export function EnTransitoScreen({ onMarcarLlegada }: Props) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const cerrarSesion = useCerrarSesion();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { asignacion, sinConexion, recargar } = useMiAsignacion();
@@ -123,7 +125,7 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
             <Text style={styles.btnPrimaryText}>Ya estoy en el recinto</Text>
           )}
         </Pressable>
-        <Pressable style={styles.btnSecondary} onPress={() => logout()}>
+        <Pressable style={styles.btnSecondary} onPress={cerrarSesion}>
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </View>

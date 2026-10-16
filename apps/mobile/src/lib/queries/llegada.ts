@@ -1,50 +1,84 @@
 import type {
-  FotoMilitarResponse,
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
+  MiAsignacionKit,
   RecepcionKitRequest,
   RecepcionKitResponse,
   ValidarKitResponse,
 } from '@cne/shared-types';
 import { api } from '../api';
-import { withOffline } from '../offline-queue';
+import { enqueue, isTransientError, withOffline } from '../offline-queue';
 import { actualizarCopia } from '../cache-jornada';
+import { asegurarFotoMilitarSubida, contextoDeMarcador, esMarcadorFotoPendiente } from '../offline-foto-militar';
 
-// subirFotoMilitar NO tiene soporte offline: la URL de la foto es requerida por confirmarRecepcionKit.
-export async function subirFotoMilitar(uri: string): Promise<FotoMilitarResponse> {
-  const form = new FormData();
-  // En RN, FormData acepta el objeto { uri, name, type } como blob; los tipos
-  // estándar de TS no lo reflejan, por eso el cast a any.
-  const filename = uri.split('/').pop() ?? `militar-${Date.now()}.jpg`;
-  const match = /\.(\w+)$/.exec(filename);
-  const ext = match?.[1]?.toLowerCase() ?? 'jpg';
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  form.append('file', { uri, name: filename, type: mime } as any);
-
-  const { data } = await api.post<FotoMilitarResponse>('/tracking/foto-militar', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    transformRequest: (d) => d,
-  });
-  return data;
-}
-
-// validarKit requiere respuesta del servidor — NO se envuelve con offline.
 export async function validarKit(codigo: string): Promise<ValidarKitResponse> {
   const { data } = await api.post<ValidarKitResponse>('/tracking/validar-kit', { codigo });
   return data;
 }
 
+export class KitNoEnAsignacionError extends Error {
+  constructor() {
+    super('Sin señal no se puede consultar al servidor y este código no está en tu lista de kits. Verifica el código.');
+    this.name = 'KitNoEnAsignacionError';
+  }
+}
+
+/**
+ * Valida el código con el servidor; sin señal, lo compara con los kits de la
+ * asignación guardada en el celular. El servidor vuelve a comprobar que el kit
+ * le pertenece al operador cuando la recepción se sincroniza.
+ */
+export async function validarKitConRespaldo(
+  codigo: string,
+  kitsAsignados: MiAsignacionKit[],
+): Promise<{ kit: ValidarKitResponse; sinSenal: boolean }> {
+  try {
+    return { kit: await validarKit(codigo), sinSenal: false };
+  } catch (e) {
+    if (!isTransientError(e)) throw e;
+    const buscado = codigo.trim().toUpperCase();
+    const local = kitsAsignados.find((k) => k.codigoUnico.trim().toUpperCase() === buscado);
+    if (!local) throw new KitNoEnAsignacionError();
+    const { recibido, ...datos } = local;
+    return { kit: { ...datos, yaRecibido: recibido }, sinSenal: true };
+  }
+}
+
 export async function confirmarRecepcionKit(body: RecepcionKitRequest): Promise<RecepcionKitResponse | null> {
-  const result = await withOffline('/tracking/recepcion-kit', 'post', body, async () => {
-    const { data } = await api.post<RecepcionKitResponse>('/tracking/recepcion-kit', body);
-    return data;
-  });
+  let result: RecepcionKitResponse | null;
+  if (esMarcadorFotoPendiente(body.fotoMilitarUrl)) {
+    // La foto quedó en el celular: se intenta subirla ahora; si sigue sin
+    // señal, la recepción se encola con el marcador y la cola sube la foto
+    // primero al sincronizar.
+    let fotoMilitarUrl: string | null = null;
+    try {
+      fotoMilitarUrl = await asegurarFotoMilitarSubida(contextoDeMarcador(body.fotoMilitarUrl));
+    } catch (e) {
+      if (!isTransientError(e)) throw e;
+    }
+    if (fotoMilitarUrl) {
+      result = await enviarRecepcion({ ...body, fotoMilitarUrl });
+    } else {
+      await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { ...body, desdeOffline: true } });
+      result = null;
+    }
+  } else {
+    result = await enviarRecepcion(body);
+  }
   await actualizarCopia((a) => ({
     ...a,
-    fotoMilitarUrl: a.fotoMilitarUrl ?? body.fotoMilitarUrl,
+    // El marcador de foto pendiente nunca se guarda en la copia: es solo un aviso para la cola.
+    fotoMilitarUrl: a.fotoMilitarUrl ?? (esMarcadorFotoPendiente(body.fotoMilitarUrl) ? null : body.fotoMilitarUrl),
     kits: a.kits.map((k) => (k.id === body.kitId ? { ...k, recibido: true } : k)),
   }));
   return result;
+}
+
+function enviarRecepcion(body: RecepcionKitRequest): Promise<RecepcionKitResponse | null> {
+  return withOffline('/tracking/recepcion-kit', 'post', body, async () => {
+    const { data } = await api.post<RecepcionKitResponse>('/tracking/recepcion-kit', body);
+    return data;
+  });
 }
 
 export async function registrarLlegadaRecinto(body: LlegadaRecintoRequest): Promise<LlegadaRecintoResponse | null> {
