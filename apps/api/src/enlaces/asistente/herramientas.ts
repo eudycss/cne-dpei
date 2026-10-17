@@ -123,7 +123,8 @@ export const INSTRUCCIONES_MODELO =
   'Usa consultar_recintos para listas, conteos y preguntas sobre varios recintos o técnicos, combinando filtros: ' +
   '"recintos de Pimampiro y Urcuquí" → cantones [Pimampiro, Urcuquí]; "qué está caído en Cotacachi" → cantones ' +
   '[Cotacachi], estado caido; "qué técnico está en Cotacachi" o "técnicos de Otavalo" → cantones, agrupar_por ' +
-  'tecnico, solo_contar true; "qué técnicos tienen caídos" → estado caido, agrupar_por tecnico; "recintos de Willy" ' +
+  'tecnico, solo_contar true; "quién es el técnico de Ilumán" o "técnico encargado de Quiroga" (una parroquia ' +
+  'o lugar, no un recinto) → parroquias [Ilumán], agrupar_por tecnico, solo_contar true; "qué técnicos tienen caídos" → estado caido, agrupar_por tecnico; "recintos de Willy" ' +
   '→ tecnicos [Willy]; "solo los caídos de Jairo" → tecnicos [Jairo], estado caido; "qué recintos no tienen ' +
   'técnico" → sin_tecnico true; "qué recintos no tienen contacto" → sin_contacto true; "cuántos caídos hay en ' +
   'Ibarra" → cantones [Ibarra], estado caido, solo_contar true; "contactos de los caídos" → estado caido, ' +
