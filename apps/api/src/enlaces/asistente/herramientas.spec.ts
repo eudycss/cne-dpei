@@ -10,6 +10,7 @@ describe('validarConsulta', () => {
     expect(validarConsulta('recintos_caidos', { canton: null })).toEqual({ tipo: 'recintos_caidos', canton: null });
     expect(validarConsulta('recintos_caidos', { canton: 'Cotacachi' })).toEqual({ tipo: 'recintos_caidos', canton: 'Cotacachi' });
     expect(validarConsulta('recintos_de_tecnico', { nombre: 'Pérez' })).toEqual({ tipo: 'recintos_de_tecnico', nombre: 'Pérez' });
+    expect(validarConsulta('tecnicos_de_canton', { canton: ' Cotacachi ' })).toEqual({ tipo: 'tecnicos_de_canton', canton: 'Cotacachi' });
   });
 
   it('rechaza una consulta que no está en la lista (el modelo no puede pedir otra cosa)', () => {
@@ -25,6 +26,9 @@ describe('validarConsulta', () => {
     ['buscar_recinto', null],
     ['recintos_caidos', { canton: 'x'.repeat(41) }],
     ['recintos_de_tecnico', { nombre: 'a' }],
+    ['tecnicos_de_canton', {}],
+    ['tecnicos_de_canton', { canton: '  ' }],
+    ['tecnicos_de_canton', { canton: 'x'.repeat(41) }],
   ])('rechaza parámetros inválidos de %s (%j)', (nombre, args) => {
     expect(validarConsulta(nombre, args)).toBeNull();
   });

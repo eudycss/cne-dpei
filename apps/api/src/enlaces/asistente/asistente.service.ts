@@ -29,6 +29,7 @@ export const AYUDA_ASISTENTE =
   '• "número del encargado del colegio Ibarra"\n' +
   '• "¿qué está caído en Cotacachi?"\n' +
   '• "¿qué recintos tiene Juan Pérez?"\n' +
+  '• "¿qué técnico está en Cotacachi?"\n' +
   '• "¿cómo está el 1008?"';
 
 type Enlace = { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' };
@@ -133,6 +134,8 @@ export class AsistenteService {
         return this.recintosCaidos(consulta.canton);
       case 'recintos_de_tecnico':
         return this.recintosDeTecnico(consulta.nombre);
+      case 'tecnicos_de_canton':
+        return this.tecnicosDeCanton(consulta.canton);
     }
   }
 
@@ -215,15 +218,8 @@ export class AsistenteService {
 
     // Solo cantones que existen en la lista: con uno inventado o mal escrito,
     // "no hay caídos en X" sería una falsa tranquilidad.
-    const clave = normalizarTexto(canton);
-    const cantones = [...new Set(enlaces.map((e) => e.canton).filter((c): c is string => !!c))];
-    const elegido = cantones.find((c) => normalizarTexto(c) === clave) ?? cantones.find((c) => normalizarTexto(c).includes(clave));
-    if (!clave || !elegido) {
-      await this.telegram.enviarHtml(
-        `No reconozco el cantón "${escapeHtml(canton)}". Cantones con recintos: ${cantones.map(escapeHtml).join(', ')}.\n` +
-          'Le muestro todos los caídos de la provincia:',
-        'el aviso de cantón desconocido',
-      );
+    const elegido = await this.resolverCanton(canton, enlaces, 'Le muestro todos los caídos de la provincia:');
+    if (!elegido) {
       await this.telegram.enviarListaActual(aLista(caidos));
       return;
     }
@@ -276,6 +272,63 @@ export class AsistenteService {
         }),
     };
     await this.telegram.enviarAsignaciones([grupo]);
+  }
+
+  private async tecnicosDeCanton(canton: string): Promise<void> {
+    const [enlaces, asignaciones] = await Promise.all([this.enlaces(), this.asignaciones()]);
+    if (asignaciones.length === 0) {
+      await this.telegram.enviarTexto('El distributivo de técnicos no está disponible ahora.', 'el aviso de distributivo');
+      return;
+    }
+    const elegido = await this.resolverCanton(canton, enlaces);
+    if (!elegido) return;
+
+    // El distributivo no trae el cantón: sale del enlace monitoreado de cada recinto.
+    const delCanton = new Set(enlaces.filter((e) => e.canton === elegido).map((e) => e.codigoRecinto));
+    // numeroTecnico sale del nombre (uno por técnico en el archivo); el Set evita
+    // contar dos veces un recinto repetido en el Excel.
+    const tecnicos = new Map<number, { tecnico: string; recintos: Set<string> }>();
+    for (const a of asignaciones) {
+      if (!delCanton.has(a.codigoRecinto)) continue;
+      const t = tecnicos.get(a.numeroTecnico) ?? { tecnico: a.tecnico, recintos: new Set<string>() };
+      t.recintos.add(a.codigoRecinto);
+      tecnicos.set(a.numeroTecnico, t);
+    }
+    if (tecnicos.size === 0) {
+      await this.telegram.enviarHtml(
+        `👷 No hay técnicos asignados a recintos de ${escapeHtml(elegido)} en el distributivo.`,
+        'el resultado del asistente (cantón sin técnicos)',
+      );
+      return;
+    }
+    const lineas = [...tecnicos.values()]
+      .map((t) => ({ tecnico: t.tecnico, recintos: t.recintos.size }))
+      .sort((a, b) => b.recintos - a.recintos || a.tecnico.localeCompare(b.tecnico))
+      .map((t) => `• ${escapeHtml(t.tecnico)}: ${t.recintos} ${t.recintos === 1 ? 'recinto' : 'recintos'}`);
+    await this.telegram.enviarHtml(
+      `👷 <b>Técnicos en ${escapeHtml(elegido)}</b>\n${lineas.join('\n')}\n\n` +
+        'Para ver los recintos de uno, pregunte: "recintos de" y su nombre.',
+      'los técnicos del cantón',
+    );
+  }
+
+  /**
+   * El cantón tal como está en la lista de enlaces, o null tras avisar que no se
+   * reconoce (con `siguiente`, lo que se hará en su lugar).
+   */
+  private async resolverCanton(canton: string, enlaces: Enlace[], siguiente?: string): Promise<string | null> {
+    const clave = normalizarTexto(canton);
+    const cantones = [...new Set(enlaces.map((e) => e.canton).filter((c): c is string => !!c))];
+    // Por parte del nombre solo si apunta a un único cantón ("o" no debe elegir Otavalo).
+    const parecidos = cantones.filter((c) => normalizarTexto(c).includes(clave));
+    const elegido = cantones.find((c) => normalizarTexto(c) === clave) ?? (parecidos.length === 1 ? parecidos[0] : undefined);
+    if (clave && elegido) return elegido;
+    await this.telegram.enviarHtml(
+      `No reconozco el cantón "${escapeHtml(canton)}". Cantones con recintos: ${cantones.map(escapeHtml).join(', ')}.` +
+        (siguiente ? `\n${siguiente}` : ''),
+      'el aviso de cantón desconocido',
+    );
+    return null;
   }
 
   private async enlaces(): Promise<Enlace[]> {

@@ -9,12 +9,14 @@ const ESQUEMAS = {
   buscar_recinto: z.object({ texto: z.string().trim().min(1).max(80) }),
   recintos_caidos: z.object({ canton: z.string().trim().max(40).nullish() }),
   recintos_de_tecnico: z.object({ nombre: z.string().trim().min(2).max(60) }),
+  tecnicos_de_canton: z.object({ canton: z.string().trim().min(1).max(40) }),
 };
 
 export type Consulta =
   | { tipo: 'buscar_recinto'; texto: string }
   | { tipo: 'recintos_caidos'; canton: string | null }
-  | { tipo: 'recintos_de_tecnico'; nombre: string };
+  | { tipo: 'recintos_de_tecnico'; nombre: string }
+  | { tipo: 'tecnicos_de_canton'; canton: string };
 
 /** La consulta pedida por el modelo, o null si no está en la lista o sus parámetros no son válidos. */
 export function validarConsulta(nombre: string, argumentos: unknown): Consulta | null {
@@ -30,6 +32,10 @@ export function validarConsulta(nombre: string, argumentos: unknown): Consulta |
     case 'recintos_de_tecnico': {
       const r = ESQUEMAS.recintos_de_tecnico.safeParse(argumentos);
       return r.success ? { tipo: 'recintos_de_tecnico', nombre: r.data.nombre } : null;
+    }
+    case 'tecnicos_de_canton': {
+      const r = ESQUEMAS.tecnicos_de_canton.safeParse(argumentos);
+      return r.success ? { tipo: 'tecnicos_de_canton', canton: r.data.canton } : null;
     }
     default:
       return null;
@@ -80,6 +86,20 @@ export const HERRAMIENTAS_MODELO = [
         type: 'object',
         properties: { nombre: { type: 'string', description: 'Nombre o apellido del técnico.' } },
         required: ['nombre'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'tecnicos_de_canton',
+      description:
+        'Dice qué técnicos tienen asignados recintos de un cantón y cuántos recintos tiene cada uno. ' +
+        'Úsala para "qué técnico está en Cotacachi", "quién atiende Ibarra", "técnicos de Otavalo".',
+      parameters: {
+        type: 'object',
+        properties: { canton: { type: 'string', description: 'Cantón, p. ej. "Cotacachi".' } },
+        required: ['canton'],
       },
     },
   },

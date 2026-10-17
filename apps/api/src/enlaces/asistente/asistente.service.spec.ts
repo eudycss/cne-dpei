@@ -218,6 +218,115 @@ describe('AsistenteService', () => {
     });
   });
 
+  describe('tecnicos_de_canton', () => {
+    const ENLACES_COTACACHI = [
+      ...ENLACES,
+      { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
+      { codigoRecinto: '1963', nombreRecinto: 'Escuela Imantag', canton: 'Cotacachi', estado: 'ACTIVO' },
+    ];
+    const ASIGNACIONES_COTACACHI = [
+      ...ASIGNACIONES,
+      { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
+      { codigoRecinto: '1963', localidad: '', parroquia: 'IMANTAG', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
+    ];
+
+    it('lista los técnicos del cantón con cuántos recintos tiene cada uno (el de más recintos primero)', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES_COTACACHI);
+      distributivo.asignaciones.mockResolvedValue(ASIGNACIONES_COTACACHI);
+      consulta('tecnicos_de_canton', { canton: 'cotacachi' });
+
+      await service.responder('¿qué técnico está en Cotacachi?', 'c:1');
+
+      expect(html()).toBe(
+        '👷 <b>Técnicos en Cotacachi</b>\n' +
+          '• Willy &lt;Chávez&gt;: 2 recintos\n' +
+          '• Juan Andrade: 1 recinto\n\n' +
+          'Para ver los recintos de uno, pregunte: "recintos de" y su nombre.',
+      );
+    });
+
+    it('no cuenta recintos de otros cantones ni los que no tienen enlace monitoreado', async () => {
+      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('técnicos de Otavalo', 'c:1');
+
+      // Ana Torres tiene 1008 y 1009 en Otavalo; el 3000 no tiene enlace y no se cuenta.
+      expect(html()).toContain('• Ana Torres: 2 recintos');
+      expect(html()).not.toContain('Juan');
+    });
+
+    it('con un cantón que no existe lo dice, sin inventar técnicos', async () => {
+      consulta('tecnicos_de_canton', { canton: 'Quito' });
+
+      await service.responder('técnico de Quito', 'c:1');
+
+      expect(html()).toBe('No reconozco el cantón "Quito". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
+    });
+
+    it('un recinto repetido en el Excel se cuenta una sola vez', async () => {
+      distributivo.asignaciones.mockResolvedValue([...ASIGNACIONES, ASIGNACIONES[1]]);
+      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('técnicos de Otavalo', 'c:1');
+
+      expect(html()).toContain('• Ana Torres: 2 recintos');
+    });
+
+    it('con empate de recintos, ordena por nombre', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
+      ]);
+      distributivo.asignaciones.mockResolvedValue([
+        ...ASIGNACIONES,
+        { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Bruno Vega' },
+      ]);
+      consulta('tecnicos_de_canton', { canton: 'Cotacachi' });
+
+      await service.responder('técnicos de Cotacachi', 'c:1');
+
+      expect(html()).toContain('• Bruno Vega: 1 recinto\n• Juan Andrade: 1 recinto');
+    });
+
+    it('una parte del nombre que calza con varios cantones no elige ninguno', async () => {
+      consulta('tecnicos_de_canton', { canton: 'a' });
+
+      await service.responder('técnico de a', 'c:1');
+
+      expect(html()).toBe('No reconozco el cantón "a". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
+    });
+
+    it('una parte del nombre que calza con un solo cantón sí lo elige', async () => {
+      consulta('tecnicos_de_canton', { canton: 'cota' });
+
+      await service.responder('técnico de cota', 'c:1');
+
+      expect(html()).toContain('<b>Técnicos en Cotacachi</b>');
+    });
+
+    it('cantón sin técnicos en el distributivo', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '5000', nombreRecinto: 'Escuela Urcuquí', canton: 'Urcuquí', estado: 'ACTIVO' },
+      ]);
+      consulta('tecnicos_de_canton', { canton: 'Urcuqui' });
+
+      await service.responder('técnico de Urcuquí', 'c:1');
+
+      expect(html()).toBe('👷 No hay técnicos asignados a recintos de Urcuquí en el distributivo.');
+    });
+
+    it('distributivo no disponible', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('no configurado'));
+      consulta('tecnicos_de_canton', { canton: 'Ibarra' });
+
+      await service.responder('técnico de Ibarra', 'c:1');
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith('El distributivo de técnicos no está disponible ahora.', expect.any(String));
+      expect(telegram.enviarHtml).not.toHaveBeenCalled();
+    });
+  });
+
   describe('lo que no responde', () => {
     it('si el modelo no elige consulta, muestra la ayuda (nunca su texto)', async () => {
       llm.elegirConsulta.mockResolvedValue(null);
