@@ -327,7 +327,7 @@ export function formatearEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso:
     if (!g.zona) return [{ texto: lineasAlerta(g.recintos[0], false).join('\n'), cont: null as string | null }];
     const zona = escapeHtml(g.zona);
     const titulo =
-      `<b>📍 Posible corte de zona: ${zona} · ${g.recintos.length} recintos</b>\n` +
+      `<b>📍 Posible corte de luz o internet en ${zona} · ${g.recintos.length} recintos</b>\n` +
       '<i>Revisar energía o fibra del sector.</i>';
     const cont = `<b>📍 Zona ${zona} (cont.)</b>`;
     return g.recintos.map((a, i) => {
