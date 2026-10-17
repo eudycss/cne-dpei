@@ -8,14 +8,18 @@ import { z } from 'zod';
 const ESQUEMAS = {
   buscar_recinto: z.object({ texto: z.string().trim().min(1).max(80) }),
   recintos_caidos: z.object({ canton: z.string().trim().max(40).nullish() }),
-  recintos_de_tecnico: z.object({ nombre: z.string().trim().min(2).max(60) }),
+  recintos_de_tecnico: z.object({
+    nombre: z.string().trim().min(2).max(60),
+    // Algunos modelos mandan el booleano como texto; cualquier otra cosa cuenta como false.
+    solo_caidos: z.unknown().optional(),
+  }),
   tecnicos_de_canton: z.object({ canton: z.string().trim().min(1).max(40) }),
 };
 
 export type Consulta =
   | { tipo: 'buscar_recinto'; texto: string }
   | { tipo: 'recintos_caidos'; canton: string | null }
-  | { tipo: 'recintos_de_tecnico'; nombre: string }
+  | { tipo: 'recintos_de_tecnico'; nombre: string; soloCaidos: boolean }
   | { tipo: 'tecnicos_de_canton'; canton: string };
 
 /** La consulta pedida por el modelo, o null si no está en la lista o sus parámetros no son válidos. */
@@ -31,7 +35,13 @@ export function validarConsulta(nombre: string, argumentos: unknown): Consulta |
     }
     case 'recintos_de_tecnico': {
       const r = ESQUEMAS.recintos_de_tecnico.safeParse(argumentos);
-      return r.success ? { tipo: 'recintos_de_tecnico', nombre: r.data.nombre } : null;
+      return r.success
+        ? {
+            tipo: 'recintos_de_tecnico',
+            nombre: r.data.nombre,
+            soloCaidos: String(r.data.solo_caidos).trim().toLowerCase() === 'true',
+          }
+        : null;
     }
     case 'tecnicos_de_canton': {
       const r = ESQUEMAS.tecnicos_de_canton.safeParse(argumentos);
@@ -47,7 +57,10 @@ export const INSTRUCCIONES_MODELO =
   'Eres el asistente del bot de enlaces de internet de los recintos electorales del CNE Imbabura (Ecuador). ' +
   'Tu único trabajo es elegir UNA herramienta y sus parámetros para responder la pregunta del usuario. ' +
   'No respondas con texto. Si la pregunta no se puede responder con estas herramientas, no llames a ninguna. ' +
-  'En buscar_recinto pasa solo el nombre o código del recinto (sin palabras como "teléfono" o "encargado"). ' +
+  'En buscar_recinto pasa solo el nombre o código del recinto, o el lugar o parroquia (sin palabras como "teléfono", ' +
+  '"contacto" o "encargado"); úsala también para "contacto de Ilumán" o "recinto de Golondrinas". ' +
+  'Si preguntan qué técnico tiene, atiende o está en un cantón, usa tecnicos_de_canton, nunca buscar_recinto. ' +
+  'Si piden solo los caídos de un técnico, usa recintos_de_tecnico con solo_caidos en true. ' +
   'Los cantones de Imbabura son Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí y Pimampiro.';
 
 /** Definición de las consultas en el formato de herramientas compatible con OpenAI (Groq y Gemini). */
@@ -84,7 +97,10 @@ export const HERRAMIENTAS_MODELO = [
       description: 'Lista los recintos asignados a un técnico, con el estado del enlace de cada uno.',
       parameters: {
         type: 'object',
-        properties: { nombre: { type: 'string', description: 'Nombre o apellido del técnico.' } },
+        properties: {
+          nombre: { type: 'string', description: 'Nombre o apellido del técnico.' },
+          solo_caidos: { type: 'boolean', description: 'true si piden solo los recintos con el enlace caído.' },
+        },
         required: ['nombre'],
       },
     },

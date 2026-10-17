@@ -9,7 +9,15 @@ describe('validarConsulta', () => {
     expect(validarConsulta('recintos_caidos', {})).toEqual({ tipo: 'recintos_caidos', canton: null });
     expect(validarConsulta('recintos_caidos', { canton: null })).toEqual({ tipo: 'recintos_caidos', canton: null });
     expect(validarConsulta('recintos_caidos', { canton: 'Cotacachi' })).toEqual({ tipo: 'recintos_caidos', canton: 'Cotacachi' });
-    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Pérez' })).toEqual({ tipo: 'recintos_de_tecnico', nombre: 'Pérez' });
+    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Pérez' })).toEqual({ tipo: 'recintos_de_tecnico', nombre: 'Pérez', soloCaidos: false });
+    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: true })).toEqual({
+      tipo: 'recintos_de_tecnico',
+      nombre: 'Jairo',
+      soloCaidos: true,
+    });
+    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: 'True' })).toMatchObject({ soloCaidos: true });
+    // Un valor raro no pierde la consulta: se toman todos los recintos.
+    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: 'si' })).toMatchObject({ soloCaidos: false });
     expect(validarConsulta('tecnicos_de_canton', { canton: ' Cotacachi ' })).toEqual({ tipo: 'tecnicos_de_canton', canton: 'Cotacachi' });
   });
 
