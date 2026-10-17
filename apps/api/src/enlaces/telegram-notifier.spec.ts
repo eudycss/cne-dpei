@@ -103,7 +103,7 @@ describe('formatearEscalamiento', () => {
     ], 30);
 
     expect(texto).toContain('(3)');
-    expect(texto).toContain('<b>📍 Posible corte de zona: Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
+    expect(texto).toContain('<b>📍 Posible corte de luz o internet en Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
     expect(texto).toContain('🔴 <b>1961 · UE García Moreno</b>\n');
     expect(texto).toContain('🔴 <b>28 · UE García Moreno</b> (Iba)');
   });
