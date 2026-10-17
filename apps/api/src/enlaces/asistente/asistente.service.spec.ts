@@ -472,6 +472,36 @@ describe('AsistenteService', () => {
       ]);
     });
 
+    it('los técnicos van por número (no por orden de aparición) y con plural de caídos', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '1', nombreRecinto: 'A', canton: 'Otavalo', estado: 'FALLO' },
+        { codigoRecinto: '2', nombreRecinto: 'B', canton: 'Otavalo', estado: 'FALLO' },
+        { codigoRecinto: '3', nombreRecinto: 'C', canton: 'Otavalo', estado: 'ACTIVO' },
+        { codigoRecinto: '4', nombreRecinto: 'D', canton: 'Otavalo', estado: 'ACTIVO' },
+      ]);
+      distributivo.asignaciones.mockResolvedValue([
+        { codigoRecinto: '1', localidad: '', parroquia: '', numeroTecnico: 10, tecnico: 'Diez' },
+        { codigoRecinto: '2', localidad: '', parroquia: '', numeroTecnico: 5, tecnico: 'Cinco' },
+        { codigoRecinto: '4', localidad: '', parroquia: '', numeroTecnico: 2, tecnico: 'Dos' },
+      ]);
+      consulta('recintos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('recintos de Otavalo', 'c:1');
+
+      expect(html()).toBe('🏫 <b>Recintos de Otavalo</b>: 4 (2 caídos), por técnico:');
+      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupos.map((g: any) => g.numeroTecnico)).toEqual([2, 5, 10, null]);
+    });
+
+    it('un cantón ambiguo no lista nada', async () => {
+      consulta('recintos_de_canton', { canton: 'a' });
+
+      await service.responder('recintos de a', 'c:1');
+
+      expect(html()).toContain('No reconozco el cantón "a"');
+      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
+    });
+
     it('sin caídos no dice "0 caídos"', async () => {
       consulta('recintos_de_canton', { canton: 'Ibarra' });
 
@@ -495,6 +525,9 @@ describe('AsistenteService', () => {
 
       await service.responder('recintos de Otavalo', 'c:1');
 
+      expect(html()).toBe(
+        '🏫 <b>Recintos de Otavalo</b>: 2 (2 caídos).\n⚠️ El distributivo de técnicos no está disponible ahora.',
+      );
       const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
       expect(grupos).toHaveLength(1);
       expect(grupos[0].numeroTecnico).toBeNull();

@@ -367,9 +367,11 @@ export class AsistenteService {
     // Por número de técnico, y los que no están en el distributivo al final.
     const ordenados = [...grupos.values()].sort((a, b) => (a.numeroTecnico ?? Infinity) - (b.numeroTecnico ?? Infinity));
     const caidos = delCanton.filter((e) => e.estado === 'FALLO').length;
+    // Sin distributivo todos saldrían "sin técnico": se aclara que es falta del dato.
     await this.telegram.enviarHtml(
       `🏫 <b>Recintos de ${escapeHtml(elegido)}</b>: ${delCanton.length}` +
-        `${caidos > 0 ? ` (${caidos} caído${caidos === 1 ? '' : 's'})` : ''}, por técnico:`,
+        `${caidos > 0 ? ` (${caidos} caído${caidos === 1 ? '' : 's'})` : ''}` +
+        (asignaciones.length > 0 ? ', por técnico:' : '.\n⚠️ El distributivo de técnicos no está disponible ahora.'),
       'el resumen de recintos del cantón',
     );
     await this.telegram.enviarAsignaciones(ordenados);
