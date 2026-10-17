@@ -19,6 +19,7 @@ describe('validarConsulta', () => {
     // Un valor raro no pierde la consulta: se toman todos los recintos.
     expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: 'si' })).toMatchObject({ soloCaidos: false });
     expect(validarConsulta('tecnicos_de_canton', { canton: ' Cotacachi ' })).toEqual({ tipo: 'tecnicos_de_canton', canton: 'Cotacachi' });
+    expect(validarConsulta('recintos_de_canton', { canton: 'Otavalo' })).toEqual({ tipo: 'recintos_de_canton', canton: 'Otavalo' });
   });
 
   it('rechaza una consulta que no está en la lista (el modelo no puede pedir otra cosa)', () => {
@@ -35,6 +36,8 @@ describe('validarConsulta', () => {
     ['recintos_caidos', { canton: 'x'.repeat(41) }],
     ['recintos_de_tecnico', { nombre: 'a' }],
     ['tecnicos_de_canton', {}],
+    ['recintos_de_canton', {}],
+    ['recintos_de_canton', { canton: 'x'.repeat(41) }],
     ['tecnicos_de_canton', { canton: '  ' }],
     ['tecnicos_de_canton', { canton: 'x'.repeat(41) }],
   ])('rechaza parámetros inválidos de %s (%j)', (nombre, args) => {

@@ -446,6 +446,95 @@ describe('AsistenteService', () => {
     });
   });
 
+  describe('recintos_de_canton', () => {
+    it('lista los recintos del cantón por técnico, con los que no tienen técnico al final', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
+      ]);
+      consulta('recintos_de_canton', { canton: 'cotacachi' });
+
+      await service.responder('Listar recintos de Cotacachi', 'c:1');
+
+      expect(html()).toBe('🏫 <b>Recintos de Cotacachi</b>: 2 (1 caído), por técnico:');
+      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupos).toEqual([
+        {
+          numeroTecnico: 3,
+          tecnico: 'Juan Andrade',
+          recintos: [{ codigoRecinto: '1961', nombreRecinto: 'UE García Moreno <b>', canton: 'Cotacachi', estado: 'FALLO' }],
+        },
+        {
+          numeroTecnico: null,
+          tecnico: '',
+          recintos: [{ codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' }],
+        },
+      ]);
+    });
+
+    it('los técnicos van por número (no por orden de aparición) y con plural de caídos', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '1', nombreRecinto: 'A', canton: 'Otavalo', estado: 'FALLO' },
+        { codigoRecinto: '2', nombreRecinto: 'B', canton: 'Otavalo', estado: 'FALLO' },
+        { codigoRecinto: '3', nombreRecinto: 'C', canton: 'Otavalo', estado: 'ACTIVO' },
+        { codigoRecinto: '4', nombreRecinto: 'D', canton: 'Otavalo', estado: 'ACTIVO' },
+      ]);
+      distributivo.asignaciones.mockResolvedValue([
+        { codigoRecinto: '1', localidad: '', parroquia: '', numeroTecnico: 10, tecnico: 'Diez' },
+        { codigoRecinto: '2', localidad: '', parroquia: '', numeroTecnico: 5, tecnico: 'Cinco' },
+        { codigoRecinto: '4', localidad: '', parroquia: '', numeroTecnico: 2, tecnico: 'Dos' },
+      ]);
+      consulta('recintos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('recintos de Otavalo', 'c:1');
+
+      expect(html()).toBe('🏫 <b>Recintos de Otavalo</b>: 4 (2 caídos), por técnico:');
+      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupos.map((g: any) => g.numeroTecnico)).toEqual([2, 5, 10, null]);
+    });
+
+    it('un cantón ambiguo no lista nada', async () => {
+      consulta('recintos_de_canton', { canton: 'a' });
+
+      await service.responder('recintos de a', 'c:1');
+
+      expect(html()).toContain('No reconozco el cantón "a"');
+      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
+    });
+
+    it('sin caídos no dice "0 caídos"', async () => {
+      consulta('recintos_de_canton', { canton: 'Ibarra' });
+
+      await service.responder('recintos de Ibarra', 'c:1');
+
+      expect(html()).toBe('🏫 <b>Recintos de Ibarra</b>: 1, por técnico:');
+    });
+
+    it('con un cantón que no existe lo dice y no lista nada', async () => {
+      consulta('recintos_de_canton', { canton: 'Quito' });
+
+      await service.responder('recintos de Quito', 'c:1');
+
+      expect(html()).toContain('No reconozco el cantón "Quito"');
+      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
+    });
+
+    it('si el distributivo no está, igual lista los recintos (sin técnico)', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('Drive 500'));
+      consulta('recintos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('recintos de Otavalo', 'c:1');
+
+      expect(html()).toBe(
+        '🏫 <b>Recintos de Otavalo</b>: 2 (2 caídos).\n⚠️ El distributivo de técnicos no está disponible ahora.',
+      );
+      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupos).toHaveLength(1);
+      expect(grupos[0].numeroTecnico).toBeNull();
+      expect(grupos[0].recintos).toHaveLength(2);
+    });
+  });
+
   describe('lo que no responde', () => {
     it('si el modelo no elige consulta, muestra la ayuda (nunca su texto)', async () => {
       llm.elegirConsulta.mockResolvedValue(null);

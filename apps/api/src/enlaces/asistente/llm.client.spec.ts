@@ -56,7 +56,7 @@ describe('LlmClient', () => {
     const body = JSON.parse(opts.body);
     expect(body.messages).toHaveLength(2);
     expect(body.messages[1]).toEqual({ role: 'user', content: 'número del encargado del colegio Ibarra' });
-    expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'recintos_caidos', 'recintos_de_tecnico', 'tecnicos_de_canton']);
+    expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'recintos_caidos', 'recintos_de_tecnico', 'tecnicos_de_canton', 'recintos_de_canton']);
     expect(body.temperature).toBe(0);
   });
 

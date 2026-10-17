@@ -33,6 +33,7 @@ export const AYUDA_ASISTENTE =
   '• "¿qué está caído en Cotacachi?"\n' +
   '• "¿qué recintos tiene Juan Pérez?"\n' +
   '• "¿qué técnico está en Cotacachi?"\n' +
+  '• "listar recintos de Otavalo"\n' +
   '• "¿cómo está el 1008?"';
 
 /** Nombre y teléfono del encargado, escapados; `encargados` null = el Excel no se pudo leer. */
@@ -147,6 +148,8 @@ export class AsistenteService {
         return this.recintosDeTecnico(consulta.nombre, consulta.soloCaidos);
       case 'tecnicos_de_canton':
         return this.tecnicosDeCanton(consulta.canton);
+      case 'recintos_de_canton':
+        return this.recintosDeCanton(consulta.canton);
     }
   }
 
@@ -343,6 +346,35 @@ export class AsistenteService {
         'Para ver los recintos de uno, pregunte: "recintos de" y su nombre.',
       'los técnicos del cantón',
     );
+  }
+
+  /** Todos los recintos del cantón, por técnico, con el formato de Asignaciones CDA. */
+  private async recintosDeCanton(canton: string): Promise<void> {
+    const [enlaces, asignaciones] = await Promise.all([this.enlaces(), this.asignaciones()]);
+    const elegido = await this.resolverCanton(canton, enlaces);
+    if (!elegido) return;
+
+    const delCanton = enlaces.filter((e) => e.canton === elegido);
+    const tecnicoDe = new Map(asignaciones.map((a) => [a.codigoRecinto, a]));
+    const grupos = new Map<number | null, GrupoAsignacion>();
+    for (const e of delCanton) {
+      const a = tecnicoDe.get(e.codigoRecinto);
+      const clave = a?.numeroTecnico ?? null;
+      const grupo = grupos.get(clave) ?? { numeroTecnico: clave, tecnico: a?.tecnico ?? '', recintos: [] };
+      grupo.recintos.push({ codigoRecinto: e.codigoRecinto, nombreRecinto: e.nombreRecinto, canton: e.canton, estado: e.estado });
+      grupos.set(clave, grupo);
+    }
+    // Por número de técnico, y los que no están en el distributivo al final.
+    const ordenados = [...grupos.values()].sort((a, b) => (a.numeroTecnico ?? Infinity) - (b.numeroTecnico ?? Infinity));
+    const caidos = delCanton.filter((e) => e.estado === 'FALLO').length;
+    // Sin distributivo todos saldrían "sin técnico": se aclara que es falta del dato.
+    await this.telegram.enviarHtml(
+      `🏫 <b>Recintos de ${escapeHtml(elegido)}</b>: ${delCanton.length}` +
+        `${caidos > 0 ? ` (${caidos} caído${caidos === 1 ? '' : 's'})` : ''}` +
+        (asignaciones.length > 0 ? ', por técnico:' : '.\n⚠️ El distributivo de técnicos no está disponible ahora.'),
+      'el resumen de recintos del cantón',
+    );
+    await this.telegram.enviarAsignaciones(ordenados);
   }
 
   /**
