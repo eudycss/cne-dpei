@@ -280,6 +280,26 @@ describe('AuthContext — login offline', () => {
       await expect(leerEtapa()).resolves.toBeNull();
     });
 
+    it('login() de otro operador vacía la cola ANTES de guardar los tokens nuevos', async () => {
+      const { enqueue, contarPendientes } = jest.requireActual('../lib/offline-queue');
+      await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+      let pendientesAlGuardarTokens = -1;
+      (tokenStore.set as jest.Mock).mockImplementationOnce(async () => {
+        pendientesAlGuardarTokens = await contarPendientes();
+      });
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: otro },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(pendientesAlGuardarTokens).toBe(0);
+    });
+
     it('loginOffline() la conserva para seguir trabajando sin señal', async () => {
       (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: true, usuario: sessionUser });
 

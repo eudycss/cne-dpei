@@ -102,14 +102,56 @@ describe('enqueue + flushQueue', () => {
     expect((await leerRechazadas()).map((r) => r.motivo)).toEqual(['El servidor no aceptó el registro.', 'a. b']);
   });
 
-  it('descartarRechazadas vacía la lista de rechazos', async () => {
+  it('descartarRechazadas quita solo los avisos vistos, no uno que llegó después', async () => {
     (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
     await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
     await flushQueue();
+    const vistos = (await leerRechazadas()).map((r) => r.id);
+    (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
+    await enqueue({ endpoint: '/incidencias', method: 'post', payload: {} });
+    await flushQueue();
 
-    await descartarRechazadas();
+    await descartarRechazadas(vistos);
 
+    expect((await leerRechazadas()).map((r) => r.endpoint)).toEqual(['/incidencias']);
+  });
+
+  it.each([401, 408, 429])('con %i conserva la acción en cola (no es un rechazo del registro)', async (status) => {
+    (api.post as jest.Mock).mockRejectedValueOnce({ isAxiosError: true, response: { status } });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    await expect(contarPendientes()).resolves.toBe(1);
     await expect(leerRechazadas()).resolves.toEqual([]);
+  });
+
+  it('con 409 (ya registrado) la da por enviada sin aviso de rechazo', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    await expect(contarPendientes()).resolves.toBe(0);
+    await expect(leerRechazadas()).resolves.toEqual([]);
+  });
+
+  it('no avisa rechazos de posiciones GPS (serían ruido)', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce(badRequestError);
+    await enqueue({ endpoint: '/tracking/posiciones', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    await expect(contarPendientes()).resolves.toBe(0);
+    await expect(leerRechazadas()).resolves.toEqual([]);
+  });
+
+  it('una cola corrupta en el almacenamiento no deja la app sin poder encolar', async () => {
+    await AsyncStorage.setItem('cne:offline_queue', '{roto');
+
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+
+    await expect(contarPendientes()).resolves.toBe(1);
   });
 
   it('mantiene la acción en cola si el servidor responde 5xx (falla transitoria, ej. cold start)', async () => {
@@ -385,6 +427,24 @@ describe('withOffline con enOrden: false', () => {
 
     await expect(withOffline('/tracking/posiciones', 'post', {}, fn, { enOrden: false })).resolves.toEqual({ ok: true });
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('vaciarCola durante un envío', () => {
+  it('el envío en curso no devuelve a la cola lo del operador anterior', async () => {
+    let responder!: (v: unknown) => void;
+    (api.post as jest.Mock).mockReturnValueOnce(new Promise((r) => (responder = r)));
+    await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+
+    const envio = flushQueue();
+    await new Promise((r) => setImmediate(r));
+    await vaciarCola();
+    responder({ data: {} });
+    await envio;
+
+    expect(api.post).toHaveBeenCalledTimes(1); // no siguió con la segunda acción
+    await expect(contarPendientes()).resolves.toBe(0);
   });
 });
 

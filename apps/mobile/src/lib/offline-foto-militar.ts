@@ -113,6 +113,9 @@ export async function restaurarFotoMilitar(contextoId: string): Promise<string |
 // Una sola subida por archivo: la cola y la confirmación de un kit pueden
 // pedir la misma foto a la vez al volver la señal.
 const subidasEnCurso = new Map<string, Promise<string>>();
+// Cambia con cada limpiarFotosMilitar: una subida que terminó después de
+// cerrar sesión no vuelve a escribir el registro del operador anterior.
+let epoca = 0;
 
 /**
  * Sube la foto pendiente de este contexto (si hace falta) y devuelve su URL.
@@ -134,9 +137,11 @@ export async function asegurarFotoMilitarSubida(contextoId: string): Promise<str
 }
 
 async function subirArchivo(contextoId: string, uri: string): Promise<string> {
+  const epocaInicial = epoca;
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) throw new FotoMilitarPerdidaError();
   const { fotoUrl } = await subirFotoMilitar(uri);
+  if (epoca !== epocaInicial) throw new FotoMilitarPerdidaError();
   const vigente = await conCandado(async () => {
     // Si mientras se subía el operador repitió la foto, el registro apunta a
     // otro archivo: no se pisa la foto nueva con la URL de la vieja.
@@ -205,11 +210,22 @@ export async function resolverFotoMilitarEnPayload<T extends object>(payload: T)
   return { ...payload, fotoMilitarUrl };
 }
 
+/** Hay alguna foto tomada sin señal que todavía no se subió (para avisar antes de cerrar sesión). */
+export async function hayFotoMilitarPendiente(): Promise<boolean> {
+  const claves = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(`${STORAGE_PREFIX}:`));
+  for (const k of claves) {
+    const registro = await leer(k.slice(STORAGE_PREFIX.length + 1));
+    if (registro?.uri && !registro.url) return true;
+  }
+  return false;
+}
+
 /**
  * Al cerrar sesión o cambiar de operador: borra las fotos del militar
  * guardadas en el celular (datos personales sin cifrar) y sus registros.
  */
 export async function limpiarFotosMilitar(): Promise<void> {
+  epoca++;
   const claves = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(`${STORAGE_PREFIX}:`));
   await Promise.all(claves.map((k) => AsyncStorage.removeItem(k)));
   await FileSystem.deleteAsync(directorioFotos(), { idempotent: true }).catch(() => undefined);

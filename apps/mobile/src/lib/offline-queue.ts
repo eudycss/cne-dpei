@@ -2,12 +2,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { api } from './api';
-import { isNetworkError, isTransientError } from './errores-red';
+import { esReintentableEnCola, esYaRegistrado, isNetworkError, isTransientError } from './errores-red';
 import { FotoMilitarPerdidaError, resolverFotoMilitarEnPayload } from './offline-foto-militar';
 
 const QUEUE_KEY = 'cne:offline_queue';
 const RECHAZADAS_KEY = 'cne:offline_rechazadas';
 const MAX_MOTIVO = 200;
+const MAX_RECHAZADAS = 50;
+// Las posiciones GPS van cada pocos segundos: un rechazo de una sola no
+// merece un aviso al operador y llenaría la lista.
+const SIN_AVISO_DE_RECHAZO = new Set(['/tracking/posiciones']);
 
 /** Registro que el servidor no aceptó al sincronizar: se muestra al operador con el motivo. */
 export interface AccionRechazada {
@@ -26,9 +30,18 @@ interface QueuedAction {
   enqueuedAt: string;
 }
 
+function leerLista<T>(raw: string | null): T[] {
+  if (!raw) return [];
+  try {
+    const lista = JSON.parse(raw);
+    return Array.isArray(lista) ? (lista as T[]) : [];
+  } catch {
+    return []; // dato corrupto: mejor seguir operando que dejar la cola inservible
+  }
+}
+
 async function getQueue(): Promise<QueuedAction[]> {
-  const raw = await AsyncStorage.getItem(QUEUE_KEY);
-  return raw ? (JSON.parse(raw) as QueuedAction[]) : [];
+  return leerLista<QueuedAction>(await AsyncStorage.getItem(QUEUE_KEY));
 }
 
 async function saveQueue(queue: QueuedAction[]): Promise<void> {
@@ -36,8 +49,7 @@ async function saveQueue(queue: QueuedAction[]): Promise<void> {
 }
 
 async function getRechazadas(): Promise<AccionRechazada[]> {
-  const raw = await AsyncStorage.getItem(RECHAZADAS_KEY);
-  return raw ? (JSON.parse(raw) as AccionRechazada[]) : [];
+  return leerLista<AccionRechazada>(await AsyncStorage.getItem(RECHAZADAS_KEY));
 }
 
 function motivoDeRechazo(e: unknown): string {
@@ -69,6 +81,9 @@ export async function enqueue(item: Omit<QueuedAction, 'id' | 'enqueuedAt'>): Pr
 }
 
 let envioEnCurso: Promise<void> | null = null;
+// Cambia con cada vaciarCola (cierre de sesión o cambio de operador): un envío
+// que empezó antes no debe seguir enviando ni volver a guardar la cola vieja.
+let epoca = 0;
 
 /** Envía la cola en orden. Si ya hay un envío en curso, devuelve ese mismo (no lo duplica). */
 export function flushQueue(): Promise<void> {
@@ -81,11 +96,13 @@ export function flushQueue(): Promise<void> {
 }
 
 async function enviarCola(): Promise<void> {
+  const epocaInicial = epoca;
   const queue = await getQueue();
   if (queue.length === 0) return;
   const remaining: QueuedAction[] = [];
   const rechazadas: AccionRechazada[] = [];
   for (let i = 0; i < queue.length; i++) {
+    if (epoca !== epocaInicial) return;
     const action = queue[i];
     let payload: object;
     try {
@@ -94,7 +111,7 @@ async function enviarCola(): Promise<void> {
       // orden que exige el servidor (foto → recepción → llegada).
       payload = await resolverFotoMilitarEnPayload(action.payload);
     } catch (e) {
-      if (isTransientError(e)) {
+      if (esReintentableEnCola(e)) {
         // La foto todavía no sube: se conserva esta acción y todo lo que depende de ella.
         remaining.push(...queue.slice(i));
         break;
@@ -105,13 +122,16 @@ async function enviarCola(): Promise<void> {
     try {
       await api[action.method](action.endpoint, payload);
     } catch (e) {
-      if (isTransientError(e)) {
-        // Sin red o error del servidor (5xx, ej. Render despertando): mantener en cola
-        // esta acción y todas las que quedan por procesar, no solo la que falló.
+      if (esReintentableEnCola(e)) {
+        // Sin red, error del servidor (5xx, ej. Render despertando) o sin sesión
+        // válida (401): mantener en cola esta acción y todas las que quedan por
+        // procesar, no solo la que falló.
         remaining.push(...queue.slice(i));
         break; // no seguir procesando si el backend no está respondiendo bien
       }
-      // Error 4xx: no se reintenta, pero queda a la vista del operador con el motivo.
+      // 409: ya estaba registrado (la respuesta anterior se perdió); no es un error.
+      if (esYaRegistrado(e)) continue;
+      // Otro 4xx: no se reintenta, pero queda a la vista del operador con el motivo.
       rechazadas.push(aRechazada(action, e));
     }
   }
@@ -119,10 +139,13 @@ async function enviarCola(): Promise<void> {
   // no estaba en `queue` y se perdería al sobrescribir la cola con `remaining`.
   const procesadas = new Set(queue.map((a) => a.id));
   await conCandado(async () => {
+    if (epoca !== epocaInicial) return; // se cerró sesión durante el envío
     const encoladasDurante = (await getQueue()).filter((a) => !procesadas.has(a.id));
     await saveQueue([...remaining, ...encoladasDurante]);
-    if (rechazadas.length > 0) {
-      await AsyncStorage.setItem(RECHAZADAS_KEY, JSON.stringify([...(await getRechazadas()), ...rechazadas]));
+    const visibles = rechazadas.filter((r) => !SIN_AVISO_DE_RECHAZO.has(r.endpoint));
+    if (visibles.length > 0) {
+      const todas = [...(await getRechazadas()), ...visibles].slice(-MAX_RECHAZADAS);
+      await AsyncStorage.setItem(RECHAZADAS_KEY, JSON.stringify(todas));
     }
   });
 }
@@ -142,9 +165,16 @@ export async function leerRechazadas(): Promise<AccionRechazada[]> {
   return getRechazadas();
 }
 
-/** El operador ya vio los rechazos (y avisó a su supervisor): se quitan de la lista. */
-export async function descartarRechazadas(): Promise<void> {
-  await conCandado(() => AsyncStorage.removeItem(RECHAZADAS_KEY));
+/**
+ * El operador ya vio estos rechazos (y avisó a su supervisor): se quitan de la
+ * lista. Solo los ids indicados, para no borrar uno que llegó mientras tanto.
+ */
+export async function descartarRechazadas(ids: string[]): Promise<void> {
+  const quitar = new Set(ids);
+  await conCandado(async () => {
+    const quedan = (await getRechazadas()).filter((r) => !quitar.has(r.id));
+    await AsyncStorage.setItem(RECHAZADAS_KEY, JSON.stringify(quedan));
+  });
 }
 
 /**
@@ -152,6 +182,7 @@ export async function descartarRechazadas(): Promise<void> {
  * anterior y no debe enviarse con la sesión de otro (quedaría a su nombre).
  */
 export async function vaciarCola(): Promise<void> {
+  epoca++;
   await conCandado(async () => {
     await AsyncStorage.removeItem(QUEUE_KEY);
     await AsyncStorage.removeItem(RECHAZADAS_KEY);
@@ -215,7 +246,7 @@ export async function withOffline<T>(
 export function useEstadoSincronizacion(): {
   pendientes: number;
   rechazadas: AccionRechazada[];
-  descartar: () => Promise<void>;
+  descartar: (ids: string[]) => Promise<void>;
 } {
   const [pendientes, setPendientes] = useState(0);
   const [rechazadas, setRechazadas] = useState<AccionRechazada[]>([]);
@@ -253,9 +284,9 @@ export function useEstadoSincronizacion(): {
     };
   }, []);
 
-  const descartar = useCallback(async () => {
-    await descartarRechazadas();
-    setRechazadas([]);
+  const descartar = useCallback(async (ids: string[]) => {
+    await descartarRechazadas(ids);
+    setRechazadas((actuales) => actuales.filter((r) => !ids.includes(r.id)));
   }, []);
 
   return { pendientes, rechazadas, descartar };

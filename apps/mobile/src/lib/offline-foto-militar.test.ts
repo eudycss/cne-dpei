@@ -8,6 +8,7 @@ import {
   esMarcadorFotoPendiente,
   FotoMilitarPerdidaError,
   guardarYSubirFotoMilitar,
+  hayFotoMilitarPendiente,
   limpiarFotosMilitar,
   marcadorFotoPendiente,
   resolverFotoMilitarEnPayload,
@@ -265,7 +266,35 @@ describe('offline-foto-militar', () => {
     });
   });
 
+  describe('hayFotoMilitarPendiente', () => {
+    it('es true solo mientras alguna foto sigue sin subir', async () => {
+      await expect(hayFotoMilitarPendiente()).resolves.toBe(false);
+      (api.post as jest.Mock).mockRejectedValueOnce(networkError);
+      await guardarYSubirFotoMilitar(CONTEXTO, 'file:///cache/camara.jpg');
+      await expect(hayFotoMilitarPendiente()).resolves.toBe(true);
+
+      (api.post as jest.Mock).mockResolvedValueOnce({ data: { fotoUrl: 'militares/abc.bin' } });
+      await asegurarFotoMilitarSubida(CONTEXTO);
+      await expect(hayFotoMilitarPendiente()).resolves.toBe(false);
+    });
+  });
+
   describe('limpiarFotosMilitar', () => {
+    it('una subida que termina después de cerrar sesión no vuelve a escribir el registro', async () => {
+      (api.post as jest.Mock).mockRejectedValueOnce(networkError);
+      await guardarYSubirFotoMilitar(CONTEXTO, 'file:///cache/camara.jpg');
+      const subida = diferida<{ data: { fotoUrl: string } }>();
+      (api.post as jest.Mock).mockReturnValueOnce(subida.promesa);
+      const enCurso = asegurarFotoMilitarSubida(CONTEXTO);
+      await new Promise((r) => setImmediate(r));
+
+      await limpiarFotosMilitar();
+      subida.resolver({ data: { fotoUrl: 'militares/abc.bin' } });
+
+      await expect(enCurso).rejects.toBeInstanceOf(FotoMilitarPerdidaError);
+      await expect(registro()).resolves.toBeNull();
+    });
+
     it('borra los registros y la carpeta de fotos, sin tocar otras claves', async () => {
       (api.post as jest.Mock).mockRejectedValue(networkError);
       await guardarYSubirFotoMilitar(CONTEXTO, 'file:///cache/camara.jpg');

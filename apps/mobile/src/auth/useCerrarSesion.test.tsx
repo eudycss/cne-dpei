@@ -3,10 +3,12 @@ import { Alert, Text } from 'react-native';
 
 const mockLogout = jest.fn();
 jest.mock('./AuthContext', () => ({ useAuth: () => ({ logout: mockLogout }) }));
-jest.mock('../lib/offline-queue', () => ({ contarPendientes: jest.fn() }));
+jest.mock('../lib/offline-queue', () => ({ contarPendientes: jest.fn(), leerRechazadas: jest.fn() }));
+jest.mock('../lib/offline-foto-militar', () => ({ hayFotoMilitarPendiente: jest.fn() }));
 
 import { useCerrarSesion } from './useCerrarSesion';
-import { contarPendientes } from '../lib/offline-queue';
+import { contarPendientes, leerRechazadas } from '../lib/offline-queue';
+import { hayFotoMilitarPendiente } from '../lib/offline-foto-militar';
 
 let cerrarSesion: () => Promise<void>;
 function Harness() {
@@ -18,6 +20,9 @@ describe('useCerrarSesion', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    (contarPendientes as jest.Mock).mockResolvedValue(0);
+    (leerRechazadas as jest.Mock).mockResolvedValue([]);
+    (hayFotoMilitarPendiente as jest.Mock).mockResolvedValue(false);
     act(() => {
       create(<Harness />);
     });
@@ -27,9 +32,7 @@ describe('useCerrarSesion', () => {
     jest.restoreAllMocks();
   });
 
-  it('sin registros pendientes cierra sesión directo', async () => {
-    (contarPendientes as jest.Mock).mockResolvedValue(0);
-
+  it('sin nada pendiente cierra sesión directo', async () => {
     await act(() => cerrarSesion());
 
     expect(mockLogout).toHaveBeenCalledTimes(1);
@@ -42,7 +45,7 @@ describe('useCerrarSesion', () => {
     await act(() => cerrarSesion());
 
     expect(mockLogout).not.toHaveBeenCalled();
-    expect(Alert.alert).toHaveBeenCalledWith('Registros sin enviar', expect.stringContaining('3 registro(s)'), expect.any(Array));
+    expect(Alert.alert).toHaveBeenCalledWith('Tienes datos sin enviar', expect.stringContaining('3 registro(s)'), expect.any(Array));
     const botones = (Alert.alert as jest.Mock).mock.calls[0][2];
     expect(botones[0]).toMatchObject({ text: 'Esperar', style: 'cancel' });
 
@@ -50,8 +53,22 @@ describe('useCerrarSesion', () => {
     expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
-  it('si no puede leer la cola, cierra sesión igual', async () => {
+  it('avisa también por la foto del militar sin subir y por avisos de rechazo sin revisar', async () => {
+    (hayFotoMilitarPendiente as jest.Mock).mockResolvedValue(true);
+    (leerRechazadas as jest.Mock).mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+
+    await act(() => cerrarSesion());
+
+    const mensaje = (Alert.alert as jest.Mock).mock.calls[0][1];
+    expect(mensaje).toContain('la foto del militar');
+    expect(mensaje).toContain('2 aviso(s)');
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('si no puede leer el almacenamiento, cierra sesión igual', async () => {
     (contarPendientes as jest.Mock).mockRejectedValue(new Error('storage'));
+    (leerRechazadas as jest.Mock).mockRejectedValue(new Error('storage'));
+    (hayFotoMilitarPendiente as jest.Mock).mockRejectedValue(new Error('storage'));
 
     await act(() => cerrarSesion());
 

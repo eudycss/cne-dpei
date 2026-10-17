@@ -94,4 +94,13 @@ describe('cache-jornada', () => {
     expect(vaciarCola).toHaveBeenCalled();
     expect(limpiarFotosMilitar).toHaveBeenCalled();
   });
+
+  it('sin dueño registrado (versión anterior o tras logout) no borra la cola pendiente', async () => {
+    (vaciarCola as jest.Mock).mockClear();
+
+    await prepararCacheParaUsuario('u1');
+
+    expect(vaciarCola).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem('cne:jornada:usuario')).resolves.toBe('u1');
+  });
 });

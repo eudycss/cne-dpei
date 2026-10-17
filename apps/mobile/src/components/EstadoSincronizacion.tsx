@@ -79,7 +79,7 @@ export function EstadoSincronizacion() {
 
       <Modal visible={verPendientes} transparent animationType="fade" onRequestClose={() => setVerPendientes(false)}>
         <View style={styles.backdrop}>
-          <View style={styles.card}>
+          <View style={styles.card} accessibilityViewIsModal>
             <Text style={styles.title} accessibilityRole="header">Sin conexión</Text>
             <Text style={styles.texto}>
               Tienes {pendientes} registro(s) guardado(s) en el celular. Se enviarán solos al recuperar señal, en
@@ -95,7 +95,7 @@ export function EstadoSincronizacion() {
 
       <Modal visible={verRechazadas} transparent animationType="fade" onRequestClose={() => setVerRechazadas(false)}>
         <View style={styles.backdrop}>
-          <View style={styles.card}>
+          <View style={styles.card} accessibilityViewIsModal>
             <Text style={styles.title} accessibilityRole="header">Registros no enviados</Text>
             <Text style={styles.texto}>
               El servidor no aceptó estos registros. Avisa a tu supervisor con el motivo de cada uno.
@@ -117,7 +117,7 @@ export function EstadoSincronizacion() {
               <Pressable
                 style={styles.closeBtn}
                 onPress={async () => {
-                  await descartar();
+                  await descartar(rechazadas.map((r) => r.id));
                   setVerRechazadas(false);
                 }}
                 accessibilityRole="button"
