@@ -21,6 +21,9 @@ interface Proveedor {
   modelo: string;
 }
 
+/** Más llamadas en una sola pregunta no son una consulta razonable (y cuidan la cuota). */
+export const MAX_CONSULTAS = 3;
+
 /** Si un proveedor tarda más, se pasa al siguiente: la persona está esperando en el chat. */
 const TIMEOUT_MS = 8_000;
 
@@ -63,11 +66,11 @@ export class LlmClient {
   private readonly log = new Logger('AsistenteLlm');
 
   /**
-   * Manda SOLO la pregunta al modelo para que elija una consulta. null = el modelo
-   * no eligió ninguna (pregunta fuera de lo que el bot sabe). Si un proveedor falla,
+   * Manda SOLO la pregunta al modelo para que elija consultas (hasta MAX_CONSULTAS).
+   * [] = no eligió ninguna (pregunta fuera de lo que el bot sabe). Si un proveedor falla,
    * prueba el siguiente; si fallan todos, lanza AsistenteNoDisponible.
    */
-  async elegirConsulta(pregunta: string): Promise<LlamadaModelo | null> {
+  async elegirConsultas(pregunta: string): Promise<LlamadaModelo[]> {
     for (const proveedor of proveedoresConfigurados()) {
       try {
         return await this.consultar(proveedor, pregunta);
@@ -79,7 +82,7 @@ export class LlmClient {
     throw new AsistenteNoDisponible();
   }
 
-  private async consultar(p: Proveedor, pregunta: string): Promise<LlamadaModelo | null> {
+  private async consultar(p: Proveedor, pregunta: string): Promise<LlamadaModelo[]> {
     const res = await fetch(p.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}` },
@@ -98,16 +101,18 @@ export class LlmClient {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const datos = (await res.json()) as RespuestaChat;
-    const llamada = datos?.choices?.[0]?.message?.tool_calls?.[0]?.function;
-    // Sin herramienta = el modelo contestó con texto: ese texto nunca se muestra.
-    if (!llamada?.name) return null;
-    let argumentos: unknown;
-    try {
-      argumentos = JSON.parse(llamada.arguments || '{}');
-    } catch {
-      throw new Error('argumentos que no son JSON');
-    }
-    return { nombre: llamada.name, argumentos };
+    // Sin herramientas = el modelo contestó con texto: ese texto nunca se muestra.
+    const llamadas = (datos?.choices?.[0]?.message?.tool_calls ?? [])
+      .map((t) => t?.function)
+      .filter((f): f is { name: string; arguments?: string } => !!f?.name)
+      .slice(0, MAX_CONSULTAS);
+    return llamadas.map((llamada) => {
+      try {
+        return { nombre: llamada.name, argumentos: JSON.parse(llamada.arguments || '{}') as unknown };
+      } catch {
+        throw new Error('argumentos que no son JSON');
+      }
+    });
   }
 }
 
