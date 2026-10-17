@@ -1,30 +1,82 @@
 import { HERRAMIENTAS_MODELO, validarConsulta } from './herramientas';
 
+const SIN_FILTROS = {
+  tipo: 'consultar_recintos',
+  cantones: [],
+  parroquias: [],
+  tecnicos: [],
+  estado: null,
+  sinTecnico: false,
+  sinContacto: false,
+  conContacto: false,
+  agruparPor: null,
+  soloContar: false,
+};
+
 describe('validarConsulta', () => {
-  it('acepta las tres consultas con parámetros válidos', () => {
+  it('buscar_recinto recorta el texto', () => {
     expect(validarConsulta('buscar_recinto', { texto: ' colegio Ibarra ' })).toEqual({
       tipo: 'buscar_recinto',
       texto: 'colegio Ibarra',
     });
-    expect(validarConsulta('recintos_caidos', {})).toEqual({ tipo: 'recintos_caidos', canton: null });
-    expect(validarConsulta('recintos_caidos', { canton: null })).toEqual({ tipo: 'recintos_caidos', canton: null });
-    expect(validarConsulta('recintos_caidos', { canton: 'Cotacachi' })).toEqual({ tipo: 'recintos_caidos', canton: 'Cotacachi' });
-    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Pérez' })).toEqual({ tipo: 'recintos_de_tecnico', nombre: 'Pérez', soloCaidos: false });
-    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: true })).toEqual({
-      tipo: 'recintos_de_tecnico',
-      nombre: 'Jairo',
-      soloCaidos: true,
+  });
+
+  it('consultar_recintos sin filtros (o con null) es "todos los recintos"', () => {
+    expect(validarConsulta('consultar_recintos', {})).toEqual(SIN_FILTROS);
+    expect(validarConsulta('consultar_recintos', null)).toEqual(SIN_FILTROS);
+    expect(validarConsulta('consultar_recintos', { cantones: null, estado: null, agrupar_por: null })).toEqual(SIN_FILTROS);
+  });
+
+  it('consultar_recintos con todos los filtros', () => {
+    expect(
+      validarConsulta('consultar_recintos', {
+        cantones: [' Pimampiro ', 'Urcuquí', ''],
+        parroquias: ['Ilumán'],
+        tecnicos: ['Willy'],
+        estado: 'caido',
+        sin_tecnico: true,
+        sin_contacto: 'true',
+        con_contacto: true,
+        agrupar_por: 'canton',
+        solo_contar: true,
+      }),
+    ).toEqual({
+      tipo: 'consultar_recintos',
+      cantones: ['Pimampiro', 'Urcuquí'],
+      parroquias: ['Ilumán'],
+      tecnicos: ['Willy'],
+      estado: 'caido',
+      sinTecnico: true,
+      sinContacto: true,
+      conContacto: true,
+      agruparPor: 'canton',
+      soloContar: true,
     });
-    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: 'True' })).toMatchObject({ soloCaidos: true });
-    // Un valor raro no pierde la consulta: se toman todos los recintos.
-    expect(validarConsulta('recintos_de_tecnico', { nombre: 'Jairo', solo_caidos: 'si' })).toMatchObject({ soloCaidos: false });
-    expect(validarConsulta('tecnicos_de_canton', { canton: ' Cotacachi ' })).toEqual({ tipo: 'tecnicos_de_canton', canton: 'Cotacachi' });
-    expect(validarConsulta('recintos_de_canton', { canton: 'Otavalo' })).toEqual({ tipo: 'recintos_de_canton', canton: 'Otavalo' });
+  });
+
+  it('tolera lo que los modelos mandan distinto: texto suelto, mayúsculas, tildes y sinónimos', () => {
+    expect(validarConsulta('consultar_recintos', { cantones: 'Ibarra' })).toMatchObject({ cantones: ['Ibarra'] });
+    expect(validarConsulta('consultar_recintos', { estado: 'Caído' })).toMatchObject({ estado: 'caido' });
+    expect(validarConsulta('consultar_recintos', { estado: 'FALLO' })).toMatchObject({ estado: 'caido' });
+    expect(validarConsulta('consultar_recintos', { estado: 'activos' })).toMatchObject({ estado: 'activo' });
+    expect(validarConsulta('consultar_recintos', { agrupar_por: 'Técnico' })).toMatchObject({ agruparPor: 'tecnico' });
+  });
+
+  it('un valor desconocido se ignora en vez de perder la consulta', () => {
+    expect(validarConsulta('consultar_recintos', { estado: 'raro', agrupar_por: 'color', sin_tecnico: 'si' })).toEqual(SIN_FILTROS);
+  });
+
+  it('estadisticas: hoy/dia, semana o mes; lo desconocido es hoy', () => {
+    expect(validarConsulta('estadisticas', { periodo: 'semana' })).toEqual({ tipo: 'estadisticas', periodo: 'semana' });
+    expect(validarConsulta('estadisticas', { periodo: 'Hoy' })).toEqual({ tipo: 'estadisticas', periodo: 'dia' });
+    expect(validarConsulta('estadisticas', { periodo: 'MES' })).toEqual({ tipo: 'estadisticas', periodo: 'mes' });
+    expect(validarConsulta('estadisticas', {})).toEqual({ tipo: 'estadisticas', periodo: 'dia' });
   });
 
   it('rechaza una consulta que no está en la lista (el modelo no puede pedir otra cosa)', () => {
     expect(validarConsulta('borrar_recinto', { codigo: '1008' })).toBeNull();
     expect(validarConsulta('__proto__', {})).toBeNull();
+    expect(validarConsulta('recintos_caidos', {})).toBeNull();
   });
 
   it.each([
@@ -33,20 +85,17 @@ describe('validarConsulta', () => {
     ['buscar_recinto', { texto: 'x'.repeat(81) }],
     ['buscar_recinto', { texto: 42 }],
     ['buscar_recinto', null],
-    ['recintos_caidos', { canton: 'x'.repeat(41) }],
-    ['recintos_de_tecnico', { nombre: 'a' }],
-    ['tecnicos_de_canton', {}],
-    ['recintos_de_canton', {}],
-    ['recintos_de_canton', { canton: 'x'.repeat(41) }],
-    ['tecnicos_de_canton', { canton: '  ' }],
-    ['tecnicos_de_canton', { canton: 'x'.repeat(41) }],
+    ['consultar_recintos', { cantones: ['x'.repeat(61)] }],
+    ['consultar_recintos', { cantones: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }],
+    ['consultar_recintos', { tecnicos: [42] }],
+    ['consultar_recintos', { parroquias: { a: 1 } }],
   ])('rechaza parámetros inválidos de %s (%j)', (nombre, args) => {
     expect(validarConsulta(nombre, args)).toBeNull();
   });
 
   it('cada herramienta que se ofrece al modelo tiene su validación', () => {
     for (const h of HERRAMIENTAS_MODELO) {
-      const ejemplo = { texto: 'a', canton: 'Ibarra', nombre: 'Juan' };
+      const ejemplo = { texto: 'a', cantones: ['Ibarra'], periodo: 'dia' };
       expect(validarConsulta(h.function.name, ejemplo)).not.toBeNull();
     }
   });

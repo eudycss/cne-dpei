@@ -295,7 +295,7 @@ export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }
   return lineas.join('\n');
 }
 
-function recortarNombre(nombre: string): string {
+export function recortarNombre(nombre: string): string {
   // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
   const letras = Array.from(nombre);
   return letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : nombre;

@@ -241,6 +241,15 @@ describe('EnlacesEstadisticasService', () => {
     expect(tarjeta.anterior.desde).toBe(desdeAnterior);
   });
 
+  it('el asistente puede pedir la tarjeta nueva de la semana (con botones)', async () => {
+    await service.enviarEstadisticasTelegram(iso('2026-10-14T15:00:00Z'), 'semana');
+
+    const [tarjeta, conBotones] = telegram.enviarTarjetaEstadisticas.mock.calls[0];
+    expect(conBotones).toBe(true);
+    expect(tarjeta.titulo).toBe('Esta semana');
+    expect(tarjeta.actual.desde).toBe('2026-10-12T05:00:00.000Z');
+  });
+
   it('hoy en curso se compara con ayer hasta la misma hora, no con el día entero', async () => {
     prisma.enlaceCaida.findMany.mockImplementation(async () => [
       // Ayer: una caída a las 08:00 (antes de "esta hora") y otra a las 15:00 (después).

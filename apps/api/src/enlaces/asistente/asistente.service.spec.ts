@@ -28,7 +28,8 @@ describe('AsistenteService', () => {
   };
   const distributivo = { asignaciones: jest.fn() };
   const encargados = { encargados: jest.fn() };
-  const llm = { elegirConsulta: jest.fn() };
+  const llm = { elegirConsultas: jest.fn() };
+  const estadisticas = { enviarEstadisticasTelegram: jest.fn().mockResolvedValue(undefined) };
   let service: AsistenteService;
   let logs: jest.SpyInstance[];
 
@@ -37,13 +38,20 @@ describe('AsistenteService', () => {
     prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES);
     distributivo.asignaciones.mockResolvedValue(ASIGNACIONES);
     encargados.encargados.mockResolvedValue(new Map([['28', { nombre: 'Rector Luis Mora', telefono: '0991234567' }]]));
-    service = new AsistenteService(prisma as any, telegram as any, distributivo as any, encargados as any, llm as any);
+    service = new AsistenteService(
+      prisma as any,
+      telegram as any,
+      distributivo as any,
+      encargados as any,
+      llm as any,
+      estadisticas as any,
+    );
     logs = (['log', 'warn', 'error'] as const).map((m) => jest.spyOn(Logger.prototype, m).mockImplementation(() => undefined));
   });
 
   afterEach(() => logs.forEach((l) => l.mockRestore()));
 
-  const consulta = (nombre: string, argumentos: unknown) => llm.elegirConsulta.mockResolvedValue({ nombre, argumentos });
+  const consulta = (nombre: string, argumentos: unknown) => llm.elegirConsultas.mockResolvedValue([{ nombre, argumentos }]);
   const html = () => telegram.enviarHtml.mock.calls.map((c) => c[0]).join('\n---\n');
 
   describe('buscar_recinto', () => {
@@ -52,7 +60,7 @@ describe('AsistenteService', () => {
 
       await service.responder('dame el número del encargado del colegio Ibarra', 'c:1');
 
-      expect(llm.elegirConsulta).toHaveBeenCalledWith('dame el número del encargado del colegio Ibarra');
+      expect(llm.elegirConsultas).toHaveBeenCalledWith('dame el número del encargado del colegio Ibarra');
       expect(telegram.indicarEscribiendo).toHaveBeenCalled();
       expect(html()).toBe(
         '📍 <b>28 · Unidad Educativa Ibarra</b> (Iba · SAGRARIO)\n' +
@@ -67,8 +75,8 @@ describe('AsistenteService', () => {
 
       await service.responder('encargado del 28', 'c:1');
 
-      expect(llm.elegirConsulta).toHaveBeenCalledTimes(1);
-      expect(JSON.stringify(llm.elegirConsulta.mock.calls)).not.toContain('0991234567');
+      expect(llm.elegirConsultas).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(llm.elegirConsultas.mock.calls)).not.toContain('0991234567');
     });
 
     it('varios resultados (hasta 5): lista con el contacto de cada uno y botones para la ficha', async () => {
@@ -191,353 +199,123 @@ describe('AsistenteService', () => {
     });
   });
 
-  describe('recintos_caidos', () => {
-    it('sin cantón: la lista completa de caídos, con el mismo formato de /caidos', async () => {
-      consulta('recintos_caidos', {});
+  describe('consultar_recintos', () => {
+    it('junta la base, el distributivo y los encargados y manda la respuesta armada por el código', async () => {
+      consulta('consultar_recintos', { cantones: ['Otavalo'], con_contacto: true });
 
-      await service.responder('qué está caído', 'c:1');
-
-      expect(telegram.enviarListaActual.mock.calls[0][0].map((e: any) => e.codigoRecinto)).toEqual(['1008', '1009', '1961']);
-    });
-
-    it('con cantón (sin importar tildes): solo los de ese cantón', async () => {
-      consulta('recintos_caidos', { canton: 'cotacachí' });
-
-      await service.responder('caídos en Cotacachi', 'c:1');
-
-      const [lista, , canton] = telegram.enviarListaActual.mock.calls[0];
-      expect(lista.map((e: any) => e.codigoRecinto)).toEqual(['1961']);
-      expect(canton).toBe('Cotacachi');
-    });
-
-    it('con un cantón real sin caídos, manda la lista vacía con el cantón en el título', async () => {
-      consulta('recintos_caidos', { canton: 'Ibarra' });
-
-      await service.responder('caídos en Ibarra', 'c:1');
-
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([], undefined, 'Ibarra');
-    });
-
-    it.each(['Imbabura', 'Quito', 'Ibarra y Otavalo'])(
-      'con un cantón que no existe ("%s") NO dice "no hay caídos": lo avisa y muestra todos',
-      async (canton) => {
-        consulta('recintos_caidos', { canton });
-
-        await service.responder(`caídos en ${canton}`, 'c:1');
-
-        expect(html()).toContain(`No reconozco el cantón "${canton}"`);
-        expect(html()).toContain('Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
-        const [lista, , filtro] = telegram.enviarListaActual.mock.calls[0];
-        expect(lista).toHaveLength(3);
-        expect(filtro).toBeUndefined();
-      },
-    );
-  });
-
-  describe('recintos_de_tecnico', () => {
-    it('un técnico: sus recintos con el formato de Asignaciones CDA', async () => {
-      consulta('recintos_de_tecnico', { nombre: 'ana' });
-
-      await service.responder('recintos de Ana', 'c:1');
-
-      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupo).toEqual({
-        numeroTecnico: 2,
-        tecnico: 'Ana Torres',
-        recintos: [
-          { codigoRecinto: '1008', nombreRecinto: 'UE San Juan de Ilumán Bloque 2', canton: 'Otavalo', estado: 'FALLO' },
-          { codigoRecinto: '1009', nombreRecinto: 'UE San Juan de Iluman Bloque 1', canton: 'Otavalo', estado: 'FALLO' },
-          { codigoRecinto: '3000', nombreRecinto: 'Escuela sin enlace', canton: null, estado: null },
-        ],
-      });
-    });
-
-    it('varios técnicos con ese nombre: pide el nombre completo', async () => {
-      consulta('recintos_de_tecnico', { nombre: 'Juan' });
-
-      await service.responder('recintos de Juan', 'c:1');
-
-      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
-      expect(html()).toContain('Juan Pérez');
-      expect(html()).toContain('Juan Andrade');
-    });
-
-    it('tolera mayúsculas y un error de tipeo ("WILLI" encuentra a Willy)', async () => {
-      distributivo.asignaciones.mockResolvedValue([
-        ...ASIGNACIONES,
-        { codigoRecinto: '1961', localidad: '', parroquia: 'GARCIA MORENO', numeroTecnico: 4, tecnico: 'Willy' },
-      ]);
-      consulta('recintos_de_tecnico', { nombre: 'WILLI' });
-
-      await service.responder('Que recintos tiene WILLI', 'c:1');
-
-      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupo.tecnico).toBe('Willy');
-      expect(html()).toContain('No encontré "WILLI" tal cual');
-    });
-
-    it('si el nombre coincide tal cual, no se mezclan los parecidos', async () => {
-      distributivo.asignaciones.mockResolvedValue([
-        ...ASIGNACIONES,
-        { codigoRecinto: '1961', localidad: '', parroquia: '', numeroTecnico: 4, tecnico: 'Ana Torrez' },
-      ]);
-      consulta('recintos_de_tecnico', { nombre: 'Ana Torres' });
-
-      await service.responder('recintos de Ana Torres', 'c:1');
-
-      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupo.tecnico).toBe('Ana Torres');
-    });
-
-    it('solo caídos: muestra únicamente los recintos con el enlace caído', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue(
-        ENLACES.map((e) => (e.codigoRecinto === '1009' ? { ...e, estado: 'ACTIVO' } : e)),
-      );
-      consulta('recintos_de_tecnico', { nombre: 'Ana', solo_caidos: true });
-
-      await service.responder('solo los caídos de Ana', 'c:1');
-
-      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupo.recintos.map((r: any) => r.codigoRecinto)).toEqual(['1008']);
-    });
-
-    it('solo caídos sin ninguno caído lo dice', async () => {
-      consulta('recintos_de_tecnico', { nombre: 'Juan Pérez', solo_caidos: true });
-
-      await service.responder('caídos de Juan Pérez', 'c:1');
-
-      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
-      expect(html()).toBe('✅ Juan Pérez no tiene recintos con el enlace caído ahora.');
-    });
-
-    it('solo caídos: los recintos sin enlace monitoreado no se dan por activos', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES.map((e) => ({ ...e, estado: 'ACTIVO' })));
-      consulta('recintos_de_tecnico', { nombre: 'Ana', solo_caidos: true });
-
-      await service.responder('caídos de Ana', 'c:1');
-
-      expect(html()).toBe('✅ Ana Torres no tiene recintos con el enlace caído ahora.\n(1 de sus recintos no tienen enlace monitoreado.)');
-    });
-
-    it('nadie con ese nombre', async () => {
-      consulta('recintos_de_tecnico', { nombre: 'Zoila' });
-
-      await service.responder('recintos de Zoila', 'c:1');
-
-      expect(html()).toContain('No encontré a ningún técnico "Zoila"');
-    });
-
-    it('distributivo no disponible', async () => {
-      distributivo.asignaciones.mockRejectedValue(new Error('no configurado'));
-      consulta('recintos_de_tecnico', { nombre: 'Ana' });
-
-      await service.responder('recintos de Ana', 'c:1');
-
-      expect(telegram.enviarTexto).toHaveBeenCalledWith('El distributivo de técnicos no está disponible ahora.', expect.any(String));
-    });
-  });
-
-  describe('tecnicos_de_canton', () => {
-    const ENLACES_COTACACHI = [
-      ...ENLACES,
-      { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
-      { codigoRecinto: '1963', nombreRecinto: 'Escuela Imantag', canton: 'Cotacachi', estado: 'ACTIVO' },
-    ];
-    const ASIGNACIONES_COTACACHI = [
-      ...ASIGNACIONES,
-      { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
-      { codigoRecinto: '1963', localidad: '', parroquia: 'IMANTAG', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
-    ];
-
-    it('lista los técnicos del cantón con cuántos recintos tiene cada uno (el de más recintos primero)', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES_COTACACHI);
-      distributivo.asignaciones.mockResolvedValue(ASIGNACIONES_COTACACHI);
-      consulta('tecnicos_de_canton', { canton: 'cotacachi' });
-
-      await service.responder('¿qué técnico está en Cotacachi?', 'c:1');
+      await service.responder('contactos de los recintos de Otavalo', 'c:1');
 
       expect(html()).toBe(
-        '👷 <b>Técnicos en Cotacachi</b>\n' +
-          '• Willy &lt;Chávez&gt;: 2 recintos\n' +
-          '• Juan Andrade: 1 recinto\n\n' +
-          'Para ver los recintos de uno, pregunte: "recintos de" y su nombre.',
+        '🏫 <b>Recintos · Otavalo</b>: 2 (2 caídos)\n\n' +
+          '<b>📍 Otavalo</b> (2 · 2 caídos)\n' +
+          '🔴 1008 (Ota) — UE San Juan de Ilumán Bloque 2\n     📞 sin registrar\n' +
+          '🔴 1009 (Ota) — UE San Juan de Iluman Bloque 1\n     📞 sin registrar',
       );
     });
 
-    it('no cuenta recintos de otros cantones ni los que no tienen enlace monitoreado', async () => {
-      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
+    it('varios cantones en una sola pregunta salen completos', async () => {
+      consulta('consultar_recintos', { cantones: ['Ibarra', 'Cotacachi'] });
 
-      await service.responder('técnicos de Otavalo', 'c:1');
+      await service.responder('recintos de Ibarra y Cotacachi', 'c:1');
 
-      // Ana Torres tiene 1008 y 1009 en Otavalo; el 3000 no tiene enlace y no se cuenta.
-      expect(html()).toContain('• Ana Torres: 2 recintos');
-      expect(html()).not.toContain('Juan');
+      expect(html()).toContain('Recintos · Ibarra, Cotacachi</b>: 2');
+      expect(html()).toContain('28 (Iba)');
+      expect(html()).toContain('1961 (Cot)');
     });
 
-    it('con un cantón que no existe lo dice, sin inventar técnicos', async () => {
-      consulta('tecnicos_de_canton', { canton: 'Quito' });
+    it('agrupa por técnico con los nombres del distributivo', async () => {
+      consulta('consultar_recintos', { estado: 'caido', agrupar_por: 'tecnico' });
 
-      await service.responder('técnico de Quito', 'c:1');
+      await service.responder('qué técnicos tienen caídos', 'c:1');
 
-      expect(html()).toBe('No reconozco el cantón "Quito". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
+      expect(html()).toContain('<b>👷 2. Ana Torres</b> (2 · 2 caídos)');
+      expect(html()).toContain('<b>👷 3. Juan Andrade</b> (1 · 1 caído)');
+      expect(html()).not.toContain('Juan Pérez');
     });
 
-    it('un recinto repetido en el Excel se cuenta una sola vez', async () => {
-      distributivo.asignaciones.mockResolvedValue([...ASIGNACIONES, ASIGNACIONES[1]]);
-      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
-
-      await service.responder('técnicos de Otavalo', 'c:1');
-
-      expect(html()).toContain('• Ana Torres: 2 recintos');
-    });
-
-    it('con empate de recintos, ordena por nombre', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue([
-        ...ENLACES,
-        { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
-      ]);
-      distributivo.asignaciones.mockResolvedValue([
-        ...ASIGNACIONES,
-        { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Bruno Vega' },
-      ]);
-      consulta('tecnicos_de_canton', { canton: 'Cotacachi' });
-
-      await service.responder('técnicos de Cotacachi', 'c:1');
-
-      expect(html()).toContain('• Bruno Vega: 1 recinto\n• Juan Andrade: 1 recinto');
-    });
-
-    it('una parte del nombre que calza con varios cantones no elige ninguno', async () => {
-      consulta('tecnicos_de_canton', { canton: 'a' });
-
-      await service.responder('técnico de a', 'c:1');
-
-      expect(html()).toBe('No reconozco el cantón "a". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
-    });
-
-    it('una parte del nombre que calza con un solo cantón sí lo elige', async () => {
-      consulta('tecnicos_de_canton', { canton: 'cota' });
-
-      await service.responder('técnico de cota', 'c:1');
-
-      expect(html()).toContain('<b>Técnicos en Cotacachi</b>');
-    });
-
-    it('cantón sin técnicos en el distributivo', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue([
-        ...ENLACES,
-        { codigoRecinto: '5000', nombreRecinto: 'Escuela Urcuquí', canton: 'Urcuquí', estado: 'ACTIVO' },
-      ]);
-      consulta('tecnicos_de_canton', { canton: 'Urcuqui' });
-
-      await service.responder('técnico de Urcuquí', 'c:1');
-
-      expect(html()).toBe('👷 No hay técnicos asignados a recintos de Urcuquí en el distributivo.');
-    });
-
-    it('distributivo no disponible', async () => {
-      distributivo.asignaciones.mockRejectedValue(new Error('no configurado'));
-      consulta('tecnicos_de_canton', { canton: 'Ibarra' });
-
-      await service.responder('técnico de Ibarra', 'c:1');
-
-      expect(telegram.enviarTexto).toHaveBeenCalledWith('El distributivo de técnicos no está disponible ahora.', expect.any(String));
-      expect(telegram.enviarHtml).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('recintos_de_canton', () => {
-    it('lista los recintos del cantón por técnico, con los que no tienen técnico al final', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue([
-        ...ENLACES,
-        { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
-      ]);
-      consulta('recintos_de_canton', { canton: 'cotacachi' });
-
-      await service.responder('Listar recintos de Cotacachi', 'c:1');
-
-      expect(html()).toBe('🏫 <b>Recintos de Cotacachi</b>: 2 (1 caído), por técnico:');
-      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupos).toEqual([
-        {
-          numeroTecnico: 3,
-          tecnico: 'Juan Andrade',
-          recintos: [{ codigoRecinto: '1961', nombreRecinto: 'UE García Moreno <b>', canton: 'Cotacachi', estado: 'FALLO' }],
-        },
-        {
-          numeroTecnico: null,
-          tecnico: '',
-          recintos: [{ codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' }],
-        },
-      ]);
-    });
-
-    it('los técnicos van por número (no por orden de aparición) y con plural de caídos', async () => {
-      prisma.enlaceRecinto.findMany.mockResolvedValue([
-        { codigoRecinto: '1', nombreRecinto: 'A', canton: 'Otavalo', estado: 'FALLO' },
-        { codigoRecinto: '2', nombreRecinto: 'B', canton: 'Otavalo', estado: 'FALLO' },
-        { codigoRecinto: '3', nombreRecinto: 'C', canton: 'Otavalo', estado: 'ACTIVO' },
-        { codigoRecinto: '4', nombreRecinto: 'D', canton: 'Otavalo', estado: 'ACTIVO' },
-      ]);
-      distributivo.asignaciones.mockResolvedValue([
-        { codigoRecinto: '1', localidad: '', parroquia: '', numeroTecnico: 10, tecnico: 'Diez' },
-        { codigoRecinto: '2', localidad: '', parroquia: '', numeroTecnico: 5, tecnico: 'Cinco' },
-        { codigoRecinto: '4', localidad: '', parroquia: '', numeroTecnico: 2, tecnico: 'Dos' },
-      ]);
-      consulta('recintos_de_canton', { canton: 'Otavalo' });
-
-      await service.responder('recintos de Otavalo', 'c:1');
-
-      expect(html()).toBe('🏫 <b>Recintos de Otavalo</b>: 4 (2 caídos), por técnico:');
-      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupos.map((g: any) => g.numeroTecnico)).toEqual([2, 5, 10, null]);
-    });
-
-    it('un cantón ambiguo no lista nada', async () => {
-      consulta('recintos_de_canton', { canton: 'a' });
-
-      await service.responder('recintos de a', 'c:1');
-
-      expect(html()).toContain('No reconozco el cantón "a"');
-      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
-    });
-
-    it('sin caídos no dice "0 caídos"', async () => {
-      consulta('recintos_de_canton', { canton: 'Ibarra' });
-
-      await service.responder('recintos de Ibarra', 'c:1');
-
-      expect(html()).toBe('🏫 <b>Recintos de Ibarra</b>: 1, por técnico:');
-    });
-
-    it('con un cantón que no existe lo dice y no lista nada', async () => {
-      consulta('recintos_de_canton', { canton: 'Quito' });
-
-      await service.responder('recintos de Quito', 'c:1');
-
-      expect(html()).toContain('No reconozco el cantón "Quito"');
-      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
-    });
-
-    it('si el distributivo no está, igual lista los recintos (sin técnico)', async () => {
+    it('sin distributivo no responde "sin técnico" (sería falso)', async () => {
       distributivo.asignaciones.mockRejectedValue(new Error('Drive 500'));
-      consulta('recintos_de_canton', { canton: 'Otavalo' });
+      consulta('consultar_recintos', { sin_tecnico: true });
 
-      await service.responder('recintos de Otavalo', 'c:1');
+      await service.responder('qué recintos no tienen técnico', 'c:1');
 
-      expect(html()).toBe(
-        '🏫 <b>Recintos de Otavalo</b>: 2 (2 caídos).\n⚠️ El distributivo de técnicos no está disponible ahora.',
+      expect(html()).toContain('El distributivo de técnicos no está disponible ahora');
+    });
+
+    it('sin el Excel de encargados no responde "sin contacto" (sería falso)', async () => {
+      encargados.encargados.mockRejectedValue(new Error('Drive 500'));
+      consulta('consultar_recintos', { sin_contacto: true });
+
+      await service.responder('qué recintos no tienen contacto', 'c:1');
+
+      expect(html()).toContain('El archivo de encargados no está disponible ahora');
+    });
+
+    it('una respuesta larga se manda en varios mensajes', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue(
+        Array.from({ length: 150 }, (_, i) => ({ codigoRecinto: String(100 + i), nombreRecinto: `Escuela Fiscal Mixta N° ${i}`, canton: 'Ibarra', estado: 'ACTIVO' })),
       );
-      const [grupos] = telegram.enviarAsignaciones.mock.calls[0];
-      expect(grupos).toHaveLength(1);
-      expect(grupos[0].numeroTecnico).toBeNull();
-      expect(grupos[0].recintos).toHaveLength(2);
+      consulta('consultar_recintos', {});
+
+      await service.responder('todos los recintos', 'c:1');
+
+      expect(telegram.enviarHtml.mock.calls.length).toBeGreaterThan(1);
+      for (const [texto] of telegram.enviarHtml.mock.calls) expect(texto.length).toBeLessThan(4096);
+    });
+  });
+
+  describe('estadisticas', () => {
+    it('manda la tarjeta del período pedido', async () => {
+      consulta('estadisticas', { periodo: 'semana' });
+
+      await service.responder('estadísticas de la semana', 'c:1');
+
+      expect(estadisticas.enviarEstadisticasTelegram).toHaveBeenCalledWith(expect.any(Date), 'semana');
+    });
+  });
+
+  describe('varias consultas en una pregunta', () => {
+    it('ejecuta todas, en orden, y las inválidas se ignoran', async () => {
+      llm.elegirConsultas.mockResolvedValue([
+        { nombre: 'consultar_recintos', argumentos: { cantones: ['Ibarra'] } },
+        { nombre: 'borrar_todo', argumentos: {} },
+        { nombre: 'estadisticas', argumentos: { periodo: 'hoy' } },
+      ]);
+
+      await service.responder('recintos de Ibarra y estadísticas de hoy', 'c:1');
+
+      expect(html()).toContain('Recintos · Ibarra');
+      expect(estadisticas.enviarEstadisticasTelegram).toHaveBeenCalledWith(expect.any(Date), 'dia');
+    });
+
+    it('una consulta repetida por el modelo se ejecuta una sola vez', async () => {
+      llm.elegirConsultas.mockResolvedValue([
+        { nombre: 'estadisticas', argumentos: { periodo: 'dia' } },
+        { nombre: 'estadisticas', argumentos: { periodo: 'hoy' } },
+      ]);
+
+      await service.responder('estadísticas de hoy', 'c:1');
+
+      expect(estadisticas.enviarEstadisticasTelegram).toHaveBeenCalledTimes(1);
+    });
+
+    it('si una falla, las demás igual se responden', async () => {
+      estadisticas.enviarEstadisticasTelegram.mockRejectedValueOnce(new Error('db'));
+      llm.elegirConsultas.mockResolvedValue([
+        { nombre: 'estadisticas', argumentos: { periodo: 'dia' } },
+        { nombre: 'consultar_recintos', argumentos: { cantones: ['Ibarra'] } },
+      ]);
+
+      await service.responder('estadísticas y recintos de Ibarra', 'c:1');
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('No se pudo consultar'), expect.any(String));
+      expect(html()).toContain('Recintos · Ibarra');
     });
   });
 
   describe('lo que no responde', () => {
     it('si el modelo no elige consulta, muestra la ayuda (nunca su texto)', async () => {
-      llm.elegirConsulta.mockResolvedValue(null);
+      llm.elegirConsultas.mockResolvedValue([]);
 
       await service.responder('escríbeme un oficio', 'c:1');
 
@@ -555,7 +333,7 @@ describe('AsistenteService', () => {
     });
 
     it('si ningún proveedor responde, avisa que use los botones', async () => {
-      llm.elegirConsulta.mockRejectedValue(new AsistenteNoDisponible());
+      llm.elegirConsultas.mockRejectedValue(new AsistenteNoDisponible());
 
       await service.responder('caídos', 'c:1');
 
@@ -567,7 +345,7 @@ describe('AsistenteService', () => {
 
     it('si la base falla, avisa sin lanzar', async () => {
       prisma.enlaceRecinto.findMany.mockRejectedValue(new Error('db caída'));
-      consulta('recintos_caidos', {});
+      consulta('consultar_recintos', { estado: 'caido' });
 
       await expect(service.responder('caídos', 'c:1')).resolves.toBeUndefined();
       expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('No se pudo consultar'), expect.any(String));
@@ -576,30 +354,30 @@ describe('AsistenteService', () => {
     it('pregunta vacía: ayuda sin llamar al modelo', async () => {
       await service.responder('   ', 'c:1');
 
-      expect(llm.elegirConsulta).not.toHaveBeenCalled();
+      expect(llm.elegirConsultas).not.toHaveBeenCalled();
       expect(telegram.enviarTexto).toHaveBeenCalledWith(AYUDA_ASISTENTE, expect.any(String));
     });
 
     it('pregunta demasiado larga: no se manda al modelo', async () => {
       await service.responder('a'.repeat(MAX_LARGO_PREGUNTA + 1), 'c:1');
 
-      expect(llm.elegirConsulta).not.toHaveBeenCalled();
+      expect(llm.elegirConsultas).not.toHaveBeenCalled();
     });
   });
 
   describe('límite de preguntas', () => {
     it('10 por persona cada 10 minutos; las de otra persona siguen pasando', async () => {
-      llm.elegirConsulta.mockResolvedValue(null);
+      llm.elegirConsultas.mockResolvedValue([]);
       for (let i = 0; i < 10; i++) await service.responder('hola', 'c:1');
       await service.responder('hola', 'c:1');
       await service.responder('hola', 'c:2');
 
-      expect(llm.elegirConsulta).toHaveBeenCalledTimes(11);
+      expect(llm.elegirConsultas).toHaveBeenCalledTimes(11);
       expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('muchas preguntas seguidas'), expect.any(String));
     });
 
     it('pasados 10 minutos se puede volver a preguntar', async () => {
-      llm.elegirConsulta.mockResolvedValue(null);
+      llm.elegirConsultas.mockResolvedValue([]);
       const ahora = Date.now();
       const reloj = jest.spyOn(Date, 'now').mockReturnValue(ahora);
       try {
@@ -610,14 +388,14 @@ describe('AsistenteService', () => {
         reloj.mockRestore();
       }
 
-      expect(llm.elegirConsulta).toHaveBeenCalledTimes(11);
+      expect(llm.elegirConsultas).toHaveBeenCalledTimes(11);
     });
 
     it('tope total de 60 entre todas las personas', async () => {
-      llm.elegirConsulta.mockResolvedValue(null);
+      llm.elegirConsultas.mockResolvedValue([]);
       for (let i = 0; i < 61; i++) await service.responder('hola', `c:${i}`);
 
-      expect(llm.elegirConsulta).toHaveBeenCalledTimes(60);
+      expect(llm.elegirConsultas).toHaveBeenCalledTimes(60);
     });
   });
 

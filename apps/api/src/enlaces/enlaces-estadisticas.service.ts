@@ -221,9 +221,10 @@ export class EnlacesEstadisticasService {
     return { titulo, actual, anterior: anterior.datosParciales ? null : anterior, comparaHastaAhora };
   }
 
-  /** Botón "📊 Estadísticas": la tarjeta de hoy, con botones para ver la semana y el mes. */
-  async enviarEstadisticasTelegram(ahora = new Date()): Promise<void> {
-    const tarjeta = await this.tarjeta(TITULO_ACTUAL.dia, 'dia', diaEcuador(ahora), ahora);
+  /** Botón "📊 Estadísticas": la tarjeta de hoy (o del período que pidió el asistente),
+   * con botones para cambiar entre hoy, la semana y el mes. */
+  async enviarEstadisticasTelegram(ahora = new Date(), periodo: PeriodoEstadisticasEnlaces = 'dia'): Promise<void> {
+    const tarjeta = await this.tarjeta(TITULO_ACTUAL[periodo], periodo, diaEcuador(ahora), ahora);
     await this.telegram.enviarTarjetaEstadisticas(tarjeta, true);
   }
 
