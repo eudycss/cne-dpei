@@ -1,4 +1,4 @@
-import { HERRAMIENTAS_MODELO, validarConsulta } from './herramientas';
+import { HERRAMIENTAS_MODELO, INSTRUCCIONES_MODELO, validarConsulta } from './herramientas';
 
 const SIN_FILTROS = {
   tipo: 'consultar_recintos',
@@ -91,6 +91,11 @@ describe('validarConsulta', () => {
     ['consultar_recintos', { parroquias: { a: 1 } }],
   ])('rechaza parámetros inválidos de %s (%j)', (nombre, args) => {
     expect(validarConsulta(nombre, args)).toBeNull();
+  });
+
+  it('las instrucciones piden solo los nombres de los técnicos si no piden sus recintos', () => {
+    expect(INSTRUCCIONES_MODELO).toContain('"lista los técnicos"');
+    expect(INSTRUCCIONES_MODELO).toContain('no piden sus recintos, usa siempre solo_contar true');
   });
 
   it('cada herramienta que se ofrece al modelo tiene su validación', () => {

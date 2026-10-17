@@ -127,7 +127,10 @@ export const INSTRUCCIONES_MODELO =
   '→ tecnicos [Willy]; "solo los caídos de Jairo" → tecnicos [Jairo], estado caido; "qué recintos no tienen ' +
   'técnico" → sin_tecnico true; "qué recintos no tienen contacto" → sin_contacto true; "cuántos caídos hay en ' +
   'Ibarra" → cantones [Ibarra], estado caido, solo_contar true; "contactos de los caídos" → estado caido, ' +
-  'con_contacto true. ' +
+  'con_contacto true; "lista los técnicos", "qué técnicos hay" o "quiénes son los técnicos" → agrupar_por ' +
+  'tecnico, solo_contar true. ' +
+  'Regla: si preguntan por técnicos (quiénes son o cuántos) y no piden sus recintos, usa siempre solo_contar true; ' +
+  'lista los recintos de cada técnico solo si los piden ("técnicos con sus recintos", "recintos de cada técnico"). ' +
   'Usa estadisticas para preguntas sobre caídas en el tiempo (hoy, esta semana, este mes, cuál se cayó más). ' +
   'Si la pregunta pide cosas distintas, puedes llamar hasta 3 herramientas. ' +
   'Los cantones de Imbabura son Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí y Pimampiro.';
