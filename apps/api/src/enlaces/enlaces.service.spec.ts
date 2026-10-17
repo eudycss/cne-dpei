@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { EnlacesService } from './enlaces.service';
+import { EnlacesService, tipoChatTelegram } from './enlaces.service';
 import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import {
@@ -50,6 +50,7 @@ describe('EnlacesService', () => {
     enviarRecuperados: jest.fn().mockResolvedValue(undefined),
     enviarTexto: jest.fn().mockResolvedValue(undefined),
     responderBoton: jest.fn().mockResolvedValue(undefined),
+    responderEn: jest.fn((_chatId: string, fn: () => Promise<unknown>) => fn()),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
 
@@ -972,6 +973,165 @@ describe('EnlacesService', () => {
         expect.stringContaining('No se pudieron calcular las estadísticas'),
         expect.any(String),
       );
+    });
+
+    describe('grupos de consulta (TELEGRAM_CHAT_IDS_CONSULTA)', () => {
+      beforeEach(() => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        process.env.TELEGRAM_CHAT_IDS_CONSULTA = ' -100777 , -100999 ';
+        prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+      });
+      afterEach(() => {
+        delete process.env.TELEGRAM_CHAT_IDS_CONSULTA;
+      });
+
+      it('un grupo de consulta puede usar /caidos y la respuesta va a su propio chat', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '/caidos', chat: { id: '-100999' } },
+        });
+
+        expect(telegram.responderEn).toHaveBeenCalledWith('-100999', expect.any(Function));
+        expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
+      });
+
+      it('el grupo principal sigue respondiendo como siempre, sin cambiar de destino', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '/caidos', chat: { id: '-100200300' } },
+        });
+
+        expect(telegram.responderEn).not.toHaveBeenCalled();
+        expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
+      });
+
+      it('un chat que no está en la lista se sigue ignorando', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '/caidos', chat: { id: '-100555' } },
+        });
+
+        expect(telegram.responderEn).not.toHaveBeenCalled();
+        expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      });
+
+      it('sin TELEGRAM_CHAT_ID el bot está apagado también para los grupos de consulta', async () => {
+        delete process.env.TELEGRAM_CHAT_ID;
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '/caidos', chat: { id: '-100999' } },
+        });
+
+        expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      });
+
+      it('los botones Hoy/Semana/Mes desde un grupo de consulta editan el mensaje en ese grupo', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          callback_query: { id: 'cb-9', data: 'est:dia', message: { message_id: 88, chat: { id: '-100777' } } },
+        });
+
+        expect(telegram.responderEn).toHaveBeenCalledWith('-100777', expect.any(Function));
+        expect(telegram.responderBoton).toHaveBeenCalledWith('cb-9');
+        expect(estadisticas.mostrarPeriodoTelegram).toHaveBeenCalledWith('dia', 88);
+      });
+
+      it('un toque en el grupo principal no frena el de otro chat con el mismo message_id', async () => {
+        const boton = (chatId: string) => ({
+          callback_query: { id: 'cb', data: 'est:mes', message: { message_id: 50, chat: { id: chatId } } },
+        });
+        await service.procesarComandoTelegram('secreto123', boton('-100200300'));
+        await service.procesarComandoTelegram('secreto123', boton('-100999'));
+
+        expect(estadisticas.mostrarPeriodoTelegram).toHaveBeenCalledTimes(2);
+      });
+
+      it('"Ingresar código" desde un grupo de consulta pregunta y responde en ese grupo', async () => {
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' });
+        const msg = (text: string) => ({ message: { text, chat: { id: '-100999' }, from: { id: 111 } } });
+
+        await service.procesarComandoTelegram('secreto123', msg(TEXTO_BOTON_INGRESAR_CODIGO));
+        await service.procesarComandoTelegram('secreto123', msg('978'));
+
+        expect(telegram.responderEn).toHaveBeenCalledTimes(2);
+        expect(telegram.responderEn).toHaveBeenCalledWith('-100999', expect.any(Function));
+        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(expect.stringContaining('Escuela Central'), expect.any(String));
+      });
+
+      it('una espera de código abierta en el grupo principal no se consume desde un grupo de consulta', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100999' }, from: { id: 111 } },
+        });
+
+        expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('un botón desde un chat que no está en la lista se ignora', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          callback_query: { id: 'cb', data: 'est:mes', message: { message_id: 51, chat: { id: '-100555' } } },
+        });
+
+        expect(telegram.responderBoton).not.toHaveBeenCalled();
+        expect(telegram.responderEn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('tipoChatTelegram', () => {
+      afterEach(() => {
+        delete process.env.TELEGRAM_CHAT_ID;
+        delete process.env.TELEGRAM_CHAT_IDS_CONSULTA;
+      });
+
+      it('sin TELEGRAM_CHAT_IDS_CONSULTA solo reconoce el grupo principal (como antes)', () => {
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+
+        expect(tipoChatTelegram(-100200300)).toBe('principal');
+        expect(tipoChatTelegram('-100999')).toBeNull();
+      });
+
+      it('tolera espacios y comas sobrantes, y el principal gana si también está en la lista', () => {
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        process.env.TELEGRAM_CHAT_IDS_CONSULTA = ',, -100999 ,-100200300, ';
+
+        expect(tipoChatTelegram(-100999)).toBe('consulta');
+        expect(tipoChatTelegram('-100200300')).toBe('principal');
+        expect(tipoChatTelegram('')).toBeNull();
+      });
+    });
+
+    it('con el notificador real, la respuesta a un grupo de consulta sale con el chat_id de ese grupo', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      process.env.TELEGRAM_CHAT_IDS_CONSULTA = '-100999';
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      const fetchOriginal = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+      try {
+        const moduleRef = await Test.createTestingModule({
+          providers: [
+            EnlacesService,
+            TelegramNotifier,
+            { provide: PrismaService, useValue: prisma },
+            { provide: SheetsEnlacesClient, useValue: sheetsClient },
+            { provide: NotificationsService, useValue: notifications },
+            { provide: EnlacesEstadisticasService, useValue: estadisticas },
+            { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
+            { provide: EnlacesEscalamientoService, useValue: escalamiento },
+          ],
+        }).compile();
+        const real = moduleRef.get(EnlacesService);
+
+        await real.procesarComandoTelegram('secreto123', { message: { text: '/caidos', chat: { id: '-100999' } } });
+        await real.reenviarListaTelegram();
+
+        const chats = (global.fetch as jest.Mock).mock.calls.map(([, o]) => JSON.parse(o.body).chat_id);
+        expect(chats).toEqual(['-100999', '-100200300']);
+      } finally {
+        global.fetch = fetchOriginal;
+        delete process.env.TELEGRAM_CHAT_IDS_CONSULTA;
+        delete process.env.TELEGRAM_BOT_TOKEN;
+      }
     });
 
     describe('botones Hoy/Semana/Mes de la tarjeta', () => {

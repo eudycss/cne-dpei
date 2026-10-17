@@ -59,6 +59,20 @@ function normalizarCanton(valor: string | null | undefined): string | null {
   return tituloCase.slice(0, CANTON_MAX_LEN);
 }
 
+/** 'principal' = TELEGRAM_CHAT_ID (recibe los avisos y puede consultar). 'consulta' =
+ * algún chat de TELEGRAM_CHAT_IDS_CONSULTA (separados por coma): solo puede usar los
+ * comandos, que son de lectura, y nunca recibe avisos automáticos. null = se ignora. */
+export function tipoChatTelegram(chatId: number | string): 'principal' | 'consulta' | null {
+  const id = String(chatId);
+  if (process.env.TELEGRAM_CHAT_ID && id === process.env.TELEGRAM_CHAT_ID) return 'principal';
+  const consulta = (process.env.TELEGRAM_CHAT_IDS_CONSULTA ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  // Sin chat principal el bot está apagado: tampoco responde a grupos de consulta.
+  return process.env.TELEGRAM_CHAT_ID && consulta.includes(id) ? 'consulta' : null;
+}
+
 /** Compara el secreto del webhook en tiempo constante — el endpoint es público y este
  * es el único gate antes de reaccionar, así que una comparación normal (que corta en
  * el primer byte distinto) filtraría cuánto del secreto acertó un atacante. */
@@ -83,8 +97,9 @@ export class EnlacesService {
    * limpia, lo peor que pasa es que la persona tenga que tocar el botón de nuevo. */
   private readonly esperandoCodigo = new Map<string, number>();
   private static readonly ESPERA_CODIGO_TTL_MS = 10 * 60 * 1000;
-  /** Último toque de Hoy/Semana/Mes por mensaje (message_id → ms). */
-  private readonly ultimoToque = new Map<number, number>();
+  /** Último toque de Hoy/Semana/Mes por mensaje ("chatId:message_id" → ms): los
+   * message_id se repiten entre chats distintos. */
+  private readonly ultimoToque = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -468,7 +483,7 @@ export class EnlacesService {
    * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
-   * distinto al configurado, texto que no matchea nada de esto) se ignora en
+   * que no es el principal ni uno de consulta, texto que no matchea nada de esto) se ignora en
    * silencio — este endpoint es público, así que nunca debe reaccionar a tráfico
    * no confiable. */
   async procesarComandoTelegram(secretRecibido: string | undefined, update: TelegramUpdate): Promise<void> {
@@ -488,17 +503,26 @@ export class EnlacesService {
     const chatId = update.message?.chat?.id;
     if (!textoOriginal || !texto || chatId === undefined) return;
 
-    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
-    if (!chatConfigurado || String(chatId) !== chatConfigurado) {
+    const tipoChat = tipoChatTelegram(chatId);
+    if (!tipoChat) {
       this.log.warn(`Webhook de Telegram: mensaje desde un chat no autorizado (${chatId}) — se ignora`);
       return;
     }
+    const atender = () => this.atenderMensajeTelegram(textoOriginal, texto, chatId, update.message?.from?.id);
+    // Un grupo de consulta recibe la respuesta en su propio chat; el principal, como siempre.
+    await (tipoChat === 'consulta' ? this.telegram.responderEn(String(chatId), atender) : atender());
+  }
 
+  private async atenderMensajeTelegram(
+    textoOriginal: string,
+    texto: string,
+    chatId: number | string,
+    userId: number | string | undefined,
+  ): Promise<void> {
     // El flujo de "ingresar código" depende de identificar a la persona (chat:usuario);
     // si Telegram no manda from.id (ej. admin anónimo del grupo) no hay forma segura de
     // aislar su espera de la de otra persona, así que ese flujo se ignora para este
     // mensaje — /caidos y su botón siguen funcionando igual, no dependen de from.id.
-    const userId = update.message?.from?.id;
     const claveEspera = userId !== undefined ? `${chatId}:${userId}` : undefined;
 
     if (texto === TEXTO_BOTON_INGRESAR_CODIGO.toLowerCase()) {
@@ -564,22 +588,27 @@ export class EnlacesService {
   }
 
   /** Botones Hoy/Semana/Mes de la tarjeta de estadísticas: cambian el mismo
-   * mensaje al período tocado. Solo en el chat configurado y con un
+   * mensaje al período tocado. Solo en el chat principal o uno de consulta, y con un
    * callback_data conocido; cualquier otra cosa se ignora. */
   private async procesarBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
-    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
     const chatId = boton.message?.chat?.id;
-    if (!chatConfigurado || chatId === undefined || String(chatId) !== chatConfigurado) {
+    const tipoChat = chatId === undefined ? null : tipoChatTelegram(chatId);
+    if (!tipoChat) {
       this.log.warn(`Webhook de Telegram: botón desde un chat no autorizado (${chatId}) — se ignora`);
       return;
     }
+    const atender = () => this.atenderBotonTelegram(boton);
+    await (tipoChat === 'consulta' ? this.telegram.responderEn(String(chatId), atender) : atender());
+  }
+
+  private async atenderBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
     // Primero se contesta el toque (aunque luego se ignore), para que el botón no
     // quede "cargando" en el cliente de quien lo tocó.
     await this.telegram.responderBoton(boton.id);
     const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
     const messageId = boton.message?.message_id;
     if (!periodo || typeof messageId !== 'number') return;
-    if (this.toqueDemasiadoSeguido(messageId)) return;
+    if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${messageId}`)) return;
     try {
       await this.estadisticas.mostrarPeriodoTelegram(periodo, messageId);
     } catch (e) {
@@ -592,12 +621,12 @@ export class EnlacesService {
   }
 
   /** true si ese mensaje se tocó hace menos de PAUSA_ENTRE_TOQUES_MS (y si no, lo registra). */
-  private toqueDemasiadoSeguido(messageId: number, ahora = Date.now()): boolean {
-    const anterior = this.ultimoToque.get(messageId);
+  private toqueDemasiadoSeguido(clave: string, ahora = Date.now()): boolean {
+    const anterior = this.ultimoToque.get(clave);
     if (anterior !== undefined && ahora - anterior < PAUSA_ENTRE_TOQUES_MS) return true;
     // Solo importan los toques recientes: el mapa no crece sin límite.
     for (const [id, t] of this.ultimoToque) if (ahora - t >= PAUSA_ENTRE_TOQUES_MS) this.ultimoToque.delete(id);
-    this.ultimoToque.set(messageId, ahora);
+    this.ultimoToque.set(clave, ahora);
     return false;
   }
 

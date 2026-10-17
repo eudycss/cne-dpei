@@ -96,7 +96,7 @@ describe('formatearEscalamiento', () => {
     expect(por7d).toContain('⚠️ Inestable: 6 caídas en 7 días');
   });
 
-  it('un posible corte de zona va en un bloque, sin repetir el sector en cada recinto', () => {
+  it('un posible corte de luz o internet va en un bloque, sin repetir el sector en cada recinto', () => {
     const [texto] = formatearEscalamiento([
       { zona: 'Quiroga', recintos: [alerta('1961'), alerta('1962')] },
       { zona: null, recintos: [alerta('28', { canton: 'Ibarra', parroquia: '' })] },
@@ -485,6 +485,44 @@ describe('TelegramNotifier', () => {
       const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
       expect(url).toBe('https://api.telegram.org/bottok123/answerCallbackQuery');
       expect(JSON.parse(opts.body)).toEqual({ callback_query_id: 'cb-1' });
+    });
+  });
+
+  describe('responderEn (grupos de consulta)', () => {
+    const chatDe = (llamada: number) =>
+      JSON.parse((global.fetch as jest.Mock).mock.calls[llamada][1].body).chat_id;
+
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+
+    it('lo que se envía dentro va al chat indicado; antes y después, al grupo principal', async () => {
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarTexto('antes', 'prueba');
+      await notifier.responderEn('-100999', () => notifier.enviarTexto('respuesta', 'prueba'));
+      await notifier.enviarTexto('después', 'prueba');
+
+      expect([chatDe(0), chatDe(1), chatDe(2)]).toEqual(['-100200300', '-100999', '-100200300']);
+    });
+
+    it('un aviso automático que sale mientras se responde a un grupo de consulta no se desvía', async () => {
+      const notifier = new TelegramNotifier();
+      let soltar!: () => void;
+      const pausa = new Promise<void>((r) => (soltar = r));
+
+      const respuesta = notifier.responderEn('-100999', async () => {
+        await pausa;
+        await notifier.enviarTexto('respuesta', 'prueba');
+      });
+      // Este envío corre "en paralelo", fuera del contexto de la respuesta.
+      await notifier.enviarListaActual([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }]);
+      soltar();
+      await respuesta;
+
+      expect([chatDe(0), chatDe(1)]).toEqual(['-100200300', '-100999']);
     });
   });
 

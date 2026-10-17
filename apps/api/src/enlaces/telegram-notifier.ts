@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Injectable, Logger } from '@nestjs/common';
 import type { EstadisticasEnlacesResponse, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
@@ -411,6 +412,16 @@ export function formatearAsignaciones(grupos: GrupoAsignacion[]): string[] {
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
+  /** Chat al que va lo que se envíe dentro de `responderEn`. Fuera de eso (avisos
+   * del cron, escalamiento, resumen diario) no hay valor y todo va a TELEGRAM_CHAT_ID. */
+  private readonly destino = new AsyncLocalStorage<string>();
+
+  /** Ejecuta `fn` enviando sus mensajes a `chatId` en vez del grupo configurado:
+   * así un grupo de consulta (p. ej. el de demos) recibe la respuesta a su propio
+   * comando sin que los avisos automáticos salgan del grupo principal. */
+  responderEn<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
+    return this.destino.run(chatId, fn);
+  }
 
   /** Manda siempre el estado COMPLETO de recintos caídos, destacando con 🚨 y negrita
    * los que pasaron de ACTIVO a FALLO en este ciclo (si los hay) — nunca un mensaje
@@ -520,7 +531,8 @@ export class TelegramNotifier {
     );
   }
 
-  /** Llama a un método de la Bot API; con `conChat`, al chat configurado. Nunca lanza. */
+  /** Llama a un método de la Bot API; con `conChat`, al chat configurado (o al de
+   * `responderEn`, si se está respondiendo a un grupo de consulta). Nunca lanza. */
   private async llamar(
     metodo: string,
     payload: Record<string, unknown>,
@@ -528,7 +540,7 @@ export class TelegramNotifier {
     conChat = true,
   ): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    const chatId = this.destino.getStore() ?? process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) {
       this.log.warn(
         `TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID no configurados — se omite el envío de ${descripcion}`,
