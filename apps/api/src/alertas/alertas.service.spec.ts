@@ -15,7 +15,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
   const kitPropio = '55555555-5555-5555-5555-555555555555';
 
   const prisma = {
-    alerta: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    alerta: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     asignacionSupervisor: { findMany: jest.fn() },
     kitElectoral: { findMany: jest.fn() },
     usuario: { findMany: jest.fn() },
@@ -197,6 +197,66 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
 
       expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
       expect(prisma.alerta.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('generarLlegadaFueraDeRango', () => {
+    beforeEach(() => {
+      prisma.alerta.findFirst.mockResolvedValue(null);
+      prisma.alerta.create.mockResolvedValue({ id: alertaId });
+    });
+
+    it('crea la alerta del recinto con distancia, margen y nombre del recinto', async () => {
+      await service.generarLlegadaFueraDeRango({
+        eventoId,
+        operadorId: operadorPropio,
+        destino: 'RECINTO',
+        nombreDestino: 'Escuela Apuela',
+        metros: 912.4,
+        margen: 160,
+      });
+
+      expect(prisma.alerta.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          eventoId,
+          operadorId: operadorPropio,
+          tipo: 'LLEGADA_RECINTO_FUERA_DE_RANGO',
+          mensaje: 'Llegada al recinto Escuela Apuela registrada sin señal a 912 m (margen 160 m). Verificar con el operador.',
+        }),
+      });
+    });
+
+    it('usa el tipo de la Delegación para la llegada al DPI', async () => {
+      await service.generarLlegadaFueraDeRango({
+        eventoId,
+        operadorId: operadorPropio,
+        destino: 'DPI',
+        nombreDestino: null,
+        metros: 500,
+        margen: 150,
+      });
+
+      expect(prisma.alerta.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tipo: 'LLEGADA_DPI_FUERA_DE_RANGO',
+          mensaje: 'Llegada a la Delegación registrada sin señal a 500 m (margen 150 m). Verificar con el operador.',
+        }),
+      });
+    });
+
+    it('no duplica una alerta abierta del mismo tipo para el operador', async () => {
+      prisma.alerta.findFirst.mockResolvedValue({ id: alertaId });
+
+      await service.generarLlegadaFueraDeRango({
+        eventoId,
+        operadorId: operadorPropio,
+        destino: 'RECINTO',
+        nombreDestino: 'X',
+        metros: 500,
+        margen: 150,
+      });
+
+      expect(prisma.alerta.create).not.toHaveBeenCalled();
     });
   });
 });

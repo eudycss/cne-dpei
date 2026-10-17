@@ -146,6 +146,29 @@ export class AlertasService {
     });
   }
 
+  // Llamado inline desde TrackingService: una llegada registrada SIN SEÑAL que
+  // al sincronizar resulta fuera del margen se acepta (el GPS y la hora son del
+  // momento del registro), pero queda a la vista del supervisor para revisarla.
+  async generarLlegadaFueraDeRango(opts: {
+    eventoId: string;
+    operadorId: string;
+    destino: 'RECINTO' | 'DPI';
+    nombreDestino: string | null;
+    metros: number;
+    margen: number;
+  }): Promise<void> {
+    const lugar =
+      opts.destino === 'RECINTO' ? `al recinto ${opts.nombreDestino ?? ''}`.trim() : 'a la Delegación';
+    await this.generarSiNoExiste({
+      eventoId: opts.eventoId,
+      operadorId: opts.operadorId,
+      tipo: opts.destino === 'RECINTO' ? 'LLEGADA_RECINTO_FUERA_DE_RANGO' : 'LLEGADA_DPI_FUERA_DE_RANGO',
+      mensaje:
+        `Llegada ${lugar} registrada sin señal a ${Math.round(opts.metros)} m ` +
+        `(margen ${Math.round(opts.margen)} m). Verificar con el operador.`,
+    });
+  }
+
   // ─── Cron: CA1, CA2, CA3 ─────────────────────────────────────────────────
 
   @Cron(CronExpression.EVERY_5_MINUTES)

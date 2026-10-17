@@ -845,6 +845,7 @@ export class TrackingService {
     // holgura por la imprecisión que reporta el GPS del propio celular (con
     // tope, para que un valor basura no anule el control). PostGIS::geography
     // devuelve metros directos.
+    let fueraDeRango: { metros: number; margen: number } | null = null;
     if (recintoId) {
       const filas = await this.prisma.$queryRaw<{ metros: number | null }[]>`
         SELECT ST_Distance(
@@ -863,9 +864,14 @@ export class TrackingService {
         const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
         const margen = (config?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT) + holgura;
         if (metros > margen) {
-          throw new BadRequestException(
-            `Estás a ${Math.round(metros)} m del recinto. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
-          );
+          // Registrada sin señal: el operador ya no puede acercarse a corregirla.
+          // Se acepta y se alerta al supervisor en vez de perderla.
+          if (!parsed.desdeOffline) {
+            throw new BadRequestException(
+              `Estás a ${Math.round(metros)} m del recinto. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+            );
+          }
+          fueraDeRango = { metros, margen };
         }
       }
     }
@@ -887,6 +893,16 @@ export class TrackingService {
     const recintoNombre = recintoId
       ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
       : null;
+
+    if (fueraDeRango) {
+      await this.alertas.generarLlegadaFueraDeRango({
+        eventoId: evento.id,
+        operadorId,
+        destino: 'RECINTO',
+        nombreDestino: recintoNombre,
+        ...fueraDeRango,
+      });
+    }
 
     await this.notifications.encolarLlegadaRecinto({
       operadorId,
@@ -1891,6 +1907,7 @@ export class TrackingService {
       WHERE ca.evento_id = ${evento.id}::uuid AND ca.delegacion_ubicacion IS NOT NULL;
     `;
     const metrosDelegacion = filasDelegacion[0]?.metros;
+    let fueraDeRango: { metros: number; margen: number } | null = null;
     if (metrosDelegacion != null) {
       const config = await this.prisma.configAlerta.findUnique({
         where: { eventoId: evento.id },
@@ -1899,9 +1916,13 @@ export class TrackingService {
       const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
       const margen = (config?.margenLlegadaDpiMetros ?? MARGEN_LLEGADA_DPI_METROS_DEFAULT) + holgura;
       if (metrosDelegacion > margen) {
-        throw new BadRequestException(
-          `Estás a ${Math.round(metrosDelegacion)} m de la Delegación. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
-        );
+        // Mismo criterio que la llegada al recinto: sin señal se acepta y se alerta.
+        if (!parsed.desdeOffline) {
+          throw new BadRequestException(
+            `Estás a ${Math.round(metrosDelegacion)} m de la Delegación. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+          );
+        }
+        fueraDeRango = { metros: metrosDelegacion, margen };
       }
     }
 
@@ -1933,6 +1954,16 @@ export class TrackingService {
     const recintoNombre = recintoId
       ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
       : null;
+
+    if (fueraDeRango) {
+      await this.alertas.generarLlegadaFueraDeRango({
+        eventoId: evento.id,
+        operadorId,
+        destino: 'DPI',
+        nombreDestino: null,
+        ...fueraDeRango,
+      });
+    }
 
     await this.notifications.encolarLlegadaDpi({
       operadorId,
