@@ -126,14 +126,31 @@ describe('enqueue + flushQueue', () => {
     await expect(leerRechazadas()).resolves.toEqual([]);
   });
 
-  it('con 409 (ya registrado) la da por enviada sin aviso de rechazo', async () => {
-    (api.post as jest.Mock).mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+  it('con 409 de duplicado ("Ya registraste…") la da por enviada sin aviso de rechazo', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 409, data: { message: 'Ya registraste tu llegada al recinto' } },
+    });
     await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
 
     await flushQueue();
 
     await expect(contarPendientes()).resolves.toBe(0);
     await expect(leerRechazadas()).resolves.toEqual([]);
+  });
+
+  it('un 409 que no es duplicado (conflicto real) queda como rechazo con su motivo', async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 409, data: { message: 'Tus kits están asignados a varios recintos. Contacta al administrador.' } },
+    });
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+
+    await flushQueue();
+
+    expect((await leerRechazadas()).map((r) => r.motivo)).toEqual([
+      'Tus kits están asignados a varios recintos. Contacta al administrador.',
+    ]);
   });
 
   it('no avisa rechazos de posiciones GPS (serían ruido)', async () => {
@@ -296,6 +313,14 @@ describe('withOffline', () => {
 
     await flushQueue();
     expect(api.post).toHaveBeenCalledWith('/tracking/salida-dpi', { foo: 'bar', desdeOffline: true });
+  });
+
+  it('con 401 (sesión sin token tras entrar sin conexión) encola en vez de mostrar error', async () => {
+    const fn = jest.fn().mockRejectedValue({ isAxiosError: true, response: { status: 401 } });
+
+    await expect(withOffline('/tracking/salida-recinto', 'post', { a: 1 }, fn)).resolves.toBeNull();
+
+    await expect(contarPendientes()).resolves.toBe(1);
   });
 
   it('relanza el error si no es de red (ej. 400 de validación)', async () => {

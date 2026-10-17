@@ -708,8 +708,36 @@ describe('TrackingService', () => {
         nombreDestino: 'Escuela Apuela',
         metros: 900,
         margen: 160,
+        desfaseMinutos: expect.any(Number),
       });
+      // La alerta se crea antes del INSERT: si falla, no queda una llegada sin aviso.
+      const ordenAlerta = alertas.generarLlegadaFueraDeRango.mock.invocationCallOrder[0];
+      const ordenInsert = prisma.$queryRaw.mock.invocationCallOrder[1];
+      expect(ordenAlerta).toBeLessThan(ordenInsert);
       expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['enviada al instante', 0],
+      ['con la hora del celular en el futuro', -10 * 60_000],
+    ])('marcada sin señal pero %s: se rechaza como con señal', async (_caso, haceMs) => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida' });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1', recintoId }]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([{ kitId: 'k1' }]);
+      prisma.$queryRaw.mockResolvedValueOnce([{ metros: 900 }]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({ margenLlegadaMetros: 150 });
+
+      await expect(
+        service.registrarLlegadaRecinto(operadorId, {
+          ...geo,
+          ocurridoEn: new Date(Date.now() - haceMs).toISOString(),
+          desdeOffline: true,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(alertas.generarLlegadaFueraDeRango).not.toHaveBeenCalled();
     });
   });
 
@@ -873,6 +901,7 @@ describe('TrackingService', () => {
         nombreDestino: null,
         metros: 9999,
         margen: 150,
+        desfaseMinutos: expect.any(Number),
       });
     });
 

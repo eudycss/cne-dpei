@@ -214,6 +214,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
         nombreDestino: 'Escuela Apuela',
         metros: 912.4,
         margen: 160,
+        desfaseMinutos: 35,
       });
 
       expect(prisma.alerta.create).toHaveBeenCalledWith({
@@ -221,7 +222,9 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
           eventoId,
           operadorId: operadorPropio,
           tipo: 'LLEGADA_RECINTO_FUERA_DE_RANGO',
-          mensaje: 'Llegada al recinto Escuela Apuela registrada sin señal a 912 m (margen 160 m). Verificar con el operador.',
+          mensaje:
+            'Llegada al recinto Escuela Apuela marcada como sin señal por el celular, a 912 m (margen 160 m), ' +
+            'sincronizada 35 min después. Verificar con el operador.',
         }),
       });
     });
@@ -234,12 +237,15 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
         nombreDestino: null,
         metros: 500,
         margen: 150,
+        desfaseMinutos: 12,
       });
 
       expect(prisma.alerta.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           tipo: 'LLEGADA_DPI_FUERA_DE_RANGO',
-          mensaje: 'Llegada a la Delegación registrada sin señal a 500 m (margen 150 m). Verificar con el operador.',
+          mensaje:
+            'Llegada a la Delegación marcada como sin señal por el celular, a 500 m (margen 150 m), ' +
+            'sincronizada 12 min después. Verificar con el operador.',
         }),
       });
     });
@@ -254,6 +260,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
         nombreDestino: 'X',
         metros: 500,
         margen: 150,
+        desfaseMinutos: 12,
       });
 
       expect(prisma.alerta.create).not.toHaveBeenCalled();

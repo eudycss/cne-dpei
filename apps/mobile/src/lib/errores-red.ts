@@ -22,7 +22,13 @@ export function esReintentableEnCola(e: unknown): boolean {
   return status === 401 || status === 408 || status === 429;
 }
 
-/** 409: el servidor ya tenía ese registro (p. ej. se envió, pero la respuesta se perdió). */
+// Mensajes de 409 que significan "ya estaba registrado" (tracking.service.ts).
+// Otros 409 (p. ej. kits en varios recintos) son conflictos reales.
+const YA_REGISTRADO = /^Ya (registraste|se registró)/;
+
+/** 409 de duplicado: el servidor ya tenía ese registro (p. ej. se envió, pero la respuesta se perdió). */
 export function esYaRegistrado(e: unknown): boolean {
-  return axios.isAxiosError(e) && e.response?.status === 409;
+  if (!axios.isAxiosError(e) || e.response?.status !== 409) return false;
+  const mensaje = (e.response.data as { message?: unknown } | undefined)?.message;
+  return typeof mensaje === 'string' && YA_REGISTRADO.test(mensaje);
 }

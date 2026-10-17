@@ -156,6 +156,7 @@ export class AlertasService {
     nombreDestino: string | null;
     metros: number;
     margen: number;
+    desfaseMinutos: number;
   }): Promise<void> {
     const lugar =
       opts.destino === 'RECINTO' ? `al recinto ${opts.nombreDestino ?? ''}`.trim() : 'a la Delegación';
@@ -163,9 +164,12 @@ export class AlertasService {
       eventoId: opts.eventoId,
       operadorId: opts.operadorId,
       tipo: opts.destino === 'RECINTO' ? 'LLEGADA_RECINTO_FUERA_DE_RANGO' : 'LLEGADA_DPI_FUERA_DE_RANGO',
+      // "Marcada sin señal por el celular": el servidor no puede comprobarlo;
+      // el desfase ayuda al supervisor a juzgar si es creíble.
       mensaje:
-        `Llegada ${lugar} registrada sin señal a ${Math.round(opts.metros)} m ` +
-        `(margen ${Math.round(opts.margen)} m). Verificar con el operador.`,
+        `Llegada ${lugar} marcada como sin señal por el celular, a ${Math.round(opts.metros)} m ` +
+        `(margen ${Math.round(opts.margen)} m), sincronizada ${opts.desfaseMinutos} min después. ` +
+        'Verificar con el operador.',
     });
   }
 

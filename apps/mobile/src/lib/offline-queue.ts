@@ -231,7 +231,9 @@ export async function withOffline<T>(
     flushQueue(); // best-effort, sin await
     return result;
   } catch (e) {
-    if (isTransientError(e)) {
+    // Incluye 401: tras un login sin conexión no hay sesión en el servidor; el
+    // registro se guarda y se envía cuando el operador vuelva a entrar con señal.
+    if (esReintentableEnCola(e)) {
       await enqueue({ endpoint, method, payload: { ...payload, desdeOffline: true } });
       return null;
     }
