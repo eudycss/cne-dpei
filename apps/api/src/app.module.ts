@@ -4,6 +4,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { CAMPOS_OCULTOS_LOG } from './common/log-redact';
 import * as path from 'node:path';
 
 import { AppController } from './app.controller';
@@ -40,7 +41,7 @@ import { CustodiaModule } from './custodia/custodia.module';
           process.env.NODE_ENV === 'production'
             ? undefined
             : { target: 'pino-pretty', options: { singleLine: true } },
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        redact: CAMPOS_OCULTOS_LOG,
       },
     }),
     ScheduleModule.forRoot(),
