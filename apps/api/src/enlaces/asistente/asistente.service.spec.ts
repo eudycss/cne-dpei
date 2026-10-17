@@ -71,32 +71,94 @@ describe('AsistenteService', () => {
       expect(JSON.stringify(llm.elegirConsulta.mock.calls)).not.toContain('0991234567');
     });
 
-    it('varios resultados (hasta 5): botones para elegir', async () => {
+    it('varios resultados (hasta 5): lista con el contacto de cada uno y botones para la ficha', async () => {
+      encargados.encargados.mockResolvedValue(new Map([['1008', { nombre: 'Rosa <Q>', telefono: '0987654321' }]]));
       consulta('buscar_recinto', { texto: 'San Juan de Ilumán' });
 
       await service.responder('encargado de San Juan de Ilumán', 'c:1');
 
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
-      expect(texto).toBe('🔍 Encontré 2 recintos para "San Juan de Ilumán". ¿Cuál?');
+      expect(texto).toBe(
+        '🔍 Encontré 2 recintos para "San Juan de Ilumán":\n' +
+          '• <b>1008 · UE San Juan de Ilumán Bloque 2</b> 🔴\n   📞 Rosa &lt;Q&gt; · 0987654321\n' +
+          '• <b>1009 · UE San Juan de Iluman Bloque 1</b> 🔴\n   📞 sin registrar\n\n' +
+          'Toque uno para ver su ficha completa.',
+      );
       expect(botones.inline_keyboard).toEqual([
         [{ text: '1008 · UE San Juan de Ilumán Bloque 2', callback_data: 'asis:rec:1008' }],
         [{ text: '1009 · UE San Juan de Iluman Bloque 1', callback_data: 'asis:rec:1009' }],
       ]);
     });
 
-    it('más de 5 resultados: lista y pide más detalle, sin botones', async () => {
+    it('más de 5 resultados: lista con contactos, sin botones; más de 15 pide más detalle', async () => {
       prisma.enlaceRecinto.findMany.mockResolvedValue(
-        Array.from({ length: 12 }, (_, i) => ({ codigoRecinto: String(100 + i), nombreRecinto: `Escuela Mira ${i}`, canton: 'Ibarra', estado: 'ACTIVO' })),
+        Array.from({ length: 17 }, (_, i) => ({ codigoRecinto: String(100 + i), nombreRecinto: `Escuela Mira ${i}`, canton: 'Ibarra', estado: 'ACTIVO' })),
       );
       consulta('buscar_recinto', { texto: 'mira' });
 
       await service.responder('escuela mira', 'c:1');
 
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
-      expect(texto).toContain('Encontré 12 recintos');
-      expect(texto).toContain('… y 2 más');
-      expect(texto).toContain('Pregunte con más detalle');
+      expect(texto).toContain('Encontré 17 recintos');
+      expect(texto.match(/📞/g)).toHaveLength(15);
+      expect(texto).toContain('… y 2 más. Pregunte con más detalle');
       expect(botones).toBeUndefined();
+    });
+
+    it('con nombres largos, la lista se corta antes del límite de Telegram', async () => {
+      const largo = 'Unidad Educativa Fiscomisional Bilingüe Intercultural '.repeat(3);
+      prisma.enlaceRecinto.findMany.mockResolvedValue(
+        Array.from({ length: 15 }, (_, i) => ({ codigoRecinto: String(100 + i), nombreRecinto: `${largo}Mira ${i}`, canton: 'Ibarra', estado: 'FALLO' })),
+      );
+      encargados.encargados.mockResolvedValue(
+        new Map(Array.from({ length: 15 }, (_, i) => [String(100 + i), { nombre: 'Licenciada María José Andrade de los Ríos Pérez', telefono: '0991234567' }])),
+      );
+      consulta('buscar_recinto', { texto: 'mira' });
+
+      await service.responder('escuela mira', 'c:1');
+
+      const [texto] = telegram.enviarHtml.mock.calls[0];
+      expect(texto.length).toBeLessThan(4096);
+      expect(texto).toMatch(/… y \d+ más\. Pregunte con más detalle/);
+    });
+
+    it('si hubo que tolerar un error de tipeo, avisa antes de responder', async () => {
+      consulta('buscar_recinto', { texto: 'Iluman Bloqe 2' });
+
+      await service.responder('iluman bloqe 2', 'c:1');
+
+      const [aviso] = telegram.enviarHtml.mock.calls[0];
+      expect(aviso).toBe('🔎 No encontré "Iluman Bloqe 2" tal cual; le muestro lo más parecido. Revise que sea lo que busca.');
+      expect(telegram.enviarHtml.mock.calls[1][0]).toContain('1008 · UE San Juan de Ilumán Bloque 2');
+    });
+
+    it('"contacto de Ilumán" lista todos los recintos de la parroquia', async () => {
+      distributivo.asignaciones.mockResolvedValue([
+        ...ASIGNACIONES,
+        { codigoRecinto: '1010', localidad: '', parroquia: 'SAN JUAN DE ILUMAN', numeroTecnico: 2, tecnico: 'Ana Torres' },
+      ]);
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '1010', nombreRecinto: 'Escuela Carabuela', canton: 'Otavalo', estado: 'ACTIVO' },
+      ]);
+      consulta('buscar_recinto', { texto: 'contacto de Ilumán' });
+
+      await service.responder('dame el contacto de iluman', 'c:1');
+
+      expect(html()).toContain('Encontré 3 recintos');
+      expect(html()).toContain('1010 · Escuela Carabuela');
+    });
+
+    it('un alias del diccionario ("Golondrinas") da la ficha de su recinto', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '4241', nombreRecinto: 'Unidad Educativa Santa Ana de Cotacachi', canton: 'Cotacachi', estado: 'ACTIVO' },
+      ]);
+      consulta('buscar_recinto', { texto: 'golondrinas' });
+
+      await service.responder('cuál es el recinto de golondrinas', 'c:1');
+
+      expect(html()).toContain('📍 <b>4241 · Unidad Educativa Santa Ana de Cotacachi</b>');
     });
 
     it('sin resultados lo dice, escapando lo buscado', async () => {
@@ -200,6 +262,63 @@ describe('AsistenteService', () => {
       expect(html()).toContain('Juan Andrade');
     });
 
+    it('tolera mayúsculas y un error de tipeo ("WILLI" encuentra a Willy)', async () => {
+      distributivo.asignaciones.mockResolvedValue([
+        ...ASIGNACIONES,
+        { codigoRecinto: '1961', localidad: '', parroquia: 'GARCIA MORENO', numeroTecnico: 4, tecnico: 'Willy' },
+      ]);
+      consulta('recintos_de_tecnico', { nombre: 'WILLI' });
+
+      await service.responder('Que recintos tiene WILLI', 'c:1');
+
+      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupo.tecnico).toBe('Willy');
+      expect(html()).toContain('No encontré "WILLI" tal cual');
+    });
+
+    it('si el nombre coincide tal cual, no se mezclan los parecidos', async () => {
+      distributivo.asignaciones.mockResolvedValue([
+        ...ASIGNACIONES,
+        { codigoRecinto: '1961', localidad: '', parroquia: '', numeroTecnico: 4, tecnico: 'Ana Torrez' },
+      ]);
+      consulta('recintos_de_tecnico', { nombre: 'Ana Torres' });
+
+      await service.responder('recintos de Ana Torres', 'c:1');
+
+      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupo.tecnico).toBe('Ana Torres');
+    });
+
+    it('solo caídos: muestra únicamente los recintos con el enlace caído', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue(
+        ENLACES.map((e) => (e.codigoRecinto === '1009' ? { ...e, estado: 'ACTIVO' } : e)),
+      );
+      consulta('recintos_de_tecnico', { nombre: 'Ana', solo_caidos: true });
+
+      await service.responder('solo los caídos de Ana', 'c:1');
+
+      const [[grupo]] = telegram.enviarAsignaciones.mock.calls[0];
+      expect(grupo.recintos.map((r: any) => r.codigoRecinto)).toEqual(['1008']);
+    });
+
+    it('solo caídos sin ninguno caído lo dice', async () => {
+      consulta('recintos_de_tecnico', { nombre: 'Juan Pérez', solo_caidos: true });
+
+      await service.responder('caídos de Juan Pérez', 'c:1');
+
+      expect(telegram.enviarAsignaciones).not.toHaveBeenCalled();
+      expect(html()).toBe('✅ Juan Pérez no tiene recintos con el enlace caído ahora.');
+    });
+
+    it('solo caídos: los recintos sin enlace monitoreado no se dan por activos', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES.map((e) => ({ ...e, estado: 'ACTIVO' })));
+      consulta('recintos_de_tecnico', { nombre: 'Ana', solo_caidos: true });
+
+      await service.responder('caídos de Ana', 'c:1');
+
+      expect(html()).toBe('✅ Ana Torres no tiene recintos con el enlace caído ahora.\n(1 de sus recintos no tienen enlace monitoreado.)');
+    });
+
     it('nadie con ese nombre', async () => {
       consulta('recintos_de_tecnico', { nombre: 'Zoila' });
 
@@ -215,6 +334,115 @@ describe('AsistenteService', () => {
       await service.responder('recintos de Ana', 'c:1');
 
       expect(telegram.enviarTexto).toHaveBeenCalledWith('El distributivo de técnicos no está disponible ahora.', expect.any(String));
+    });
+  });
+
+  describe('tecnicos_de_canton', () => {
+    const ENLACES_COTACACHI = [
+      ...ENLACES,
+      { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
+      { codigoRecinto: '1963', nombreRecinto: 'Escuela Imantag', canton: 'Cotacachi', estado: 'ACTIVO' },
+    ];
+    const ASIGNACIONES_COTACACHI = [
+      ...ASIGNACIONES,
+      { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
+      { codigoRecinto: '1963', localidad: '', parroquia: 'IMANTAG', numeroTecnico: 4, tecnico: 'Willy <Chávez>' },
+    ];
+
+    it('lista los técnicos del cantón con cuántos recintos tiene cada uno (el de más recintos primero)', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES_COTACACHI);
+      distributivo.asignaciones.mockResolvedValue(ASIGNACIONES_COTACACHI);
+      consulta('tecnicos_de_canton', { canton: 'cotacachi' });
+
+      await service.responder('¿qué técnico está en Cotacachi?', 'c:1');
+
+      expect(html()).toBe(
+        '👷 <b>Técnicos en Cotacachi</b>\n' +
+          '• Willy &lt;Chávez&gt;: 2 recintos\n' +
+          '• Juan Andrade: 1 recinto\n\n' +
+          'Para ver los recintos de uno, pregunte: "recintos de" y su nombre.',
+      );
+    });
+
+    it('no cuenta recintos de otros cantones ni los que no tienen enlace monitoreado', async () => {
+      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('técnicos de Otavalo', 'c:1');
+
+      // Ana Torres tiene 1008 y 1009 en Otavalo; el 3000 no tiene enlace y no se cuenta.
+      expect(html()).toContain('• Ana Torres: 2 recintos');
+      expect(html()).not.toContain('Juan');
+    });
+
+    it('con un cantón que no existe lo dice, sin inventar técnicos', async () => {
+      consulta('tecnicos_de_canton', { canton: 'Quito' });
+
+      await service.responder('técnico de Quito', 'c:1');
+
+      expect(html()).toBe('No reconozco el cantón "Quito". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
+    });
+
+    it('un recinto repetido en el Excel se cuenta una sola vez', async () => {
+      distributivo.asignaciones.mockResolvedValue([...ASIGNACIONES, ASIGNACIONES[1]]);
+      consulta('tecnicos_de_canton', { canton: 'Otavalo' });
+
+      await service.responder('técnicos de Otavalo', 'c:1');
+
+      expect(html()).toContain('• Ana Torres: 2 recintos');
+    });
+
+    it('con empate de recintos, ordena por nombre', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '1962', nombreRecinto: 'Escuela Quiroga', canton: 'Cotacachi', estado: 'ACTIVO' },
+      ]);
+      distributivo.asignaciones.mockResolvedValue([
+        ...ASIGNACIONES,
+        { codigoRecinto: '1962', localidad: '', parroquia: 'QUIROGA', numeroTecnico: 4, tecnico: 'Bruno Vega' },
+      ]);
+      consulta('tecnicos_de_canton', { canton: 'Cotacachi' });
+
+      await service.responder('técnicos de Cotacachi', 'c:1');
+
+      expect(html()).toContain('• Bruno Vega: 1 recinto\n• Juan Andrade: 1 recinto');
+    });
+
+    it('una parte del nombre que calza con varios cantones no elige ninguno', async () => {
+      consulta('tecnicos_de_canton', { canton: 'a' });
+
+      await service.responder('técnico de a', 'c:1');
+
+      expect(html()).toBe('No reconozco el cantón "a". Cantones con recintos: Ibarra, Otavalo, Cotacachi.');
+    });
+
+    it('una parte del nombre que calza con un solo cantón sí lo elige', async () => {
+      consulta('tecnicos_de_canton', { canton: 'cota' });
+
+      await service.responder('técnico de cota', 'c:1');
+
+      expect(html()).toContain('<b>Técnicos en Cotacachi</b>');
+    });
+
+    it('cantón sin técnicos en el distributivo', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '5000', nombreRecinto: 'Escuela Urcuquí', canton: 'Urcuquí', estado: 'ACTIVO' },
+      ]);
+      consulta('tecnicos_de_canton', { canton: 'Urcuqui' });
+
+      await service.responder('técnico de Urcuquí', 'c:1');
+
+      expect(html()).toBe('👷 No hay técnicos asignados a recintos de Urcuquí en el distributivo.');
+    });
+
+    it('distributivo no disponible', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('no configurado'));
+      consulta('tecnicos_de_canton', { canton: 'Ibarra' });
+
+      await service.responder('técnico de Ibarra', 'c:1');
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith('El distributivo de técnicos no está disponible ahora.', expect.any(String));
+      expect(telegram.enviarHtml).not.toHaveBeenCalled();
     });
   });
 
