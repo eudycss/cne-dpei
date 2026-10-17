@@ -76,6 +76,28 @@ const MAX_HOLGURA_GPS_METROS = 100;
 // NULL (valor por defecto), no bloquea nada.
 const MARGEN_LLEGADA_DPI_METROS_DEFAULT = 150;
 
+// Llegada fuera de rango marcada "sin señal" por el celular: solo se acepta
+// (con alerta) si de verdad tardó en sincronizar. `desdeOffline` lo envía el
+// cliente; exigir un desfase mínimo entre la hora del registro y su llegada al
+// servidor evita que un envío inmediato con el flag se salte el control.
+const MIN_DESFASE_SIN_SENAL_MS = 2 * 60_000;
+// Tolerancia por reloj del celular adelantado.
+const MAX_ADELANTO_RELOJ_MS = 60_000;
+
+type FueraDeRango = { metros: number; margen: number; desfaseMinutos: number };
+
+/**
+ * Minutos entre el registro en el celular y su llegada al servidor, si la
+ * llegada fuera de rango puede aceptarse como hecha sin señal; null si no
+ * (con señal, envío inmediato o reloj del celular en el futuro).
+ */
+function desfaseSinSenalMinutos(desdeOffline: boolean | undefined, ocurridoEn: Date): number | null {
+  if (!desdeOffline) return null;
+  const desfase = Date.now() - ocurridoEn.getTime();
+  if (desfase < -MAX_ADELANTO_RELOJ_MS || desfase < MIN_DESFASE_SIN_SENAL_MS) return null;
+  return Math.round(desfase / 60_000);
+}
+
 /**
  * Roles que ven y verifican los kits de todos los operadores, sin pasar por
  * AsignacionSupervisor: el asistente transversal custodia todos los kits del
@@ -845,6 +867,7 @@ export class TrackingService {
     // holgura por la imprecisión que reporta el GPS del propio celular (con
     // tope, para que un valor basura no anule el control). PostGIS::geography
     // devuelve metros directos.
+    let fueraDeRango: FueraDeRango | null = null;
     if (recintoId) {
       const filas = await this.prisma.$queryRaw<{ metros: number | null }[]>`
         SELECT ST_Distance(
@@ -863,11 +886,34 @@ export class TrackingService {
         const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
         const margen = (config?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT) + holgura;
         if (metros > margen) {
-          throw new BadRequestException(
-            `Estás a ${Math.round(metros)} m del recinto. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
-          );
+          // Registrada sin señal: el operador ya no puede acercarse a corregirla.
+          // Se acepta y se alerta al supervisor en vez de perderla.
+          const desfaseMinutos = desfaseSinSenalMinutos(parsed.desdeOffline, ocurridoEn);
+          if (desfaseMinutos == null) {
+            throw new BadRequestException(
+              `Estás a ${Math.round(metros)} m del recinto. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+            );
+          }
+          fueraDeRango = { metros, margen, desfaseMinutos };
         }
       }
+    }
+
+    const recintoNombre = recintoId
+      ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
+      : null;
+
+    // La alerta va ANTES del registro: si fallara después, un reintento recibiría
+    // 409 y la llegada fuera de rango quedaría aceptada sin aviso. Es idempotente
+    // (no se duplica si ya hay una abierta).
+    if (fueraDeRango) {
+      await this.alertas.generarLlegadaFueraDeRango({
+        eventoId: evento.id,
+        operadorId,
+        destino: 'RECINTO',
+        nombreDestino: recintoNombre,
+        ...fueraDeRango,
+      });
     }
 
     const id = await this.insertarLlegadaRecinto(
@@ -884,9 +930,6 @@ export class TrackingService {
       where: { id: operadorId },
       select: { nombres: true, apellidos: true },
     });
-    const recintoNombre = recintoId
-      ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
-      : null;
 
     await this.notifications.encolarLlegadaRecinto({
       operadorId,
@@ -1891,6 +1934,7 @@ export class TrackingService {
       WHERE ca.evento_id = ${evento.id}::uuid AND ca.delegacion_ubicacion IS NOT NULL;
     `;
     const metrosDelegacion = filasDelegacion[0]?.metros;
+    let fueraDeRango: FueraDeRango | null = null;
     if (metrosDelegacion != null) {
       const config = await this.prisma.configAlerta.findUnique({
         where: { eventoId: evento.id },
@@ -1899,10 +1943,26 @@ export class TrackingService {
       const holgura = Math.min(parsed.precisionMetros ?? 0, MAX_HOLGURA_GPS_METROS);
       const margen = (config?.margenLlegadaDpiMetros ?? MARGEN_LLEGADA_DPI_METROS_DEFAULT) + holgura;
       if (metrosDelegacion > margen) {
-        throw new BadRequestException(
-          `Estás a ${Math.round(metrosDelegacion)} m de la Delegación. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
-        );
+        // Mismo criterio que la llegada al recinto: sin señal se acepta y se alerta.
+        const desfaseMinutos = desfaseSinSenalMinutos(parsed.desdeOffline, ocurridoEn);
+        if (desfaseMinutos == null) {
+          throw new BadRequestException(
+            `Estás a ${Math.round(metrosDelegacion)} m de la Delegación. Acércate (máx. ${Math.round(margen)} m) para registrar la llegada.`,
+          );
+        }
+        fueraDeRango = { metros: metrosDelegacion, margen, desfaseMinutos };
       }
+    }
+
+    // Igual que en el recinto: la alerta antes del registro (ver registrarLlegadaRecinto).
+    if (fueraDeRango) {
+      await this.alertas.generarLlegadaFueraDeRango({
+        eventoId: evento.id,
+        operadorId,
+        destino: 'DPI',
+        nombreDestino: null,
+        ...fueraDeRango,
+      });
     }
 
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`

@@ -22,12 +22,41 @@ export class LocationServicesDisabledError extends Error {
   }
 }
 
+export class UbicacionNoDisponibleError extends Error {
+  constructor() {
+    super('No se pudo obtener la ubicación a tiempo');
+    this.name = 'UbicacionNoDisponibleError';
+  }
+}
+
+/** Espera máxima a un fix GPS nuevo antes de recurrir a la última posición conocida. */
+export const LIMITE_GPS_MS = 20_000;
+/** Antigüedad máxima de la última posición conocida (el rastreo en primer plano la refresca cada 10 s). */
+export const MAX_ANTIGUEDAD_ULTIMA_POSICION_MS = 30_000;
+/** Precisión mínima exigida a la última posición conocida (igual al tope de holgura GPS). */
+export const PRECISION_ULTIMA_POSICION_METROS = 100;
+
+export type OpcionesUbicacion = {
+  /**
+   * Solo para el control informativo de cercanía: si el GPS falla o no
+   * responde en LIMITE_GPS_MS, usa la última posición conocida reciente.
+   * Los registros (llegada, salida, kits) no lo usan y exigen un fix nuevo,
+   * para no guardar una posición vieja como actual.
+   */
+  permitirUltimaConocida?: boolean;
+  limiteMs?: number;
+};
+
 /**
  * HU2-CA3: obtiene una ubicación GPS puntual (no rastreo continuo).
  * Solicita permisos si es necesario. Lanza errores tipados para que la UI
  * pueda guiar al usuario a habilitar el permiso.
+ *
+ * En zonas rurales sin datos (sin A-GPS) `getCurrentPositionAsync` puede
+ * fallar o no resolver nunca y dejar la pantalla en "Verificando…" con el
+ * botón deshabilitado (caso Apuela, 2026-10-16): ver `permitirUltimaConocida`.
  */
-export async function obtenerUbicacionPuntual(): Promise<UbicacionPuntual> {
+export async function obtenerUbicacionPuntual(opciones: OpcionesUbicacion = {}): Promise<UbicacionPuntual> {
   const servicesEnabled = await Location.hasServicesEnabledAsync();
   if (!servicesEnabled) throw new LocationServicesDisabledError();
 
@@ -39,14 +68,38 @@ export async function obtenerUbicacionPuntual(): Promise<UbicacionPuntual> {
   }
   if (!granted) throw new LocationPermissionDeniedError();
 
-  const pos = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
-  });
+  const actual = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  const pos = opciones.permitirUltimaConocida
+    ? await fixConRespaldo(actual, opciones.limiteMs ?? LIMITE_GPS_MS)
+    : await actual;
   return {
     latitud: pos.coords.latitude,
     longitud: pos.coords.longitude,
     precisionMetros: pos.coords.accuracy ?? null,
   };
+}
+
+async function fixConRespaldo(
+  actual: Promise<Location.LocationObject>,
+  limiteMs: number,
+): Promise<Location.LocationObject> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), limiteMs);
+  });
+  let pos: Location.LocationObject | null;
+  try {
+    // Un rechazo (sin señal suele ser un error rápido, no un cuelgue) cuenta igual que el timeout.
+    pos = await Promise.race([actual.catch(() => null), limite]);
+  } finally {
+    clearTimeout(timer);
+  }
+  pos ??= await Location.getLastKnownPositionAsync({
+    maxAge: MAX_ANTIGUEDAD_ULTIMA_POSICION_MS,
+    requiredAccuracy: PRECISION_ULTIMA_POSICION_METROS,
+  }).catch(() => null);
+  if (!pos) throw new UbicacionNoDisponibleError();
+  return pos;
 }
 
 /**

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueue, sincronizarPendientes } from './offline-queue';
-import { postPruebaConexion } from './queries/tracking';
+import { marcarPruebaConexionEnCopia, postPruebaConexion } from './queries/tracking';
 
 /**
  * Prueba de conexión del operador CDA (después de la llegada al recinto, antes
@@ -36,6 +36,7 @@ export async function registrarPruebaConexion(contextoId: string): Promise<strin
       method: 'post',
       payload: { ocurridoEn, desdeOffline: true },
     });
+    await marcarPruebaConexionEnCopia();
   } else {
     await postPruebaConexion({ ocurridoEn });
   }

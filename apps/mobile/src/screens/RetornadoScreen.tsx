@@ -1,13 +1,15 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { fontFamily } from '../theme/typography';
 
 export function RetornadoScreen() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const cerrarSesion = useCerrarSesion();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -26,7 +28,7 @@ export function RetornadoScreen() {
         <Text style={styles.message}>
           Has completado tu jornada electoral. Gracias por tu trabajo.
         </Text>
-        <Pressable style={styles.btnSecondary} onPress={() => logout()}>
+        <Pressable style={styles.btnSecondary} onPress={cerrarSesion}>
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </View>

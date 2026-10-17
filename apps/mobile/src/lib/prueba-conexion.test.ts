@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueue, sincronizarPendientes } from './offline-queue';
-import { postPruebaConexion } from './queries/tracking';
+import { marcarPruebaConexionEnCopia, postPruebaConexion } from './queries/tracking';
 import {
   leerPruebaConexionLocal,
   limpiarPruebaConexion,
@@ -15,6 +15,7 @@ jest.mock('./offline-queue', () => ({
 
 jest.mock('./queries/tracking', () => ({
   postPruebaConexion: jest.fn(),
+  marcarPruebaConexionEnCopia: jest.fn().mockResolvedValue(undefined),
 }));
 
 const CONTEXTO = 'evt1_r1';
@@ -47,6 +48,8 @@ describe('prueba-conexion', () => {
       payload: { ocurridoEn: hora, desdeOffline: true },
     });
     await expect(leerPruebaConexionLocal(CONTEXTO)).resolves.toBe(hora);
+    // La copia de la asignación la marca hecha: al reabrir sin señal no se reenvía duplicada.
+    expect(marcarPruebaConexionEnCopia).toHaveBeenCalled();
   });
 
   it('un error del servidor (4xx) se propaga y no marca la prueba como hecha', async () => {
