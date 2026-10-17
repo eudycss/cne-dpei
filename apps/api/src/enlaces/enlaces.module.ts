@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AsistenteService } from './asistente/asistente.service';
+import { LlmClient } from './asistente/llm.client';
 import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { EnlacesController } from './enlaces.controller';
@@ -20,6 +22,8 @@ import { TelegramNotifier } from './telegram-notifier';
     SheetsEnlacesClient,
     DistributivoTecnicosClient,
     TelegramNotifier,
+    AsistenteService,
+    LlmClient,
   ],
   exports: [EnlacesService],
 })

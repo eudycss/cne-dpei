@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Injectable, Logger } from '@nestjs/common';
 import type { EstadisticasEnlacesResponse, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
+import { asistenteHabilitado } from './asistente/llm.client';
 
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
 export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
@@ -15,14 +16,22 @@ export const TEXTO_BOTON_ESTADISTICAS = '📊 Estadísticas';
 /** Botón persistente con los recintos CDA agrupados por técnico responsable. */
 export const TEXTO_BOTON_ASIGNACIONES = '👷 Asignaciones CDA';
 
-/** Teclado fijo bajo el chat, el mismo en todos los mensajes. */
-export const TECLADO = {
-  keyboard: [
+/** Botón persistente que arranca el flujo de "escriba su pregunta" del asistente. */
+export const TEXTO_BOTON_PREGUNTAR = '💬 Preguntar';
+
+/** callback_data de los botones para elegir un recinto entre varios ("asis:rec:1008"). */
+export const PREFIJO_CALLBACK_RECINTO = 'asis:rec:';
+
+/** Teclado fijo bajo el chat, el mismo en todos los mensajes. "Preguntar" solo
+ * aparece con el asistente activado (ASISTENTE_ENABLED y alguna llave). */
+export function tecladoFijo() {
+  const filas = [
     [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
     [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
-  ],
-  resize_keyboard: true,
-};
+  ];
+  if (asistenteHabilitado()) filas.push([{ text: TEXTO_BOTON_PREGUNTAR }]);
+  return { keyboard: filas, resize_keyboard: true };
+}
 
 /** Un técnico con sus recintos y el estado actual del enlace de cada uno. */
 export interface GrupoAsignacion {
@@ -427,11 +436,13 @@ export class TelegramNotifier {
    * los que pasaron de ACTIVO a FALLO en este ciclo (si los hay) — nunca un mensaje
    * aislado de un solo recinto, para que el grupo no crea que los demás ya se
    * recuperaron. Telegram no admite texto de color, por eso la negrita. */
-  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>): Promise<void> {
+  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>, canton?: string): Promise<void> {
+    // `canton`: la lista viene filtrada (asistente), y el título tiene que decirlo.
+    const donde = canton ? ` en ${escapeHtml(canton)}` : '';
     const texto =
       enlaces.length === 0
-        ? '✅ No hay enlaces caídos en este momento.'
-        : `🔴 Enlaces caídos ahora mismo (${enlaces.length}):\n` +
+        ? `✅ No hay enlaces caídos${donde} en este momento.`
+        : `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):\n` +
           enlaces
             .map((e) => {
               const linea = formatearLinea(e);
@@ -508,13 +519,24 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, descripcion);
   }
 
+  /** Mensaje ya escapado por quien llama (respuestas del asistente), con botones
+   * propios opcionales; sin ellos lleva el teclado fijo. */
+  async enviarHtml(texto: string, descripcion: string, botones?: object): Promise<void> {
+    await this.enviarMensaje(texto, descripcion, 'HTML', botones);
+  }
+
+  /** "escribiendo…" en el chat mientras el asistente consulta al modelo. */
+  async indicarEscribiendo(): Promise<void> {
+    await this.llamar('sendChatAction', { action: 'typing' }, 'el indicador de escribiendo');
+  }
+
   /** parseMode solo lo pasan los mensajes que escapan su contenido (formatearLinea);
    * enviarTexto va sin él porque su texto libre no está escapado. */
   private async enviarMensaje(
     text: string,
     descripcion: string,
     parseMode?: 'HTML',
-    replyMarkup: object = TECLADO,
+    replyMarkup: object = tecladoFijo(),
   ): Promise<void> {
     await this.llamar(
       'sendMessage',

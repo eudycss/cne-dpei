@@ -7,7 +7,9 @@ import {
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
+  TEXTO_BOTON_PREGUNTAR,
 } from './telegram-notifier';
+import { AsistenteService } from './asistente/asistente.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
@@ -53,6 +55,10 @@ describe('EnlacesService', () => {
     responderEn: jest.fn((_chatId: string, fn: () => Promise<unknown>) => fn()),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
+  const asistente = {
+    responder: jest.fn().mockResolvedValue(undefined),
+    responderRecintoElegido: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -66,6 +72,7 @@ describe('EnlacesService', () => {
         { provide: EnlacesEstadisticasService, useValue: estadisticas },
         { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
         { provide: EnlacesEscalamientoService, useValue: escalamiento },
+        { provide: AsistenteService, useValue: asistente },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);
@@ -1118,6 +1125,7 @@ describe('EnlacesService', () => {
             { provide: EnlacesEstadisticasService, useValue: estadisticas },
             { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
             { provide: EnlacesEscalamientoService, useValue: escalamiento },
+            { provide: AsistenteService, useValue: asistente },
           ],
         }).compile();
         const real = moduleRef.get(EnlacesService);
@@ -1555,6 +1563,196 @@ describe('EnlacesService', () => {
           expect.stringContaining('Escuela Central'),
           expect.any(String),
         );
+      });
+    });
+  });
+
+  describe('asistente (💬 Preguntar, /preguntar y menciones)', () => {
+    const CHAT = '-100200300';
+    // null = sin remitente (admin anónimo del grupo).
+    const mensaje = (text: string, from: number | null = 111) =>
+      service.procesarComandoTelegram('secreto123', {
+        message: { text, chat: { id: CHAT }, ...(from === null ? {} : { from: { id: from } }) },
+      });
+
+    beforeEach(() => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+      process.env.TELEGRAM_CHAT_ID = CHAT;
+      process.env.ASISTENTE_ENABLED = 'true';
+      process.env.GROQ_API_KEY = 'gsk_prueba';
+    });
+
+    afterEach(() => {
+      delete process.env.TELEGRAM_WEBHOOK_SECRET;
+      delete process.env.TELEGRAM_CHAT_ID;
+      delete process.env.ASISTENTE_ENABLED;
+      delete process.env.GROQ_API_KEY;
+      delete process.env.TELEGRAM_BOT_USERNAME;
+    });
+
+    it('un mensaje normal del grupo NO va al asistente (no gasta cuota ni responde charlas)', async () => {
+      await mensaje('buenas tardes, ya llamé al rector del colegio Ibarra');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+      expect(telegram.enviarTexto).not.toHaveBeenCalled();
+    });
+
+    it('"Preguntar" pide la pregunta y el siguiente mensaje de esa persona va al asistente', async () => {
+      await mensaje(TEXTO_BOTON_PREGUNTAR);
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('Escriba su pregunta'), expect.any(String));
+
+      await mensaje('número del encargado del colegio Ibarra');
+
+      expect(asistente.responder).toHaveBeenCalledWith('número del encargado del colegio Ibarra', `${CHAT}:111`);
+    });
+
+    it('la espera es por persona: otro miembro que escribe no dispara el asistente', async () => {
+      await mensaje(TEXTO_BOTON_PREGUNTAR, 111);
+      await mensaje('hola a todos', 222);
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+    });
+
+    it('la espera se usa una sola vez', async () => {
+      await mensaje(TEXTO_BOTON_PREGUNTAR);
+      await mensaje('estado del 1008');
+      await mensaje('gracias');
+
+      expect(asistente.responder).toHaveBeenCalledTimes(1);
+    });
+
+    it('tocar "Caídos" después de "Preguntar" cancela la pregunta pendiente', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+      await mensaje(TEXTO_BOTON_PREGUNTAR);
+      await mensaje(TEXTO_BOTON_CAIDOS);
+      await mensaje('cualquier cosa');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+      expect(telegram.enviarListaActual).toHaveBeenCalled();
+    });
+
+    it('"Ingresar código" después de "Preguntar" cambia la espera a código', async () => {
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+      await mensaje(TEXTO_BOTON_PREGUNTAR);
+      await mensaje(TEXTO_BOTON_INGRESAR_CODIGO);
+      await mensaje('1008');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+      expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { codigoRecinto: '1008' } }),
+      );
+    });
+
+    it.each([
+      ['/preguntar qué está caído en Cotacachi', 'qué está caído en Cotacachi'],
+      ['/preguntar@CNE_Enlaces_bot qué está caído en Cotacachi', 'qué está caído en Cotacachi'],
+      ['/preguntar', ''],
+    ])('"%s" va directo al asistente', async (texto, pregunta) => {
+      await mensaje(texto);
+
+      expect(asistente.responder).toHaveBeenCalledWith(pregunta, `${CHAT}:111`);
+    });
+
+    it('con TELEGRAM_BOT_USERNAME, una mención al bot va al asistente sin la mención', async () => {
+      process.env.TELEGRAM_BOT_USERNAME = '@CNE_Enlaces_bot';
+
+      await mensaje('@cne_enlaces_bot teléfono del encargado de la UE San Juan');
+
+      expect(asistente.responder).toHaveBeenCalledWith('teléfono del encargado de la UE San Juan', `${CHAT}:111`);
+    });
+
+    it('sin TELEGRAM_BOT_USERNAME, una mención se ignora como cualquier mensaje', async () => {
+      await mensaje('@CNE_Enlaces_bot hola');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+    });
+
+    it('con el asistente apagado, /preguntar avisa y no llama al asistente', async () => {
+      delete process.env.ASISTENTE_ENABLED;
+
+      await mensaje('/preguntar caídos en Ibarra');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+      expect(telegram.enviarTexto).toHaveBeenCalledWith('El asistente no está activado en este momento.', expect.any(String));
+    });
+
+    it('sin remitente identificable (admin anónimo) no se usa el asistente y se explica por qué', async () => {
+      await mensaje('/preguntar caídos en Ibarra', null);
+      await mensaje(TEXTO_BOTON_PREGUNTAR, null);
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('modo anónimo'), expect.any(String));
+      expect(telegram.enviarTexto).toHaveBeenCalledTimes(2);
+    });
+
+    it('"/preguntar@otro_bot" se ignora si TELEGRAM_BOT_USERNAME es otro', async () => {
+      process.env.TELEGRAM_BOT_USERNAME = 'CNE_Enlaces_bot';
+
+      await mensaje('/preguntar@otro_bot caídos');
+      await mensaje('/preguntar@cne_enlaces_bot caídos');
+
+      expect(asistente.responder).toHaveBeenCalledTimes(1);
+      expect(asistente.responder).toHaveBeenCalledWith('caídos', `${CHAT}:111`);
+    });
+
+    it('una mención dentro de un correo o de otro usuario no cuenta', async () => {
+      process.env.TELEGRAM_BOT_USERNAME = 'CNE_Enlaces_bot';
+
+      await mensaje('escriban a soporte@CNE_Enlaces_bot.ec');
+      await mensaje('@CNE_Enlaces_bot_viejo hola');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+    });
+
+    it.each(['-', '@', '@@', '  '])('con TELEGRAM_BOT_USERNAME inválido ("%s") ninguna mención activa el asistente', async (usuario) => {
+      process.env.TELEGRAM_BOT_USERNAME = usuario;
+
+      await mensaje('@juan ya está');
+      await mensaje('hola @ todos');
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+    });
+
+    it('desde un chat no autorizado no se usa el asistente', async () => {
+      await service.procesarComandoTelegram('secreto123', {
+        message: { text: '/preguntar caídos', chat: { id: '-999' }, from: { id: 111 } },
+      });
+
+      expect(asistente.responder).not.toHaveBeenCalled();
+    });
+
+    describe('botones de recinto', () => {
+      const boton = (data: string, message_id = 50) =>
+        service.procesarComandoTelegram('secreto123', {
+          callback_query: { id: 'cb1', data, message: { message_id, chat: { id: CHAT } } },
+        });
+
+      it('el botón de un recinto muestra su ficha', async () => {
+        await boton('asis:rec:1008');
+
+        expect(telegram.responderBoton).toHaveBeenCalledWith('cb1');
+        expect(asistente.responderRecintoElegido).toHaveBeenCalledWith('1008');
+        expect(estadisticas.mostrarPeriodoTelegram).not.toHaveBeenCalled();
+      });
+
+      it.each(['asis:rec:', 'asis:rec:1008;x', `asis:rec:${'1'.repeat(21)}`, 'asis:rec:<b>'])('callback_data inválido "%s" se ignora', async (data) => {
+        await boton(data);
+
+        expect(asistente.responderRecintoElegido).not.toHaveBeenCalled();
+      });
+
+      it('dos toques seguidos al mismo botón consultan una sola vez', async () => {
+        await boton('asis:rec:1008', 77);
+        await boton('asis:rec:1008', 77);
+
+        expect(asistente.responderRecintoElegido).toHaveBeenCalledTimes(1);
+      });
+
+      it('tocar dos recintos distintos del mismo mensaje responde los dos', async () => {
+        await boton('asis:rec:1008', 78);
+        await boton('asis:rec:1009', 78);
+
+        expect(asistente.responderRecintoElegido.mock.calls).toEqual([['1008'], ['1009']]);
       });
     });
   });
