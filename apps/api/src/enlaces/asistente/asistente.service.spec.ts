@@ -358,8 +358,8 @@ describe('AsistenteService', () => {
 
       await service.responder('x', 'c:1');
 
-      expect(html()).toContain('• 1008 · Ana Torres · SAN JUAN DE ILUMAN · 0');
-      expect(html()).toContain('• 28 · Juan Pérez · SAGRARIO · 1');
+      expect(html()).toContain('• 1008 · Téc: Ana Torres · Parroquia: SAN JUAN DE ILUMAN · 0');
+      expect(html()).toContain('• 28 · Téc: Juan Pérez · Parroquia: SAGRARIO · 1');
       expect(html()).not.toContain('0991234567');
     });
 

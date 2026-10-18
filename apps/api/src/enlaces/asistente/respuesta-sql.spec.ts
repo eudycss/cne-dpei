@@ -44,9 +44,25 @@ describe('formatearResultadoSql', () => {
     expect(m).toBe('🔎 <b>Técnicos</b> (2)\n<i>numero_tecnico · tecnico · recintos</i>\n• 1 · Jairo &lt;b&gt; · 7\n• 2 · — · 5');
   });
 
-  it('columnas extra junto al recinto', () => {
-    const [m] = formatearResultadoSql('X', res(['codigo', 'nombre', 'tecnico'], [['1', 'UE A', 'Willy']]), false, null);
-    expect(m).toContain('• 1 — UE A · Willy');
+  it('columnas extra junto al recinto; técnico, cantón y parroquia con etiqueta', () => {
+    const [m] = formatearResultadoSql(
+      'X',
+      res(['codigo', 'nombre', 'tecnico', 'canton', 'recintos'], [['1', 'UE A', 'Willy', 'Ibarra', 3], ['2', 'UE B', null, null, 1]]),
+      false,
+      null,
+    );
+    expect(m).toContain('• 1 — UE A · Téc: Willy · Cantón: Ibarra · 3');
+    expect(m).toContain('• 2 — UE B · Téc: sin asignar · Cantón: — · 1');
+  });
+
+  it('las etiquetas escapan el valor y conviven con minutos y contactos', () => {
+    const [m] = formatearResultadoSql(
+      'X',
+      res(['codigo', 'estado', 'tecnico', 'parroquia', 'minutos_caido'], [['9', 'caido', 'Ana <b>', '', 135]]),
+      true,
+      ENCARGADOS,
+    );
+    expect(m).toContain('🔴 9 · Téc: Ana &lt;b&gt; · Parroquia: — · 2 h 15 min\n     📞 ');
   });
 
   it('las columnas de minutos se muestran como duración', () => {
