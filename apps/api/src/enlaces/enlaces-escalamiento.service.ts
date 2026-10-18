@@ -152,7 +152,7 @@ export class EnlacesEscalamientoService {
         where: { id: { in: pendientes.map((p) => p.id) } },
         data: { ultimoAviso: ahora, avisos: { increment: 1 } },
       });
-      await this.telegram.enviarEscalamiento(agruparPorZona(alertas), minutosPrimerAviso);
+      await this.telegram.enviarEscalamiento(agruparPorZona(alertas));
     } catch (e) {
       // El escalamiento nunca frena el resto del cron; el siguiente ciclo lo reintenta.
       this.log.error(`No se pudo escalar los enlaces caídos: ${(e as Error)?.message ?? e}`);
