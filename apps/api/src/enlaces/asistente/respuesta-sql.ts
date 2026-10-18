@@ -11,6 +11,16 @@ const texto = (v: ValorSql) => (v === null ? '—' : escapeHtml(String(v)));
 /** Columnas de tiempo ("minutos_caido", "minutos_total"…): 135 → "2 h 15 min". */
 const esMinutos = (columna: string) => /^minutos/i.test(columna);
 const valor = (v: ValorSql, columna: string) => (typeof v === 'number' && esMinutos(columna) ? formatearDuracion(v) : texto(v));
+/** Junto a un recinto, estas columnas llevan etiqueta: "Téc: Jairo Leal" en vez de solo "Jairo Leal". */
+const ETIQUETAS: Record<string, { etiqueta: string; vacio: string }> = {
+  tecnico: { etiqueta: 'Téc', vacio: 'sin asignar' },
+  canton: { etiqueta: 'Cantón', vacio: '—' },
+  parroquia: { etiqueta: 'Parroquia', vacio: '—' },
+};
+const valorEtiquetado = (v: ValorSql, columna: string) => {
+  const e = ETIQUETAS[columna.toLowerCase()];
+  return e ? `${e.etiqueta}: ${v === null || v === '' ? e.vacio : texto(v)}` : valor(v, columna);
+};
 
 /**
  * Arma la respuesta a partir del resultado del SQL, sea cual sea su forma:
@@ -42,7 +52,7 @@ export function formatearResultadoSql(
     if (iCodigo < 0) return `• ${fila.map((v, i) => valor(v, columnas[i])).join(' · ')}`;
     const icono = iEstado < 0 ? '•' : fila[iEstado] === 'caido' ? '🔴' : '✅';
     const nombre = iNombre >= 0 && fila[iNombre] !== null ? ` — ${escapeHtml(recortarNombre(String(fila[iNombre])))}` : '';
-    const extra = otras.length ? ` · ${otras.map((i) => valor(fila[i], columnas[i])).join(' · ')}` : '';
+    const extra = otras.length ? ` · ${otras.map((i) => valorEtiquetado(fila[i], columnas[i])).join(' · ')}` : '';
     const linea = `${icono} ${texto(fila[iCodigo])}${nombre}${extra}`;
     return mostrarContacto ? `${linea}\n     📞 ${textoEncargado(String(fila[iCodigo]), encargados)}` : linea;
   });
