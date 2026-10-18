@@ -46,7 +46,7 @@ export function NewUser() {
         <div className="card">
           <p>El usuario <strong>{created.email}</strong> fue creado correctamente.</p>
           <div className="banner">
-            Contraseña inicial: <code style={{ background: '#fff', padding: '0.2rem 0.4rem' }}>{created.initialPassword}</code>
+            Contraseña inicial: <code style={{ background: 'var(--bg-card)', padding: '0.2rem 0.4rem' }}>{created.initialPassword}</code>
             <br />
             <small>El usuario deberá cambiarla en su primer inicio de sesión.</small>
           </div>

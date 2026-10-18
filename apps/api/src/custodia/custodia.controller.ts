@@ -48,6 +48,12 @@ export class CustodiaController {
     private readonly informes: InformeCustodiaService,
   ) {}
 
+  @Get('resumen')
+  @ApiOperation({ summary: 'Avance de entregas a militares del evento activo (entregados de total)' })
+  resumen() {
+    return this.custodia.resumen();
+  }
+
   @Post('validar-kit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ficha del kit escaneado: recinto, operador, militares del recinto y entrega' })

@@ -34,7 +34,7 @@ function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => vo
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
     >
       <div className="login-card" style={{ maxWidth: 640, width: '100%', padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ margin: 0 }}>{cda.nombreRecinto}</h2>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
             {cda.operadorNombre} ·{' '}
@@ -80,7 +80,7 @@ function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => 
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
     >
       <div className="login-card" style={{ maxWidth: 480, width: '100%', padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ margin: 0 }}>Foto del militar</h2>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
             {cda.nombreRecinto} · {cda.operadorNombre}
@@ -92,7 +92,7 @@ function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => 
           {isLoading ? (
             <Cargando texto="Cargando foto…" />
           ) : isError ? (
-            <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
+            <p style={{ color: 'var(--error)' }}>No se pudo cargar la foto.</p>
           ) : url ? (
             <img src={url} alt="Foto del militar" style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 4 }} />
           ) : null}
@@ -140,7 +140,7 @@ function FotoActaModal({
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100, padding: '2rem 0' }}
     >
       <div className="login-card" style={{ maxWidth: 480, width: '100%', padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ margin: 0 }}>{TITULO_ACTA[tipo]}</h2>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
             {cda.nombreRecinto} · {cda.operadorNombre}
@@ -152,7 +152,7 @@ function FotoActaModal({
           {isLoading ? (
             <Cargando texto="Cargando reporte…" />
           ) : isError ? (
-            <p style={{ color: '#dc2626' }}>No se pudo cargar la foto.</p>
+            <p style={{ color: 'var(--error)' }}>No se pudo cargar la foto.</p>
           ) : url ? (
             <img src={url} alt={TITULO_ACTA[tipo]} style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 4 }} />
           ) : null}
@@ -305,7 +305,7 @@ export function MonitoreoPage() {
           {isLoading ? (
             <Cargando texto="Cargando operadores en ruta…" />
           ) : isError ? (
-            <p style={{ color: '#dc2626' }}>No se pudo cargar el monitoreo.</p>
+            <p style={{ color: 'var(--error)' }}>No se pudo cargar el monitoreo.</p>
           ) : operadores.length === 0 ? (
             <p style={{ opacity: 0.7 }}>No hay operadores en tránsito ni en retorno en este momento.</p>
           ) : (
@@ -315,7 +315,7 @@ export function MonitoreoPage() {
                 return (
                 <li
                   key={o.operadorId}
-                  style={{ padding: '0.6rem 0', borderBottom: '1px solid #e5e7eb' }}
+                  style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--border)' }}
                 >
                   <button
                     type="button"
@@ -389,7 +389,7 @@ export function MonitoreoPage() {
         {cdaLoading ? (
           <Cargando texto="Cargando estado de CDAs…" />
         ) : cdaError ? (
-          <p style={{ color: '#dc2626' }}>No se pudo cargar el estado de los CDAs.</p>
+          <p style={{ color: 'var(--error)' }}>No se pudo cargar el estado de los CDAs.</p>
         ) : (
           // Enfocable para poder desplazarla horizontalmente con el teclado.
           <WarmTooltipGroup>
@@ -405,8 +405,8 @@ export function MonitoreoPage() {
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
-                <th>Acta instalación</th>
-                <th>Acta escrutinio</th>
+                <th>Reporte instalación</th>
+                <th>Reporte escrutinio</th>
               </tr>
             </thead>
             <tbody>
@@ -455,7 +455,7 @@ export function MonitoreoPage() {
                         motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el reporte de instalación'}
                         ariaLabel={`Ver reporte de instalación — ${c.nombreRecinto}`}
                       >
-                        Ver acta
+                        Ver reporte
                       </BotonConMotivo>
                     </td>
                     <td>

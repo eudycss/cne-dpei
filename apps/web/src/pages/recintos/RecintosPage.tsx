@@ -320,7 +320,7 @@ export function RecintosPage() {
                         </tr>
                         {isExpandable && isExpanded && (
                           <tr>
-                            <td colSpan={colSpan} style={{ padding: '0 0.75rem 1rem 0.75rem', background: 'var(--color-surface-alt, #f4f6f8)' }}>
+                            <td colSpan={colSpan} style={{ padding: '0 0.75rem 1rem 0.75rem', background: 'var(--bg)' }}>
                               <FichaSubtable cda={r} onEdit={isAdmin ? setEditing : undefined} />
                             </td>
                           </tr>

@@ -167,7 +167,7 @@ export function AsignacionesPage() {
               flex: 1,
               maxWidth: 480,
               padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--border-input)',
               borderRadius: 6,
               fontSize: '0.9rem',
             }}
@@ -356,12 +356,12 @@ function OperadorRow({
             disabled={saving || readOnly}
             style={{
               padding: '0.35rem 0.5rem',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--border-input)',
               borderRadius: 6,
               fontSize: '0.85rem',
               minWidth: 260,
-              background: supervisorId ? '#f0fdf4' : '#fff',
-              color: supervisorId ? '#15803d' : '#6b7280',
+              background: supervisorId ? 'var(--success-bg)' : 'var(--bg-card)',
+              color: supervisorId ? 'var(--success-text)' : 'var(--text-muted)',
             }}
           >
             <option value="">— Sin asignar —</option>

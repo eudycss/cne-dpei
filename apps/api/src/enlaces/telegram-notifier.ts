@@ -328,9 +328,16 @@ function lineasAlerta(a: AlertaRecinto, enZona: boolean): string[] {
  * después los recintos sueltos, cada uno con su encargado para llamarlo. Si no
  * cabe en un mensaje de Telegram, se parte entre grupos.
  */
-export function formatearEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso: number): string[] {
-  const total = grupos.reduce((n, g) => n + g.recintos.length, 0);
-  const encabezado = `<b>🚨 Enlaces caídos hace ${formatearDuracion(minutosPrimerAviso)} o más (${total})</b>`;
+export function formatearEscalamiento(grupos: GrupoAlerta[]): string[] {
+  const recintos = grupos.flatMap((g) => g.recintos);
+  const total = recintos.length;
+  // El tiempo real del más antiguo, no el umbral del primer aviso: "hace 30 min
+  // o más" sobre un recinto caído hace 19 h confundía. Cada recinto lleva el suyo.
+  const masAntiguo = Math.max(0, ...recintos.map((a) => a.minutosCaido));
+  const encabezado =
+    total === 1
+      ? '<b>🚨 1 enlace caído</b>'
+      : `<b>🚨 ${total} enlaces caídos · el más antiguo hace ${formatearDuracion(masAntiguo)}</b>`;
   // Una unidad por recinto; el título de la zona va pegado a su primer recinto y,
   // si la zona no cabe en un mensaje, se repite con "(cont.)" en el siguiente.
   const unidades = grupos.flatMap((g) => {
@@ -468,10 +475,10 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
   }
 
-  /** Aviso de enlaces caídos hace `minutosPrimerAviso` o más; uno o más mensajes, en orden. */
-  async enviarEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso: number): Promise<void> {
+  /** Aviso de enlaces caídos (ya filtrados por el umbral del primer aviso); uno o más mensajes, en orden. */
+  async enviarEscalamiento(grupos: GrupoAlerta[]): Promise<void> {
     if (grupos.length === 0) return;
-    for (const mensaje of formatearEscalamiento(grupos, minutosPrimerAviso)) {
+    for (const mensaje of formatearEscalamiento(grupos)) {
       await this.enviarMensaje(mensaje, 'el aviso de enlaces caídos', 'HTML');
     }
   }

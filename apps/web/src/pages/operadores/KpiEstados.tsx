@@ -1,11 +1,10 @@
 import type { CSSProperties } from 'react';
 import { TextoAnimado } from '../../components/TextoAnimado';
-import SloshGauge from '../../components/micro/SloshGauge/SloshGauge';
 import { ESTADO_INFO, ORDEN_ESTADOS, type ConteoEstados } from './estado-info';
 
-// Verde más oscuro que el del estado (#16a34a): con texto blanco encima da
-// ~5:1 de contraste; el del estado solo llega a ~3.3:1 (WCAG 1.4.3).
-const COLOR_LIQUIDO = '#15803d';
+// Dona: anillo SVG de radio 30 en un lienzo de 72 px (trazo de 8 px).
+const RADIO_DONA = 30;
+const CIRCUNFERENCIA = 2 * Math.PI * RADIO_DONA;
 
 interface Props {
   conteo: ConteoEstados;
@@ -25,19 +24,34 @@ export function KpiEstados({ conteo, total }: Props) {
   return (
     <div className="kpi-grid">
       <div className="kpi-card kpi-card--avance">
-        {/* SloshGauge (React Bits) ya expone role="meter" y aria-valuenow, pero
-            sin unidad: el % va en el nombre. El liquidColor va en hex porque el
-            componente calcula con él el color del texto sobre el líquido. */}
-        <SloshGauge
-          value={porcentaje}
-          ariaLabel={`CDAs que llegaron al DPEI: ${porcentaje} % (${llegados} de ${total})`}
-          liquidColor={COLOR_LIQUIDO}
-          glassColor="var(--border-subtle)"
-          width={52}
-          height={76}
-          radius={14}
-          ticks={4}
-        />
+        {/* Dona (pedido del usuario: el medidor tipo batería se confundía). El %
+            va en el nombre accesible porque aria-valuenow no lleva unidad. */}
+        <div
+          className="kpi-dona"
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={porcentaje}
+          aria-label={`CDAs que llegaron al DPEI: ${porcentaje} % (${llegados} de ${total})`}
+        >
+          <svg viewBox="0 0 72 72" aria-hidden="true" focusable="false">
+            <circle className="kpi-dona-fondo" cx="36" cy="36" r={RADIO_DONA} />
+            {/* En 0 % no se dibuja: el extremo redondeado dejaría un punto suelto. */}
+            {porcentaje > 0 && (
+              <circle
+                className="kpi-dona-avance"
+                cx="36"
+                cy="36"
+                r={RADIO_DONA}
+                strokeDasharray={CIRCUNFERENCIA}
+                strokeDashoffset={CIRCUNFERENCIA * (1 - porcentaje / 100)}
+              />
+            )}
+          </svg>
+          <span className="kpi-dona-valor" aria-hidden="true">
+            {porcentaje}%
+          </span>
+        </div>
         <div>
           <div className="kpi-label">Llegaron al DPEI</div>
           <div className="kpi-detalle">

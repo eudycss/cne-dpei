@@ -194,7 +194,7 @@ describe('EnlacesEscalamientoService', () => {
       inicio: { lte: limite },
       OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }],
     });
-    expect(telegram.enviarEscalamiento).toHaveBeenCalledWith(expect.any(Array), 120);
+    expect(telegram.enviarEscalamiento).toHaveBeenCalledWith(expect.any(Array));
   });
 
   it('avisa con el encargado, la parroquia, cuántas veces se cayó y marca el aviso', async () => {
@@ -209,8 +209,7 @@ describe('EnlacesEscalamientoService', () => {
 
     await service.escalar(AHORA);
 
-    const [grupos, minutosPrimerAviso] = telegram.enviarEscalamiento.mock.calls[0];
-    expect(minutosPrimerAviso).toBe(30);
+    const [grupos] = telegram.enviarEscalamiento.mock.calls[0];
     expect(grupos).toEqual([
       {
         zona: null,

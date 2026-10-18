@@ -118,7 +118,7 @@ export function CorreosAvisoModal({ onClose }: Props) {
             value={nuevoCorreo}
             onChange={(e) => setNuevoCorreo(e.target.value)}
             placeholder="correo@cne.gob.ec"
-            style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem', flex: 1 }}
+            style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem', flex: 1 }}
           />
           <button
             className="btn"

@@ -27,6 +27,8 @@
   --success-text: #065f46;
   --error-bg: #fee2e2;
   --error-text: #991b1b;
+  --info-bg: #fce7f3;
+  --info-text: #9d174d;
   --notif-unread: #eff6ff;
   --notif-unread-hover: #dbeafe;
   --notif-item-hover: #f9fafb;
@@ -82,6 +84,8 @@
   --success-text: #4ade80;
   --error-bg: #450a0a;
   --error-text: #fca5a5;
+  --info-bg: #500724;
+  --info-text: #f9a8d4;
   --notif-unread: #172554;
   --notif-unread-hover: #1e3a8a;
   --notif-item-hover: #334155;
@@ -165,6 +169,19 @@ a:hover { text-decoration: underline; }
 .center { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; background: var(--gradient-login); }
 .login-card { background: var(--bg-card); padding: 2rem; border-radius: 10px; max-width: 380px; width: 100%; box-shadow: var(--shadow-login); }
 .login-card h1 { margin-top: 0; font-size: 1.25rem; text-align: center; }
+
+/* Modal con formulario largo (p. ej. crear kit con todos sus ítems): el fondo se
+   desplaza en vez de recortar el formulario, la tarjeta queda centrada si cabe
+   (margin: auto) y los botones se quedan visibles abajo mientras se desplaza. */
+.modal-desplazable { overflow-y: auto; align-items: flex-start; }
+.modal-desplazable > .login-card { margin: auto; }
+.modal-acciones {
+  position: sticky; bottom: 0; z-index: 1;
+  display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;
+  margin: 1rem -2rem -2rem; padding: 0.85rem 2rem 1rem;
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+}
 .muted { color: var(--text-muted); font-size: 0.85rem; }
 
 /* Form */
@@ -346,6 +363,17 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .kpi-card--avance { --kpi-color: var(--estado-llego); display: flex; align-items: center; gap: 0.85rem; grid-column: span 2; }
 .kpi-detalle { font-size: 1.05rem; font-weight: 600; color: var(--text); margin-top: 0.2rem; }
 @media (max-width: 520px) { .kpi-card--avance { grid-column: auto; } }
+/* Dona de "Llegaron al DPEI": el anillo empieza arriba y crece en sentido horario. */
+.kpi-dona { position: relative; width: 72px; height: 72px; flex-shrink: 0; }
+.kpi-dona svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.kpi-dona circle { fill: none; stroke-width: 8; }
+.kpi-dona-fondo { stroke: var(--border); }
+.kpi-dona-avance { stroke: var(--kpi-color); stroke-linecap: round; transition: stroke-dashoffset var(--dur-base); }
+.kpi-dona-valor {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-weight: 700; font-size: 0.95rem; color: var(--text); font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) { .kpi-dona-avance { transition: none; } }
 
 /* Monitoreo: filtro segmentado por estado */
 .filtro-estado-opcion { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }

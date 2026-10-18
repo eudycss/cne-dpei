@@ -74,8 +74,8 @@ export function TiposEventoPage() {
                       padding: '2px 8px',
                       borderRadius: 4,
                       fontSize: '0.8rem',
-                      background: t.activo ? '#d1fae5' : '#f3f4f6',
-                      color: t.activo ? '#065f46' : '#6b7280',
+                      background: t.activo ? 'var(--success-bg)' : 'var(--border-subtle)',
+                      color: t.activo ? 'var(--success-text)' : 'var(--text-muted)',
                     }}>
                       {t.activo ? 'Activo' : 'Inactivo'}
                     </span>

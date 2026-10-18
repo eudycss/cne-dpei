@@ -5,6 +5,7 @@ import type { KitCustodiaResponse, MilitarResumen } from '@cne/shared-types';
 jest.setTimeout(30000);
 
 jest.mock('../lib/queries/custodia', () => ({
+  getResumenCustodia: jest.fn().mockResolvedValue({ entregados: 0, total: 0 }),
   validarKitCustodia: jest.fn(),
   registrarEntrega: jest.fn(),
   corregirMilitar: jest.fn(),
@@ -22,6 +23,7 @@ import { EntregaMilitarScreen } from './EntregaMilitarScreen';
 import {
   cambiarOperador,
   corregirMilitar,
+  getResumenCustodia,
   registrarEntrega,
   validarKitCustodia,
 } from '../lib/queries/custodia';
@@ -90,6 +92,41 @@ async function escanear(r: ReactTestRenderer, codigo = 'ABCD2345') {
 
 describe('EntregaMilitarScreen', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it('muestra cuántos kits del evento ya se entregaron y lo actualiza tras cada entrega', async () => {
+    (getResumenCustodia as jest.Mock)
+      .mockResolvedValueOnce({ entregados: 3, total: 10 })
+      .mockResolvedValueOnce({ entregados: 4, total: 10 });
+    (validarKitCustodia as jest.Mock).mockResolvedValueOnce(kit()).mockResolvedValueOnce(kit({ entrega }));
+    (registrarEntrega as jest.Mock).mockResolvedValue(entrega);
+    jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    const r = await render();
+    await act(flush);
+
+    const contador = () => r.root.find((n) => n.props.accessibilityRole === 'summary' && n.props.accessible);
+    expect(contador().props.accessibilityLabel).toBe('Kits entregados a militares: 3 de 10');
+
+    await escanear(r);
+    await act(async () => {
+      boton(r, 'Registrar entrega').props.onPress();
+      await flush();
+    });
+
+    expect(getResumenCustodia).toHaveBeenCalledTimes(2);
+    expect(contador().props.accessibilityLabel).toBe('Kits entregados a militares: 4 de 10');
+  });
+
+  it('con todos entregados lo dice; sin señal no muestra un contador inventado', async () => {
+    (getResumenCustodia as jest.Mock).mockResolvedValueOnce({ entregados: 5, total: 5 });
+    const r = await render();
+    await act(flush);
+    expect(texto(r)).toContain('Todos los kits entregados a militares');
+
+    (getResumenCustodia as jest.Mock).mockRejectedValueOnce(new Error('Network Error'));
+    const sinSenal = await render();
+    await act(flush);
+    expect(sinSenal.root.findAll((n) => n.props.accessibilityRole === 'summary')).toHaveLength(0);
+  });
 
   it('con un solo militar en el recinto lo propone y registra la entrega', async () => {
     (validarKitCustodia as jest.Mock)

@@ -17,6 +17,7 @@ import type {
   MilitarResumen,
   OperadorResumen,
   RegistrarEntregaRequest,
+  ResumenCustodia,
   RoleName,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
@@ -230,6 +231,27 @@ export class CustodiaService {
     });
     const operador = await this.prisma.usuario.findUniqueOrThrow({ where: { id: parsed.operadorId } });
     return toOperador(operador);
+  }
+
+  /**
+   * Avance de entregas del evento activo para el contador del Asistente:
+   * kits asignados a un operador CDA (sin los de prueba) y cuántos ya se
+   * entregaron a un militar. Sin evento activo, 0 de 0.
+   */
+  async resumen(): Promise<ResumenCustodia> {
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return { entregados: 0, total: 0 };
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, esPrueba: false, operadorId: { not: null } },
+      select: { id: true },
+    });
+    const entregados = await this.prisma.entregaCustodioKit.count({
+      where: { eventoId: evento.id, kitId: { in: kits.map((k) => k.id) } },
+    });
+    return { entregados, total: kits.length };
   }
 
   async buscarMilitares(texto: string): Promise<MilitarResumen[]> {

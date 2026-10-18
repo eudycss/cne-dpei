@@ -1143,6 +1143,26 @@ describe('TrackingService', () => {
         }),
       ]);
     });
+
+    it('la foto del militar solo cuenta si la recepción es de un kit del evento activo', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, nombres: 'Ana', apellidos: 'Perez' }]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(prisma.recepcionKit.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ kitId: { in: [kitId] }, fotoMilitarUrl: { not: null } }),
+        }),
+      );
+    });
   });
 
   describe('recintosDificilAcceso', () => {
@@ -1168,6 +1188,7 @@ describe('TrackingService', () => {
     it('un LECTOR obtiene la foto sin verificar asignación de supervisor', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
       prisma.recepcionKit.findFirst.mockResolvedValueOnce({ fotoMilitarUrl: 'militares/foto.bin' });
       storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
 
@@ -1175,6 +1196,25 @@ describe('TrackingService', () => {
 
       expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
       expect(result.contentType).toBe('image/jpeg');
+    });
+
+    it('solo busca la foto en recepciones de kits del evento activo (no de un evento cerrado)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.obtenerFotoMilitar(recintoId, operadorId, ['ADMINISTRADOR'])).rejects.toThrow(
+        'No hay foto del militar registrada para este CDA',
+      );
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { eventoId: evento.id, operadorId } }),
+      );
+      expect(prisma.recepcionKit.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ operadorId, kitId: { in: [kitId] } }),
+        }),
+      );
     });
   });
 

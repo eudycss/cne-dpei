@@ -74,8 +74,8 @@ export function ItemsKitPage() {
                       padding: '2px 8px',
                       borderRadius: 4,
                       fontSize: '0.8rem',
-                      background: it.activo ? '#d1fae5' : '#f3f4f6',
-                      color: it.activo ? '#065f46' : '#6b7280',
+                      background: it.activo ? 'var(--success-bg)' : 'var(--border-subtle)',
+                      color: it.activo ? 'var(--success-text)' : 'var(--text-muted)',
                     }}>
                       {it.activo ? 'Activo' : 'Inactivo'}
                     </span>

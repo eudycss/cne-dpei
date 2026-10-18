@@ -6,11 +6,18 @@ import type {
   MilitarResumen,
   OperadorResumen,
   RegistrarEntregaRequest,
+  ResumenCustodia,
 } from '@cne/shared-types';
 import { api } from '../api';
 
 // Cadena de custodia (Asistente Electoral Transversal). Necesitan la respuesta
 // del servidor (militares del recinto, estado del kit): NO van por la cola offline.
+
+/** Kits entregados a militares del evento activo, de cuántos hay que entregar. */
+export async function getResumenCustodia(): Promise<ResumenCustodia> {
+  const { data } = await api.get<ResumenCustodia>('/custodia/resumen');
+  return data;
+}
 
 export async function validarKitCustodia(codigo: string): Promise<KitCustodiaResponse> {
   const { data } = await api.post<KitCustodiaResponse>('/custodia/validar-kit', { codigo });

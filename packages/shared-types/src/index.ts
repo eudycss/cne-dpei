@@ -948,6 +948,12 @@ export interface KitCustodiaResponse {
   editable: boolean;
 }
 
+/** Avance de entregas a militares del evento activo (kits asignados, sin los de prueba). */
+export interface ResumenCustodia {
+  entregados: number;
+  total: number;
+}
+
 export interface RegistrarEntregaRequest {
   kitId: string;
   militarId: string;

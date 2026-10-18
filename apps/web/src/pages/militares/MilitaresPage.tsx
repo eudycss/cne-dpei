@@ -58,7 +58,7 @@ export function MilitaresPage() {
       <div className="card">
         <div className="row">
           <SearchInput
-            placeholder="Buscar por nombre, apellido o cédula"
+            placeholder="Buscar por nombre, cédula o recinto"
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
             style={{ flex: 1 }}
@@ -343,7 +343,7 @@ function MilitarModal({
                   border: 'none',
                   cursor: 'pointer',
                   padding: '0.1rem 0.2rem',
-                  color: '#6b7280',
+                  color: 'var(--text-muted)',
                   fontSize: '1rem',
                   lineHeight: 1,
                   display: 'flex',
@@ -361,8 +361,8 @@ function MilitarModal({
                 left: 0,
                 right: 0,
                 top: '100%',
-                background: '#fff',
-                border: '1px solid #d1d5db',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-input)',
                 borderRadius: 6,
                 maxHeight: 200,
                 overflowY: 'auto',
@@ -376,7 +376,7 @@ function MilitarModal({
                   style={{
                     padding: '0.45rem 0.7rem',
                     cursor: 'pointer',
-                    borderBottom: '1px solid #f3f4f6',
+                    borderBottom: '1px solid var(--border-subtle)',
                     fontSize: '0.85rem',
                   }}
                   onMouseDown={() => selectRecinto(r)}

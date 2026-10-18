@@ -61,11 +61,11 @@ describe('formatearEscalamiento', () => {
   });
 
   it('un recinto suelto: sector, tiempo caído y encargado para llamarlo', () => {
-    const [texto] = formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 30);
+    const [texto] = formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }]);
 
     expect(texto).toBe(
       [
-        '<b>🚨 Enlaces caídos hace 30 min o más (1)</b>',
+        '<b>🚨 1 enlace caído</b>',
         '',
         '🔴 <b>1961 · UE García Moreno</b> (Cot · Quiroga)',
         '⏱ Caído hace 30 min',
@@ -74,22 +74,23 @@ describe('formatearEscalamiento', () => {
     );
   });
 
-  it('el encabezado dice el tiempo configurado del primer aviso', () => {
-    expect(formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 120)[0]).toContain(
-      '<b>🚨 Enlaces caídos hace 2 h o más (1)</b>',
-    );
-    expect(formatearEscalamiento([{ zona: null, recintos: [alerta('1961')] }], 10)[0]).toContain(
-      '<b>🚨 Enlaces caídos hace 10 min o más (1)</b>',
-    );
+  it('el encabezado dice el tiempo real del más antiguo, no el umbral del primer aviso', () => {
+    const [texto] = formatearEscalamiento([
+      { zona: null, recintos: [alerta('1961', { minutosCaido: 120 })] },
+      { zona: null, recintos: [alerta('28', { minutosCaido: 19 * 60 + 20 })] },
+    ]);
+
+    expect(texto.split('\n')[0]).toBe('<b>🚨 2 enlaces caídos · el más antiguo hace 19 h 20 min</b>');
+    expect(texto).not.toContain('o más');
   });
 
   it('recordatorio, inestable y sin encargado registrado', () => {
     const [por24h] = formatearEscalamiento([
       { zona: null, recintos: [alerta('1', { aviso: 3, minutosCaido: 95, inestable: true, caidas24h: 4, encargado: null })] },
-    ], 30);
+    ]);
     const [por7d] = formatearEscalamiento([
       { zona: null, recintos: [alerta('1', { inestable: true, caidas24h: 1, caidas7d: 6 })] },
-    ], 30);
+    ]);
 
     expect(por24h).toContain('⏱ Caído hace 1 h 35 min · 3.º aviso');
     expect(por24h).toContain('⚠️ Inestable: 4 caídas en 24 h');
@@ -101,9 +102,9 @@ describe('formatearEscalamiento', () => {
     const [texto] = formatearEscalamiento([
       { zona: 'Quiroga', recintos: [alerta('1961'), alerta('1962')] },
       { zona: null, recintos: [alerta('28', { canton: 'Ibarra', parroquia: '' })] },
-    ], 30);
+    ]);
 
-    expect(texto).toContain('(3)');
+    expect(texto).toContain('🚨 3 enlaces caídos');
     expect(texto).toContain('<b>📍 Posible corte de luz o internet en Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
     expect(texto).toContain('🔴 <b>1961 · UE García Moreno</b>\n');
     expect(texto).toContain('🔴 <b>28 · UE García Moreno</b> (Iba)');
@@ -118,7 +119,7 @@ describe('formatearEscalamiento', () => {
           alerta('2'),
         ],
       },
-    ], 30);
+    ]);
 
     expect(texto).toContain('&lt;Zona&gt;');
     expect(texto).toContain('&lt;1&gt; · A &amp; B');
@@ -129,7 +130,7 @@ describe('formatearEscalamiento', () => {
   it('una zona enorme también se parte, repitiendo el nombre de la zona', () => {
     const recintos = Array.from({ length: 40 }, (_, i) => alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) }));
 
-    const mensajes = formatearEscalamiento([{ zona: 'Quiroga', recintos }], 30);
+    const mensajes = formatearEscalamiento([{ zona: 'Quiroga', recintos }]);
 
     expect(mensajes.length).toBeGreaterThan(1);
     expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
@@ -142,7 +143,7 @@ describe('formatearEscalamiento', () => {
       ({ zona: null, recintos: [alerta(String(1000 + i), { nombreRecinto: 'N'.repeat(45) })] }),
     );
 
-    const mensajes = formatearEscalamiento(muchos, 30);
+    const mensajes = formatearEscalamiento(muchos);
 
     expect(mensajes.length).toBeGreaterThan(1);
     expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
