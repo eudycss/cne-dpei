@@ -38,4 +38,20 @@ describe('KpiEstados', () => {
     render(<KpiEstados conteo={{}} total={0} />);
     expect(screen.getByRole('meter')).not.toHaveAttribute('tabindex');
   });
+
+  it('el avance se dibuja como dona: el anillo cubre el % de CDAs que llegaron', () => {
+    const { container } = render(<KpiEstados conteo={{ RETORNADO: 1 }} total={4} />);
+
+    expect(screen.getByRole('meter')).toHaveClass('kpi-dona');
+    const anillo = container.querySelector('.kpi-dona-avance')!;
+    const circunferencia = Number(anillo.getAttribute('stroke-dasharray'));
+    expect(Number(anillo.getAttribute('stroke-dashoffset'))).toBeCloseTo(circunferencia * 0.75);
+    expect(container.querySelector('.kpi-dona-valor')).toHaveTextContent('25%');
+  });
+
+  it('en 0 % no dibuja el anillo de avance (solo el fondo)', () => {
+    const { container } = render(<KpiEstados conteo={{}} total={3} />);
+    expect(container.querySelector('.kpi-dona-avance')).toBeNull();
+    expect(container.querySelector('.kpi-dona-fondo')).not.toBeNull();
+  });
 });
