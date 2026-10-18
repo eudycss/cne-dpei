@@ -49,6 +49,22 @@ describe('formatearResultadoSql', () => {
     expect(m).toContain('• 1 — UE A · Willy');
   });
 
+  it('las columnas de minutos se muestran como duración', () => {
+    expect(formatearResultadoSql('Tiempo caído', res(['minutos_total'], [[135]]), false, null)).toEqual([
+      '🔎 <b>Tiempo caído</b>: 2 h 15 min',
+    ]);
+    const [m] = formatearResultadoSql(
+      'García Moreno',
+      res(['codigo', 'nombre', 'estado', 'minutos_caido'], [['4241', 'UE A', 'caido', 75], ['4242', 'UE B', 'activo', null]]),
+      false,
+      null,
+    );
+    expect(m).toContain('🔴 4241 — UE A · 1 h 15 min');
+    expect(m).toContain('✅ 4242 — UE B · —');
+    const [t] = formatearResultadoSql('Más caídos', res(['nombre', 'caidas', 'minutos_total'], [['UE A', 3, 3000]]), false, null);
+    expect(t).toContain('• UE A · 3 · 2 d 2 h');
+  });
+
   it('escapa el título que escribe el modelo', () => {
     expect(formatearResultadoSql('<b>A & B</b>', res(['n'], [[1]]), false, null)).toEqual(['🔎 <b>&lt;b&gt;A &amp; B&lt;/b&gt;</b>: 1']);
   });

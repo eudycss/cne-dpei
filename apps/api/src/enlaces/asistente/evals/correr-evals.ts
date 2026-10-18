@@ -15,7 +15,7 @@ import { Logger } from '@nestjs/common';
 import { AsistenteService } from '../asistente.service';
 import { LlmClient, proveedoresConfigurados } from '../llm.client';
 import { CASOS } from './casos';
-import { ASIGNACIONES_PRUEBA, CODIGOS_PRUEBA, ENCARGADOS_PRUEBA, ENLACES_PRUEBA } from './datos-prueba';
+import { ASIGNACIONES_PRUEBA, CAIDAS_PRUEBA, CODIGOS_PRUEBA, ENCARGADOS_PRUEBA, ENLACES_PRUEBA } from './datos-prueba';
 import { evaluarCaso } from './evaluar';
 
 /** Groq gratis permite ~30 preguntas por minuto: se deja margen. */
@@ -40,6 +40,10 @@ async function main(): Promise<void> {
       findMany: async () => ENLACES_PRUEBA,
       findUnique: async ({ where }: { where: { codigoRecinto: string } }) =>
         ENLACES_PRUEBA.find((e) => e.codigoRecinto === where.codigoRecinto) ?? null,
+    },
+    enlaceCaida: {
+      findMany: async ({ where }: { where: { fin?: null } }) =>
+        where.fin === null ? CAIDAS_PRUEBA.filter((c) => c.fin === null) : CAIDAS_PRUEBA,
     },
   };
   const estadisticas = { enviarEstadisticasTelegram: async (_: Date, periodo = 'dia') => void salida.push(`[estadisticas ${periodo}]`) };

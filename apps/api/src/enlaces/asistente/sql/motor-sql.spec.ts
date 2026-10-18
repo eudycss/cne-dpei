@@ -1,4 +1,4 @@
-import { ejecutarSql, MAX_SQL_EN_COLA, MotorSqlNoDisponible, type FilaSql } from './motor-sql';
+import { ejecutarSql, horaEcuadorSql, MAX_SQL_EN_COLA, MotorSqlNoDisponible, type FilaSql } from './motor-sql';
 import { ErrorSql } from './validar-sql';
 
 const fila = (codigo: string, canton: string, estado: 'caido' | 'activo', tecnico: string | null, tieneContacto: 0 | 1 = 1): FilaSql => ({
@@ -10,6 +10,7 @@ const fila = (codigo: string, canton: string, estado: 'caido' | 'activo', tecnic
   numero_tecnico: tecnico ? 1 : null,
   tecnico,
   tiene_contacto: tieneContacto,
+  minutos_caido: estado === 'caido' ? 90 : null,
 });
 
 const FILAS: FilaSql[] = [
@@ -67,7 +68,55 @@ describe('ejecutarSql', () => {
 
   it('la tabla no tiene teléfonos ni encargados', async () => {
     const r = await ejecutarSql('SELECT * FROM recintos LIMIT 1', FILAS);
-    expect(r.columnas).toEqual(['codigo', 'nombre', 'canton', 'parroquia', 'estado', 'numero_tecnico', 'tecnico', 'tiene_contacto']);
+    expect(r.columnas).toEqual([
+      'codigo',
+      'nombre',
+      'canton',
+      'parroquia',
+      'estado',
+      'numero_tecnico',
+      'tecnico',
+      'tiene_contacto',
+      'minutos_caido',
+    ]);
+  });
+
+  it('tabla caidas y ahora() en hora de Ecuador: "cuántas veces se cayó este mes"', async () => {
+    const datos = {
+      recintos: FILAS,
+      ahora: '2026-10-17 20:00:00',
+      caidas: [
+        { codigo: '1', inicio: '2026-10-17 18:30:00', fin: null, minutos: 90 },
+        { codigo: '1', inicio: '2026-10-02 08:00:00', fin: '2026-10-02 09:00:00', minutos: 60 },
+        { codigo: '1', inicio: '2026-09-28 08:00:00', fin: '2026-09-28 08:10:00', minutos: 10 },
+        { codigo: '4', inicio: '2026-10-16 10:00:00', fin: '2026-10-16 10:30:00', minutos: 30 },
+      ],
+    };
+    const r = await ejecutarSql(
+      "SELECT codigo, count(*) AS caidas, sum(minutos) AS minutos_total FROM caidas WHERE inicio >= strftime('%Y-%m-01', ahora()) GROUP BY codigo ORDER BY codigo",
+      datos,
+    );
+    expect(r.filas).toEqual([
+      ['1', 2, 150],
+      ['4', 1, 30],
+    ]);
+    const unido = await ejecutarSql(
+      "SELECT r.nombre, c.fin FROM caidas c JOIN recintos r USING (codigo) WHERE c.fin IS NULL",
+      datos,
+    );
+    expect(unido.filas).toEqual([['Escuela 1', null]]);
+  });
+
+  it('minutos_caido: cuánto lleva caído cada recinto', async () => {
+    const r = await ejecutarSql("SELECT codigo, minutos_caido FROM recintos WHERE estado = 'caido' ORDER BY codigo", FILAS);
+    expect(r.filas).toEqual([
+      ['1', 90],
+      ['4', 90],
+    ]);
+  });
+
+  it('horaEcuadorSql: UTC-5, en el formato de fechas de SQLite', () => {
+    expect(horaEcuadorSql(new Date('2026-10-18T03:30:00Z'))).toBe('2026-10-17 22:30:00');
   });
 
   it('corta en el máximo de filas y avisa que hay más', async () => {
