@@ -11,6 +11,7 @@ import { OfflineNotice } from '../components/OfflineNotice';
 import { AvisoRastreo } from '../components/AvisoRastreo';
 import { fontFamily } from '../theme/typography';
 import { iniciarRastreoPrimerPlano } from '../lib/location';
+import { pedirPermisoAvisos } from '../lib/aviso-proximidad';
 import { useMiAsignacion } from '../lib/useMiAsignacion';
 import { useProximidad } from '../lib/useProximidad';
 import { useEstadoRastreo } from '../lib/useEstadoRastreo';
@@ -31,6 +32,9 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
     let sub: LocationSubscription | null = null;
     let cancelled = false;
     (async () => {
+      // Para el pitido a 200 m del recinto. Sin await: el diálogo no debe
+      // retrasar el GPS, y sin permiso el rastreo sigue igual.
+      void pedirPermisoAvisos();
       const s = await iniciarRastreoPrimerPlano();
       if (cancelled) s?.remove();
       else sub = s;

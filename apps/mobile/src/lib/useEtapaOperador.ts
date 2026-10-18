@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { getMiAsignacionConOrigen } from './queries/tracking';
-import { guardarEtapa, leerEtapa } from './cache-jornada';
+import { guardarEtapa, leerEtapa, reiniciarAvisos } from './cache-jornada';
 import { contarPendientes } from './offline-queue';
 import { etapaDesdeAsignacion, etapaMasAvanzada, type OperadorEtapa } from './etapa-operador';
 
@@ -38,6 +38,8 @@ export function useEtapaOperador() {
 
   useEffect(() => {
     if (etapa && eventoRef.current) guardarEtapa(eventoRef.current, etapa).catch(() => {});
+    // Jornada en "Salida del DPI" (inicio o "Resetear estado"): el próximo recorrido vuelve a pitar.
+    if (etapa === 'SALIDA' && eventoRef.current) reiniciarAvisos(eventoRef.current).catch(() => {});
   }, [etapa]);
 
   useEffect(() => {

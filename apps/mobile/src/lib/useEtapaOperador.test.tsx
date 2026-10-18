@@ -215,6 +215,32 @@ describe('useEtapaOperador', () => {
       expect(ultimo?.etapa).toBe('SALIDA');
     });
 
+    it('al quedar en SALIDA (p. ej. tras "Resetear estado") olvida el pitido a 200 m ya dado en ese evento', async () => {
+      await AsyncStorage.setItem('cne:jornada:aviso:ev1:IDA', 'x');
+      await AsyncStorage.setItem('cne:jornada:aviso:ev1:RETORNO', 'x');
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(0));
+
+      await montar();
+      await act(async () => {
+        await flushPromises();
+      });
+
+      await expect(AsyncStorage.getItem('cne:jornada:aviso:ev1:IDA')).resolves.toBeNull();
+      await expect(AsyncStorage.getItem('cne:jornada:aviso:ev1:RETORNO')).resolves.toBeNull();
+    });
+
+    it('en camino conserva el pitido ya dado (no vuelve a sonar al reabrir la app)', async () => {
+      await AsyncStorage.setItem('cne:jornada:aviso:ev1:IDA', 'x');
+      (getMiAsignacion as jest.Mock).mockResolvedValue(conEvento(1));
+
+      await montar();
+      await act(async () => {
+        await flushPromises();
+      });
+
+      await expect(AsyncStorage.getItem('cne:jornada:aviso:ev1:IDA')).resolves.toBe('x');
+    });
+
     it('con señal pero acciones pendientes de enviar conserva la etapa guardada', async () => {
       await guardarEtapa('ev1', 'EN_RECINTO');
       (contarPendientes as jest.Mock).mockResolvedValue(1);
