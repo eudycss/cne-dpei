@@ -18,7 +18,8 @@ const ASIGNACIONES = [
 ];
 
 describe('AsistenteService', () => {
-  const prisma = { enlaceRecinto: { findMany: jest.fn(), findUnique: jest.fn() } };
+  const prisma = { enlaceRecinto: { findMany: jest.fn(), findUnique: jest.fn() }, enlaceCaida: { findMany: jest.fn() } };
+  const haceMinutos = (m: number) => new Date(Date.now() - m * 60_000);
   const telegram = {
     enviarTexto: jest.fn().mockResolvedValue(undefined),
     enviarHtml: jest.fn().mockResolvedValue(undefined),
@@ -36,6 +37,7 @@ describe('AsistenteService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.enlaceRecinto.findMany.mockResolvedValue(ENLACES);
+    prisma.enlaceCaida.findMany.mockResolvedValue([]);
     distributivo.asignaciones.mockResolvedValue(ASIGNACIONES);
     encargados.encargados.mockResolvedValue(new Map([['28', { nombre: 'Rector Luis Mora', telefono: '0991234567' }]]));
     service = new AsistenteService(
@@ -475,6 +477,134 @@ describe('AsistenteService', () => {
 
       const avisos = telegram.enviarTexto.mock.calls.filter(([t]) => String(t).includes('distributivo'));
       expect(avisos).toHaveLength(1);
+    });
+  });
+
+  describe('tiempo de caída', () => {
+    it('la ficha dice desde hace cuánto está caído', async () => {
+      prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '1961', inicio: haceMinutos(135) }]);
+      consulta('buscar_recinto', { texto: '1961' });
+
+      await service.responder('cuánto tiempo lleva caído el 1961', 'c:1');
+
+      expect(html()).toContain('Enlace: 🔴 caído hace 2 h 15 min');
+    });
+
+    it('la lista de varios recintos también, y sin dato dice solo "🔴"', async () => {
+      prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '1008', inicio: haceMinutos(3000) }]);
+      consulta('buscar_recinto', { texto: 'San Juan de Ilumán' });
+
+      await service.responder('Ilumán', 'c:1');
+
+      expect(html()).toContain('UE San Juan de Ilumán Bloque 2</b> 🔴 hace 2 d 2 h');
+      expect(html()).toContain('UE San Juan de Iluman Bloque 1</b> 🔴\n');
+    });
+
+    it('si el historial no se puede leer, la ficha sale igual (sin el tiempo)', async () => {
+      prisma.enlaceCaida.findMany.mockRejectedValue(new Error('sin base'));
+      consulta('buscar_recinto', { texto: '1961' });
+
+      await service.responder('1961', 'c:1');
+
+      expect(html()).toContain('Enlace: 🔴 caído\n');
+    });
+
+    describe('modo SQL', () => {
+      beforeEach(() => (process.env.ASISTENTE_SQL_ENABLED = 'true'));
+      afterEach(() => delete process.env.ASISTENTE_SQL_ENABLED);
+
+      it('minutos_caido y la tabla caidas salen del historial (últimos 31 días + abiertas)', async () => {
+        prisma.enlaceCaida.findMany.mockResolvedValue([
+          { codigoRecinto: '1008', inicio: haceMinutos(600), fin: haceMinutos(540) },
+          { codigoRecinto: '1008', inicio: haceMinutos(75), fin: null },
+        ]);
+        llm.elegirConsultas.mockResolvedValue([
+          {
+            nombre: 'consultar_datos',
+            argumentos: {
+              sql:
+                "SELECT r.codigo, r.minutos_caido, count(c.codigo) AS caidas, sum(c.minutos) AS minutos_total " +
+                "FROM recintos r JOIN caidas c USING (codigo) WHERE c.inicio <= ahora() GROUP BY r.codigo",
+              titulo: 'Caídas',
+            },
+          },
+        ]);
+
+        await service.responder('cuánto tiempo estuvo caído el 1008', 'c:1');
+
+        expect(html()).toContain('• 1008 · 1 h 15 min · 2 · 2 h 15 min');
+        const [{ where }] = prisma.enlaceCaida.findMany.mock.calls[0];
+        expect(where.OR[0]).toEqual({ fin: null });
+        expect(Date.now() - where.OR[1].inicio.gte.getTime()).toBeGreaterThanOrEqual(31 * 24 * 60 * 60_000 - 1000);
+      });
+
+      it('dos caídas abiertas del mismo recinto: vale la más antigua y no se cuenta doble', async () => {
+        prisma.enlaceCaida.findMany.mockResolvedValue([
+          { codigoRecinto: '1008', inicio: haceMinutos(30), fin: null },
+          { codigoRecinto: '1008', inicio: haceMinutos(120), fin: null },
+        ]);
+        llm.elegirConsultas.mockResolvedValue([
+          {
+            nombre: 'consultar_datos',
+            argumentos: {
+              sql: "SELECT r.minutos_caido, count(*) AS caidas FROM recintos r JOIN caidas c USING (codigo) WHERE r.codigo = '1008'",
+              titulo: 'X',
+            },
+          },
+        ]);
+
+        await service.responder('x', 'c:1');
+
+        expect(html()).toContain('• 2 h · 1');
+      });
+
+      it('lee de la más reciente a la más antigua (con tope) y avisa si se recortó', async () => {
+        const warn = jest.spyOn(Logger.prototype, 'warn');
+        prisma.enlaceCaida.findMany.mockResolvedValue(
+          Array.from({ length: 5000 }, (_, i) => ({ codigoRecinto: '28', inicio: haceMinutos(10 + i), fin: haceMinutos(5 + i) })),
+        );
+        llm.elegirConsultas.mockResolvedValue([{ nombre: 'consultar_datos', argumentos: { sql: 'SELECT count(*) FROM caidas', titulo: 'X' } }]);
+
+        await service.responder('x', 'c:1');
+
+        const [{ orderBy, take }] = prisma.enlaceCaida.findMany.mock.calls[0];
+        expect(orderBy).toEqual({ inicio: 'desc' });
+        expect(take).toBe(5000);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('recortado'));
+        expect(html()).toBe('🔎 <b>X</b>: 5000');
+      });
+
+      it('si el SQL no habla de tiempos, no lee el historial de caídas', async () => {
+        llm.elegirConsultas.mockResolvedValue([{ nombre: 'consultar_datos', argumentos: { sql: 'SELECT count(*) FROM recintos', titulo: 'X' } }]);
+
+        await service.responder('x', 'c:1');
+
+        expect(prisma.enlaceCaida.findMany).not.toHaveBeenCalled();
+        expect(html()).toBe('🔎 <b>X</b>: 4');
+      });
+
+      it('con solo minutos_caido, lee solo las caídas abiertas', async () => {
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '1008', inicio: haceMinutos(90) }]);
+        llm.elegirConsultas.mockResolvedValue([
+          { nombre: 'consultar_datos', argumentos: { sql: "SELECT codigo, minutos_caido FROM recintos WHERE codigo = '1008'", titulo: 'X' } },
+        ]);
+
+        await service.responder('x', 'c:1');
+
+        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { fin: null } }));
+        expect(html()).toContain('• 1008 · 1 h 30 min');
+      });
+
+      it('sin historial, responde igual con minutos_caido vacío', async () => {
+        prisma.enlaceCaida.findMany.mockRejectedValue(new Error('sin base'));
+        llm.elegirConsultas.mockResolvedValue([
+          { nombre: 'consultar_datos', argumentos: { sql: "SELECT codigo, minutos_caido FROM recintos WHERE codigo = '1008'", titulo: 'X' } },
+        ]);
+
+        await service.responder('x', 'c:1');
+
+        expect(html()).toContain('• 1008 · —');
+      });
     });
   });
 

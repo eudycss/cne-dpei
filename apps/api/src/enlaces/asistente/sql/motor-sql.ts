@@ -14,6 +14,26 @@ export interface FilaSql {
   tecnico: string | null;
   /** 1 si el recinto tiene encargado con teléfono registrado, 0 si no, null si el Excel no se pudo leer. */
   tiene_contacto: 0 | 1 | null;
+  /** Minutos que lleva caído ahora (null si está activo o no se sabe desde cuándo). */
+  minutos_caido: number | null;
+}
+
+/** Una caída de la tabla `caidas` (historial reciente). Fechas en hora de Ecuador, 'AAAA-MM-DD HH:MM:SS'. */
+export interface FilaCaidaSql {
+  codigo: string;
+  inicio: string;
+  /** null = sigue caído. */
+  fin: string | null;
+  /** Duración en minutos (hasta ahora si sigue caído). */
+  minutos: number;
+}
+
+/** Lo que se carga en la base en memoria para una consulta. */
+export interface DatosSql {
+  recintos: FilaSql[];
+  caidas?: FilaCaidaSql[];
+  /** Lo que devuelve ahora() en SQL, en hora de Ecuador; por defecto, el momento de la consulta. */
+  ahora?: string;
 }
 
 export type ValorSql = string | number | null;
@@ -38,7 +58,26 @@ const TIEMPO_ARRANQUE_MS = 15_000;
 const MEMORIA_SQLITE = 32 * 1024 * 1024;
 const MAX_LARGO_CELDA = 300;
 
-const COLUMNAS = ['codigo', 'nombre', 'canton', 'parroquia', 'estado', 'numero_tecnico', 'tecnico', 'tiene_contacto'] as const;
+const COLUMNAS = [
+  'codigo',
+  'nombre',
+  'canton',
+  'parroquia',
+  'estado',
+  'numero_tecnico',
+  'tecnico',
+  'tiene_contacto',
+  'minutos_caido',
+] as const;
+const COLUMNAS_CAIDAS = ['codigo', 'inicio', 'fin', 'minutos'] as const;
+
+// Ecuador continental no tiene horario de verano: UTC-5 todo el año.
+const OFFSET_ECUADOR_MS = -5 * 60 * 60_000;
+
+/** Instante → 'AAAA-MM-DD HH:MM:SS' en hora de Ecuador (el formato de fechas de SQLite). */
+export function horaEcuadorSql(d: Date): string {
+  return new Date(d.getTime() + OFFSET_ECUADOR_MS).toISOString().slice(0, 19).replace('T', ' ');
+}
 
 /**
  * Código del hilo: arma la base en memoria, la deja de solo lectura y ejecuta la
@@ -96,10 +135,13 @@ require(w.rutaSqlJs)({ instantiateWasm }).then((SQL) => {
       const pedidas = normal(String(buscado).slice(0, 80)).split(' ').filter(Boolean);
       return pedidas.length > 0 && pedidas.every((p) => coincide(p, delTexto)) ? 1 : 0;
     });
-    db.run('CREATE TABLE recintos (' + w.columnasDdl + ')');
-    const ins = db.prepare('INSERT INTO recintos VALUES (' + w.columnas.map(() => '?').join(',') + ')');
-    for (const f of w.filas) ins.run(f);
-    ins.free();
+    db.create_function('ahora', () => w.ahora);
+    for (const t of w.tablas) {
+      db.run('CREATE TABLE ' + t.nombre + ' (' + t.ddl + ')');
+      const ins = db.prepare('INSERT INTO ' + t.nombre + ' VALUES (' + t.columnas.map(() => '?').join(',') + ')');
+      for (const f of t.filas) ins.run(f);
+      ins.free();
+    }
     db.run('PRAGMA query_only = 1');
     responder({ listo: true });
     const st = db.prepare(w.sql);
@@ -121,7 +163,9 @@ require(w.rutaSqlJs)({ instantiateWasm }).then((SQL) => {
 `;
 
 const COLUMNAS_DDL =
-  'codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT, numero_tecnico INTEGER, tecnico TEXT, tiene_contacto INTEGER';
+  'codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT, numero_tecnico INTEGER, tecnico TEXT, ' +
+  'tiene_contacto INTEGER, minutos_caido INTEGER';
+const COLUMNAS_CAIDAS_DDL = 'codigo TEXT, inicio TEXT, fin TEXT, minutos INTEGER';
 
 /** Error del motor (no del SQL): no se le muestra al modelo como algo que pueda corregir. */
 export class MotorSqlNoDisponible extends Error {}
@@ -164,22 +208,27 @@ function soltarTurno(): void {
 }
 
 /**
- * Valida y ejecuta la consulta del modelo sobre una copia en memoria de `filas`.
+ * Valida y ejecuta la consulta del modelo sobre una copia en memoria de los datos
+ * (tablas `recintos` y `caidas`; una lista sola se toma como los recintos).
  * Corre en un hilo aparte: una consulta lenta o infinita se corta a los
  * `tiempoMaxMs` sin frenar el resto del bot (alertas de enlaces incluidas).
  * Lanza ErrorSql si la consulta no es válida, falla o tarda demasiado.
  */
-export async function ejecutarSql(sql: unknown, filas: FilaSql[], opciones: OpcionesSql = {}): Promise<ResultadoSql> {
+export async function ejecutarSql(
+  sql: unknown,
+  datos: DatosSql | FilaSql[],
+  opciones: OpcionesSql = {},
+): Promise<ResultadoSql> {
   const consulta = validarSql(sql);
   await tomarTurno();
   try {
-    return await correrEnHilo(consulta, filas, opciones);
+    return await correrEnHilo(consulta, Array.isArray(datos) ? { recintos: datos } : datos, opciones);
   } finally {
     soltarTurno();
   }
 }
 
-async function correrEnHilo(consulta: string, filas: FilaSql[], opciones: OpcionesSql): Promise<ResultadoSql> {
+async function correrEnHilo(consulta: string, datos: DatosSql, opciones: OpcionesSql): Promise<ResultadoSql> {
   const tiempoMax = opciones.tiempoMaxMs ?? TIEMPO_MAX_SQL_MS;
   let wasm: WebAssembly.Module;
   try {
@@ -196,9 +245,16 @@ async function correrEnHilo(consulta: string, filas: FilaSql[], opciones: Opcion
         memoria: MEMORIA_SQLITE,
         maxFilas: opciones.maxFilas ?? MAX_FILAS_SQL,
         maxLargoCelda: MAX_LARGO_CELDA,
-        columnas: COLUMNAS,
-        columnasDdl: COLUMNAS_DDL,
-        filas: filas.map((f) => COLUMNAS.map((c) => f[c])),
+        ahora: datos.ahora ?? horaEcuadorSql(new Date()),
+        tablas: [
+          { nombre: 'recintos', ddl: COLUMNAS_DDL, columnas: COLUMNAS, filas: datos.recintos.map((f) => COLUMNAS.map((c) => f[c] ?? null)) },
+          {
+            nombre: 'caidas',
+            ddl: COLUMNAS_CAIDAS_DDL,
+            columnas: COLUMNAS_CAIDAS,
+            filas: (datos.caidas ?? []).map((f) => COLUMNAS_CAIDAS.map((c) => f[c])),
+          },
+        ],
         sql: consulta,
       },
       resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16 },

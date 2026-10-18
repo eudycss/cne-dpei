@@ -221,14 +221,19 @@ export const INSTRUCCIONES_MODELO_SQL =
   'Herramientas:\n' +
   '- buscar_recinto: UN recinto concreto por nombre, código o apodo ("número del encargado del colegio Ibarra", ' +
   '"cómo está el 1008", "recinto de Golondrinas"). Pasa solo el nombre, sin "teléfono", "contacto" ni "encargado".\n' +
-  '- estadisticas: caídas en el tiempo (hoy, esta semana, este mes, cuál se cayó más).\n' +
-  '- consultar_datos: todo lo demás (listas, conteos, técnicos, cantones, parroquias, aleatorios, rankings), con ' +
-  'un SELECT de SQLite sobre la tabla:\n' +
+  '- estadisticas: SOLO el resumen general de caídas de un período (hoy, esta semana, este mes) sin un recinto, ' +
+  'cantón o técnico concreto.\n' +
+  '- consultar_datos: todo lo demás (listas, conteos, técnicos, cantones, parroquias, aleatorios, rankings, cuánto ' +
+  'tiempo lleva o estuvo caído un recinto, cuántas veces se cayó), con un SELECT de SQLite sobre las tablas:\n' +
   '  recintos(codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT, numero_tecnico INTEGER, ' +
-  'tecnico TEXT, tiene_contacto INTEGER)\n' +
+  'tecnico TEXT, tiene_contacto INTEGER, minutos_caido INTEGER)\n' +
+  '  caidas(codigo TEXT, inicio TEXT, fin TEXT, minutos INTEGER): caídas de los últimos 31 días y las que siguen ' +
+  'abiertas (fin NULL); se une con recintos por codigo.\n' +
   "  estado es 'caido' o 'activo'. canton: Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí, Pimampiro. " +
   'parroquia en mayúsculas sin tildes (puede ser NULL). tecnico es el técnico del CNE asignado (NULL = sin técnico). ' +
-  'tiene_contacto es 1 si el recinto tiene encargado con teléfono, 0 si no. No hay más columnas ni tablas.\n' +
+  'tiene_contacto es 1 si el recinto tiene encargado con teléfono, 0 si no. minutos_caido: minutos que lleva caído ' +
+  'ahora (NULL si está activo). Fechas en hora de Ecuador como \'AAAA-MM-DD HH:MM:SS\'; ahora() da la fecha y hora ' +
+  'actual (úsala en vez de \'now\'). No hay más columnas ni tablas.\n' +
   'Reglas del SQL:\n' +
   "  1. Compara cantones con norm(canton) = norm('Urcuqui'). Para técnicos, parroquias y nombres de recintos " +
   "usa parecido(columna, 'texto') (tolera errores de tipeo y nombres incompletos).\n" +
@@ -239,6 +244,10 @@ export const INSTRUCCIONES_MODELO_SQL =
   '  6. Si preguntan por técnicos sin pedir sus recintos, devuelve solo el técnico (y conteos si sirven), no la ' +
   'lista de recintos.\n' +
   '  7. titulo: frase corta en español que describe el resultado ("Recintos caídos de Cotacachi").\n' +
+  '  8. Para tiempos usa columnas que empiecen con "minutos" (minutos_caido, minutos, AS minutos_total): se muestran ' +
+  'como "2 h 15 min". "Hoy" → inicio >= date(ahora()); "esta semana" → inicio >= date(ahora(), \'-6 days\', ' +
+  '\'weekday 1\'); "este mes" → inicio >= strftime(\'%Y-%m-01\', ahora()). Los períodos se filtran por inicio y ' +
+  'minutos es la duración total de cada caída.\n' +
   'Ejemplos:\n' +
   '  "5 recintos de Ibarra aleatorios" → SELECT codigo, nombre, estado FROM recintos WHERE norm(canton) = ' +
   "norm('Ibarra') ORDER BY random() LIMIT 5\n" +
@@ -250,6 +259,13 @@ export const INSTRUCCIONES_MODELO_SQL =
   'GROUP BY canton ORDER BY caidos DESC LIMIT 1\n' +
   '  "contactos de los caídos de Ibarra" → con_contacto true, SELECT codigo, nombre, estado FROM recintos WHERE ' +
   "estado = 'caido' AND norm(canton) = norm('Ibarra') ORDER BY codigo\n" +
+  '  "cuánto tiempo lleva caído García Moreno" → SELECT codigo, nombre, estado, minutos_caido FROM recintos WHERE ' +
+  "parecido(nombre, 'Garcia Moreno') OR parecido(parroquia, 'Garcia Moreno') ORDER BY codigo\n" +
+  '  "cuántas veces se cayó el 1008 este mes" → SELECT count(*) AS caidas, sum(minutos) AS minutos_total FROM caidas ' +
+  "WHERE codigo = '1008' AND inicio >= strftime('%Y-%m-01', ahora())\n" +
+  '  "qué recintos se cayeron más esta semana" → SELECT r.codigo, r.nombre, count(*) AS caidas, sum(c.minutos) AS ' +
+  "minutos_total FROM caidas c JOIN recintos r USING (codigo) WHERE c.inicio >= date(ahora(), '-6 days', 'weekday 1') " +
+  'GROUP BY r.codigo, r.nombre ORDER BY minutos_total DESC LIMIT 10\n' +
   'Si la pregunta pide cosas distintas, puedes llamar hasta 3 herramientas.';
 
 const HERRAMIENTA_CONSULTAR_DATOS = {
@@ -257,8 +273,9 @@ const HERRAMIENTA_CONSULTAR_DATOS = {
   function: {
     name: 'consultar_datos',
     description:
-      'Ejecuta un SELECT de SQLite sobre la tabla recintos (codigo, nombre, canton, parroquia, estado, ' +
-      'numero_tecnico, tecnico, tiene_contacto) y muestra el resultado al usuario.',
+      'Ejecuta un SELECT de SQLite sobre las tablas recintos (codigo, nombre, canton, parroquia, estado, ' +
+      'numero_tecnico, tecnico, tiene_contacto, minutos_caido) y caidas (codigo, inicio, fin, minutos) y muestra el ' +
+      'resultado al usuario.',
     parameters: {
       type: 'object',
       properties: {

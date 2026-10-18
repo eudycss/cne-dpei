@@ -146,4 +146,11 @@ describe('modo SQL', () => {
     expect(INSTRUCCIONES_MODELO_SQL).toContain('ORDER BY random() LIMIT 5');
     expect(INSTRUCCIONES_MODELO_SQL).not.toMatch(/telefono TEXT/);
   });
+
+  it('las instrucciones describen el historial de caídas y ahora()', () => {
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('minutos_caido INTEGER');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('caidas(codigo TEXT, inicio TEXT, fin TEXT, minutos INTEGER)');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('ahora()');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('"cuánto tiempo lleva caído García Moreno"');
+  });
 });

@@ -60,5 +60,18 @@ export const ENCARGADOS_PRUEBA = new Map<string, EncargadoRecinto>(
 
 export const CODIGOS_PRUEBA = FILAS.map(([codigo]) => codigo);
 
+const haceMinutos = (m: number) => new Date(Date.now() - m * 60_000);
+
+/**
+ * Caídas ficticias: las 7 abiertas de los recintos caídos (9304 lleva 2 días, la más
+ * larga) y 9302 con 3 caídas cerradas en los últimos 2 días además de la abierta.
+ */
+export const CAIDAS_PRUEBA = [
+  ...[['9102', 45], ['9105', 130], ['9201', 20], ['9302', 300], ['9303', 90], ['9304', 2900], ['9501', 15]].map(
+    ([codigoRecinto, minutos]) => ({ codigoRecinto: String(codigoRecinto), inicio: haceMinutos(Number(minutos)), fin: null as Date | null }),
+  ),
+  ...[1500, 2000, 2600].map((m) => ({ codigoRecinto: '9302', inicio: haceMinutos(m), fin: haceMinutos(m - 30) })),
+];
+
 /** Códigos de un cantón, para los casos que piden "recintos de X". */
 export const codigosDe = (canton: string) => FILAS.filter(([, , c]) => c === canton).map(([codigo]) => codigo);

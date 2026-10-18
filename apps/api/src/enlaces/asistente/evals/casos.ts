@@ -48,6 +48,11 @@ export const CASOS: CasoEval[] = [
   { pregunta: 'Contactos de los caídos de Ibarra', esperado: { codigos: ['9102', '9105'], contiene: [telefonoPrueba('9102'), telefonoPrueba('9105')] } },
   { pregunta: 'Cómo está el 9302', esperado: { codigos: ['9302'], contiene: ['caído'] } },
 
+  // Tiempo de caída
+  { pregunta: 'Cuánto tiempo lleva caído Apuela', esperado: { codigosDentroDe: ['9304'], contiene: ['2 d'] } },
+  { pregunta: 'Qué recinto lleva más tiempo caído', esperado: { codigos: ['9304'] } },
+  { pregunta: 'Cuántas veces se cayó el 9302 en los últimos 3 días', esperado: { numeros: [4], noContiene: SIN_TELEFONOS } },
+
   // Estadísticas y fuera de tema
   { pregunta: 'estadísticas de la semana', esperado: { contiene: ['[estadisticas semana]'] } },
   { pregunta: 'cuántas caídas hubo hoy', esperado: { contiene: ['[estadisticas dia]'] } },

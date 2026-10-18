@@ -1,6 +1,6 @@
 import { escapeHtml } from '../../auth/notifier';
 import type { EncargadoRecinto } from '../encargados-recintos.client';
-import { recortarNombre } from '../telegram-notifier';
+import { formatearDuracion, recortarNombre } from '../telegram-notifier';
 import { partir, textoEncargado } from './consulta-recintos';
 import type { ResultadoSql, ValorSql } from './sql/motor-sql';
 
@@ -8,6 +8,9 @@ import type { ResultadoSql, ValorSql } from './sql/motor-sql';
 const MAX_FILAS_CON_CONTACTO = 40;
 
 const texto = (v: ValorSql) => (v === null ? '—' : escapeHtml(String(v)));
+/** Columnas de tiempo ("minutos_caido", "minutos_total"…): 135 → "2 h 15 min". */
+const esMinutos = (columna: string) => /^minutos/i.test(columna);
+const valor = (v: ValorSql, columna: string) => (typeof v === 'number' && esMinutos(columna) ? formatearDuracion(v) : texto(v));
 
 /**
  * Arma la respuesta a partir del resultado del SQL, sea cual sea su forma:
@@ -26,7 +29,7 @@ export function formatearResultadoSql(
   const { columnas, filas, hayMas } = resultado;
   const encabezado = `🔎 <b>${escapeHtml(titulo)}</b>`;
   if (filas.length === 0) return [`${encabezado}\nNinguno cumple esa condición.`];
-  if (filas.length === 1 && columnas.length === 1) return [`${encabezado}: ${texto(filas[0][0])}`];
+  if (filas.length === 1 && columnas.length === 1) return [`${encabezado}: ${valor(filas[0][0], columnas[0])}`];
 
   const iCodigo = columnas.indexOf('codigo');
   const iNombre = columnas.indexOf('nombre');
@@ -36,10 +39,10 @@ export function formatearResultadoSql(
   const visibles = mostrarContacto ? filas.slice(0, MAX_FILAS_CON_CONTACTO) : filas;
 
   const lineas = visibles.map((fila) => {
-    if (iCodigo < 0) return `• ${fila.map(texto).join(' · ')}`;
+    if (iCodigo < 0) return `• ${fila.map((v, i) => valor(v, columnas[i])).join(' · ')}`;
     const icono = iEstado < 0 ? '•' : fila[iEstado] === 'caido' ? '🔴' : '✅';
     const nombre = iNombre >= 0 && fila[iNombre] !== null ? ` — ${escapeHtml(recortarNombre(String(fila[iNombre])))}` : '';
-    const extra = otras.length ? ` · ${otras.map((i) => texto(fila[i])).join(' · ')}` : '';
+    const extra = otras.length ? ` · ${otras.map((i) => valor(fila[i], columnas[i])).join(' · ')}` : '';
     const linea = `${icono} ${texto(fila[iCodigo])}${nombre}${extra}`;
     return mostrarContacto ? `${linea}\n     📞 ${textoEncargado(String(fila[iCodigo]), encargados)}` : linea;
   });

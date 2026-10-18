@@ -4,13 +4,13 @@ import { escapeHtml } from '../../auth/notifier';
 import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distributivo-tecnicos.client';
 import { EncargadosRecintosClient, type EncargadoRecinto } from '../encargados-recintos.client';
 import { EnlacesEstadisticasService } from '../enlaces-estadisticas.service';
-import { abreviarCanton, PREFIJO_CALLBACK_RECINTO, TelegramNotifier } from '../telegram-notifier';
+import { abreviarCanton, formatearDuracion, PREFIJO_CALLBACK_RECINTO, TelegramNotifier } from '../telegram-notifier';
 import { buscarRecintosDetalle, normalizarTexto } from './buscar-recintos';
 import { responderConsulta, textoEncargado, type FilaRecinto } from './consulta-recintos';
 import { validarConsulta, type Consulta, type FiltrosRecintos } from './herramientas';
 import { asistenteSqlHabilitado, AsistenteNoDisponible, LlmClient, type ModoConsultas } from './llm.client';
 import { formatearResultadoSql } from './respuesta-sql';
-import { ejecutarSql, type FilaSql } from './sql/motor-sql';
+import { ejecutarSql, horaEcuadorSql, type DatosSql, type FilaCaidaSql, type FilaSql } from './sql/motor-sql';
 import { ErrorSql } from './sql/validar-sql';
 
 /** Preguntas más largas no son una consulta al bot; además acota lo que se manda al modelo. */
@@ -25,6 +25,28 @@ const MAX_LARGO_LISTA = 3500;
 /** Con más resultados se pide más detalle en vez de llenar el chat de botones. */
 const MAX_BOTONES = 5;
 const MAX_LISTA = 15;
+/** Historial de caídas que ve el modo SQL: lo reciente basta para "esta semana" o "este mes". */
+const DIAS_HISTORIAL_SQL = 31;
+const MAX_CAIDAS_SQL = 5_000;
+const MS_MINUTO = 60_000;
+
+type Caida = { codigoRecinto: string; inicio: Date; fin: Date | null };
+
+/**
+ * Desde cuándo está caído cada recinto. Si por un error quedaron dos caídas abiertas
+ * del mismo recinto, vale la más antigua: es el tiempo que realmente lleva caído.
+ * `caidas` debe venir de la más antigua a la más reciente.
+ */
+function inicioCaidaAbierta(caidas: Caida[]): Map<string, Date> {
+  const abiertas = new Map<string, Date>();
+  for (const c of caidas) if (!c.fin && !abiertas.has(c.codigoRecinto)) abiertas.set(c.codigoRecinto, c.inicio);
+  return abiertas;
+}
+
+/** "🔴 caído hace 2 h 15 min" si se sabe desde cuándo; "🔴 caído" si no. */
+function textoCaido(desde: Date | undefined, ahora = Date.now()): string {
+  return desde ? `🔴 caído hace ${formatearDuracion((ahora - desde.getTime()) / MS_MINUTO)}` : '🔴 caído';
+}
 /** Códigos que se muestran por técnico cuando la pregunta es "quién es el técnico de…". */
 const MAX_CODIGOS_POR_TECNICO = 20;
 
@@ -195,8 +217,12 @@ export class AsistenteService {
         await this.telegram.enviarTexto(`⚠️ El recinto ${codigo} ya no está en la lista.`, 'el recinto elegido (no existe)');
         return;
       }
-      const [asignaciones, encargados] = await Promise.all([this.asignaciones(), this.mapaEncargados()]);
-      await this.enviarFicha(enlace as Enlace, asignaciones ?? [], encargados);
+      const [asignaciones, encargados, abiertas] = await Promise.all([
+        this.asignaciones(),
+        this.mapaEncargados(),
+        this.caidasAbiertas(),
+      ]);
+      await this.enviarFicha(enlace as Enlace, asignaciones ?? [], encargados, abiertas);
     } catch (e) {
       this.log.error(`No se pudo mostrar el recinto elegido: ${(e as Error)?.message ?? e}`);
       await this.telegram.enviarTexto(
@@ -256,7 +282,7 @@ export class AsistenteService {
       );
     }
     const porCodigo = new Map<string, AsignacionTecnico>((asignaciones ?? []).map((a) => [a.codigoRecinto, a]));
-    const filas: FilaSql[] = enlaces.map((e) => {
+    const recintos = enlaces.map((e) => {
       const a = porCodigo.get(e.codigoRecinto);
       return {
         codigo: e.codigoRecinto,
@@ -267,13 +293,13 @@ export class AsistenteService {
         numero_tecnico: a?.numeroTecnico ?? null,
         tecnico: a?.tecnico ?? null,
         tiene_contacto: encargados === null ? null : encargados.get(e.codigoRecinto)?.telefono?.trim() ? 1 : 0,
-      };
+      } as const;
     });
 
     let actual = consulta;
     for (;;) {
       try {
-        const resultado = await ejecutarSql(actual.sql, filas);
+        const resultado = await ejecutarSql(actual.sql, await this.conTiempos(actual.sql, recintos));
         for (const mensaje of formatearResultadoSql(actual.titulo, resultado, actual.conContacto, encargados)) {
           await this.telegram.enviarHtml(mensaje, 'el resultado del SQL del asistente');
         }
@@ -294,6 +320,37 @@ export class AsistenteService {
       }
     }
     estado.sqlFallido = true;
+  }
+
+  /**
+   * Agrega los tiempos de caída que use el SQL: el historial (tabla caidas) solo si lo
+   * nombra, y minutos_caido solo con las caídas abiertas. Así una pregunta que no habla
+   * de tiempos no suma lecturas a la base.
+   */
+  private async conTiempos(sql: string, recintos: Omit<FilaSql, 'minutos_caido'>[]): Promise<DatosSql> {
+    const usaHistorial = /\bcaidas\b/i.test(sql);
+    const usaMinutos = usaHistorial || /\bminutos_caido\b/i.test(sql);
+    const caidas = usaHistorial ? await this.caidasRecientes() : usaMinutos ? await this.listaCaidasAbiertas() : [];
+    const ahora = Date.now();
+    const minutos = (desde: Date, hasta: number) => Math.max(0, Math.round((hasta - desde.getTime()) / MS_MINUTO));
+    const abiertas = inicioCaidaAbierta(caidas);
+    const filasCaidas: FilaCaidaSql[] = caidas
+      // Una sola abierta por recinto (la más antigua), para no contar dos veces el mismo tiempo.
+      .filter((c) => c.fin || abiertas.get(c.codigoRecinto) === c.inicio)
+      .map((c) => ({
+        codigo: c.codigoRecinto,
+        inicio: horaEcuadorSql(c.inicio),
+        fin: c.fin ? horaEcuadorSql(c.fin) : null,
+        minutos: minutos(c.inicio, c.fin?.getTime() ?? ahora),
+      }));
+    return {
+      recintos: recintos.map((r) => {
+        const desde = r.estado === 'caido' ? abiertas.get(r.codigo) : undefined;
+        return { ...r, minutos_caido: desde ? minutos(desde, ahora) : null };
+      }),
+      caidas: usaHistorial ? filasCaidas : [],
+      ahora: horaEcuadorSql(new Date(ahora)),
+    };
   }
 
   /** Le devuelve al modelo su SQL y el error (sin datos) para que lo corrija una vez. */
@@ -333,7 +390,8 @@ Error: ${error}
       return;
     }
     if (encontrados.length === 1) {
-      await this.enviarFicha(encontrados[0], asignaciones, await this.mapaEncargados());
+      const [encargados, abiertas] = await Promise.all([this.mapaEncargados(), this.caidasAbiertas()]);
+      await this.enviarFicha(encontrados[0], asignaciones, encargados, abiertas);
       return;
     }
     if (pideTecnico) {
@@ -342,13 +400,15 @@ Error: ${error}
     }
     // Varios: cada uno con su encargado, para no tener que preguntar uno por uno.
     // Se corta por cantidad y por largo (nombres largos no deben pasar el límite de Telegram).
-    const encargados = await this.mapaEncargados();
+    const [encargados, abiertas] = await Promise.all([this.mapaEncargados(), this.caidasAbiertas()]);
     const lineas: string[] = [];
     let largo = 0;
     for (const e of encontrados.slice(0, MAX_LISTA)) {
+      const desde = abiertas.get(e.codigoRecinto);
+      const caido = e.estado === 'FALLO' ? ` 🔴${desde ? ` hace ${formatearDuracion((Date.now() - desde.getTime()) / MS_MINUTO)}` : ''}` : '';
       const linea =
         `• <b>${escapeHtml(e.codigoRecinto)} · ${escapeHtml(e.nombreRecinto)}</b>` +
-        `${e.estado === 'FALLO' ? ' 🔴' : ''}\n   📞 ${textoEncargado(e.codigoRecinto, encargados)}`;
+        `${caido}\n   📞 ${textoEncargado(e.codigoRecinto, encargados)}`;
       if (lineas.length > 0 && largo + linea.length > MAX_LARGO_LISTA) break;
       lineas.push(linea);
       largo += linea.length + 1;
@@ -423,12 +483,13 @@ Error: ${error}
     enlace: Enlace,
     asignaciones: AsignacionTecnico[],
     encargados: Map<string, EncargadoRecinto> | null,
+    abiertas: Map<string, Date>,
   ): Promise<void> {
     const asignacion = asignaciones.find((a) => a.codigoRecinto === enlace.codigoRecinto);
     const sector = [abreviarCanton(enlace.canton), asignacion?.parroquia].filter(Boolean).map((v) => escapeHtml(v!)).join(' · ');
     const lineas = [
       `📍 <b>${escapeHtml(enlace.codigoRecinto)} · ${escapeHtml(enlace.nombreRecinto)}</b>${sector ? ` (${sector})` : ''}`,
-      `Enlace: ${enlace.estado === 'FALLO' ? '🔴 caído' : '✅ activo'}`,
+      `Enlace: ${enlace.estado === 'FALLO' ? textoCaido(abiertas.get(enlace.codigoRecinto)) : '✅ activo'}`,
       `📞 Encargado: ${textoEncargado(enlace.codigoRecinto, encargados)}`,
       `👷 Técnico: ${asignacion ? escapeHtml(asignacion.tecnico) : 'sin técnico asignado'}`,
     ];
@@ -448,6 +509,44 @@ Error: ${error}
       select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
       orderBy: { codigoRecinto: 'asc' },
     })) as Enlace[];
+  }
+
+  /** Caídas de los últimos días y las que siguen abiertas; [] si no se pudieron leer (la respuesta sale sin tiempos). */
+  private async caidasRecientes(): Promise<Caida[]> {
+    try {
+      // Las más recientes primero: si hubiera más del tope, se pierden las viejas, no las de hoy.
+      const caidas = await this.prisma.enlaceCaida.findMany({
+        where: { OR: [{ fin: null }, { inicio: { gte: new Date(Date.now() - DIAS_HISTORIAL_SQL * 24 * 60 * MS_MINUTO) } }] },
+        select: { codigoRecinto: true, inicio: true, fin: true },
+        orderBy: { inicio: 'desc' },
+        take: MAX_CAIDAS_SQL,
+      });
+      if (caidas.length >= MAX_CAIDAS_SQL) this.log.warn(`Historial de caídas recortado a las ${MAX_CAIDAS_SQL} más recientes`);
+      return caidas.reverse();
+    } catch (e) {
+      this.log.warn(`Historial de caídas no disponible para el asistente: ${(e as Error)?.message ?? e}`);
+      return [];
+    }
+  }
+
+  /** Caídas que siguen abiertas, de la más antigua a la más reciente; [] si no se pudieron leer. */
+  private async listaCaidasAbiertas(): Promise<Caida[]> {
+    try {
+      const abiertas = await this.prisma.enlaceCaida.findMany({
+        where: { fin: null },
+        select: { codigoRecinto: true, inicio: true },
+        orderBy: { inicio: 'asc' },
+      });
+      return abiertas.map((c) => ({ ...c, fin: null }));
+    } catch (e) {
+      this.log.warn(`Caídas abiertas no disponibles para el asistente: ${(e as Error)?.message ?? e}`);
+      return [];
+    }
+  }
+
+  /** Desde cuándo está caído cada recinto que sigue caído; vacío si no se pudo leer. */
+  private async caidasAbiertas(): Promise<Map<string, Date>> {
+    return inicioCaidaAbierta(await this.listaCaidasAbiertas());
   }
 
   /** null si el distributivo no está configurado o no se pudo leer (distinto de "sin técnicos"). */
