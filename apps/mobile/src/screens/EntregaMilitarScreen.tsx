@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { KitCustodiaResponse, MilitarResumen, OperadorResumen } from '@cne/shared-types';
+import type { KitCustodiaResponse, MilitarResumen, OperadorResumen, ResumenCustodia } from '@cne/shared-types';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
@@ -22,6 +22,7 @@ import {
   buscarOperadores,
   cambiarOperador,
   corregirMilitar,
+  getResumenCustodia,
   registrarEntrega,
   validarKitCustodia,
 } from '../lib/queries/custodia';
@@ -62,7 +63,17 @@ export function EntregaMilitarScreen() {
   const [motivo, setMotivo] = useState('');
   const [validando, setValidando] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [entregados, setEntregados] = useState(0);
+  // Total del evento (no solo de esta sesión): sirve también si se reabre la app.
+  const [resumen, setResumen] = useState<ResumenCustodia | null>(null);
+
+  const actualizarResumen = useCallback(() => {
+    // Informativo: si falla (sin señal), se queda el último valor.
+    getResumenCustodia().then(setResumen, () => {});
+  }, []);
+
+  useEffect(() => {
+    actualizarResumen();
+  }, [actualizarResumen]);
 
   const buscarMilitar = useCallback(
     async (q: string) => (await buscarMilitares(q)).map((m) => opcionMilitar(m, kit?.recinto?.id ?? null)),
@@ -110,7 +121,7 @@ export function EntregaMilitarScreen() {
       let aviso = '';
       if (modo === 'ENTREGAR') {
         await registrarEntrega({ kitId: kit.kitId, militarId: seleccion.id });
-        setEntregados((n) => n + 1);
+        actualizarResumen();
         aviso = `Entrega registrada: kit ${kit.codigoUnico} a ${seleccion.titulo}`;
       } else if (modo === 'CORREGIR_MILITAR') {
         await corregirMilitar(kit.kitId, { militarId: seleccion.id, motivo: motivo.trim() });
@@ -142,9 +153,26 @@ export function EntregaMilitarScreen() {
       <AppBar subtitle="Entrega a militar" />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <Text style={styles.title} accessibilityRole="header">Entregar kit a militar</Text>
-        <Text style={styles.subtitle}>
-          Escanea el kit y confirma el militar que lo lleva al recinto. {entregados > 0 ? `Entregados en esta sesión: ${entregados}.` : ''}
-        </Text>
+        <Text style={styles.subtitle}>Escanea el kit y confirma el militar que lo lleva al recinto.</Text>
+
+        {resumen ? (
+          <View
+            style={styles.contador}
+            accessible
+            accessibilityRole="summary"
+            accessibilityLabel={`Kits entregados a militares: ${resumen.entregados} de ${resumen.total}`}
+          >
+            <Text style={styles.contadorNumero}>
+              {resumen.entregados}
+              <Text style={styles.contadorTotal}> / {resumen.total}</Text>
+            </Text>
+            <Text style={styles.contadorLabel}>
+              {resumen.total > 0 && resumen.entregados >= resumen.total
+                ? 'Todos los kits entregados a militares'
+                : 'kits entregados a militares'}
+            </Text>
+          </View>
+        ) : null}
 
         <IngresoCodigoKit onCodigo={onCodigo} ocupado={validando} />
 
@@ -266,6 +294,21 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   title: { fontSize: 22, fontFamily: fontFamily.bold, color: c.textPrimary },
   subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 8, marginBottom: 20, lineHeight: 20 },
   card: { backgroundColor: c.bgCard, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: c.border },
+  contador: {
+    backgroundColor: c.bgCard,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: c.border,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  contadorNumero: { fontSize: 28, fontFamily: fontFamily.bold, color: c.primary },
+  contadorTotal: { fontSize: 18, fontFamily: fontFamily.semiBold, color: c.textSecondary },
+  contadorLabel: { flex: 1, fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary },
   kitCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1 },
   kitNombre: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 2 },
   dato: { marginTop: 14 },

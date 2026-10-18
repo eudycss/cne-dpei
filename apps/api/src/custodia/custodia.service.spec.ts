@@ -35,12 +35,14 @@ describe('CustodiaService', () => {
       },
       kitElectoral: {
         findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(1),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       militar: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
       entregaCustodioKit: {
         findUnique: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -334,6 +336,27 @@ describe('CustodiaService', () => {
         service.cambiarOperador(asistenteId, kitId, { ...input, operadorId }),
       ).rejects.toThrow(/ya es el asignado/);
       expect(kits.validarAsignacion).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resumen', () => {
+    it('cuenta las entregas sobre los kits asignados del evento activo, sin los de prueba', async () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1' }, { id: 'k2' }, { id: 'k3' }]);
+      prisma.entregaCustodioKit.count.mockResolvedValueOnce(2);
+
+      await expect(service.resumen()).resolves.toEqual({ entregados: 2, total: 3 });
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { eventoId, esPrueba: false, operadorId: { not: null } } }),
+      );
+      expect(prisma.entregaCustodioKit.count).toHaveBeenCalledWith({
+        where: { eventoId, kitId: { in: ['k1', 'k2', 'k3'] } },
+      });
+    });
+
+    it('sin evento activo devuelve 0 de 0', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.resumen()).resolves.toEqual({ entregados: 0, total: 0 });
+      expect(prisma.kitElectoral.findMany).not.toHaveBeenCalled();
     });
   });
 
