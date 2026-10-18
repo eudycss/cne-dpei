@@ -58,7 +58,7 @@ export function MilitaresPage() {
       <div className="card">
         <div className="row">
           <SearchInput
-            placeholder="Buscar por nombre, apellido o cédula"
+            placeholder="Buscar por nombre, cédula o recinto"
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
             style={{ flex: 1 }}

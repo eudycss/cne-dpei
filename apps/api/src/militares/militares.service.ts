@@ -41,6 +41,9 @@ export class MilitaresService {
         { nombres: { contains: opts.search, mode: 'insensitive' } },
         { apellidos: { contains: opts.search, mode: 'insensitive' } },
         { cedula: { contains: opts.search } },
+        // También por el recinto asignado: "¿qué militares van a Apuela?".
+        { recinto: { nombre: { contains: opts.search, mode: 'insensitive' } } },
+        { recinto: { codigoRecinto: { contains: opts.search, mode: 'insensitive' } } },
       ];
     }
     if (opts.recintoId) where.recintoId = opts.recintoId;

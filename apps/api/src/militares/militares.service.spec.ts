@@ -55,6 +55,24 @@ describe('MilitaresService', () => {
     service = moduleRef.get(MilitaresService);
   });
 
+  describe('list', () => {
+    it('busca también por nombre o código del recinto asignado', async () => {
+      prisma.militar.count.mockResolvedValueOnce(1);
+      prisma.militar.findMany.mockResolvedValueOnce([militarRow()]);
+
+      await service.list({ search: 'apuela' });
+
+      const where = prisma.militar.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual(
+        expect.arrayContaining([
+          { cedula: { contains: 'apuela' } },
+          { recinto: { nombre: { contains: 'apuela', mode: 'insensitive' } } },
+          { recinto: { codigoRecinto: { contains: 'apuela', mode: 'insensitive' } } },
+        ]),
+      );
+    });
+  });
+
   describe('create', () => {
     it('lanza BadRequestException si el recinto no existe', async () => {
       prisma.recinto.findUnique.mockResolvedValueOnce(null);
