@@ -22,6 +22,7 @@ import { CameraFoto } from '../components/CameraFoto';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
 import { capturarYSubirActa, limpiarActas, reintentarSubidaActa, restaurarActas } from '../lib/offline-actas';
+import { elegirFotoDeGaleria } from '../lib/galeria';
 import {
   leerPruebaConexionLocal,
   limpiarPruebaConexion,
@@ -233,6 +234,21 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
     [contextoId, instalacion, escrutinio, marcarSubiendo, aplicarResultadoActa],
   );
 
+  // Para cuando el operador ya no tiene el reporte delante (p. ej. ya salió del
+  // recinto y un compañero le envió la foto): misma compresión y subida offline
+  // que la foto de la cámara.
+  const elegirDeGaleria = useCallback(
+    async (tipo: TipoActa) => {
+      try {
+        const uri = await elegirFotoDeGaleria();
+        if (uri) await capturar(tipo, uri);
+      } catch {
+        Alert.alert('Galería no disponible', 'No se pudo abrir la galería. Intenta tomar la foto con la cámara.');
+      }
+    },
+    [capturar],
+  );
+
   function onFotoCapturada(uri: string) {
     const tipo = mostrarCamara;
     setMostrarCamara(null);
@@ -395,6 +411,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
             instalacion={instalacion}
             escrutinio={escrutinio}
             onTomarFoto={(tipo) => setMostrarCamara(tipo)}
+            onElegirGaleria={elegirDeGaleria}
             onReintentar={reintentar}
             styles={styles}
           />
@@ -587,12 +604,14 @@ function PasoActas({
   instalacion,
   escrutinio,
   onTomarFoto,
+  onElegirGaleria,
   onReintentar,
   styles,
 }: {
   instalacion: ActaState;
   escrutinio: ActaState;
   onTomarFoto: (tipo: TipoActa) => void;
+  onElegirGaleria: (tipo: TipoActa) => void;
   onReintentar: (tipo: TipoActa) => void;
   styles: Styles;
 }) {
@@ -606,6 +625,7 @@ function PasoActas({
         titulo="Reporte de instalación"
         estado={instalacion}
         onTomarFoto={() => onTomarFoto('instalacion')}
+        onElegirGaleria={() => onElegirGaleria('instalacion')}
         onReintentar={() => onReintentar('instalacion')}
         styles={styles}
       />
@@ -613,6 +633,7 @@ function PasoActas({
         titulo="Reporte de escrutinio"
         estado={escrutinio}
         onTomarFoto={() => onTomarFoto('escrutinio')}
+        onElegirGaleria={() => onElegirGaleria('escrutinio')}
         onReintentar={() => onReintentar('escrutinio')}
         styles={styles}
       />
@@ -624,12 +645,14 @@ function ActaCard({
   titulo,
   estado,
   onTomarFoto,
+  onElegirGaleria,
   onReintentar,
   styles,
 }: {
   titulo: string;
   estado: ActaState;
   onTomarFoto: () => void;
+  onElegirGaleria: () => void;
   onReintentar: () => void;
   styles: Styles;
 }) {
@@ -655,9 +678,17 @@ function ActaCard({
       {estado.error ? <Text style={styles.actaError}>{estado.error}</Text> : null}
 
       {estado.url ? (
-        <Pressable style={styles.btnSecondary} onPress={onTomarFoto}>
-          <Text style={styles.btnSecondaryText}>Reemplazar foto</Text>
-        </Pressable>
+        <>
+          <Pressable style={styles.btnSecondary} onPress={onTomarFoto}>
+            <Text style={styles.btnSecondaryText}>Reemplazar foto</Text>
+          </Pressable>
+          <BotonGaleria
+            titulo={titulo}
+            texto="Reemplazar desde la galería"
+            onPress={onElegirGaleria}
+            styles={styles}
+          />
+        </>
       ) : estado.error ? (
         <Pressable
           style={[styles.btnPrimary, estado.subiendo && { opacity: 0.6 }]}
@@ -677,7 +708,34 @@ function ActaCard({
           <Text style={styles.btnPrimaryText}>{estado.subiendo ? 'Subiendo…' : 'Tomar foto'}</Text>
         </Pressable>
       )}
+
+      {!estado.url && !estado.error && !estado.subiendo ? (
+        <BotonGaleria titulo={titulo} texto="Elegir de la galería" onPress={onElegirGaleria} styles={styles} />
+      ) : null}
     </View>
+  );
+}
+
+function BotonGaleria({
+  titulo,
+  texto,
+  onPress,
+  styles,
+}: {
+  titulo: string;
+  texto: string;
+  onPress: () => void;
+  styles: Styles;
+}) {
+  return (
+    <Pressable
+      style={styles.btnSecondary}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${texto}: ${titulo}`}
+    >
+      <Text style={styles.btnSecondaryText}>{texto}</Text>
+    </Pressable>
   );
 }
 

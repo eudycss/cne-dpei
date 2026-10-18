@@ -240,6 +240,9 @@ importers:
       expo-image-manipulator:
         specifier: ~12.0.5
         version: 12.0.5(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1))
+      expo-image-picker:
+        specifier: ~15.1.0
+        version: 15.1.0(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1))
       expo-location:
         specifier: ~17.0.1
         version: 17.0.1(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1))
@@ -4021,6 +4024,11 @@ packages:
 
   expo-image-manipulator@12.0.5:
     resolution: {integrity: sha512-zJ8yINjckYw/yfoSuICt4yJ9xr112+W9e5QVXwK3nCAHr7sv45RQ5sxte0qppf594TPl+UoV6Tjim7WpoKipRQ==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-picker@15.1.0:
+    resolution: {integrity: sha512-6cE10S7d0qG7+pcHtsYukRKuFL44ssOM0/v+5JIBzRwxpIgGA6qokr8PxasFEpxOA9NpN0gwry33jmq1qLXJTg==}
     peerDependencies:
       expo: '*'
 
@@ -12487,6 +12495,11 @@ snapshots:
       expo: 51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1)
 
   expo-image-manipulator@12.0.5(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1)):
+    dependencies:
+      expo: 51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1)
+      expo-image-loader: 4.7.0(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1))
+
+  expo-image-picker@15.1.0(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1)):
     dependencies:
       expo: 51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1)
       expo-image-loader: 4.7.0(expo@51.0.39(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.74.5(@babel/core@7.25.7(supports-color@8.1.1))(@babel/preset-env@7.29.5(@babel/core@7.25.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@18.2.79)(react@18.2.0)(supports-color@8.1.1))(react@18.2.0)(supports-color@8.1.1))

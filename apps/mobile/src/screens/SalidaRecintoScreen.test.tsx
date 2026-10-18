@@ -50,7 +50,9 @@ jest.mock('../theme/ThemeContext', () => ({
 
 jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 jest.mock('../components/CameraFoto', () => ({ CameraFoto: () => null }));
+jest.mock('../lib/galeria', () => ({ elegirFotoDeGaleria: jest.fn() }));
 
+import { elegirFotoDeGaleria } from '../lib/galeria';
 import { SalidaRecintoScreen } from './SalidaRecintoScreen';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
@@ -185,6 +187,70 @@ describe('SalidaRecintoScreen', () => {
     // la asignación activa) para no reusar por error actas de otro CDA.
     expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'instalacion', 'file://instalacion.jpg');
     expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'escrutinio', 'file://escrutinio.jpg');
+  });
+
+  describe('elegir el reporte desde la galería', () => {
+    async function montar() {
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+        await flushPromises();
+      });
+      return renderer;
+    }
+
+    async function elegirDeGaleria(renderer: ReactTestRenderer, titulo: string) {
+      const boton = pressableAncestor(cardPorTitulo(renderer, titulo).findByProps({ children: 'Elegir de la galería' }));
+      await act(async () => {
+        boton.props.onPress();
+        await flushPromises();
+      });
+    }
+
+    it('sube la foto elegida igual que una de la cámara y habilita Continuar', async () => {
+      (capturarYSubirActa as jest.Mock).mockImplementation((_ctx: string, tipo: string, uri: string) =>
+        Promise.resolve({ uri, url: `actas/${tipo}.bin`, error: null }),
+      );
+      (elegirFotoDeGaleria as jest.Mock)
+        .mockResolvedValueOnce('file://galeria-instalacion.jpg')
+        .mockResolvedValueOnce('file://galeria-escrutinio.jpg');
+      const renderer = await montar();
+
+      await elegirDeGaleria(renderer, 'Reporte de instalación');
+      await elegirDeGaleria(renderer, 'Reporte de escrutinio');
+
+      expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'instalacion', 'file://galeria-instalacion.jpg');
+      expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'escrutinio', 'file://galeria-escrutinio.jpg');
+      const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
+      expect(continuar.props.disabled).toBe(false);
+    });
+
+    it('si el operador cancela la galería no sube nada', async () => {
+      (elegirFotoDeGaleria as jest.Mock).mockResolvedValueOnce(null);
+      const renderer = await montar();
+
+      await elegirDeGaleria(renderer, 'Reporte de instalación');
+
+      expect(capturarYSubirActa).not.toHaveBeenCalled();
+    });
+
+    it('si la galería no abre, avisa y ofrece usar la cámara', async () => {
+      (elegirFotoDeGaleria as jest.Mock).mockRejectedValueOnce(new Error('sin selector'));
+      const renderer = await montar();
+
+      await elegirDeGaleria(renderer, 'Reporte de instalación');
+
+      expect(Alert.alert).toHaveBeenCalledWith('Galería no disponible', expect.stringMatching(/cámara/));
+      expect(capturarYSubirActa).not.toHaveBeenCalled();
+    });
+
+    it('el botón de galería nombra el reporte para el lector de pantalla', async () => {
+      const renderer = await montar();
+      const boton = pressableAncestor(
+        cardPorTitulo(renderer, 'Reporte de escrutinio').findByProps({ children: 'Elegir de la galería' }),
+      );
+      expect(boton.props.accessibilityLabel).toBe('Elegir de la galería: Reporte de escrutinio');
+    });
   });
 
   it('si falla la subida muestra "Reintentar subida" y el reintento manual funciona', async () => {

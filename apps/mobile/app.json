@@ -70,6 +70,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Necesitamos acceso a tus fotos para subir los reportes de instalación y escrutinio desde la galería.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
