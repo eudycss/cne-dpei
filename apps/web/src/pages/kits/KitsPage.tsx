@@ -679,7 +679,7 @@ function CreateKitModal({
   }
 
   return (
-    <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
+    <div className="center modal-desplazable" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
       <form className="login-card" style={{ maxWidth: 480, width: '100%' }} onSubmit={onSubmit}>
         <h1>Nuevo kit electoral</h1>
         <p className="muted" style={{ marginTop: 0 }}>
@@ -717,7 +717,7 @@ function CreateKitModal({
 
         {error && <div className="banner error">{error}</div>}
 
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+        <div className="modal-acciones">
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
             {saving ? 'Creando…' : 'Crear kit'}
@@ -784,7 +784,7 @@ function AsignarKitModal({
   }
 
   return (
-    <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
+    <div className="center modal-desplazable" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
       <form className="login-card" style={{ maxWidth: 480, width: '100%' }} onSubmit={onSubmit}>
         <h1>Asignar kit</h1>
         <p className="muted" style={{ marginTop: 0 }}>
@@ -830,7 +830,7 @@ function AsignarKitModal({
 
         {error && <div className="banner error">{error}</div>}
 
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+        <div className="modal-acciones">
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
             {saving ? 'Guardando…' : 'Asignar'}
@@ -913,7 +913,7 @@ function EditKitModal({
   }
 
   return (
-    <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
+    <div className="center modal-desplazable" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
       <form className="login-card" style={{ maxWidth: 480, width: '100%' }} onSubmit={onSubmit}>
         <h1>Editar kit</h1>
         <p className="muted" style={{ marginTop: 0 }}>
@@ -967,7 +967,7 @@ function EditKitModal({
 
         {error && <div className="banner error">{error}</div>}
 
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+        <div className="modal-acciones">
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar cambios'}
