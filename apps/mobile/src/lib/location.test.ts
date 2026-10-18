@@ -11,6 +11,7 @@ jest.mock('expo-location', () => ({
   requestBackgroundPermissionsAsync: jest.fn(),
   getBackgroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
+  getLastKnownPositionAsync: jest.fn(),
   hasStartedLocationUpdatesAsync: jest.fn(),
   startLocationUpdatesAsync: jest.fn(),
   stopLocationUpdatesAsync: jest.fn(),
@@ -33,6 +34,10 @@ import {
   iniciarRastreo,
   permisoSegundoPlanoConcedido,
   iniciarRastreoPrimerPlano,
+  obtenerUbicacionPuntual,
+  UbicacionNoDisponibleError,
+  MAX_ANTIGUEDAD_ULTIMA_POSICION_MS,
+  PRECISION_ULTIMA_POSICION_METROS,
 } from './location';
 
 const fakeLocation = (lat: number, lon: number, timestamp = 1_700_000_000_000) => ({
@@ -278,5 +283,68 @@ describe('permisoSegundoPlanoConcedido', () => {
   it('false si la consulta falla', async () => {
     (Location.getBackgroundPermissionsAsync as jest.Mock).mockRejectedValueOnce(new Error('x'));
     await expect(permisoSegundoPlanoConcedido()).resolves.toBe(false);
+  });
+});
+
+describe('obtenerUbicacionPuntual', () => {
+  const conPrecision = (lat: number, lon: number) => ({ coords: { latitude: lat, longitude: lon, accuracy: 8 }, timestamp: 1 });
+  const conRespaldo = { permitirUltimaConocida: true, limiteMs: 10 };
+  const ultima = conPrecision(0.3576, -78.5108);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (Location.hasServicesEnabledAsync as jest.Mock).mockResolvedValue(true);
+    (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+  });
+
+  it('sin respaldo (registros) exige un fix nuevo y no usa la última posición conocida', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValue(new Error('provider unavailable'));
+
+    await expect(obtenerUbicacionPuntual()).rejects.toThrow('provider unavailable');
+    expect(Location.getLastKnownPositionAsync).not.toHaveBeenCalled();
+  });
+
+  it('con respaldo devuelve el fix nuevo cuando llega a tiempo', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue(conPrecision(0.3575, -78.51));
+
+    await expect(obtenerUbicacionPuntual(conRespaldo)).resolves.toEqual({ latitud: 0.3575, longitud: -78.51, precisionMetros: 8 });
+    expect(Location.getLastKnownPositionAsync).not.toHaveBeenCalled();
+  });
+
+  it('con respaldo, si el GPS no responde a tiempo usa la última posición reciente y precisa', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(ultima);
+
+    await expect(obtenerUbicacionPuntual(conRespaldo)).resolves.toEqual({ latitud: 0.3576, longitud: -78.5108, precisionMetros: 8 });
+    expect(Location.getLastKnownPositionAsync).toHaveBeenCalledWith({
+      maxAge: MAX_ANTIGUEDAD_ULTIMA_POSICION_MS,
+      requiredAccuracy: PRECISION_ULTIMA_POSICION_METROS,
+    });
+  });
+
+  it('con respaldo, si el GPS falla de inmediato (sin señal) también usa la última posición', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValue(new Error('provider unavailable'));
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(ultima);
+
+    await expect(obtenerUbicacionPuntual({ permitirUltimaConocida: true, limiteMs: 60_000 })).resolves.toMatchObject({
+      latitud: 0.3576,
+    });
+  });
+
+  it('lanza UbicacionNoDisponibleError si no hay fix ni posición reciente (no queda colgado)', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (Location.getLastKnownPositionAsync as jest.Mock).mockRejectedValue(new Error('x'));
+
+    await expect(obtenerUbicacionPuntual(conRespaldo)).rejects.toBeInstanceOf(UbicacionNoDisponibleError);
+  });
+
+  it('no deja un rechazo sin manejar si el GPS falla después del límite', async () => {
+    let rechazar!: (e: Error) => void;
+    (Location.getCurrentPositionAsync as jest.Mock).mockReturnValue(new Promise((_r, rej) => { rechazar = rej; }));
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(ultima);
+
+    await obtenerUbicacionPuntual(conRespaldo);
+    rechazar(new Error('timeout nativo'));
+    await new Promise((r) => setImmediate(r));
   });
 });

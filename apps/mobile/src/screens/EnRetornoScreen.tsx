@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LocationSubscription } from 'expo-location';
 import { useAuth } from '../auth/AuthContext';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
@@ -19,10 +20,11 @@ interface Props {
 }
 
 export function EnRetornoScreen({ onMarcarLlegada }: Props) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const cerrarSesion = useCerrarSesion();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { asignacion, sinConexion } = useMiAsignacion();
+  const { asignacion, sinConexion, recargar } = useMiAsignacion();
   const rastreo = useEstadoRastreo();
 
   useEffect(() => {
@@ -39,10 +41,15 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
     };
   }, []);
 
-  // Memoizado por si en el futuro se reconstruye a partir de campos sueltos
-  // (como en EnTransitoScreen) — evita reintroducir un loop de efecto si
-  // alguien deja de devolver la misma referencia de `asignacion.delegacion`.
-  const destino = useMemo(() => asignacion?.delegacion ?? null, [asignacion]);
+  // Memoizado por valor (como en EnTransitoScreen): "Actualizar ubicación"
+  // recarga la asignación y trae un objeto nuevo; si la coordenada no cambió,
+  // el efecto de abajo no debe volver a leer el GPS.
+  const latitud = asignacion?.delegacion?.latitud ?? null;
+  const longitud = asignacion?.delegacion?.longitud ?? null;
+  const destino = useMemo(
+    () => (latitud != null && longitud != null ? { latitud, longitud } : null),
+    [latitud, longitud],
+  );
   const { info, verificando, error, verificar } = useProximidad(
     destino,
     asignacion?.margenLlegadaDpiMetros ?? 150,
@@ -53,6 +60,14 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
     // Solo al obtener la coordenada de la Delegación; "Actualizar ubicación" cubre los refrescos manuales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino]);
+
+  // Además de releer el GPS, trae de nuevo margen y coordenadas: si el
+  // administrador los cambió, se aplican sin cerrar sesión. Si cambian las
+  // coordenadas, el efecto de arriba vuelve a medir contra las nuevas.
+  function actualizar() {
+    void recargar();
+    void verificar();
+  }
 
   // Si no hay coordenada de la Delegación configurada, o no se pudo verificar
   // (sin permiso de GPS, etc.), no bloqueamos: el servidor vuelve a validar al
@@ -87,7 +102,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
             info={info}
             verificando={verificando}
             error={error}
-            onActualizar={verificar}
+            onActualizar={actualizar}
             destinoLabel="la Delegación"
           />
         ) : null}
@@ -115,7 +130,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
             <Text style={styles.btnPrimaryText}>Ya llegué al DPI</Text>
           )}
         </Pressable>
-        <Pressable style={styles.btnSecondary} onPress={() => logout()}>
+        <Pressable style={styles.btnSecondary} onPress={cerrarSesion}>
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </View>

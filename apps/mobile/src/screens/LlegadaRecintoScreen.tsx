@@ -18,6 +18,7 @@ import type {
   ValidarKitResponse,
 } from '@cne/shared-types';
 import { useAuth } from '../auth/AuthContext';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
@@ -26,10 +27,16 @@ import { CameraQr } from '../components/CameraQr';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import {
   confirmarRecepcionKit,
+  KitNoEnAsignacionError,
   registrarLlegadaRecinto,
-  subirFotoMilitar,
-  validarKit,
+  validarKitConRespaldo,
 } from '../lib/queries/llegada';
+import {
+  esMarcadorFotoPendiente,
+  FotoMilitarPerdidaError,
+  guardarYSubirFotoMilitar,
+  restaurarFotoMilitar,
+} from '../lib/offline-foto-militar';
 import {
   detenerRastreo,
   LocationPermissionDeniedError,
@@ -46,7 +53,8 @@ type Props = {
 };
 
 export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const cerrarSesion = useCerrarSesion();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [asignacion, setAsignacion] = useState<MiAsignacionResponse | null>(null);
@@ -66,6 +74,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
   const [mostrarIngresoManual, setMostrarIngresoManual] = useState(false);
   const [codigoManual, setCodigoManual] = useState('');
   const [kitPreview, setKitPreview] = useState<ValidarKitResponse | null>(null);
+  const [kitValidadoSinSenal, setKitValidadoSinSenal] = useState(false);
   const [confirmandoKit, setConfirmandoKit] = useState(false);
 
   // Paso 3: confirmar llegada
@@ -81,13 +90,16 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
         onLlegadaRegistrada();
         return;
       }
-      if (data.fotoMilitarUrl) {
-        setFotoUrl(data.fotoMilitarUrl);
-      }
+      // La foto puede estar solo en el celular (tomada sin señal) o ya subida
+      // sin ninguna recepción de kit todavía: en ambos casos no se pide de nuevo.
+      const foto =
+        data.fotoMilitarUrl ??
+        (await restaurarFotoMilitar(`${data.eventoId}_${data.recinto.id}`).catch(() => null));
+      setFotoUrl(foto);
       const recibidos = new Set(data.kits.filter((k) => k.recibido).map((k) => k.id));
       setKitsRecibidos(recibidos);
-      if (data.fotoMilitarUrl && recibidos.size === data.kits.length) setPaso(3);
-      else if (data.fotoMilitarUrl) setPaso(2);
+      if (foto && recibidos.size === data.kits.length) setPaso(3);
+      else if (foto) setPaso(2);
       else setPaso(1);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'No se pudo cargar tu asignación');
@@ -101,12 +113,22 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
   }, [cargar]);
 
   async function onFotoCapturada(uri: string) {
+    if (!asignacion) return;
     setMostrarCamaraFoto(false);
     setFotoUri(uri);
     setSubiendoFoto(true);
     try {
-      const { fotoUrl: url } = await subirFotoMilitar(uri);
+      const { fotoUrl: url, pendiente } = await guardarYSubirFotoMilitar(
+        `${asignacion.eventoId}_${asignacion.recinto.id}`,
+        uri,
+      );
       setFotoUrl(url);
+      if (pendiente) {
+        Alert.alert(
+          'Sin señal',
+          'La foto quedó guardada en el celular. Puedes seguir con los kits; se subirá sola cuando haya señal.',
+        );
+      }
       // Una vez subida, el uri local apunta a un archivo temporal del cache de
       // la cámara que puede ser eliminado por el OS; descartamos para que el
       // preview no se vea en negro si el usuario regresa al paso 1.
@@ -136,14 +158,20 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
   }
 
   async function validarYPreview(codigo: string) {
+    if (!asignacion) return;
     try {
-      const kit = await validarKit(codigo);
-      if (kit.yaRecibido) {
+      const { kit, sinSenal } = await validarKitConRespaldo(codigo, asignacion.kits);
+      if (kit.yaRecibido || kitsRecibidos.has(kit.id)) {
         Alert.alert('Kit ya recibido', `El kit ${kit.codigoUnico} ya fue confirmado.`);
         return;
       }
+      setKitValidadoSinSenal(sinSenal);
       setKitPreview(kit);
     } catch (e: any) {
+      if (e instanceof KitNoEnAsignacionError) {
+        Alert.alert('Kit no encontrado', e.message);
+        return;
+      }
       Alert.alert(
         'Kit inválido',
         e?.response?.data?.message ?? 'No se pudo validar el código. Verifica e intenta de nuevo.',
@@ -172,6 +200,14 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       setKitPreview(null);
       if (asignacion.kits.length === nuevos.size) setPaso(3);
     } catch (e: any) {
+      if (e instanceof FotoMilitarPerdidaError) {
+        // La foto guardada ya no existe: hay que volver a tomarla antes de seguir.
+        setKitPreview(null);
+        setFotoUrl(null);
+        setPaso(1);
+        Alert.alert('Vuelve a tomar la foto', e.message);
+        return;
+      }
       manejarErrorUbicacion(e, 'No se pudo confirmar la recepción del kit.');
     } finally {
       setConfirmandoKit(false);
@@ -243,7 +279,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
           <Pressable style={styles.btnPrimary} onPress={cargar}>
             <Text style={styles.btnPrimaryText}>Reintentar</Text>
           </Pressable>
-          <Pressable style={styles.logoutLink} onPress={() => logout()}>
+          <Pressable style={styles.logoutLink} onPress={cerrarSesion}>
             <Text style={styles.logoutLinkText}>Cerrar sesión</Text>
           </Pressable>
         </View>
@@ -274,6 +310,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
             militar={asignacion.militar}
             fotoUri={fotoUri}
             fotoUrl={fotoUrl}
+            fotoPendiente={esMarcadorFotoPendiente(fotoUrl)}
             subiendoFoto={subiendoFoto}
             onTomarFoto={() => setMostrarCamaraFoto(true)}
             styles={styles}
@@ -296,6 +333,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
           <Paso3
             recintoNombre={asignacion.recinto.nombre}
             cantidadKits={asignacion.kits.length}
+            fotoPendiente={esMarcadorFotoPendiente(fotoUrl)}
             registrando={registrando}
             onConfirmar={registrarLlegada}
             styles={styles}
@@ -308,7 +346,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.logoutLink} onPress={() => logout()}>
+        <Pressable style={styles.logoutLink} onPress={cerrarSesion}>
           <Text style={styles.logoutLinkText}>Cerrar sesión</Text>
         </Pressable>
       </ScrollView>
@@ -363,6 +401,11 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
               <>
                 <Text style={styles.kitPreviewCode}>{kitPreview.codigoUnico}</Text>
                 <Text style={styles.kitPreviewName}>{kitPreview.nombre}</Text>
+                {kitValidadoSinSenal ? (
+                  <Text style={styles.kitPreviewSinSenal}>
+                    Validado sin conexión con tu lista de kits. El servidor lo confirmará al recuperar señal.
+                  </Text>
+                ) : null}
                 {kitPreview.items.length > 0 || kitPreview.contenidos ? (
                   <Text style={styles.kitPreviewContenidos}>
                     {kitPreview.items.length > 0 ? kitPreview.items.join(', ') : kitPreview.contenidos}
@@ -428,6 +471,7 @@ function Paso1({
   militar,
   fotoUri,
   fotoUrl,
+  fotoPendiente,
   subiendoFoto,
   onTomarFoto,
   styles,
@@ -436,6 +480,7 @@ function Paso1({
   militar: MiAsignacionResponse['militar'];
   fotoUri: string | null;
   fotoUrl: string | null;
+  fotoPendiente: boolean;
   subiendoFoto: boolean;
   onTomarFoto: () => void;
   styles: Styles;
@@ -465,11 +510,15 @@ function Paso1({
         {fotoUri ? (
           <Image source={{ uri: fotoUri }} style={styles.preview} />
         ) : fotoUrl ? (
-          <View style={styles.fotoConfirm}>
+          <View style={styles.fotoConfirm} accessibilityLiveRegion="polite">
             <View style={styles.fotoConfirmIcon}>
               <Text style={styles.fotoConfirmCheck}>✓</Text>
             </View>
-            <Text style={styles.fotoConfirmText}>Foto guardada de forma segura</Text>
+            <Text style={styles.fotoConfirmText}>
+              {fotoPendiente
+                ? 'Foto guardada en el celular. Se subirá cuando haya señal.'
+                : 'Foto guardada de forma segura'}
+            </Text>
           </View>
         ) : (
           <View style={styles.previewPlaceholder}>
@@ -544,12 +593,14 @@ function Paso2({
 function Paso3({
   recintoNombre,
   cantidadKits,
+  fotoPendiente,
   registrando,
   onConfirmar,
   styles,
 }: {
   recintoNombre: string;
   cantidadKits: number;
+  fotoPendiente: boolean;
   registrando: boolean;
   onConfirmar: () => void;
   styles: Styles;
@@ -560,7 +611,9 @@ function Paso3({
         <Text style={styles.cardTitle}>Resumen</Text>
         <Text style={styles.recintoMeta}>Recinto: {recintoNombre}</Text>
         <Text style={styles.recintoMeta}>Kits confirmados: {cantidadKits}/{cantidadKits}</Text>
-        <Text style={styles.recintoMeta}>Foto del militar: ✓</Text>
+        <Text style={styles.recintoMeta}>
+          Foto del militar: {fotoPendiente ? 'guardada en el celular, se subirá con señal' : '✓'}
+        </Text>
         <Text style={styles.note}>
           Al confirmar registraremos tu llegada con ubicación GPS y notificaremos a tu
           supervisor y a los administradores.
@@ -703,5 +756,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   modalActionsApiladas: { marginTop: 12 },
   kitPreviewCode: { fontSize: 18, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 1, marginTop: 6 },
   kitPreviewName: { fontSize: 16, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 6 },
+  kitPreviewSinSenal: { fontSize: 12, fontFamily: fontFamily.medium, color: c.warningText, backgroundColor: c.warningBg, borderRadius: 6, padding: 8, marginTop: 8 },
   kitPreviewContenidos: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 4, marginBottom: 8 },
 });

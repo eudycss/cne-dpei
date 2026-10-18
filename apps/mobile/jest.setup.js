@@ -1,6 +1,6 @@
 // @react-native-async-storage/async-storage 3.x ya no trae un mock incluido
 // (antes vivía en jest/async-storage-mock.js). Uno propio en memoria basta
-// para lo que usan nuestros tests (getItem/setItem/removeItem/clear).
+// para lo que usan nuestros tests (getItem/setItem/removeItem/getAllKeys/clear).
 jest.mock('@react-native-async-storage/async-storage', () => {
   let store = {};
   return {
@@ -13,6 +13,7 @@ jest.mock('@react-native-async-storage/async-storage', () => {
       delete store[key];
       return Promise.resolve();
     }),
+    getAllKeys: jest.fn(() => Promise.resolve(Object.keys(store))),
     clear: jest.fn(() => {
       store = {};
       return Promise.resolve();

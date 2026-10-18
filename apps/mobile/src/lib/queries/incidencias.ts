@@ -6,7 +6,7 @@ export async function reportarIncidencia(body: CreateIncidenciaRequest): Promise
   return withOffline('/incidencias', 'post', body as object, async () => {
     const { data } = await api.post<Incidencia>('/incidencias', body);
     return data;
-  });
+  }, { enOrden: false });
 }
 
 export async function misIncidencias(params?: { estado?: string }): Promise<Paginated<Incidencia>> {

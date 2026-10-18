@@ -31,6 +31,14 @@ jest.mock('../lib/offlineAuth', () => ({
 import * as SecureStore from 'expo-secure-store';
 import { AuthProvider, useAuth } from './AuthContext';
 import { guardarVerificadorOffline, limpiarVerificadorOffline, verificarLoginOffline } from '../lib/offlineAuth';
+import type { MiAsignacionResponse } from '@cne/shared-types';
+import {
+  guardarAsignacion,
+  guardarEtapa,
+  leerAsignacion,
+  leerEtapa,
+  prepararCacheParaUsuario,
+} from '../lib/cache-jornada';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { __emitSessionExpired, api, tokenStore } = require('../lib/api');
 
@@ -236,4 +244,83 @@ describe('AuthContext — login offline', () => {
     expect(limpiarVerificadorOffline).toHaveBeenCalled();
     expect(tokenStore.clear).toHaveBeenCalled();
   });
+
+  describe('copia local de la jornada', () => {
+    beforeEach(async () => {
+      await prepararCacheParaUsuario(sessionUser.id);
+      await guardarAsignacion({ eventoId: 'ev1' } as MiAsignacionResponse);
+      await guardarEtapa('ev1', 'EN_RECINTO');
+    });
+
+    it('login() online del mismo operador la conserva (p. ej. tras expirar la sesión)', async () => {
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: sessionUser },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('operador@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      await expect(leerEtapa()).resolves.toEqual({ eventoId: 'ev1', etapa: 'EN_RECINTO' });
+    });
+
+    it('login() online de otro operador la descarta', async () => {
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: otro },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      await expect(leerAsignacion()).resolves.toBeNull();
+      await expect(leerEtapa()).resolves.toBeNull();
+    });
+
+    it('login() de otro operador vacía la cola ANTES de guardar los tokens nuevos', async () => {
+      const { enqueue, contarPendientes } = jest.requireActual('../lib/offline-queue');
+      await enqueue({ endpoint: '/tracking/salida-dpi', method: 'post', payload: {} });
+      let pendientesAlGuardarTokens = -1;
+      (tokenStore.set as jest.Mock).mockImplementationOnce(async () => {
+        pendientesAlGuardarTokens = await contarPendientes();
+      });
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: otro },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(pendientesAlGuardarTokens).toBe(0);
+    });
+
+    it('loginOffline() la conserva para seguir trabajando sin señal', async () => {
+      (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: true, usuario: sessionUser });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.loginOffline('operador@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      await expect(leerEtapa()).resolves.toEqual({ eventoId: 'ev1', etapa: 'EN_RECINTO' });
+    });
+
+    it('logout() la descarta', async () => {
+      (api.post as jest.Mock).mockResolvedValue({});
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.logout();
+      });
+
+      await expect(leerAsignacion()).resolves.toBeNull();
+    });
+  });
 });
+

@@ -1,0 +1,153 @@
+import { Logger } from '@nestjs/common';
+import { asistenteHabilitado, asistenteSqlHabilitado, AsistenteNoDisponible, LlmClient, proveedoresConfigurados } from './llm.client';
+
+const respuestaConConsulta = (name: string, args: string) => ({
+  ok: true,
+  json: async () => ({ choices: [{ message: { tool_calls: [{ function: { name, arguments: args } }] } }] }),
+});
+
+describe('proveedoresConfigurados / asistenteHabilitado', () => {
+  it('Groq primero y Gemini de respaldo, solo los que tienen llave', () => {
+    expect(proveedoresConfigurados({ GROQ_API_KEY: 'g', GEMINI_API_KEY: 'm' }).map((p) => p.nombre)).toEqual(['Groq', 'Gemini']);
+    expect(proveedoresConfigurados({ GEMINI_API_KEY: 'm' }).map((p) => p.nombre)).toEqual(['Gemini']);
+    expect(proveedoresConfigurados({ GROQ_API_KEY: '  ' })).toEqual([]);
+  });
+
+  it('el modelo se puede cambiar por variable', () => {
+    expect(proveedoresConfigurados({ GROQ_API_KEY: 'g', GROQ_MODEL: 'llama-3.3-70b-versatile' })[0].modelo).toBe(
+      'llama-3.3-70b-versatile',
+    );
+  });
+
+  it('solo está habilitado con ASISTENTE_ENABLED=true y al menos una llave', () => {
+    expect(asistenteHabilitado({ ASISTENTE_ENABLED: 'true', GROQ_API_KEY: 'g' })).toBe(true);
+    expect(asistenteHabilitado({ ASISTENTE_ENABLED: 'true' })).toBe(false);
+    expect(asistenteHabilitado({ GROQ_API_KEY: 'g' })).toBe(false);
+    expect(asistenteHabilitado({ ASISTENTE_ENABLED: 'false', GROQ_API_KEY: 'g' })).toBe(false);
+  });
+});
+
+describe('asistenteSqlHabilitado', () => {
+  it('solo con ASISTENTE_SQL_ENABLED=true (apagado por defecto)', () => {
+    expect(asistenteSqlHabilitado({ ASISTENTE_SQL_ENABLED: 'true' })).toBe(true);
+    expect(asistenteSqlHabilitado({})).toBe(false);
+    expect(asistenteSqlHabilitado({ ASISTENTE_SQL_ENABLED: 'TRUE ' })).toBe(false);
+  });
+});
+
+describe('LlmClient', () => {
+  const originalFetch = global.fetch;
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    process.env.GROQ_API_KEY = 'gsk_secreta';
+    process.env.GEMINI_API_KEY = 'gem_secreta';
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    warn.mockRestore();
+  });
+
+  it('manda solo las instrucciones y la pregunta, con las herramientas, a Groq', async () => {
+    global.fetch = jest.fn().mockResolvedValue(respuestaConConsulta('buscar_recinto', '{"texto":"colegio Ibarra"}'));
+
+    const llamada = await new LlmClient().elegirConsultas('número del encargado del colegio Ibarra');
+
+    expect(llamada).toEqual([{ nombre: 'buscar_recinto', argumentos: { texto: 'colegio Ibarra' } }]);
+    const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+    expect(opts.headers.Authorization).toBe('Bearer gsk_secreta');
+    const body = JSON.parse(opts.body);
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[1]).toEqual({ role: 'user', content: 'número del encargado del colegio Ibarra' });
+    expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'consultar_recintos', 'estadisticas']);
+    expect(body.temperature).toBe(0);
+  });
+
+  it('modo sql: instrucciones de SQL y consultar_datos en vez de consultar_recintos', async () => {
+    global.fetch = jest.fn().mockResolvedValue(respuestaConConsulta('consultar_datos', '{"sql":"SELECT 1","titulo":"x"}'));
+
+    const llamada = await new LlmClient().elegirConsultas('5 recintos de Ibarra al azar', 'sql');
+
+    expect(llamada).toEqual([{ nombre: 'consultar_datos', argumentos: { sql: 'SELECT 1', titulo: 'x' } }]);
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'estadisticas', 'consultar_datos']);
+    expect(body.messages[0].content).toContain('recintos(codigo TEXT');
+    expect(body.max_tokens).toBe(2048);
+  });
+
+  it('si Groq falla (429), usa Gemini', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce(respuestaConConsulta('consultar_recintos', '{}'));
+
+    const llamada = await new LlmClient().elegirConsultas('qué está caído');
+
+    expect(llamada).toEqual([{ nombre: 'consultar_recintos', argumentos: {} }]);
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('generativelanguage.googleapis.com');
+    expect((global.fetch as jest.Mock).mock.calls[1][1].headers.Authorization).toBe('Bearer gem_secreta');
+  });
+
+  it('si Groq no responde a tiempo, usa Gemini', async () => {
+    const timeout = Object.assign(new Error('timeout'), { name: 'TimeoutError' });
+    global.fetch = jest.fn().mockRejectedValueOnce(timeout).mockResolvedValueOnce(respuestaConConsulta('consultar_recintos', ''));
+
+    await expect(new LlmClient().elegirConsultas('caídos')).resolves.toEqual([{ nombre: 'consultar_recintos', argumentos: {} }]);
+    expect(warn).toHaveBeenCalledWith('Groq no respondió (sin respuesta en 8 s)');
+  });
+
+  it('argumentos que no son JSON cuentan como fallo y pasan al siguiente proveedor', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(respuestaConConsulta('buscar_recinto', '{texto:'))
+      .mockResolvedValueOnce(respuestaConConsulta('buscar_recinto', '{"texto":"1008"}'));
+
+    await expect(new LlmClient().elegirConsultas('1008')).resolves.toEqual([
+      { nombre: 'buscar_recinto', argumentos: { texto: '1008' } },
+    ]);
+  });
+
+  it('devuelve todas las consultas pedidas, hasta 3', async () => {
+    const llamadas = ['a', 'b', 'c', 'd'].map((c) => ({ function: { name: 'consultar_recintos', arguments: `{"cantones":["${c}"]}` } }));
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { tool_calls: llamadas } }] }) });
+
+    const resultado = await new LlmClient().elegirConsultas('recintos de a, b, c y d');
+
+    expect(resultado.map((l) => l.argumentos)).toEqual([{ cantones: ['a'] }, { cantones: ['b'] }, { cantones: ['c'] }]);
+  });
+
+  it('si el modelo contesta con texto (sin consulta), devuelve [] y no prueba otro proveedor', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'La capital de Ecuador es Quito.' } }] }),
+    });
+
+    await expect(new LlmClient().elegirConsultas('capital de Ecuador')).resolves.toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('si fallan todos, lanza AsistenteNoDisponible; los logs no llevan la pregunta ni las llaves', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+
+    await expect(new LlmClient().elegirConsultas('teléfono de Juan Pérez')).rejects.toBeInstanceOf(AsistenteNoDisponible);
+
+    const logs = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('Groq no respondió (HTTP 500)');
+    expect(logs).toContain('Gemini no respondió (HTTP 500)');
+    expect(logs).not.toMatch(/Juan|secreta/);
+  });
+
+  it('sin llaves, lanza AsistenteNoDisponible sin llamar a nadie', async () => {
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    global.fetch = jest.fn();
+
+    await expect(new LlmClient().elegirConsultas('caídos')).rejects.toBeInstanceOf(AsistenteNoDisponible);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -1,0 +1,156 @@
+import { HERRAMIENTAS_MODELO, HERRAMIENTAS_MODELO_SQL, INSTRUCCIONES_MODELO, INSTRUCCIONES_MODELO_SQL, validarConsulta } from './herramientas';
+
+const SIN_FILTROS = {
+  tipo: 'consultar_recintos',
+  cantones: [],
+  parroquias: [],
+  tecnicos: [],
+  estado: null,
+  sinTecnico: false,
+  sinContacto: false,
+  conContacto: false,
+  agruparPor: null,
+  soloContar: false,
+};
+
+describe('validarConsulta', () => {
+  it('buscar_recinto recorta el texto', () => {
+    expect(validarConsulta('buscar_recinto', { texto: ' colegio Ibarra ' })).toEqual({
+      tipo: 'buscar_recinto',
+      texto: 'colegio Ibarra',
+    });
+  });
+
+  it('consultar_recintos sin filtros (o con null) es "todos los recintos"', () => {
+    expect(validarConsulta('consultar_recintos', {})).toEqual(SIN_FILTROS);
+    expect(validarConsulta('consultar_recintos', null)).toEqual(SIN_FILTROS);
+    expect(validarConsulta('consultar_recintos', { cantones: null, estado: null, agrupar_por: null })).toEqual(SIN_FILTROS);
+  });
+
+  it('consultar_recintos con todos los filtros', () => {
+    expect(
+      validarConsulta('consultar_recintos', {
+        cantones: [' Pimampiro ', 'Urcuquí', ''],
+        parroquias: ['Ilumán'],
+        tecnicos: ['Willy'],
+        estado: 'caido',
+        sin_tecnico: true,
+        sin_contacto: 'true',
+        con_contacto: true,
+        agrupar_por: 'canton',
+        solo_contar: true,
+      }),
+    ).toEqual({
+      tipo: 'consultar_recintos',
+      cantones: ['Pimampiro', 'Urcuquí'],
+      parroquias: ['Ilumán'],
+      tecnicos: ['Willy'],
+      estado: 'caido',
+      sinTecnico: true,
+      sinContacto: true,
+      conContacto: true,
+      agruparPor: 'canton',
+      soloContar: true,
+    });
+  });
+
+  it('tolera lo que los modelos mandan distinto: texto suelto, mayúsculas, tildes y sinónimos', () => {
+    expect(validarConsulta('consultar_recintos', { cantones: 'Ibarra' })).toMatchObject({ cantones: ['Ibarra'] });
+    expect(validarConsulta('consultar_recintos', { estado: 'Caído' })).toMatchObject({ estado: 'caido' });
+    expect(validarConsulta('consultar_recintos', { estado: 'FALLO' })).toMatchObject({ estado: 'caido' });
+    expect(validarConsulta('consultar_recintos', { estado: 'activos' })).toMatchObject({ estado: 'activo' });
+    expect(validarConsulta('consultar_recintos', { agrupar_por: 'Técnico' })).toMatchObject({ agruparPor: 'tecnico' });
+  });
+
+  it('un valor desconocido se ignora en vez de perder la consulta', () => {
+    expect(validarConsulta('consultar_recintos', { estado: 'raro', agrupar_por: 'color', sin_tecnico: 'si' })).toEqual(SIN_FILTROS);
+  });
+
+  it('estadisticas: hoy/dia, semana o mes; lo desconocido es hoy', () => {
+    expect(validarConsulta('estadisticas', { periodo: 'semana' })).toEqual({ tipo: 'estadisticas', periodo: 'semana' });
+    expect(validarConsulta('estadisticas', { periodo: 'Hoy' })).toEqual({ tipo: 'estadisticas', periodo: 'dia' });
+    expect(validarConsulta('estadisticas', { periodo: 'MES' })).toEqual({ tipo: 'estadisticas', periodo: 'mes' });
+    expect(validarConsulta('estadisticas', {})).toEqual({ tipo: 'estadisticas', periodo: 'dia' });
+  });
+
+  it('rechaza una consulta que no está en la lista (el modelo no puede pedir otra cosa)', () => {
+    expect(validarConsulta('borrar_recinto', { codigo: '1008' })).toBeNull();
+    expect(validarConsulta('__proto__', {})).toBeNull();
+    expect(validarConsulta('recintos_caidos', {})).toBeNull();
+  });
+
+  it.each([
+    ['buscar_recinto', {}],
+    ['buscar_recinto', { texto: '' }],
+    ['buscar_recinto', { texto: 'x'.repeat(81) }],
+    ['buscar_recinto', { texto: 42 }],
+    ['buscar_recinto', null],
+    ['consultar_recintos', { cantones: ['x'.repeat(61)] }],
+    ['consultar_recintos', { cantones: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }],
+    ['consultar_recintos', { tecnicos: [42] }],
+    ['consultar_recintos', { parroquias: { a: 1 } }],
+  ])('rechaza parámetros inválidos de %s (%j)', (nombre, args) => {
+    expect(validarConsulta(nombre, args)).toBeNull();
+  });
+
+  it('las instrucciones piden solo los nombres de los técnicos si no piden sus recintos', () => {
+    expect(INSTRUCCIONES_MODELO).toContain('"lista los técnicos"');
+    expect(INSTRUCCIONES_MODELO).toContain('no piden sus recintos, usa siempre solo_contar true');
+  });
+
+  it('"quién es el técnico de <parroquia>" va por consultar_recintos, no por buscar_recinto', () => {
+    expect(INSTRUCCIONES_MODELO).toContain('"quién es el técnico de Ilumán"');
+    expect(INSTRUCCIONES_MODELO).toContain('parroquias [Ilumán], agrupar_por tecnico, solo_contar true');
+  });
+
+  it('cada herramienta que se ofrece al modelo tiene su validación', () => {
+    for (const h of HERRAMIENTAS_MODELO) {
+      const ejemplo = { texto: 'a', cantones: ['Ibarra'], periodo: 'dia' };
+      expect(validarConsulta(h.function.name, ejemplo)).not.toBeNull();
+    }
+  });
+});
+
+describe('modo SQL', () => {
+  it('consultar_datos: SQL recortado, título por defecto y con_contacto tolerante', () => {
+    expect(validarConsulta('consultar_datos', { sql: ' SELECT 1 ', titulo: ' Caídos ', con_contacto: 'true' })).toEqual({
+      tipo: 'consultar_datos',
+      sql: 'SELECT 1',
+      titulo: 'Caídos',
+      conContacto: true,
+    });
+    expect(validarConsulta('consultar_datos', { sql: 'SELECT 1' })).toEqual({
+      tipo: 'consultar_datos',
+      sql: 'SELECT 1',
+      titulo: 'Resultado',
+      conContacto: false,
+    });
+  });
+
+  it.each([[{}], [{ sql: '' }], [{ sql: 42 }], [{ sql: 'x'.repeat(1501) }], [null]])('consultar_datos rechaza %j', (args) => {
+    expect(validarConsulta('consultar_datos', args)).toBeNull();
+  });
+
+  it('las herramientas del modo SQL cambian consultar_recintos por consultar_datos', () => {
+    expect(HERRAMIENTAS_MODELO_SQL.map((h) => h.function.name)).toEqual(['buscar_recinto', 'estadisticas', 'consultar_datos']);
+    for (const h of HERRAMIENTAS_MODELO_SQL) {
+      const ejemplo = { texto: 'a', sql: 'SELECT 1', titulo: 't', periodo: 'dia' };
+      expect(validarConsulta(h.function.name, ejemplo)).not.toBeNull();
+    }
+  });
+
+  it('las instrucciones describen la tabla sin teléfonos y las funciones norm/parecido', () => {
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('recintos(codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain("norm(canton) = norm('Urcuqui')");
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('parecido(columna,');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('ORDER BY random() LIMIT 5');
+    expect(INSTRUCCIONES_MODELO_SQL).not.toMatch(/telefono TEXT/);
+  });
+
+  it('las instrucciones describen el historial de caídas y ahora()', () => {
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('minutos_caido INTEGER');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('caidas(codigo TEXT, inicio TEXT, fin TEXT, minutos INTEGER)');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('ahora()');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('"cuánto tiempo lleva caído García Moreno"');
+  });
+});

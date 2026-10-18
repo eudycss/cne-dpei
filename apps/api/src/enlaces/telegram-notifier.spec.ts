@@ -8,6 +8,7 @@ import {
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
+  TEXTO_BOTON_PREGUNTAR,
 } from './telegram-notifier';
 
 describe('abreviarCanton', () => {
@@ -96,14 +97,14 @@ describe('formatearEscalamiento', () => {
     expect(por7d).toContain('⚠️ Inestable: 6 caídas en 7 días');
   });
 
-  it('un posible corte de zona va en un bloque, sin repetir el sector en cada recinto', () => {
+  it('un posible corte de luz o internet va en un bloque, sin repetir el sector en cada recinto', () => {
     const [texto] = formatearEscalamiento([
       { zona: 'Quiroga', recintos: [alerta('1961'), alerta('1962')] },
       { zona: null, recintos: [alerta('28', { canton: 'Ibarra', parroquia: '' })] },
     ], 30);
 
     expect(texto).toContain('(3)');
-    expect(texto).toContain('<b>📍 Posible corte de zona: Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
+    expect(texto).toContain('<b>📍 Posible corte de luz o internet en Quiroga · 2 recintos</b>\n<i>Revisar energía o fibra del sector.</i>');
     expect(texto).toContain('🔴 <b>1961 · UE García Moreno</b>\n');
     expect(texto).toContain('🔴 <b>28 · UE García Moreno</b> (Iba)');
   });
@@ -304,6 +305,89 @@ describe('TelegramNotifier', () => {
 
       await expect(notifier.enviarListaActual([])).resolves.not.toThrow();
     });
+
+    it('con el asistente activado, el teclado fijo suma la fila de "Preguntar"', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      process.env.ASISTENTE_ENABLED = 'true';
+      process.env.GROQ_API_KEY = 'gsk_prueba';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      try {
+        await new TelegramNotifier().enviarListaActual([]);
+
+        const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+        expect(body.reply_markup.keyboard).toEqual([
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
+          [{ text: TEXTO_BOTON_PREGUNTAR }],
+        ]);
+      } finally {
+        delete process.env.ASISTENTE_ENABLED;
+        delete process.env.GROQ_API_KEY;
+      }
+    });
+
+    it('activado pero sin ninguna llave, no muestra "Preguntar"', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      process.env.ASISTENTE_ENABLED = 'true';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      try {
+        await new TelegramNotifier().enviarListaActual([]);
+
+        const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+        expect(body.reply_markup.keyboard).toHaveLength(2);
+      } finally {
+        delete process.env.ASISTENTE_ENABLED;
+      }
+    });
+  });
+
+  describe('lista de caídos filtrada por cantón (asistente)', () => {
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+
+    it('el título dice el cantón, para no confundirlo con el total provincial', async () => {
+      await new TelegramNotifier().enviarListaActual([{ codigoRecinto: '1961', nombreRecinto: 'UE', canton: 'Cotacachi' }], undefined, 'Cotacachi');
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.text.split('\n')[0]).toBe('🔴 Enlaces caídos en Cotacachi ahora mismo (1):');
+    });
+
+    it('vacía, también dice el cantón', async () => {
+      await new TelegramNotifier().enviarListaActual([], undefined, 'Ibarra');
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.text).toBe('✅ No hay enlaces caídos en Ibarra en este momento.');
+    });
+  });
+
+  describe('mensajes del asistente', () => {
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+
+    it('enviarHtml manda HTML con los botones propios en vez del teclado fijo', async () => {
+      const botones = { inline_keyboard: [[{ text: '1008 · UE', callback_data: 'asis:rec:1008' }]] };
+
+      await new TelegramNotifier().enviarHtml('<b>hola</b>', 'prueba', botones);
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body).toMatchObject({ chat_id: '-100200300', text: '<b>hola</b>', parse_mode: 'HTML', reply_markup: botones });
+    });
+
+    it('indicarEscribiendo manda la acción "typing" al chat', async () => {
+      await new TelegramNotifier().indicarEscribiendo();
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/sendChatAction');
+      expect(JSON.parse(opts.body)).toEqual({ chat_id: '-100200300', action: 'typing' });
+    });
   });
 
   describe('enviarRecuperados', () => {
@@ -485,6 +569,44 @@ describe('TelegramNotifier', () => {
       const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
       expect(url).toBe('https://api.telegram.org/bottok123/answerCallbackQuery');
       expect(JSON.parse(opts.body)).toEqual({ callback_query_id: 'cb-1' });
+    });
+  });
+
+  describe('responderEn (grupos de consulta)', () => {
+    const chatDe = (llamada: number) =>
+      JSON.parse((global.fetch as jest.Mock).mock.calls[llamada][1].body).chat_id;
+
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+
+    it('lo que se envía dentro va al chat indicado; antes y después, al grupo principal', async () => {
+      const notifier = new TelegramNotifier();
+
+      await notifier.enviarTexto('antes', 'prueba');
+      await notifier.responderEn('-100999', () => notifier.enviarTexto('respuesta', 'prueba'));
+      await notifier.enviarTexto('después', 'prueba');
+
+      expect([chatDe(0), chatDe(1), chatDe(2)]).toEqual(['-100200300', '-100999', '-100200300']);
+    });
+
+    it('un aviso automático que sale mientras se responde a un grupo de consulta no se desvía', async () => {
+      const notifier = new TelegramNotifier();
+      let soltar!: () => void;
+      const pausa = new Promise<void>((r) => (soltar = r));
+
+      const respuesta = notifier.responderEn('-100999', async () => {
+        await pausa;
+        await notifier.enviarTexto('respuesta', 'prueba');
+      });
+      // Este envío corre "en paralelo", fuera del contexto de la respuesta.
+      await notifier.enviarListaActual([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }]);
+      soltar();
+      await respuesta;
+
+      expect([chatDe(0), chatDe(1)]).toEqual(['-100200300', '-100999']);
     });
   });
 

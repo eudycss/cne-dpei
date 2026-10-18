@@ -15,16 +15,20 @@ import {
   TelegramNotifier,
   type GrupoAsignacion,
   PREFIJO_CALLBACK_ESTADISTICAS,
+  PREFIJO_CALLBACK_RECINTO,
   TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
+  TEXTO_BOTON_PREGUNTAR,
 } from './telegram-notifier';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MINUTOS_AVISO_POR_DEFECTO } from './enlaces-escalamiento.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
+import { AsistenteService } from './asistente/asistente.service';
+import { asistenteHabilitado } from './asistente/llm.client';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -50,6 +54,36 @@ export interface TelegramUpdate {
 const PAUSA_ENTRE_TOQUES_MS = 1500;
 
 const CALLBACK_PERIODO = new RegExp(`^${PREFIJO_CALLBACK_ESTADISTICAS}(dia|semana|mes)$`);
+// codigo_recinto es VarChar(20): se aceptan letras, dígitos y guion.
+const CALLBACK_RECINTO = new RegExp(`^${PREFIJO_CALLBACK_RECINTO}([\\w-]{1,20})$`);
+/** "/preguntar texto" o "/preguntar@bot texto" (así lo manda Telegram en grupos). */
+const COMANDO_PREGUNTAR = /^\/preguntar(?:@(\w+))?(?:\s+([\s\S]*))?$/i;
+
+/** TELEGRAM_BOT_USERNAME sin "@" y solo con caracteres válidos; '' si no está o no sirve. */
+function usuarioBot(): string {
+  return (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/[^\w]/g, '');
+}
+
+/** La pregunta de "/preguntar …", o null si el mensaje no es ese comando o va
+ * dirigido a otro bot ("/preguntar@otro_bot"). */
+function preguntaDeComando(texto: string): string | null {
+  const m = COMANDO_PREGUNTAR.exec(texto);
+  if (!m) return null;
+  const destino = m[1];
+  const propio = usuarioBot();
+  if (destino && propio && destino.toLowerCase() !== propio.toLowerCase()) return null;
+  return m[2] ?? '';
+}
+
+/** "@CNE_Enlaces_bot …" en el texto, con TELEGRAM_BOT_USERNAME configurado: devuelve
+ * la pregunta sin la mención, o null si el mensaje no menciona al bot. */
+function preguntaConMencion(texto: string): string | null {
+  const usuario = usuarioBot();
+  if (!usuario) return null;
+  // Mención suelta: no dentro de un correo ("x@bot") ni como prefijo de otro usuario.
+  const mencion = new RegExp(`(?<!\\w)@${usuario}(?!\\w)`, 'i');
+  return mencion.test(texto) ? texto.replace(mencion, ' ').replace(/\s+/g, ' ').trim() : null;
+}
 
 /** La hoja se edita a mano y puede traer mayúsculas inconsistentes (COTACACHI vs Cotacachi); se normaliza para que el filtro/dropdown de la web no los trate como cantones distintos. */
 function normalizarCanton(valor: string | null | undefined): string | null {
@@ -57,6 +91,20 @@ function normalizarCanton(valor: string | null | undefined): string | null {
   if (!limpio) return null;
   const tituloCase = limpio.toLowerCase().replace(/(^|\s)\p{L}/gu, (letra) => letra.toUpperCase());
   return tituloCase.slice(0, CANTON_MAX_LEN);
+}
+
+/** 'principal' = TELEGRAM_CHAT_ID (recibe los avisos y puede consultar). 'consulta' =
+ * algún chat de TELEGRAM_CHAT_IDS_CONSULTA (separados por coma): solo puede usar los
+ * comandos, que son de lectura, y nunca recibe avisos automáticos. null = se ignora. */
+export function tipoChatTelegram(chatId: number | string): 'principal' | 'consulta' | null {
+  const id = String(chatId);
+  if (process.env.TELEGRAM_CHAT_ID && id === process.env.TELEGRAM_CHAT_ID) return 'principal';
+  const consulta = (process.env.TELEGRAM_CHAT_IDS_CONSULTA ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  // Sin chat principal el bot está apagado: tampoco responde a grupos de consulta.
+  return process.env.TELEGRAM_CHAT_ID && consulta.includes(id) ? 'consulta' : null;
 }
 
 /** Compara el secreto del webhook en tiempo constante — el endpoint es público y este
@@ -82,9 +130,12 @@ export class EnlacesService {
    * crecer esto indefinidamente. Solo vive en memoria — un reinicio del proceso lo
    * limpia, lo peor que pasa es que la persona tenga que tocar el botón de nuevo. */
   private readonly esperandoCodigo = new Map<string, number>();
+  /** Igual que esperandoCodigo, para quien tocó "Preguntar": su próximo mensaje va al asistente. */
+  private readonly esperandoPregunta = new Map<string, number>();
   private static readonly ESPERA_CODIGO_TTL_MS = 10 * 60 * 1000;
-  /** Último toque de Hoy/Semana/Mes por mensaje (message_id → ms). */
-  private readonly ultimoToque = new Map<number, number>();
+  /** Último toque de Hoy/Semana/Mes por mensaje ("chatId:message_id" → ms): los
+   * message_id se repiten entre chats distintos. */
+  private readonly ultimoToque = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -94,6 +145,7 @@ export class EnlacesService {
     private readonly estadisticas: EnlacesEstadisticasService,
     private readonly distributivo: DistributivoTecnicosClient,
     private readonly escalamiento: EnlacesEscalamientoService,
+    private readonly asistente: AsistenteService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -468,7 +520,7 @@ export class EnlacesService {
    * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
-   * distinto al configurado, texto que no matchea nada de esto) se ignora en
+   * que no es el principal ni uno de consulta, texto que no matchea nada de esto) se ignora en
    * silencio — este endpoint es público, así que nunca debe reaccionar a tráfico
    * no confiable. */
   async procesarComandoTelegram(secretRecibido: string | undefined, update: TelegramUpdate): Promise<void> {
@@ -488,17 +540,26 @@ export class EnlacesService {
     const chatId = update.message?.chat?.id;
     if (!textoOriginal || !texto || chatId === undefined) return;
 
-    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
-    if (!chatConfigurado || String(chatId) !== chatConfigurado) {
+    const tipoChat = tipoChatTelegram(chatId);
+    if (!tipoChat) {
       this.log.warn(`Webhook de Telegram: mensaje desde un chat no autorizado (${chatId}) — se ignora`);
       return;
     }
+    const atender = () => this.atenderMensajeTelegram(textoOriginal, texto, chatId, update.message?.from?.id);
+    // Un grupo de consulta recibe la respuesta en su propio chat; el principal, como siempre.
+    await (tipoChat === 'consulta' ? this.telegram.responderEn(String(chatId), atender) : atender());
+  }
 
+  private async atenderMensajeTelegram(
+    textoOriginal: string,
+    texto: string,
+    chatId: number | string,
+    userId: number | string | undefined,
+  ): Promise<void> {
     // El flujo de "ingresar código" depende de identificar a la persona (chat:usuario);
     // si Telegram no manda from.id (ej. admin anónimo del grupo) no hay forma segura de
     // aislar su espera de la de otra persona, así que ese flujo se ignora para este
     // mensaje — /caidos y su botón siguen funcionando igual, no dependen de from.id.
-    const userId = update.message?.from?.id;
     const claveEspera = userId !== undefined ? `${chatId}:${userId}` : undefined;
 
     if (texto === TEXTO_BOTON_INGRESAR_CODIGO.toLowerCase()) {
@@ -506,6 +567,7 @@ export class EnlacesService {
         this.log.warn('Webhook de Telegram: botón "Ingresar código" sin remitente identificable — se ignora');
         return;
       }
+      this.esperandoPregunta.delete(claveEspera);
       this.esperandoCodigo.set(claveEspera, Date.now());
       await this.telegram.enviarTexto(
         '✏️ Escriba el código del recinto que quiere consultar.',
@@ -518,7 +580,7 @@ export class EnlacesService {
     // (no como comando), así que hay que tratarlo igual que /caidos.
     const esComandoCaidos = texto.startsWith('/caidos') || texto === TEXTO_BOTON_CAIDOS.toLowerCase();
     if (esComandoCaidos) {
-      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      if (claveEspera) this.cancelarEsperas(claveEspera);
       await this.reenviarListaTelegram();
       return;
     }
@@ -526,7 +588,7 @@ export class EnlacesService {
     const esComandoAsignaciones =
       texto.startsWith('/asignaciones') || texto === TEXTO_BOTON_ASIGNACIONES.toLowerCase();
     if (esComandoAsignaciones) {
-      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      if (claveEspera) this.cancelarEsperas(claveEspera);
       try {
         await this.enviarAsignacionesTelegram();
       } catch (e) {
@@ -544,7 +606,7 @@ export class EnlacesService {
     const esComandoEstadisticas =
       texto.startsWith('/estadisticas') || texto === TEXTO_BOTON_ESTADISTICAS.toLowerCase();
     if (esComandoEstadisticas) {
-      if (claveEspera) this.esperandoCodigo.delete(claveEspera);
+      if (claveEspera) this.cancelarEsperas(claveEspera);
       try {
         await this.estadisticas.enviarEstadisticasTelegram();
       } catch (e) {
@@ -557,29 +619,95 @@ export class EnlacesService {
       return;
     }
 
-    if (claveEspera && this.tieneEsperaCodigoVigente(claveEspera)) {
+    if (texto === TEXTO_BOTON_PREGUNTAR.toLowerCase()) {
+      if (!claveEspera) {
+        await this.avisarSinRemitente();
+        return;
+      }
+      if (!(await this.asistenteActivo())) return;
+      this.esperandoCodigo.delete(claveEspera);
+      this.esperandoPregunta.set(claveEspera, Date.now());
+      await this.telegram.enviarTexto(
+        '💬 Escriba su pregunta. Por ejemplo: "número del encargado del colegio Ibarra".',
+        'el prompt del asistente',
+      );
+      return;
+    }
+
+    // "/preguntar texto" o una mención al bot: la pregunta va en el mismo mensaje.
+    const pregunta = preguntaDeComando(textoOriginal) ?? preguntaConMencion(textoOriginal);
+    if (pregunta !== null) {
+      if (!claveEspera) {
+        await this.avisarSinRemitente();
+        return;
+      }
+      this.cancelarEsperas(claveEspera);
+      if (await this.asistenteActivo()) await this.asistente.responder(pregunta, claveEspera);
+      return;
+    }
+
+    if (claveEspera && this.tieneEsperaVigente(this.esperandoPregunta, claveEspera)) {
+      this.esperandoPregunta.delete(claveEspera);
+      if (await this.asistenteActivo()) await this.asistente.responder(textoOriginal, claveEspera);
+      return;
+    }
+
+    if (claveEspera && this.tieneEsperaVigente(this.esperandoCodigo, claveEspera)) {
       this.esperandoCodigo.delete(claveEspera);
       await this.responderCodigoRecinto(textoOriginal);
     }
   }
 
+  /** true si el asistente está activado; si no, lo avisa (alguien usó un botón viejo o /preguntar). */
+  private async asistenteActivo(): Promise<boolean> {
+    if (asistenteHabilitado()) return true;
+    await this.telegram.enviarTexto('El asistente no está activado en este momento.', 'el aviso de asistente apagado');
+    return false;
+  }
+
+  /** Sin from.id (admin anónimo del grupo) no se puede llevar la espera ni el límite por persona. */
+  private async avisarSinRemitente(): Promise<void> {
+    this.log.warn('Webhook de Telegram: pregunta al asistente sin remitente identificable — se ignora');
+    await this.telegram.enviarTexto(
+      'No puedo identificar a quien pregunta (¿envía como administrador anónimo?). Desactive el modo anónimo para usar el asistente.',
+      'el aviso de remitente anónimo',
+    );
+  }
+
+  private cancelarEsperas(clave: string): void {
+    this.esperandoCodigo.delete(clave);
+    this.esperandoPregunta.delete(clave);
+  }
+
   /** Botones Hoy/Semana/Mes de la tarjeta de estadísticas: cambian el mismo
-   * mensaje al período tocado. Solo en el chat configurado y con un
+   * mensaje al período tocado. Solo en el chat principal o uno de consulta, y con un
    * callback_data conocido; cualquier otra cosa se ignora. */
   private async procesarBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
-    const chatConfigurado = process.env.TELEGRAM_CHAT_ID;
     const chatId = boton.message?.chat?.id;
-    if (!chatConfigurado || chatId === undefined || String(chatId) !== chatConfigurado) {
+    const tipoChat = chatId === undefined ? null : tipoChatTelegram(chatId);
+    if (!tipoChat) {
       this.log.warn(`Webhook de Telegram: botón desde un chat no autorizado (${chatId}) — se ignora`);
       return;
     }
+    const atender = () => this.atenderBotonTelegram(boton);
+    await (tipoChat === 'consulta' ? this.telegram.responderEn(String(chatId), atender) : atender());
+  }
+
+  private async atenderBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
     // Primero se contesta el toque (aunque luego se ignore), para que el botón no
     // quede "cargando" en el cliente de quien lo tocó.
     await this.telegram.responderBoton(boton.id);
+    const recinto = CALLBACK_RECINTO.exec(boton.data ?? '')?.[1];
+    if (recinto) {
+      // Con el código en la clave: tocar dos recintos distintos del mismo mensaje no se descarta.
+      if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${boton.message?.message_id}:${recinto}`)) return;
+      await this.asistente.responderRecintoElegido(recinto);
+      return;
+    }
     const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
     const messageId = boton.message?.message_id;
     if (!periodo || typeof messageId !== 'number') return;
-    if (this.toqueDemasiadoSeguido(messageId)) return;
+    if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${messageId}`)) return;
     try {
       await this.estadisticas.mostrarPeriodoTelegram(periodo, messageId);
     } catch (e) {
@@ -592,23 +720,23 @@ export class EnlacesService {
   }
 
   /** true si ese mensaje se tocó hace menos de PAUSA_ENTRE_TOQUES_MS (y si no, lo registra). */
-  private toqueDemasiadoSeguido(messageId: number, ahora = Date.now()): boolean {
-    const anterior = this.ultimoToque.get(messageId);
+  private toqueDemasiadoSeguido(clave: string, ahora = Date.now()): boolean {
+    const anterior = this.ultimoToque.get(clave);
     if (anterior !== undefined && ahora - anterior < PAUSA_ENTRE_TOQUES_MS) return true;
     // Solo importan los toques recientes: el mapa no crece sin límite.
     for (const [id, t] of this.ultimoToque) if (ahora - t >= PAUSA_ENTRE_TOQUES_MS) this.ultimoToque.delete(id);
-    this.ultimoToque.set(messageId, ahora);
+    this.ultimoToque.set(clave, ahora);
     return false;
   }
 
   /** true si la persona tocó "Ingresar código" hace menos de ESPERA_CODIGO_TTL_MS.
    * Una espera vieja (tocó el botón y nunca volvió a escribir) se descarta en vez
    * de reactivarse con un mensaje cualquiera que llegue mucho después. */
-  private tieneEsperaCodigoVigente(clave: string): boolean {
-    const marcadoEn = this.esperandoCodigo.get(clave);
+  private tieneEsperaVigente(esperas: Map<string, number>, clave: string): boolean {
+    const marcadoEn = esperas.get(clave);
     if (marcadoEn === undefined) return false;
     if (Date.now() - marcadoEn > EnlacesService.ESPERA_CODIGO_TTL_MS) {
-      this.esperandoCodigo.delete(clave);
+      esperas.delete(clave);
       return false;
     }
     return true;
@@ -621,9 +749,11 @@ export class EnlacesService {
    * no necesitar un timer aparte. */
   private limpiarEsperasCodigoVencidas(): void {
     const ahora = Date.now();
-    for (const [clave, marcadoEn] of this.esperandoCodigo) {
-      if (ahora - marcadoEn > EnlacesService.ESPERA_CODIGO_TTL_MS) {
-        this.esperandoCodigo.delete(clave);
+    for (const esperas of [this.esperandoCodigo, this.esperandoPregunta]) {
+      for (const [clave, marcadoEn] of esperas) {
+        if (ahora - marcadoEn > EnlacesService.ESPERA_CODIGO_TTL_MS) {
+          esperas.delete(clave);
+        }
       }
     }
   }

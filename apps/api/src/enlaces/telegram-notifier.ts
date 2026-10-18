@@ -1,6 +1,8 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Injectable, Logger } from '@nestjs/common';
 import type { EstadisticasEnlacesResponse, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
+import { asistenteHabilitado } from './asistente/llm.client';
 
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
 export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
@@ -14,14 +16,22 @@ export const TEXTO_BOTON_ESTADISTICAS = '📊 Estadísticas';
 /** Botón persistente con los recintos CDA agrupados por técnico responsable. */
 export const TEXTO_BOTON_ASIGNACIONES = '👷 Asignaciones CDA';
 
-/** Teclado fijo bajo el chat, el mismo en todos los mensajes. */
-export const TECLADO = {
-  keyboard: [
+/** Botón persistente que arranca el flujo de "escriba su pregunta" del asistente. */
+export const TEXTO_BOTON_PREGUNTAR = '💬 Preguntar';
+
+/** callback_data de los botones para elegir un recinto entre varios ("asis:rec:1008"). */
+export const PREFIJO_CALLBACK_RECINTO = 'asis:rec:';
+
+/** Teclado fijo bajo el chat, el mismo en todos los mensajes. "Preguntar" solo
+ * aparece con el asistente activado (ASISTENTE_ENABLED y alguna llave). */
+export function tecladoFijo() {
+  const filas = [
     [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
     [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
-  ],
-  resize_keyboard: true,
-};
+  ];
+  if (asistenteHabilitado()) filas.push([{ text: TEXTO_BOTON_PREGUNTAR }]);
+  return { keyboard: filas, resize_keyboard: true };
+}
 
 /** Un técnico con sus recintos y el estado actual del enlace de cada uno. */
 export interface GrupoAsignacion {
@@ -285,7 +295,7 @@ export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }
   return lineas.join('\n');
 }
 
-function recortarNombre(nombre: string): string {
+export function recortarNombre(nombre: string): string {
   // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
   const letras = Array.from(nombre);
   return letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : nombre;
@@ -327,7 +337,7 @@ export function formatearEscalamiento(grupos: GrupoAlerta[], minutosPrimerAviso:
     if (!g.zona) return [{ texto: lineasAlerta(g.recintos[0], false).join('\n'), cont: null as string | null }];
     const zona = escapeHtml(g.zona);
     const titulo =
-      `<b>📍 Posible corte de zona: ${zona} · ${g.recintos.length} recintos</b>\n` +
+      `<b>📍 Posible corte de luz o internet en ${zona} · ${g.recintos.length} recintos</b>\n` +
       '<i>Revisar energía o fibra del sector.</i>';
     const cont = `<b>📍 Zona ${zona} (cont.)</b>`;
     return g.recintos.map((a, i) => {
@@ -411,16 +421,28 @@ export function formatearAsignaciones(grupos: GrupoAsignacion[]): string[] {
 @Injectable()
 export class TelegramNotifier {
   private readonly log = new Logger('TelegramNotifier');
+  /** Chat al que va lo que se envíe dentro de `responderEn`. Fuera de eso (avisos
+   * del cron, escalamiento, resumen diario) no hay valor y todo va a TELEGRAM_CHAT_ID. */
+  private readonly destino = new AsyncLocalStorage<string>();
+
+  /** Ejecuta `fn` enviando sus mensajes a `chatId` en vez del grupo configurado:
+   * así un grupo de consulta (p. ej. el de demos) recibe la respuesta a su propio
+   * comando sin que los avisos automáticos salgan del grupo principal. */
+  responderEn<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
+    return this.destino.run(chatId, fn);
+  }
 
   /** Manda siempre el estado COMPLETO de recintos caídos, destacando con 🚨 y negrita
    * los que pasaron de ACTIVO a FALLO en este ciclo (si los hay) — nunca un mensaje
    * aislado de un solo recinto, para que el grupo no crea que los demás ya se
    * recuperaron. Telegram no admite texto de color, por eso la negrita. */
-  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>): Promise<void> {
+  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>, canton?: string): Promise<void> {
+    // `canton`: la lista viene filtrada (asistente), y el título tiene que decirlo.
+    const donde = canton ? ` en ${escapeHtml(canton)}` : '';
     const texto =
       enlaces.length === 0
-        ? '✅ No hay enlaces caídos en este momento.'
-        : `🔴 Enlaces caídos ahora mismo (${enlaces.length}):\n` +
+        ? `✅ No hay enlaces caídos${donde} en este momento.`
+        : `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):\n` +
           enlaces
             .map((e) => {
               const linea = formatearLinea(e);
@@ -497,13 +519,24 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, descripcion);
   }
 
+  /** Mensaje ya escapado por quien llama (respuestas del asistente), con botones
+   * propios opcionales; sin ellos lleva el teclado fijo. */
+  async enviarHtml(texto: string, descripcion: string, botones?: object): Promise<void> {
+    await this.enviarMensaje(texto, descripcion, 'HTML', botones);
+  }
+
+  /** "escribiendo…" en el chat mientras el asistente consulta al modelo. */
+  async indicarEscribiendo(): Promise<void> {
+    await this.llamar('sendChatAction', { action: 'typing' }, 'el indicador de escribiendo');
+  }
+
   /** parseMode solo lo pasan los mensajes que escapan su contenido (formatearLinea);
    * enviarTexto va sin él porque su texto libre no está escapado. */
   private async enviarMensaje(
     text: string,
     descripcion: string,
     parseMode?: 'HTML',
-    replyMarkup: object = TECLADO,
+    replyMarkup: object = tecladoFijo(),
   ): Promise<void> {
     await this.llamar(
       'sendMessage',
@@ -520,7 +553,8 @@ export class TelegramNotifier {
     );
   }
 
-  /** Llama a un método de la Bot API; con `conChat`, al chat configurado. Nunca lanza. */
+  /** Llama a un método de la Bot API; con `conChat`, al chat configurado (o al de
+   * `responderEn`, si se está respondiendo a un grupo de consulta). Nunca lanza. */
   private async llamar(
     metodo: string,
     payload: Record<string, unknown>,
@@ -528,7 +562,7 @@ export class TelegramNotifier {
     conChat = true,
   ): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    const chatId = this.destino.getStore() ?? process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) {
       this.log.warn(
         `TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID no configurados — se omite el envío de ${descripcion}`,

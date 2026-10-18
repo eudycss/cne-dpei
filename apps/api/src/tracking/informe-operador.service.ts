@@ -102,8 +102,9 @@ export class InformeOperadorService {
   private async datos(filas: ReporteFlujoItem[], incluirJornada: boolean): Promise<DatosInformeOperador[]> {
     if (filas.length === 0) return [];
     // Sin la jornada (pruebas técnicas) no se buscan ni se descifran las fotos.
-    const salidas = incluirJornada ? await this.salidasRecinto(filas.map((f) => f.operadorId)) : [];
-    const actasPorOperador = new Map(salidas.map((s) => [s.operadorId, s]));
+    const salidas: SalidaRecinto[] = incluirJornada ? await this.salidasRecinto(filas.map((f) => f.operadorId)) : [];
+    // Tipos explícitos: con la versión de pnpm/TypeScript del CI el Map se infería como {}.
+    const actasPorOperador = new Map<string, SalidaRecinto>(salidas.map((s) => [s.operadorId, s]));
 
     return filas.map((f) => {
       const actas = actasPorOperador.get(f.operadorId);
@@ -115,7 +116,7 @@ export class InformeOperadorService {
     });
   }
 
-  private async salidasRecinto(operadorIds: string[]) {
+  private async salidasRecinto(operadorIds: string[]): Promise<SalidaRecinto[]> {
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
       select: { id: true },
@@ -137,6 +138,13 @@ export class InformeOperadorService {
       return null;
     }
   }
+}
+
+/** Actas de la salida del recinto de un operador en el evento activo. */
+interface SalidaRecinto {
+  operadorId: string;
+  actaInstalacionUrl: string | null;
+  actaEscrutinioUrl: string | null;
 }
 
 function jornada(f: ReporteFlujoItem): JornadaOperador {

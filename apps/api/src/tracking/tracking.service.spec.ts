@@ -49,6 +49,7 @@ describe('TrackingService', () => {
   const alertas = {
     generarKitNoCorresponde: jest.fn(),
     generarEntregaMilitarNoRegistrada: jest.fn(),
+    generarLlegadaFueraDeRango: jest.fn(),
   };
 
   const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -675,6 +676,68 @@ describe('TrackingService', () => {
       await expect(service.registrarLlegadaRecinto(operadorId, geo as any)).rejects.toThrow(
         BadRequestException,
       );
+      expect(alertas.generarLlegadaFueraDeRango).not.toHaveBeenCalled();
+    });
+
+    it('registrada sin señal fuera del margen: la acepta, la marca offline y alerta al supervisor', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida' });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1', recintoId }]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([{ kitId: 'k1' }]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ metros: 900 }]) // fuera del margen
+        .mockResolvedValueOnce([{ id: 'llegada-id' }]); // INSERT
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({ margenLlegadaMetros: 150 });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'Escuela Apuela' });
+
+      const result = await service.registrarLlegadaRecinto(operadorId, {
+        ...geo,
+        precisionMetros: 10,
+        desdeOffline: true,
+      } as any);
+
+      expect(result.id).toBe('llegada-id');
+      expect(valoresInsert('eventos_tracking')).toContain(true); // desde_offline
+      expect(alertas.generarLlegadaFueraDeRango).toHaveBeenCalledWith({
+        eventoId,
+        operadorId,
+        destino: 'RECINTO',
+        nombreDestino: 'Escuela Apuela',
+        metros: 900,
+        margen: 160,
+        desfaseMinutos: expect.any(Number),
+      });
+      // La alerta se crea antes del INSERT: si falla, no queda una llegada sin aviso.
+      const ordenAlerta = alertas.generarLlegadaFueraDeRango.mock.invocationCallOrder[0];
+      const ordenInsert = prisma.$queryRaw.mock.invocationCallOrder[1];
+      expect(ordenAlerta).toBeLessThan(ordenInsert);
+      expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['enviada al instante', 0],
+      ['con la hora del celular en el futuro', -10 * 60_000],
+    ])('marcada sin señal pero %s: se rechaza como con señal', async (_caso, haceMs) => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida' });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1', recintoId }]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([{ kitId: 'k1' }]);
+      prisma.$queryRaw.mockResolvedValueOnce([{ metros: 900 }]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({ margenLlegadaMetros: 150 });
+
+      await expect(
+        service.registrarLlegadaRecinto(operadorId, {
+          ...geo,
+          ocurridoEn: new Date(Date.now() - haceMs).toISOString(),
+          desdeOffline: true,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(alertas.generarLlegadaFueraDeRango).not.toHaveBeenCalled();
     });
   });
 
@@ -811,6 +874,35 @@ describe('TrackingService', () => {
         BadRequestException,
       );
       expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      expect(alertas.generarLlegadaFueraDeRango).not.toHaveBeenCalled();
+    });
+
+    it('registrada sin señal fuera del margen de la Delegación: la acepta y alerta', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'salida-recinto' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ metros: 9999 }])
+        .mockResolvedValueOnce([{ id: 'llegada-dpi-id' }]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({ margenLlegadaDpiMetros: 150 });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      const result = await service.registrarLlegadaDpi(operadorId, { ...geo, desdeOffline: true } as any);
+
+      expect(result.id).toBe('llegada-dpi-id');
+      expect(prisma.kitElectoral.updateMany).toHaveBeenCalled();
+      expect(alertas.generarLlegadaFueraDeRango).toHaveBeenCalledWith({
+        eventoId,
+        operadorId,
+        destino: 'DPI',
+        nombreDestino: null,
+        metros: 9999,
+        margen: 150,
+        desfaseMinutos: expect.any(Number),
+      });
     });
 
     it('registra la llegada si está dentro del margen de la Delegación', async () => {

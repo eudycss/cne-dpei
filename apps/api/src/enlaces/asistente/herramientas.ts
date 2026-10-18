@@ -1,0 +1,295 @@
+import { z } from 'zod';
+
+/**
+ * Lo único que el modelo puede pedir: una consulta de esta lista, con sus
+ * parámetros. Las consultas son de solo lectura y la respuesta la arma nuestro
+ * código con los datos reales; el modelo nunca redacta lo que ve el usuario.
+ *
+ * En vez de una consulta por cada pregunta posible, consultar_recintos recibe
+ * filtros combinables: el modelo traduce la pregunta a filtros y el código los
+ * aplica sobre la tabla de recintos (enlaces + técnicos + encargados).
+ */
+
+/** Algunos modelos mandan booleanos como texto ("true"); cualquier otra cosa es false. */
+const booleano = z.unknown().transform((v) => String(v).trim().toLowerCase() === 'true');
+
+/** Lista corta de textos; acepta también un texto suelto en vez de una lista. */
+const listaTextos = z
+  .union([z.string(), z.array(z.string())])
+  .nullish()
+  .transform((v) => (v == null ? [] : Array.isArray(v) ? v : [v]).map((t) => t.trim()).filter(Boolean))
+  .pipe(z.array(z.string().max(60)).max(6));
+
+export const ESTADOS = ['caido', 'activo'] as const;
+export type EstadoFiltro = (typeof ESTADOS)[number];
+export const AGRUPACIONES = ['tecnico', 'canton', 'parroquia', 'ninguno'] as const;
+export type Agrupacion = (typeof AGRUPACIONES)[number];
+export const PERIODOS = ['dia', 'semana', 'mes'] as const;
+export type PeriodoConsulta = (typeof PERIODOS)[number];
+
+/** Normaliza lo que mande el modelo ("Caído", "FALLO", "down") a un estado conocido, o null. */
+function aEstado(v: unknown): EstadoFiltro | null {
+  const t = String(v ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+  if (['caido', 'caidos', 'fallo', 'falla', 'down', 'sin enlace'].includes(t)) return 'caido';
+  if (['activo', 'activos', 'ok', 'up', 'con enlace'].includes(t)) return 'activo';
+  return null;
+}
+
+function aOpcion<T extends string>(opciones: readonly T[], v: unknown): T | null {
+  const t = String(v ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+  return (opciones as readonly string[]).includes(t) ? (t as T) : null;
+}
+
+const ESQUEMAS = {
+  buscar_recinto: z.object({ texto: z.string().trim().min(1).max(80) }),
+  consultar_recintos: z.object({
+    cantones: listaTextos,
+    parroquias: listaTextos,
+    tecnicos: listaTextos,
+    estado: z.unknown().transform(aEstado),
+    sin_tecnico: booleano,
+    sin_contacto: booleano,
+    con_contacto: booleano,
+    agrupar_por: z.unknown().transform((v) => aOpcion(AGRUPACIONES, v)),
+    solo_contar: booleano,
+  }),
+  consultar_datos: z.object({
+    sql: z.string().trim().min(1).max(1500),
+    titulo: z
+      .unknown()
+      .transform((v) => (typeof v === 'string' ? v.trim().slice(0, 80) : ''))
+      .transform((v) => v || 'Resultado'),
+    con_contacto: booleano,
+  }),
+  estadisticas: z.object({
+    periodo: z.unknown().transform((v) => {
+      const t = String(v ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+      return aOpcion(PERIODOS, { hoy: 'dia', ayer: 'dia' }[t] ?? t) ?? 'dia';
+    }),
+  }),
+};
+
+export interface FiltrosRecintos {
+  cantones: string[];
+  parroquias: string[];
+  tecnicos: string[];
+  estado: EstadoFiltro | null;
+  sinTecnico: boolean;
+  sinContacto: boolean;
+  conContacto: boolean;
+  /** null = el código elige según los filtros. */
+  agruparPor: Agrupacion | null;
+  soloContar: boolean;
+}
+
+export type Consulta =
+  | { tipo: 'buscar_recinto'; texto: string }
+  | ({ tipo: 'consultar_recintos' } & FiltrosRecintos)
+  | { tipo: 'consultar_datos'; sql: string; titulo: string; conContacto: boolean }
+  | { tipo: 'estadisticas'; periodo: PeriodoConsulta };
+
+/** La consulta pedida por el modelo, o null si no está en la lista o sus parámetros no son válidos. */
+export function validarConsulta(nombre: string, argumentos: unknown): Consulta | null {
+  switch (nombre) {
+    case 'buscar_recinto': {
+      const r = ESQUEMAS.buscar_recinto.safeParse(argumentos);
+      return r.success ? { tipo: 'buscar_recinto', texto: r.data.texto } : null;
+    }
+    case 'consultar_recintos': {
+      const r = ESQUEMAS.consultar_recintos.safeParse(argumentos ?? {});
+      if (!r.success) return null;
+      const d = r.data;
+      return {
+        tipo: 'consultar_recintos',
+        cantones: d.cantones,
+        parroquias: d.parroquias,
+        tecnicos: d.tecnicos,
+        estado: d.estado,
+        sinTecnico: d.sin_tecnico,
+        sinContacto: d.sin_contacto,
+        conContacto: d.con_contacto,
+        agruparPor: d.agrupar_por,
+        soloContar: d.solo_contar,
+      };
+    }
+    case 'consultar_datos': {
+      const r = ESQUEMAS.consultar_datos.safeParse(argumentos ?? {});
+      return r.success
+        ? { tipo: 'consultar_datos', sql: r.data.sql, titulo: r.data.titulo, conContacto: r.data.con_contacto }
+        : null;
+    }
+    case 'estadisticas': {
+      const r = ESQUEMAS.estadisticas.safeParse(argumentos ?? {});
+      return r.success ? { tipo: 'estadisticas', periodo: r.data.periodo } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Instrucciones para el modelo: solo elegir consultas, nunca contestar con texto. */
+export const INSTRUCCIONES_MODELO =
+  'Eres el asistente del bot de enlaces de internet de los recintos electorales del CNE Imbabura (Ecuador). ' +
+  'Tu único trabajo es traducir la pregunta del usuario a llamadas de herramientas con sus parámetros. ' +
+  'No respondas con texto. Si la pregunta no se puede responder con estas herramientas, no llames a ninguna. ' +
+  'Usa buscar_recinto cuando preguntan por UN recinto concreto (por nombre, código, apodo o lugar), p. ej. ' +
+  '"número del encargado del colegio Ibarra", "cómo está el 1008", "contacto de Ilumán", "recinto de Golondrinas"; ' +
+  'pasa solo el nombre o lugar, sin palabras como "teléfono", "contacto" o "encargado". ' +
+  'Usa consultar_recintos para listas, conteos y preguntas sobre varios recintos o técnicos, combinando filtros: ' +
+  '"recintos de Pimampiro y Urcuquí" → cantones [Pimampiro, Urcuquí]; "qué está caído en Cotacachi" → cantones ' +
+  '[Cotacachi], estado caido; "qué técnico está en Cotacachi" o "técnicos de Otavalo" → cantones, agrupar_por ' +
+  'tecnico, solo_contar true; "quién es el técnico de Ilumán" o "técnico encargado de Quiroga" (una parroquia ' +
+  'o lugar, no un recinto) → parroquias [Ilumán], agrupar_por tecnico, solo_contar true; "qué técnicos tienen caídos" → estado caido, agrupar_por tecnico; "recintos de Willy" ' +
+  '→ tecnicos [Willy]; "solo los caídos de Jairo" → tecnicos [Jairo], estado caido; "qué recintos no tienen ' +
+  'técnico" → sin_tecnico true; "qué recintos no tienen contacto" → sin_contacto true; "cuántos caídos hay en ' +
+  'Ibarra" → cantones [Ibarra], estado caido, solo_contar true; "contactos de los caídos" → estado caido, ' +
+  'con_contacto true; "lista los técnicos", "qué técnicos hay" o "quiénes son los técnicos" → agrupar_por ' +
+  'tecnico, solo_contar true. ' +
+  'Regla: si preguntan por técnicos (quiénes son o cuántos) y no piden sus recintos, usa siempre solo_contar true; ' +
+  'lista los recintos de cada técnico solo si los piden ("técnicos con sus recintos", "recintos de cada técnico"). ' +
+  'Usa estadisticas para preguntas sobre caídas en el tiempo (hoy, esta semana, este mes, cuál se cayó más). ' +
+  'Si la pregunta pide cosas distintas, puedes llamar hasta 3 herramientas. ' +
+  'Los cantones de Imbabura son Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí y Pimampiro.';
+
+/** Definición de las consultas en el formato de herramientas compatible con OpenAI (Groq y Gemini). */
+export const HERRAMIENTAS_MODELO = [
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_recinto',
+      description:
+        'Busca UN recinto por nombre, código, apodo o lugar (parroquia) y devuelve su ficha: estado del enlace, ' +
+        'encargado con su teléfono y técnico asignado. Si hay varios parecidos, los lista con sus contactos.',
+      parameters: {
+        type: 'object',
+        properties: {
+          texto: { type: 'string', description: 'Nombre (o parte), código, apodo o lugar, p. ej. "colegio Ibarra", "1008", "Ilumán".' },
+        },
+        required: ['texto'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_recintos',
+      description:
+        'Lista o cuenta recintos aplicando filtros combinables (todos opcionales; sin filtros, todos los recintos). ' +
+        'Sirve para recintos de uno o varios cantones, parroquias o técnicos, los caídos, los que no tienen técnico ' +
+        'o contacto, y para saber qué técnicos atienden un cantón o tienen caídos.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cantones: { type: 'array', items: { type: 'string' }, description: 'Cantones, p. ej. ["Pimampiro", "Urcuquí"].' },
+          parroquias: { type: 'array', items: { type: 'string' }, description: 'Parroquias, p. ej. ["San Juan de Ilumán"].' },
+          tecnicos: { type: 'array', items: { type: 'string' }, description: 'Nombres o apellidos de técnicos.' },
+          estado: { type: 'string', enum: ['caido', 'activo'], description: 'Solo los caídos o solo los activos.' },
+          sin_tecnico: { type: 'boolean', description: 'Solo recintos sin técnico asignado.' },
+          sin_contacto: { type: 'boolean', description: 'Solo recintos sin encargado o sin teléfono registrado.' },
+          con_contacto: { type: 'boolean', description: 'Mostrar el encargado y teléfono de cada recinto.' },
+          agrupar_por: { type: 'string', enum: ['tecnico', 'canton', 'parroquia', 'ninguno'], description: 'Cómo agrupar la lista.' },
+          solo_contar: { type: 'boolean', description: 'Solo cuántos hay (por grupo si se agrupa), sin listar cada recinto.' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estadisticas',
+      description:
+        'Estadísticas de caídas de enlace de un período: recintos sin caídas, total de caídas, comparación con el ' +
+        'período anterior y los recintos que más tiempo estuvieron sin enlace.',
+      parameters: {
+        type: 'object',
+        properties: { periodo: { type: 'string', enum: ['dia', 'semana', 'mes'], description: 'dia = hoy.' } },
+        required: ['periodo'],
+      },
+    },
+  },
+];
+
+/**
+ * Modo SQL (ASISTENTE_SQL_ENABLED): en vez de filtros fijos, el modelo escribe un
+ * SELECT sobre la tabla `recintos` (copia en memoria, sin teléfonos). La respuesta
+ * la arma el código con el resultado; el modelo nunca ve los datos.
+ */
+export const INSTRUCCIONES_MODELO_SQL =
+  'Eres el asistente del bot de enlaces de internet de los recintos electorales del CNE Imbabura (Ecuador). ' +
+  'Tu único trabajo es traducir la pregunta del usuario a llamadas de herramientas. No respondas con texto. ' +
+  'Si la pregunta no tiene que ver con recintos, enlaces, técnicos, encargados o estadísticas, no llames a ninguna.\n' +
+  'Herramientas:\n' +
+  '- buscar_recinto: UN recinto concreto por nombre, código o apodo ("número del encargado del colegio Ibarra", ' +
+  '"cómo está el 1008", "recinto de Golondrinas"). Pasa solo el nombre, sin "teléfono", "contacto" ni "encargado".\n' +
+  '- estadisticas: SOLO el resumen general de caídas de un período (hoy, esta semana, este mes) sin un recinto, ' +
+  'cantón o técnico concreto.\n' +
+  '- consultar_datos: todo lo demás (listas, conteos, técnicos, cantones, parroquias, aleatorios, rankings, cuánto ' +
+  'tiempo lleva o estuvo caído un recinto, cuántas veces se cayó), con un SELECT de SQLite sobre las tablas:\n' +
+  '  recintos(codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT, numero_tecnico INTEGER, ' +
+  'tecnico TEXT, tiene_contacto INTEGER, minutos_caido INTEGER)\n' +
+  '  caidas(codigo TEXT, inicio TEXT, fin TEXT, minutos INTEGER): caídas de los últimos 31 días y las que siguen ' +
+  'abiertas (fin NULL); se une con recintos por codigo.\n' +
+  "  estado es 'caido' o 'activo'. canton: Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí, Pimampiro. " +
+  'parroquia en mayúsculas sin tildes (puede ser NULL). tecnico es el técnico del CNE asignado (NULL = sin técnico). ' +
+  'tiene_contacto es 1 si el recinto tiene encargado con teléfono, 0 si no. minutos_caido: minutos que lleva caído ' +
+  'ahora (NULL si está activo). Fechas en hora de Ecuador como \'AAAA-MM-DD HH:MM:SS\'; ahora() da la fecha y hora ' +
+  'actual (úsala en vez de \'now\'). No hay más columnas ni tablas.\n' +
+  'Reglas del SQL:\n' +
+  "  1. Compara cantones con norm(canton) = norm('Urcuqui'). Para técnicos, parroquias y nombres de recintos " +
+  "usa parecido(columna, 'texto') (tolera errores de tipeo y nombres incompletos).\n" +
+  '  2. Cuando listes recintos, selecciona codigo, nombre y estado (en ese orden) y ordena por canton, codigo.\n' +
+  '  3. Para conteos o rankings usa alias en español (AS recintos, AS caidos) y ORDER BY.\n' +
+  '  4. "N al azar" o "aleatorios" → ORDER BY random() LIMIT N. "Dame N" → LIMIT N.\n' +
+  '  5. Si piden contacto, teléfono o encargado de varios recintos, pon con_contacto true e incluye codigo.\n' +
+  '  6. Si preguntan por técnicos sin pedir sus recintos, devuelve solo el técnico (y conteos si sirven), no la ' +
+  'lista de recintos.\n' +
+  '  7. titulo: frase corta en español que describe el resultado ("Recintos caídos de Cotacachi").\n' +
+  '  8. Para tiempos usa columnas que empiecen con "minutos" (minutos_caido, minutos, AS minutos_total): se muestran ' +
+  'como "2 h 15 min". "Hoy" → inicio >= date(ahora()); "esta semana" → inicio >= date(ahora(), \'-6 days\', ' +
+  '\'weekday 1\'); "este mes" → inicio >= strftime(\'%Y-%m-01\', ahora()). Los períodos se filtran por inicio y ' +
+  'minutos es la duración total de cada caída.\n' +
+  'Ejemplos:\n' +
+  '  "5 recintos de Ibarra aleatorios" → SELECT codigo, nombre, estado FROM recintos WHERE norm(canton) = ' +
+  "norm('Ibarra') ORDER BY random() LIMIT 5\n" +
+  '  "lista los técnicos" → SELECT numero_tecnico, tecnico, count(*) AS recintos FROM recintos WHERE tecnico IS NOT ' +
+  'NULL GROUP BY numero_tecnico, tecnico ORDER BY numero_tecnico\n' +
+  '  "quién es el técnico de Ilumán" → SELECT tecnico, count(*) AS recintos FROM recintos WHERE ' +
+  "parecido(parroquia, 'Iluman') OR parecido(nombre, 'Iluman') GROUP BY tecnico\n" +
+  "  \"qué cantón tiene más caídos\" → SELECT canton, count(*) AS caidos FROM recintos WHERE estado = 'caido' " +
+  'GROUP BY canton ORDER BY caidos DESC LIMIT 1\n' +
+  '  "contactos de los caídos de Ibarra" → con_contacto true, SELECT codigo, nombre, estado FROM recintos WHERE ' +
+  "estado = 'caido' AND norm(canton) = norm('Ibarra') ORDER BY codigo\n" +
+  '  "cuánto tiempo lleva caído García Moreno" → SELECT codigo, nombre, estado, minutos_caido FROM recintos WHERE ' +
+  "parecido(nombre, 'Garcia Moreno') OR parecido(parroquia, 'Garcia Moreno') ORDER BY codigo\n" +
+  '  "cuántas veces se cayó el 1008 este mes" → SELECT count(*) AS caidas, sum(minutos) AS minutos_total FROM caidas ' +
+  "WHERE codigo = '1008' AND inicio >= strftime('%Y-%m-01', ahora())\n" +
+  '  "qué recintos se cayeron más esta semana" → SELECT r.codigo, r.nombre, count(*) AS caidas, sum(c.minutos) AS ' +
+  "minutos_total FROM caidas c JOIN recintos r USING (codigo) WHERE c.inicio >= date(ahora(), '-6 days', 'weekday 1') " +
+  'GROUP BY r.codigo, r.nombre ORDER BY minutos_total DESC LIMIT 10\n' +
+  'Si la pregunta pide cosas distintas, puedes llamar hasta 3 herramientas.';
+
+const HERRAMIENTA_CONSULTAR_DATOS = {
+  type: 'function',
+  function: {
+    name: 'consultar_datos',
+    description:
+      'Ejecuta un SELECT de SQLite sobre las tablas recintos (codigo, nombre, canton, parroquia, estado, ' +
+      'numero_tecnico, tecnico, tiene_contacto, minutos_caido) y caidas (codigo, inicio, fin, minutos) y muestra el ' +
+      'resultado al usuario.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sql: { type: 'string', description: 'Una sola consulta SELECT (o WITH … SELECT), sin punto y coma.' },
+        titulo: { type: 'string', description: 'Frase corta que describe el resultado.' },
+        con_contacto: { type: 'boolean', description: 'Agregar el encargado y teléfono de cada recinto (requiere codigo).' },
+      },
+      required: ['sql', 'titulo'],
+    },
+  },
+};
+
+/** Herramientas del modo SQL: consultar_datos reemplaza a consultar_recintos. */
+export const HERRAMIENTAS_MODELO_SQL = [
+  ...HERRAMIENTAS_MODELO.filter((h) => h.function.name !== 'consultar_recintos'),
+  HERRAMIENTA_CONSULTAR_DATOS,
+];
