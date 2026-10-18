@@ -371,7 +371,20 @@ describe('MonitoreoPage', () => {
     expect(getFotoMilitarMock).toHaveBeenCalledWith('r1');
   });
 
-  it('los botones "Ver acta" respetan tieneActaInstalacion/tieneActaEscrutinio, y cargan la imagen correcta', async () => {
+  it('las columnas y botones dicen "Reporte" (no "Acta")', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+
+    renderPage();
+    const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+
+    expect(screen.getByRole('columnheader', { name: 'Reporte instalación' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Reporte escrutinio' })).toBeInTheDocument();
+    expect(within(fila).queryByText('Ver acta')).not.toBeInTheDocument();
+    expect(within(fila).getAllByText('Ver reporte')).toHaveLength(2);
+  });
+
+  it('los botones "Ver reporte" respetan tieneActaInstalacion/tieneActaEscrutinio, y cargan la imagen correcta', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
     getFotoActaMock.mockResolvedValue(new Blob(['fake'], { type: 'image/png' }));

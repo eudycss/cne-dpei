@@ -405,8 +405,8 @@ export function MonitoreoPage() {
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
-                <th>Acta instalación</th>
-                <th>Acta escrutinio</th>
+                <th>Reporte instalación</th>
+                <th>Reporte escrutinio</th>
               </tr>
             </thead>
             <tbody>
@@ -455,7 +455,7 @@ export function MonitoreoPage() {
                         motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el reporte de instalación'}
                         ariaLabel={`Ver reporte de instalación — ${c.nombreRecinto}`}
                       >
-                        Ver acta
+                        Ver reporte
                       </BotonConMotivo>
                     </td>
                     <td>
