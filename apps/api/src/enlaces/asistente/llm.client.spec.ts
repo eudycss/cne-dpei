@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { asistenteHabilitado, AsistenteNoDisponible, LlmClient, proveedoresConfigurados } from './llm.client';
+import { asistenteHabilitado, asistenteSqlHabilitado, AsistenteNoDisponible, LlmClient, proveedoresConfigurados } from './llm.client';
 
 const respuestaConConsulta = (name: string, args: string) => ({
   ok: true,
@@ -24,6 +24,14 @@ describe('proveedoresConfigurados / asistenteHabilitado', () => {
     expect(asistenteHabilitado({ ASISTENTE_ENABLED: 'true' })).toBe(false);
     expect(asistenteHabilitado({ GROQ_API_KEY: 'g' })).toBe(false);
     expect(asistenteHabilitado({ ASISTENTE_ENABLED: 'false', GROQ_API_KEY: 'g' })).toBe(false);
+  });
+});
+
+describe('asistenteSqlHabilitado', () => {
+  it('solo con ASISTENTE_SQL_ENABLED=true (apagado por defecto)', () => {
+    expect(asistenteSqlHabilitado({ ASISTENTE_SQL_ENABLED: 'true' })).toBe(true);
+    expect(asistenteSqlHabilitado({})).toBe(false);
+    expect(asistenteSqlHabilitado({ ASISTENTE_SQL_ENABLED: 'TRUE ' })).toBe(false);
   });
 });
 
@@ -58,6 +66,18 @@ describe('LlmClient', () => {
     expect(body.messages[1]).toEqual({ role: 'user', content: 'número del encargado del colegio Ibarra' });
     expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'consultar_recintos', 'estadisticas']);
     expect(body.temperature).toBe(0);
+  });
+
+  it('modo sql: instrucciones de SQL y consultar_datos en vez de consultar_recintos', async () => {
+    global.fetch = jest.fn().mockResolvedValue(respuestaConConsulta('consultar_datos', '{"sql":"SELECT 1","titulo":"x"}'));
+
+    const llamada = await new LlmClient().elegirConsultas('5 recintos de Ibarra al azar', 'sql');
+
+    expect(llamada).toEqual([{ nombre: 'consultar_datos', argumentos: { sql: 'SELECT 1', titulo: 'x' } }]);
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.tools.map((t: any) => t.function.name)).toEqual(['buscar_recinto', 'estadisticas', 'consultar_datos']);
+    expect(body.messages[0].content).toContain('recintos(codigo TEXT');
+    expect(body.max_tokens).toBe(2048);
   });
 
   it('si Groq falla (429), usa Gemini', async () => {

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HERRAMIENTAS_MODELO, INSTRUCCIONES_MODELO } from './herramientas';
+import { HERRAMIENTAS_MODELO, HERRAMIENTAS_MODELO_SQL, INSTRUCCIONES_MODELO, INSTRUCCIONES_MODELO_SQL } from './herramientas';
 
 /** Ningún proveedor respondió (sin llaves, caídos, límite de uso o sin respuesta a tiempo). */
 export class AsistenteNoDisponible extends Error {
@@ -52,6 +52,14 @@ export function proveedoresConfigurados(env: NodeJS.ProcessEnv = process.env): P
   return lista;
 }
 
+/** Modo de las consultas: filtros fijos (consultar_recintos) o SQL libre (consultar_datos). */
+export type ModoConsultas = 'filtros' | 'sql';
+
+/** El modo SQL se enciende aparte (ASISTENTE_SQL_ENABLED): apagado, el bot responde como siempre. */
+export function asistenteSqlHabilitado(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ASISTENTE_SQL_ENABLED === 'true';
+}
+
 /** El asistente solo se ofrece si está activado y hay al menos un proveedor con llave. */
 export function asistenteHabilitado(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.ASISTENTE_ENABLED === 'true' && proveedoresConfigurados(env).length > 0;
@@ -70,10 +78,10 @@ export class LlmClient {
    * [] = no eligió ninguna (pregunta fuera de lo que el bot sabe). Si un proveedor falla,
    * prueba el siguiente; si fallan todos, lanza AsistenteNoDisponible.
    */
-  async elegirConsultas(pregunta: string): Promise<LlamadaModelo[]> {
+  async elegirConsultas(pregunta: string, modo: ModoConsultas = 'filtros'): Promise<LlamadaModelo[]> {
     for (const proveedor of proveedoresConfigurados()) {
       try {
-        return await this.consultar(proveedor, pregunta);
+        return await this.consultar(proveedor, pregunta, modo);
       } catch (e) {
         // Sin la pregunta ni la llave en el log: solo quién falló y por qué.
         this.log.warn(`${proveedor.nombre} no respondió (${causa(e)})`);
@@ -82,19 +90,21 @@ export class LlmClient {
     throw new AsistenteNoDisponible();
   }
 
-  private async consultar(p: Proveedor, pregunta: string): Promise<LlamadaModelo[]> {
+  private async consultar(p: Proveedor, pregunta: string, modo: ModoConsultas): Promise<LlamadaModelo[]> {
+    const sql = modo === 'sql';
     const res = await fetch(p.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}` },
       body: JSON.stringify({
         model: p.modelo,
         temperature: 0,
-        max_tokens: 1024,
+        // El SQL (y el razonamiento del modelo antes de escribirlo) necesita más espacio.
+        max_tokens: sql ? 2048 : 1024,
         messages: [
-          { role: 'system', content: INSTRUCCIONES_MODELO },
+          { role: 'system', content: sql ? INSTRUCCIONES_MODELO_SQL : INSTRUCCIONES_MODELO },
           { role: 'user', content: pregunta },
         ],
-        tools: HERRAMIENTAS_MODELO,
+        tools: sql ? HERRAMIENTAS_MODELO_SQL : HERRAMIENTAS_MODELO,
         tool_choice: 'auto',
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),

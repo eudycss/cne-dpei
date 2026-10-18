@@ -5,6 +5,7 @@
  *
  *   pnpm --filter @cne/api eval:asistente            # todo el banco
  *   pnpm --filter @cne/api eval:asistente -- técnico  # solo preguntas que contengan "técnico"
+ *   pnpm --filter @cne/api eval:asistente -- --sql    # con el modo SQL (ASISTENTE_SQL_ENABLED)
  *
  * Usa GROQ_API_KEY / GEMINI_API_KEY de apps/api/.env.
  */
@@ -51,7 +52,10 @@ async function main(): Promise<void> {
     estadisticas as never,
   );
 
-  const filtro = process.argv[2]?.toLowerCase();
+  const argumentos = process.argv.slice(2);
+  if (argumentos.includes('--sql')) process.env.ASISTENTE_SQL_ENABLED = 'true';
+  const filtro = argumentos.find((a) => !a.startsWith('--'))?.toLowerCase();
+  console.log(`Modo: ${process.env.ASISTENTE_SQL_ENABLED === 'true' ? 'SQL' : 'filtros'}\n`);
   const casos = filtro ? CASOS.filter((c) => c.pregunta.toLowerCase().includes(filtro)) : CASOS;
   let aciertos = 0;
   for (const [i, caso] of casos.entries()) {

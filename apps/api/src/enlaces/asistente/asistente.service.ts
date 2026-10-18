@@ -8,7 +8,10 @@ import { abreviarCanton, PREFIJO_CALLBACK_RECINTO, TelegramNotifier } from '../t
 import { buscarRecintosDetalle, normalizarTexto } from './buscar-recintos';
 import { responderConsulta, textoEncargado, type FilaRecinto } from './consulta-recintos';
 import { validarConsulta, type Consulta, type FiltrosRecintos } from './herramientas';
-import { AsistenteNoDisponible, LlmClient } from './llm.client';
+import { asistenteSqlHabilitado, AsistenteNoDisponible, LlmClient, type ModoConsultas } from './llm.client';
+import { formatearResultadoSql } from './respuesta-sql';
+import { ejecutarSql, type FilaSql } from './sql/motor-sql';
+import { ErrorSql } from './sql/validar-sql';
 
 /** Preguntas más largas no son una consulta al bot; además acota lo que se manda al modelo. */
 export const MAX_LARGO_PREGUNTA = 300;
@@ -38,6 +41,15 @@ export const AYUDA_ASISTENTE =
   '• "¿qué recintos no tienen técnico?" o "…no tienen contacto?"\n' +
   '• "¿cuántos caídos hay en Ibarra?"\n' +
   '• "estadísticas de la semana"';
+
+type ConsultaDatos = Extract<Consulta, { tipo: 'consultar_datos' }>;
+
+/** Lo que se lleva por pregunta: a lo más 1 corrección de SQL, 1 respaldo y 1 aviso. */
+interface EstadoPregunta {
+  correccionUsada: boolean;
+  sqlFallido: boolean;
+  avisoDistributivo: boolean;
+}
 
 type Enlace = { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' };
 
@@ -85,20 +97,14 @@ export class AsistenteService {
     }
 
     await this.telegram.indicarEscribiendo();
+    await this.resolver(limpia, asistenteSqlHabilitado() ? 'sql' : 'filtros');
+  }
+
+  /** Pide las consultas al modelo en ese modo y las ejecuta. Nunca lanza. */
+  private async resolver(limpia: string, modo: ModoConsultas): Promise<void> {
     let consultas: Consulta[];
     try {
-      const llamadas = await this.llm.elegirConsultas(limpia);
-      // Sin repetidas: el modelo a veces pide lo mismo dos veces.
-      const vistas = new Set<string>();
-      consultas = llamadas
-        .map((l) => validarConsulta(l.nombre, l.argumentos))
-        .filter((c): c is Consulta => c !== null)
-        .filter((c) => {
-          const clave = JSON.stringify(c);
-          if (vistas.has(clave)) return false;
-          vistas.add(clave);
-          return true;
-        });
+      consultas = await this.elegirConsultas(limpia, modo);
     } catch (e) {
       if (!(e instanceof AsistenteNoDisponible)) this.log.error(`Error del asistente: ${(e as Error)?.message ?? e}`);
       await this.telegram.enviarTexto(
@@ -114,9 +120,10 @@ export class AsistenteService {
 
     // Una pregunta puede pedir varias cosas ("recintos de Pimampiro y estadísticas de hoy").
     const pideTecnico = preguntaPorTecnico(limpia);
+    const estado: EstadoPregunta = { correccionUsada: false, sqlFallido: false, avisoDistributivo: false };
     for (const consulta of consultas) {
       try {
-        await this.ejecutar(consulta, pideTecnico);
+        await this.ejecutar(consulta, pideTecnico, limpia, estado);
       } catch (e) {
         this.log.error(`No se pudo ejecutar la consulta ${consulta.tipo}: ${(e as Error)?.message ?? e}`);
         await this.telegram.enviarTexto(
@@ -125,6 +132,56 @@ export class AsistenteService {
         );
       }
     }
+    // Una sola vez por pregunta, aunque hayan fallado varias consultas SQL.
+    if (estado.sqlFallido) await this.respaldoFiltros(limpia);
+  }
+
+  /**
+   * El SQL no funcionó: se pregunta de nuevo en el modo de filtros, pero solo se
+   * ejecutan sus listas (consultar_recintos). Lo demás (fichas, estadísticas) ya
+   * se respondió en el primer intento y no debe salir repetido.
+   */
+  private async respaldoFiltros(limpia: string): Promise<void> {
+    let consultas: Consulta[] = [];
+    try {
+      consultas = (await this.elegirConsultas(limpia, 'filtros')).filter((c) => c.tipo === 'consultar_recintos');
+    } catch (e) {
+      if (!(e instanceof AsistenteNoDisponible)) this.log.error(`Error del asistente: ${(e as Error)?.message ?? e}`);
+    }
+    if (consultas.length === 0) {
+      await this.telegram.enviarTexto(
+        'No pude responder esa pregunta. Pruebe con otras palabras o use los botones de abajo.',
+        'el aviso de pregunta sin respuesta',
+      );
+      return;
+    }
+    for (const consulta of consultas) {
+      try {
+        await this.consultarRecintos(consulta as FiltrosRecintos);
+      } catch (e) {
+        this.log.error(`No se pudo ejecutar el respaldo del asistente: ${(e as Error)?.message ?? e}`);
+        await this.telegram.enviarTexto(
+          '⚠️ No se pudo consultar en este momento. Intente de nuevo en unos minutos.',
+          'el aviso de error del asistente',
+        );
+      }
+    }
+  }
+
+  /** Consultas válidas y sin repetir que eligió el modelo (el modo filtros nunca ejecuta SQL). */
+  private async elegirConsultas(pregunta: string, modo: ModoConsultas): Promise<Consulta[]> {
+    const llamadas = await this.llm.elegirConsultas(pregunta, modo);
+    // Sin repetidas: el modelo a veces pide lo mismo dos veces.
+    const vistas = new Set<string>();
+    return llamadas
+      .map((l) => validarConsulta(l.nombre, l.argumentos))
+      .filter((c): c is Consulta => c !== null && (modo === 'sql' || c.tipo !== 'consultar_datos'))
+      .filter((c) => {
+        const clave = JSON.stringify(c);
+        if (vistas.has(clave)) return false;
+        vistas.add(clave);
+        return true;
+      });
   }
 
   /** Botón de un recinto elegido entre varios resultados. Nunca lanza. */
@@ -149,12 +206,14 @@ export class AsistenteService {
     }
   }
 
-  private async ejecutar(consulta: Consulta, pideTecnico: boolean): Promise<void> {
+  private async ejecutar(consulta: Consulta, pideTecnico: boolean, pregunta: string, estado: EstadoPregunta): Promise<void> {
     switch (consulta.tipo) {
       case 'buscar_recinto':
         return this.buscarRecinto(consulta.texto, pideTecnico);
       case 'consultar_recintos':
         return this.consultarRecintos(consulta);
+      case 'consultar_datos':
+        return this.consultarDatos(consulta, pregunta, estado);
       case 'estadisticas':
         return this.estadisticas.enviarEstadisticasTelegram(new Date(), consulta.periodo);
     }
@@ -179,6 +238,80 @@ export class AsistenteService {
       encargados: encargados !== null,
     });
     for (const mensaje of mensajes) await this.telegram.enviarHtml(mensaje, 'el resultado de la consulta del asistente');
+  }
+
+  /**
+   * SQL del modelo sobre una copia en memoria de los recintos (sin teléfonos). Si el
+   * SQL falla, el modelo lo corrige una vez por pregunta (recibe solo el error, no
+   * datos); si vuelve a fallar o el motor no está disponible, se marca para que
+   * `resolver` responda una vez con el modo de filtros.
+   */
+  private async consultarDatos(consulta: ConsultaDatos, pregunta: string, estado: EstadoPregunta): Promise<void> {
+    const [enlaces, asignaciones, encargados] = await Promise.all([this.enlaces(), this.asignaciones(), this.mapaEncargados()]);
+    if (asignaciones === null && !estado.avisoDistributivo) {
+      estado.avisoDistributivo = true;
+      await this.telegram.enviarTexto(
+        '⚠️ El distributivo de técnicos no está disponible ahora: técnicos y parroquias pueden salir vacíos.',
+        'el aviso de distributivo no disponible',
+      );
+    }
+    const porCodigo = new Map<string, AsignacionTecnico>((asignaciones ?? []).map((a) => [a.codigoRecinto, a]));
+    const filas: FilaSql[] = enlaces.map((e) => {
+      const a = porCodigo.get(e.codigoRecinto);
+      return {
+        codigo: e.codigoRecinto,
+        nombre: e.nombreRecinto,
+        canton: e.canton,
+        parroquia: a?.parroquia || null,
+        estado: e.estado === 'FALLO' ? 'caido' : 'activo',
+        numero_tecnico: a?.numeroTecnico ?? null,
+        tecnico: a?.tecnico ?? null,
+        tiene_contacto: encargados === null ? null : encargados.get(e.codigoRecinto)?.telefono?.trim() ? 1 : 0,
+      };
+    });
+
+    let actual = consulta;
+    for (;;) {
+      try {
+        const resultado = await ejecutarSql(actual.sql, filas);
+        for (const mensaje of formatearResultadoSql(actual.titulo, resultado, actual.conContacto, encargados)) {
+          await this.telegram.enviarHtml(mensaje, 'el resultado del SQL del asistente');
+        }
+        return;
+      } catch (e) {
+        // Solo el motivo, recortado: ni el SQL ni la pregunta van al log.
+        const motivo = (e as Error)?.message ?? String(e);
+        if (!(e instanceof ErrorSql)) {
+          this.log.error(`Motor SQL no disponible: ${motivo.slice(0, 200)}`);
+          break;
+        }
+        this.log.warn(`SQL del asistente rechazado: ${motivo.slice(0, 200)}`);
+        if (estado.correccionUsada) break;
+        estado.correccionUsada = true;
+        const corregida = await this.corregirSql(pregunta, actual.sql, motivo);
+        if (!corregida) break;
+        actual = corregida;
+      }
+    }
+    estado.sqlFallido = true;
+  }
+
+  /** Le devuelve al modelo su SQL y el error (sin datos) para que lo corrija una vez. */
+  private async corregirSql(pregunta: string, sql: string, error: string): Promise<ConsultaDatos | null> {
+    const pedido =
+      `${pregunta}
+
+Tu consulta anterior para esta pregunta falló.
+SQL: ${sql}
+Error: ${error}
+` +
+      'Corrígela y vuelve a llamar a consultar_datos.';
+    try {
+      const consultas = await this.elegirConsultas(pedido, 'sql');
+      return consultas.find((c): c is ConsultaDatos => c.tipo === 'consultar_datos') ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private async buscarRecinto(texto: string, pideTecnico: boolean): Promise<void> {
