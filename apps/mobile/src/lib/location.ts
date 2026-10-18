@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { postPosiciones } from './queries/retorno';
+import { revisarProximidad } from './aviso-proximidad';
 
 export type UbicacionPuntual = {
   latitud: number;
@@ -149,6 +150,18 @@ TaskManager.defineTask(TRACKING_TASK, async ({ data, error }) => {
   } catch {
     // Solo errores inesperados llegan aquí; los errores de red ya los absorbe withOffline.
   }
+
+  // Después del envío (un aviso lento no frena el rastreo) pero dentro de la
+  // tarea, para que el sistema no la dé por terminada antes de sonar. Se revisa
+  // todo el lote: una posición intermedia puede ser la única dentro de los 200 m.
+  for (const l of locations) {
+    const aviso = await revisarProximidad({
+      latitud: l.coords.latitude,
+      longitud: l.coords.longitude,
+      precisionMetros: l.coords.accuracy ?? null,
+    });
+    if (aviso) break;
+  }
 });
 
 export async function iniciarRastreo(): Promise<void> {
@@ -272,6 +285,11 @@ export async function iniciarRastreoPrimerPlano(): Promise<Location.LocationSubs
       } catch {
         // Solo errores inesperados; los de red los absorbe withOffline.
       }
+      await revisarProximidad({
+        latitud: loc.coords.latitude,
+        longitud: loc.coords.longitude,
+        precisionMetros: loc.coords.accuracy ?? null,
+      });
     },
   );
 }

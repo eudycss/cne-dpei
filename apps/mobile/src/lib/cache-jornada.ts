@@ -20,6 +20,8 @@ import { vaciarCola } from './offline-queue';
 const ASIGNACION_KEY = 'cne:jornada:asignacion';
 const ETAPA_KEY = 'cne:jornada:etapa';
 const USUARIO_KEY = 'cne:jornada:usuario';
+/** Marcas de "ya avisé" del pitido a 200 m (ver aviso-proximidad.ts). */
+export const PREFIJO_AVISO = 'cne:jornada:aviso:';
 /** Sube si cambia la forma guardada: una copia de otra versión se ignora. */
 const VERSION = 1;
 
@@ -73,6 +75,17 @@ export function actualizarCopia(cambio: (a: MiAsignacionResponse) => MiAsignacio
   }).catch(() => {});
 }
 
+/**
+ * Olvida que ya se avisó (pitido a 200 m) en este evento: la jornada volvió a
+ * "Salida del DPI" (p. ej. "Resetear estado" del administrador) y el próximo
+ * recorrido debe avisar de nuevo.
+ */
+export async function reiniciarAvisos(eventoId: string): Promise<void> {
+  const prefijo = `${PREFIJO_AVISO}${eventoId}:`;
+  const claves = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(prefijo));
+  await Promise.all(claves.map((k) => AsyncStorage.removeItem(k)));
+}
+
 export function guardarEtapa(eventoId: string, etapa: OperadorEtapa): Promise<void> {
   return escribir<EtapaGuardada>(ETAPA_KEY, { eventoId, etapa });
 }
@@ -92,7 +105,11 @@ export async function prepararCacheParaUsuario(usuarioId: string): Promise<void>
 
 export function limpiarCacheJornada(): Promise<void> {
   return conCandado(async () => {
+    const marcasAviso = (await AsyncStorage.getAllKeys().catch(() => [] as readonly string[])).filter((k) =>
+      k.startsWith(PREFIJO_AVISO),
+    );
     await Promise.all([
+      ...marcasAviso.map((k) => AsyncStorage.removeItem(k)),
       AsyncStorage.removeItem(ASIGNACION_KEY),
       AsyncStorage.removeItem(ETAPA_KEY),
       AsyncStorage.removeItem(USUARIO_KEY),

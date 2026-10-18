@@ -25,9 +25,11 @@ jest.mock('expo-task-manager', () => ({
 }));
 
 jest.mock('./queries/retorno', () => ({ postPosiciones: jest.fn() }));
+jest.mock('./aviso-proximidad', () => ({ revisarProximidad: jest.fn().mockResolvedValue(false) }));
 
 import * as Location from 'expo-location';
 import { postPosiciones } from './queries/retorno';
+import { revisarProximidad } from './aviso-proximidad';
 import {
   activarRastreoSegundoPlano,
   asegurarRastreoSiHayPermiso,
@@ -76,6 +78,29 @@ describe('location — tarea de rastreo en segundo plano (TRACKING_TASK)', () =>
         },
       ],
     });
+  });
+
+  it('revisa el aviso de 200 m después de enviar, con cada posición del lote, aunque no haya señal', async () => {
+    (postPosiciones as jest.Mock).mockRejectedValue(networkError);
+    const segunda = { coords: { latitude: 0.358, longitude: -78.118, accuracy: 12 }, timestamp: 2 };
+
+    await registeredTask!({ data: { locations: [fakeLocation(0.3, -78.1, 1), segunda] } });
+
+    expect(revisarProximidad).toHaveBeenCalledTimes(2);
+    expect(revisarProximidad).toHaveBeenLastCalledWith({ latitud: 0.358, longitud: -78.118, precisionMetros: 12 });
+    // El envío de posiciones va primero: un aviso lento no frena el rastreo.
+    expect((postPosiciones as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      (revisarProximidad as jest.Mock).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('deja de revisar el lote en cuanto avisa', async () => {
+    (postPosiciones as jest.Mock).mockResolvedValue(undefined);
+    (revisarProximidad as jest.Mock).mockResolvedValueOnce(true);
+
+    await registeredTask!({ data: { locations: [fakeLocation(0.3, -78.1, 1), fakeLocation(0.31, -78.1, 2)] } });
+
+    expect(revisarProximidad).toHaveBeenCalledTimes(1);
   });
 
   it('si el callback trae error, no llama a postPosiciones', async () => {
@@ -219,6 +244,8 @@ describe('iniciarRastreoPrimerPlano', () => {
     await iniciarRastreoPrimerPlano();
 
     await expect(capturedCallback!(fakeLocation(-0.35, -78.12))).resolves.not.toThrow();
+    // Sin precisión reportada se pasa null: el aviso no la descarta por eso.
+    expect(revisarProximidad).toHaveBeenCalledWith({ latitud: -0.35, longitud: -78.12, precisionMetros: null });
   });
 });
 
