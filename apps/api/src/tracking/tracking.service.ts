@@ -1409,7 +1409,7 @@ export class TrackingService {
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
-      select: { recintoId: true, operadorId: true },
+      select: { id: true, recintoId: true, operadorId: true },
     });
     const operadorPorRecinto = new Map<string, string>();
     for (const k of kits) {
@@ -1457,8 +1457,14 @@ export class TrackingService {
       tiposPorOperador.set(t.operadorId, set);
     }
 
+    // Solo recepciones de kits de este evento: las de un evento cerrado no
+    // cuentan (tras "Resetear estado" el operador vuelve a empezar sin foto).
     const recepcionesConFoto = await this.prisma.recepcionKit.findMany({
-      where: { operadorId: { in: operadorIds }, fotoMilitarUrl: { not: null } },
+      where: {
+        operadorId: { in: operadorIds },
+        kitId: { in: kits.map((k) => k.id) },
+        fotoMilitarUrl: { not: null },
+      },
       select: { operadorId: true },
     });
     const operadoresConFoto = new Set(recepcionesConFoto.map((r) => r.operadorId));
@@ -1815,8 +1821,17 @@ export class TrackingService {
       if (!asignado) throw new NotFoundException('CDA no encontrado');
     }
 
+    // Solo la foto de una recepción de este evento, no la de uno anterior.
+    const kitsDelEvento = await this.prisma.kitElectoral.findMany({
+      where: { eventoId: evento.id, operadorId: kit.operadorId },
+      select: { id: true },
+    });
     const recepcion = await this.prisma.recepcionKit.findFirst({
-      where: { operadorId: kit.operadorId, fotoMilitarUrl: { not: null } },
+      where: {
+        operadorId: kit.operadorId,
+        kitId: { in: kitsDelEvento.map((k) => k.id) },
+        fotoMilitarUrl: { not: null },
+      },
       select: { fotoMilitarUrl: true },
       orderBy: { confirmadoEn: 'desc' },
     });
