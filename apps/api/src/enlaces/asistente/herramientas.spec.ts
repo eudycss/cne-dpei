@@ -98,6 +98,11 @@ describe('validarConsulta', () => {
     expect(INSTRUCCIONES_MODELO).toContain('no piden sus recintos, usa siempre solo_contar true');
   });
 
+  it('"quién es el técnico de <parroquia>" va por consultar_recintos, no por buscar_recinto', () => {
+    expect(INSTRUCCIONES_MODELO).toContain('"quién es el técnico de Ilumán"');
+    expect(INSTRUCCIONES_MODELO).toContain('parroquias [Ilumán], agrupar_por tecnico, solo_contar true');
+  });
+
   it('cada herramienta que se ofrece al modelo tiene su validación', () => {
     for (const h of HERRAMIENTAS_MODELO) {
       const ejemplo = { texto: 'a', cantones: ['Ibarra'], periodo: 'dia' };

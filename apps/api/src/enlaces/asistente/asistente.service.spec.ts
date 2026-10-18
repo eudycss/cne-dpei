@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { AsistenteService, AYUDA_ASISTENTE, MAX_LARGO_PREGUNTA } from './asistente.service';
+import { AsistenteService, AYUDA_ASISTENTE, MAX_LARGO_PREGUNTA, preguntaPorTecnico } from './asistente.service';
 import { AsistenteNoDisponible } from './llm.client';
 
 const ENLACES = [
@@ -155,6 +155,72 @@ describe('AsistenteService', () => {
 
       expect(html()).toContain('Encontré 3 recintos');
       expect(html()).toContain('1010 · Escuela Carabuela');
+    });
+
+    it('"quién es el técnico de Ilumán": los técnicos con sus códigos, sin rectores ni teléfonos', async () => {
+      encargados.encargados.mockResolvedValue(new Map([['1008', { nombre: 'Rector Daniel', telefono: '0990808459' }]]));
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        ...ENLACES,
+        { codigoRecinto: '1010', nombreRecinto: 'Escuela Ilumán Alto', canton: 'Otavalo', estado: 'ACTIVO' },
+      ]);
+      consulta('buscar_recinto', { texto: 'Ilumán' });
+
+      await service.responder('Quien es el técnico encargado de Iluman?', 'c:1');
+
+      const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toBe(
+        '👷 Técnicos de "Ilumán" (3 recintos):\n' +
+          '• 👷 <b>2. Ana Torres</b>: 2 recintos (1008, 1009)\n' +
+          '• Sin técnico asignado: 1010',
+      );
+      expect(texto).not.toContain('0990808459');
+      expect(botones).toBeUndefined();
+    });
+
+    it('preguntando por técnicos con muchos resultados: códigos acotados y mensaje dentro del límite de Telegram', async () => {
+      const codigosDe = (i: number) => Array.from({ length: 25 }, (_, j) => String(10000 + i * 100 + j));
+      prisma.enlaceRecinto.findMany.mockResolvedValue(
+        Array.from({ length: 60 }, (_, i) => codigosDe(i)).flat().map((c) => ({ codigoRecinto: c, nombreRecinto: `Escuela Mira ${c}`, canton: 'Ibarra', estado: 'ACTIVO' })),
+      );
+      distributivo.asignaciones.mockResolvedValue(
+        Array.from({ length: 60 }, (_, i) =>
+          codigosDe(i).map((c) => ({ codigoRecinto: c, localidad: '', parroquia: '', numeroTecnico: i + 1, tecnico: `Técnica Andrea Pérez de los Ríos ${i}` })),
+        ).flat(),
+      );
+      consulta('buscar_recinto', { texto: 'mira' });
+
+      await service.responder('técnicos de las escuelas mira', 'c:1');
+
+      const [texto] = telegram.enviarHtml.mock.calls[0];
+      expect(texto.length).toBeLessThan(4096);
+      expect(texto).toContain('y 5 más)');
+      expect(texto).toMatch(/… y \d+ más\. Pregunte con más detalle\.$/);
+    });
+
+    it('preguntando por el técnico sin distributivo, lo dice en vez de listar contactos', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('sin Drive'));
+      consulta('buscar_recinto', { texto: 'San Juan de Ilumán' });
+
+      await service.responder('técnicos de San Juan de Ilumán', 'c:1');
+
+      expect(html()).toBe('⚠️ El distributivo de técnicos no está disponible ahora. Intente de nuevo en unos minutos.');
+    });
+
+    it('preguntando por el técnico de UN recinto, da su ficha (que trae el técnico)', async () => {
+      consulta('buscar_recinto', { texto: 'colegio Ibarra' });
+
+      await service.responder('qué técnico tiene el colegio Ibarra', 'c:1');
+
+      expect(html()).toContain('👷 Técnico: Juan Pérez');
+    });
+
+    it('preguntaPorTecnico reconoce "técnico/técnica/técnicos" con o sin tilde, no otras palabras', () => {
+      expect(preguntaPorTecnico('Quien es el TÉCNICO de Ilumán?')).toBe(true);
+      expect(preguntaPorTecnico('tecnicos de otavalo')).toBe(true);
+      expect(preguntaPorTecnico('la técnica de Quiroga')).toBe(true);
+      expect(preguntaPorTecnico('contacto de Ilumán')).toBe(false);
+      expect(preguntaPorTecnico('colegio técnico Ibarra problema tecnicamente')).toBe(true);
+      expect(preguntaPorTecnico('falla técnicamente')).toBe(false);
     });
 
     it('un alias del diccionario ("Golondrinas") da la ficha de su recinto', async () => {

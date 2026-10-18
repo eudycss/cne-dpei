@@ -5,7 +5,7 @@ import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distribut
 import { EncargadosRecintosClient, type EncargadoRecinto } from '../encargados-recintos.client';
 import { EnlacesEstadisticasService } from '../enlaces-estadisticas.service';
 import { abreviarCanton, PREFIJO_CALLBACK_RECINTO, TelegramNotifier } from '../telegram-notifier';
-import { buscarRecintosDetalle } from './buscar-recintos';
+import { buscarRecintosDetalle, normalizarTexto } from './buscar-recintos';
 import { responderConsulta, textoEncargado, type FilaRecinto } from './consulta-recintos';
 import { validarConsulta, type Consulta, type FiltrosRecintos } from './herramientas';
 import { AsistenteNoDisponible, LlmClient } from './llm.client';
@@ -22,6 +22,13 @@ const MAX_LARGO_LISTA = 3500;
 /** Con más resultados se pide más detalle en vez de llenar el chat de botones. */
 const MAX_BOTONES = 5;
 const MAX_LISTA = 15;
+/** Códigos que se muestran por técnico cuando la pregunta es "quién es el técnico de…". */
+const MAX_CODIGOS_POR_TECNICO = 20;
+
+/** "quién es el técnico de Ilumán", "técnicos de…": piden compañeros, no rectores ni conserjes. */
+export function preguntaPorTecnico(pregunta: string): boolean {
+  return normalizarTexto(pregunta).split(' ').some((p) => /^tecnic[oa]s?$/.test(p));
+}
 
 export const AYUDA_ASISTENTE =
   'Puedo responder sobre recintos, encargados, técnicos, enlaces caídos y estadísticas. Por ejemplo:\n' +
@@ -106,9 +113,10 @@ export class AsistenteService {
     }
 
     // Una pregunta puede pedir varias cosas ("recintos de Pimampiro y estadísticas de hoy").
+    const pideTecnico = preguntaPorTecnico(limpia);
     for (const consulta of consultas) {
       try {
-        await this.ejecutar(consulta);
+        await this.ejecutar(consulta, pideTecnico);
       } catch (e) {
         this.log.error(`No se pudo ejecutar la consulta ${consulta.tipo}: ${(e as Error)?.message ?? e}`);
         await this.telegram.enviarTexto(
@@ -141,10 +149,10 @@ export class AsistenteService {
     }
   }
 
-  private async ejecutar(consulta: Consulta): Promise<void> {
+  private async ejecutar(consulta: Consulta, pideTecnico: boolean): Promise<void> {
     switch (consulta.tipo) {
       case 'buscar_recinto':
-        return this.buscarRecinto(consulta.texto);
+        return this.buscarRecinto(consulta.texto, pideTecnico);
       case 'consultar_recintos':
         return this.consultarRecintos(consulta);
       case 'estadisticas':
@@ -173,7 +181,7 @@ export class AsistenteService {
     for (const mensaje of mensajes) await this.telegram.enviarHtml(mensaje, 'el resultado de la consulta del asistente');
   }
 
-  private async buscarRecinto(texto: string): Promise<void> {
+  private async buscarRecinto(texto: string, pideTecnico: boolean): Promise<void> {
     const [enlaces, conTecnicos] = await Promise.all([this.enlaces(), this.asignaciones()]);
     const asignaciones = conTecnicos ?? [];
     const parroquias = new Map<string, string>(asignaciones.map((a) => [a.codigoRecinto, a.parroquia]));
@@ -193,6 +201,10 @@ export class AsistenteService {
     }
     if (encontrados.length === 1) {
       await this.enviarFicha(encontrados[0], asignaciones, await this.mapaEncargados());
+      return;
+    }
+    if (pideTecnico) {
+      await this.enviarTecnicos(buscado, encontrados, conTecnicos);
       return;
     }
     // Varios: cada uno con su encargado, para no tener que preguntar uno por uno.
@@ -225,6 +237,52 @@ export class AsistenteService {
             ]),
           }
         : undefined,
+    );
+  }
+
+  /** Varios recintos y preguntaron por el técnico: los técnicos con sus códigos, sin contactos. */
+  private async enviarTecnicos(buscado: string, recintos: Enlace[], asignaciones: AsignacionTecnico[] | null): Promise<void> {
+    if (asignaciones === null) {
+      await this.telegram.enviarHtml(
+        '⚠️ El distributivo de técnicos no está disponible ahora. Intente de nuevo en unos minutos.',
+        'el aviso de distributivo no disponible',
+      );
+      return;
+    }
+    const porCodigo = new Map<string, AsignacionTecnico>(asignaciones.map((a) => [a.codigoRecinto, a]));
+    const grupos = new Map<string, { numero: number; tecnico: string; codigos: string[] }>();
+    const sinTecnico: string[] = [];
+    for (const r of recintos) {
+      const a = porCodigo.get(r.codigoRecinto);
+      if (!a) {
+        sinTecnico.push(r.codigoRecinto);
+        continue;
+      }
+      const clave = `${a.numeroTecnico}|${a.tecnico}`;
+      const grupo = grupos.get(clave) ?? { numero: a.numeroTecnico, tecnico: a.tecnico, codigos: [] };
+      grupo.codigos.push(r.codigoRecinto);
+      grupos.set(clave, grupo);
+    }
+    const codigos = (lista: string[]) =>
+      escapeHtml(lista.slice(0, MAX_CODIGOS_POR_TECNICO).join(', ')) +
+      (lista.length > MAX_CODIGOS_POR_TECNICO ? ` y ${lista.length - MAX_CODIGOS_POR_TECNICO} más` : '');
+    const lineas = [...grupos.values()]
+      .sort((a, b) => b.codigos.length - a.codigos.length || a.numero - b.numero)
+      .map((g) => `• 👷 <b>${g.numero}. ${escapeHtml(g.tecnico)}</b>: ${g.codigos.length} ${g.codigos.length === 1 ? 'recinto' : 'recintos'} (${codigos(g.codigos)})`);
+    if (sinTecnico.length > 0) lineas.push(`• Sin técnico asignado: ${codigos(sinTecnico)}`);
+    // Una búsqueda amplia puede traer muchos técnicos: se corta por largo (Telegram corta en 4096).
+    const mostradas: string[] = [];
+    let largo = 0;
+    for (const linea of lineas) {
+      if (mostradas.length > 0 && largo + linea.length > MAX_LARGO_LISTA) break;
+      mostradas.push(linea);
+      largo += linea.length + 1;
+    }
+    const resto = lineas.length - mostradas.length;
+    await this.telegram.enviarHtml(
+      `👷 Técnicos de "${buscado}" (${recintos.length} recintos):\n${mostradas.join('\n')}` +
+        (resto > 0 ? `\n… y ${resto} más. Pregunte con más detalle.` : ''),
+      'los técnicos de los recintos del asistente',
     );
   }
 
