@@ -12,7 +12,7 @@ export function textoMinutos(minutos: number): string {
 
 const estiloSelect = {
   padding: '0.5rem 0.65rem',
-  border: '1px solid #d1d5db',
+  border: '1px solid var(--border-input)',
   borderRadius: 6,
   fontSize: '0.9rem',
   width: '100%',

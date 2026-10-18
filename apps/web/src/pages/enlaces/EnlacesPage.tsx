@@ -152,7 +152,7 @@ export function EnlacesPage() {
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   placeholder="Buscar por nombre o código…"
-                  style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem', flex: 1, minWidth: 200 }}
+                  style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem', flex: 1, minWidth: 200 }}
                 />
                 <label style={{ display: 'none' }} htmlFor="filtro-canton">Filtrar por cantón</label>
                 <select
@@ -160,7 +160,7 @@ export function EnlacesPage() {
                   aria-label="Filtrar por cantón"
                   value={cantonFiltro}
                   onChange={(e) => setCantonFiltro(e.target.value)}
-                  style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}
+                  style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem' }}
                 >
                   <option value="">Todos los cantones</option>
                   {cantones.map((c) => (

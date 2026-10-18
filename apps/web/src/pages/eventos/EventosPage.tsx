@@ -20,9 +20,9 @@ import { TiposEventoPage } from '../tipos-evento/TiposEventoPage';
 
 function EstadoBadge({ estado }: { estado: EstadoEvento }) {
   const styles: Record<EstadoEvento, React.CSSProperties> = {
-    BORRADOR: { background: '#f3f4f6', color: '#6b7280' },
-    ACTIVO: { background: '#d1fae5', color: '#065f46' },
-    CERRADO: { background: '#fee2e2', color: '#991b1b' },
+    BORRADOR: { background: 'var(--border-subtle)', color: 'var(--text-muted)' },
+    ACTIVO: { background: 'var(--success-bg)', color: 'var(--success-text)' },
+    CERRADO: { background: 'var(--error-bg)', color: 'var(--error-text)' },
   };
   const labels: Record<EstadoEvento, string> = {
     BORRADOR: 'Borrador',
@@ -95,9 +95,9 @@ export function EventosPage() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '0.45rem 1rem',
     border: 'none',
-    borderBottom: active ? '2px solid #2563eb' : '2px solid transparent',
+    borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
     background: 'none',
-    color: active ? '#2563eb' : '#6b7280',
+    color: active ? 'var(--primary)' : 'var(--text-muted)',
     fontWeight: active ? 600 : 400,
     cursor: 'pointer',
     fontSize: '0.9rem',
@@ -108,7 +108,7 @@ export function EventosPage() {
       <h2>Eventos Electorales</h2>
 
       {isAdmin && (
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
           <button style={tabStyle(tab === 'eventos')} onClick={() => setTab('eventos')}>
             Eventos
           </button>
@@ -396,7 +396,7 @@ function EventoModal({
             style={{
               width: '100%',
               padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--border-input)',
               borderRadius: 6,
               fontSize: '0.9rem',
               resize: 'vertical',
@@ -502,7 +502,7 @@ function CloseEventoModal({
             style={{
               width: '100%',
               padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--border-input)',
               borderRadius: 6,
               fontSize: '0.9rem',
               resize: 'vertical',

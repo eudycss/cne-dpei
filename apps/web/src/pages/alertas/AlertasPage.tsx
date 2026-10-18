@@ -77,7 +77,7 @@ export function AlertasPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 200px' }}>
             <label style={{ fontWeight: 600, fontSize: '0.85rem' }}>Evento</label>
             <select value={eventoId} onChange={(e) => setEventoId(e.target.value)}
-              style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}>
+              style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem' }}>
               <option value="">— Selecciona un evento —</option>
               {eventos?.map((e) => (
                 <option key={e.id} value={e.id}>{e.nombre}</option>
@@ -87,7 +87,7 @@ export function AlertasPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 160px' }}>
             <label style={{ fontWeight: 600, fontSize: '0.85rem' }}>Tipo</label>
             <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}
-              style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}>
+              style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem' }}>
               <option value="">Todos</option>
               {(Object.keys(TIPO_LABELS) as TipoAlerta[]).map((t) => (
                 <option key={t} value={t}>{TIPO_LABELS[t]}</option>
@@ -97,7 +97,7 @@ export function AlertasPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 140px' }}>
             <label style={{ fontWeight: 600, fontSize: '0.85rem' }}>Estado</label>
             <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
-              style={{ padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.9rem' }}>
+              style={{ padding: '0.5rem 0.65rem', border: '1px solid var(--border-input)', borderRadius: 6, fontSize: '0.9rem' }}>
               <option value="">Todos</option>
               <option value="GENERADA">Generada</option>
               <option value="VISTA">Vista</option>

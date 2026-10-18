@@ -27,6 +27,8 @@
   --success-text: #065f46;
   --error-bg: #fee2e2;
   --error-text: #991b1b;
+  --info-bg: #fce7f3;
+  --info-text: #9d174d;
   --notif-unread: #eff6ff;
   --notif-unread-hover: #dbeafe;
   --notif-item-hover: #f9fafb;
@@ -82,6 +84,8 @@
   --success-text: #4ade80;
   --error-bg: #450a0a;
   --error-text: #fca5a5;
+  --info-bg: #500724;
+  --info-text: #f9a8d4;
   --notif-unread: #172554;
   --notif-unread-hover: #1e3a8a;
   --notif-item-hover: #334155;

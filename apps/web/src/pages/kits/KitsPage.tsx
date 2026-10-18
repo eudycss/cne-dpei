@@ -46,12 +46,12 @@ const ESTADO_LABELS: Record<string, string> = {
 };
 
 const ESTADO_COLORS: Record<string, React.CSSProperties> = {
-  EN_BODEGA: { background: '#f3f4f6', color: '#6b7280' },
-  ASIGNADO: { background: '#e0e7ff', color: '#3730a3' },
-  ENTREGADO: { background: '#d1fae5', color: '#065f46' },
-  EN_RECINTO: { background: '#fef3c7', color: '#92400e' },
-  EN_RETORNO: { background: '#fce7f3', color: '#9d174d' },
-  RETORNADO: { background: '#f0fdf4', color: '#15803d' },
+  EN_BODEGA: { background: 'var(--border-subtle)', color: 'var(--text-muted)' },
+  ASIGNADO: { background: 'var(--badge-bg)', color: 'var(--badge-text)' },
+  ENTREGADO: { background: 'var(--success-bg)', color: 'var(--success-text)' },
+  EN_RECINTO: { background: 'var(--warn-bg)', color: 'var(--warn-text)' },
+  EN_RETORNO: { background: 'var(--info-bg)', color: 'var(--info-text)' },
+  RETORNADO: { background: 'var(--success-bg)', color: 'var(--success-text)' },
 };
 
 function EstadoBadge({ estado }: { estado: string }) {
@@ -242,10 +242,10 @@ export function KitsPage() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '0.55rem 1.1rem',
     border: 'none',
-    borderBottom: active ? '2px solid #4338ca' : '2px solid transparent',
+    borderBottom: active ? '2px solid var(--primary)' : '2px solid transparent',
     background: 'transparent',
     fontWeight: active ? 700 : 500,
-    color: active ? '#4338ca' : '#6b7280',
+    color: active ? 'var(--primary)' : 'var(--text-muted)',
     cursor: 'pointer',
   });
 
@@ -254,7 +254,7 @@ export function KitsPage() {
       <h2>Kits Electorales</h2>
 
       {isAdmin && (
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
           <button style={tabStyle(tab === 'kits')} onClick={() => setTab('kits')}>Kits</button>
           <button style={tabStyle(tab === 'items')} onClick={() => setTab('items')}>Ítems de Kit</button>
         </div>
@@ -275,7 +275,7 @@ export function KitsPage() {
               flex: 1,
               maxWidth: 480,
               padding: '0.5rem 0.65rem',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--border-input)',
               borderRadius: 6,
               fontSize: '0.9rem',
             }}
@@ -410,8 +410,8 @@ export function KitsPage() {
                               borderRadius: 999,
                               fontSize: '0.7rem',
                               fontWeight: 600,
-                              background: '#fee2e2',
-                              color: '#991b1b',
+                              background: 'var(--error-bg)',
+                              color: 'var(--error-text)',
                             }}
                           >
                             Prueba
@@ -819,7 +819,7 @@ function AsignarKitModal({
               style={{
                 width: '100%',
                 padding: '0.5rem 0.65rem',
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--border-input)',
                 borderRadius: 6,
                 fontSize: '0.9rem',
                 resize: 'vertical',
@@ -956,7 +956,7 @@ function EditKitModal({
               style={{
                 width: '100%',
                 padding: '0.5rem 0.65rem',
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--border-input)',
                 borderRadius: 6,
                 fontSize: '0.9rem',
                 resize: 'vertical',
