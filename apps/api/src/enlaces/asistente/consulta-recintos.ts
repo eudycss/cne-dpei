@@ -262,7 +262,7 @@ function lineaRecinto(f: FilaRecinto, conContacto: boolean): string {
  * Junta las líneas en mensajes que caben en Telegram, sin partir una línea, y
  * corta en MAX_MENSAJES_CONSULTA con un aviso para que no se vuelva spam.
  */
-function partir(lineas: string[]): string[] {
+export function partir(lineas: string[]): string[] {
   const mensajes: string[] = [];
   let actual = '';
   for (const original of lineas) {

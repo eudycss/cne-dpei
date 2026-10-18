@@ -1,4 +1,4 @@
-import { HERRAMIENTAS_MODELO, INSTRUCCIONES_MODELO, validarConsulta } from './herramientas';
+import { HERRAMIENTAS_MODELO, HERRAMIENTAS_MODELO_SQL, INSTRUCCIONES_MODELO, INSTRUCCIONES_MODELO_SQL, validarConsulta } from './herramientas';
 
 const SIN_FILTROS = {
   tipo: 'consultar_recintos',
@@ -108,5 +108,42 @@ describe('validarConsulta', () => {
       const ejemplo = { texto: 'a', cantones: ['Ibarra'], periodo: 'dia' };
       expect(validarConsulta(h.function.name, ejemplo)).not.toBeNull();
     }
+  });
+});
+
+describe('modo SQL', () => {
+  it('consultar_datos: SQL recortado, título por defecto y con_contacto tolerante', () => {
+    expect(validarConsulta('consultar_datos', { sql: ' SELECT 1 ', titulo: ' Caídos ', con_contacto: 'true' })).toEqual({
+      tipo: 'consultar_datos',
+      sql: 'SELECT 1',
+      titulo: 'Caídos',
+      conContacto: true,
+    });
+    expect(validarConsulta('consultar_datos', { sql: 'SELECT 1' })).toEqual({
+      tipo: 'consultar_datos',
+      sql: 'SELECT 1',
+      titulo: 'Resultado',
+      conContacto: false,
+    });
+  });
+
+  it.each([[{}], [{ sql: '' }], [{ sql: 42 }], [{ sql: 'x'.repeat(1501) }], [null]])('consultar_datos rechaza %j', (args) => {
+    expect(validarConsulta('consultar_datos', args)).toBeNull();
+  });
+
+  it('las herramientas del modo SQL cambian consultar_recintos por consultar_datos', () => {
+    expect(HERRAMIENTAS_MODELO_SQL.map((h) => h.function.name)).toEqual(['buscar_recinto', 'estadisticas', 'consultar_datos']);
+    for (const h of HERRAMIENTAS_MODELO_SQL) {
+      const ejemplo = { texto: 'a', sql: 'SELECT 1', titulo: 't', periodo: 'dia' };
+      expect(validarConsulta(h.function.name, ejemplo)).not.toBeNull();
+    }
+  });
+
+  it('las instrucciones describen la tabla sin teléfonos y las funciones norm/parecido', () => {
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('recintos(codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain("norm(canton) = norm('Urcuqui')");
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('parecido(columna,');
+    expect(INSTRUCCIONES_MODELO_SQL).toContain('ORDER BY random() LIMIT 5');
+    expect(INSTRUCCIONES_MODELO_SQL).not.toMatch(/telefono TEXT/);
   });
 });

@@ -60,7 +60,7 @@ describe('AsistenteService', () => {
 
       await service.responder('dame el número del encargado del colegio Ibarra', 'c:1');
 
-      expect(llm.elegirConsultas).toHaveBeenCalledWith('dame el número del encargado del colegio Ibarra');
+      expect(llm.elegirConsultas).toHaveBeenCalledWith('dame el número del encargado del colegio Ibarra', 'filtros');
       expect(telegram.indicarEscribiendo).toHaveBeenCalled();
       expect(html()).toBe(
         '📍 <b>28 · Unidad Educativa Ibarra</b> (Iba · SAGRARIO)\n' +
@@ -327,6 +327,154 @@ describe('AsistenteService', () => {
 
       expect(telegram.enviarHtml.mock.calls.length).toBeGreaterThan(1);
       for (const [texto] of telegram.enviarHtml.mock.calls) expect(texto.length).toBeLessThan(4096);
+    });
+  });
+
+  describe('modo SQL (ASISTENTE_SQL_ENABLED)', () => {
+    beforeEach(() => (process.env.ASISTENTE_SQL_ENABLED = 'true'));
+    afterEach(() => delete process.env.ASISTENTE_SQL_ENABLED);
+
+    const datos = (sql: string, extra: Record<string, unknown> = {}) => [{ nombre: 'consultar_datos', argumentos: { sql, titulo: 'Resultado', ...extra } }];
+
+    it('pide las consultas en modo sql y responde con el resultado del SQL, sin teléfonos', async () => {
+      llm.elegirConsultas.mockResolvedValue(
+        datos("SELECT codigo, nombre, estado FROM recintos WHERE norm(canton) = norm('otavalo') ORDER BY codigo"),
+      );
+
+      await service.responder('recintos de otavalo', 'c:1');
+
+      expect(llm.elegirConsultas).toHaveBeenCalledWith('recintos de otavalo', 'sql');
+      expect(html()).toBe(
+        '🔎 <b>Resultado</b> (2)\n🔴 1008 — UE San Juan de Ilumán Bloque 2\n🔴 1009 — UE San Juan de Iluman Bloque 1',
+      );
+    });
+
+    it('la tabla trae técnicos, parroquias y si hay contacto (sin el teléfono)', async () => {
+      llm.elegirConsultas.mockResolvedValue(
+        datos("SELECT codigo, tecnico, parroquia, tiene_contacto FROM recintos WHERE codigo IN ('28', '1008') ORDER BY codigo"),
+      );
+
+      await service.responder('x', 'c:1');
+
+      expect(html()).toContain('• 1008 · Ana Torres · SAN JUAN DE ILUMAN · 0');
+      expect(html()).toContain('• 28 · Juan Pérez · SAGRARIO · 1');
+      expect(html()).not.toContain('0991234567');
+    });
+
+    it('con con_contacto los teléfonos salen del Excel de encargados', async () => {
+      llm.elegirConsultas.mockResolvedValue(datos("SELECT codigo, nombre FROM recintos WHERE codigo = '28'", { con_contacto: true }));
+
+      await service.responder('contacto del 28', 'c:1');
+
+      expect(html()).toContain('📞 Rector Luis Mora · 0991234567');
+    });
+
+    it('si el SQL falla, el modelo lo corrige una vez recibiendo solo el error', async () => {
+      llm.elegirConsultas
+        .mockResolvedValueOnce(datos('SELECT telefono FROM recintos'))
+        .mockResolvedValueOnce(datos("SELECT count(*) FROM recintos WHERE estado = 'caido'"));
+
+      await service.responder('cuántos caídos hay', 'c:1');
+
+      expect(llm.elegirConsultas).toHaveBeenCalledTimes(2);
+      const [pedido, modo] = llm.elegirConsultas.mock.calls[1];
+      expect(modo).toBe('sql');
+      expect(pedido).toContain('cuántos caídos hay');
+      expect(pedido).toContain('no such column: telefono');
+      expect(pedido).not.toContain('Unidad Educativa');
+      expect(html()).toBe('🔎 <b>Resultado</b>: 3');
+    });
+
+    it('si vuelve a fallar, responde con el modo de filtros (como antes)', async () => {
+      llm.elegirConsultas
+        .mockResolvedValueOnce(datos('SELECT x FROM recintos'))
+        .mockResolvedValueOnce(datos('SELECT y FROM recintos'))
+        .mockResolvedValueOnce([{ nombre: 'consultar_recintos', argumentos: { estado: 'caido', solo_contar: true } }]);
+
+      await service.responder('cuántos caídos hay', 'c:1');
+
+      expect(llm.elegirConsultas.mock.calls.map((c) => c[1])).toEqual(['sql', 'sql', 'filtros']);
+      expect(html()).toContain('Recintos · caídos</b>: 3');
+    });
+
+    it('una consulta prohibida no se ejecuta y termina en el modo de filtros', async () => {
+      llm.elegirConsultas
+        .mockResolvedValueOnce(datos('DELETE FROM recintos'))
+        .mockResolvedValueOnce(datos('DROP TABLE recintos'))
+        .mockResolvedValueOnce([]);
+
+      await service.responder('borra todo', 'c:1');
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('No pude responder esa pregunta'), expect.any(String));
+      expect(telegram.enviarHtml).not.toHaveBeenCalled();
+    });
+
+    it('varias consultas SQL que fallan: 1 corrección y 1 respaldo, sin repetir lo que ya se respondió', async () => {
+      llm.elegirConsultas
+        .mockResolvedValueOnce([
+          ...datos('SELECT a FROM recintos'),
+          ...datos('SELECT b FROM recintos'),
+          { nombre: 'estadisticas', argumentos: { periodo: 'semana' } },
+        ])
+        .mockResolvedValueOnce(datos('SELECT c FROM recintos'))
+        .mockResolvedValueOnce([
+          { nombre: 'consultar_recintos', argumentos: { estado: 'caido', solo_contar: true } },
+          { nombre: 'estadisticas', argumentos: { periodo: 'semana' } },
+        ]);
+
+      await service.responder('caídos y estadísticas de la semana', 'c:1');
+
+      expect(llm.elegirConsultas.mock.calls.map((c) => c[1])).toEqual(['sql', 'sql', 'filtros']);
+      expect(estadisticas.enviarEstadisticasTelegram).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+      expect(html()).toContain('Recintos · caídos</b>: 3');
+    });
+
+    it('si el motor no está disponible, va directo al respaldo sin pedir corrección', async () => {
+      // Cola llena: 4 consultas lentas ocupan el turno y la cola del motor.
+      const lenta = 'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c';
+      const { ejecutarSql } = await import('./sql/motor-sql');
+      const ocupadas = Array.from({ length: 4 }, () => ejecutarSql(lenta, [], { tiempoMaxMs: 300 }).catch(() => undefined));
+      llm.elegirConsultas
+        .mockResolvedValueOnce(datos('SELECT 1'))
+        .mockResolvedValueOnce([{ nombre: 'consultar_recintos', argumentos: { estado: 'caido', solo_contar: true } }]);
+
+      await service.responder('cuántos caídos hay', 'c:1');
+      await Promise.all(ocupadas);
+
+      expect(llm.elegirConsultas.mock.calls.map((c) => c[1])).toEqual(['sql', 'filtros']);
+      expect(html()).toContain('Recintos · caídos</b>: 3');
+    });
+
+    it('apagado, nunca ejecuta SQL aunque el modelo lo pida', async () => {
+      delete process.env.ASISTENTE_SQL_ENABLED;
+      llm.elegirConsultas.mockResolvedValue(datos('SELECT 1'));
+
+      await service.responder('x', 'c:1');
+
+      expect(llm.elegirConsultas).toHaveBeenCalledWith('x', 'filtros');
+      expect(telegram.enviarHtml).not.toHaveBeenCalled();
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(AYUDA_ASISTENTE, 'la ayuda del asistente');
+    });
+
+    it('sin distributivo avisa que técnicos y parroquias pueden salir vacíos', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('sin Drive'));
+      llm.elegirConsultas.mockResolvedValue(datos('SELECT count(*) FROM recintos'));
+
+      await service.responder('x', 'c:1');
+
+      expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('distributivo de técnicos no está disponible'), expect.any(String));
+      expect(html()).toBe('🔎 <b>Resultado</b>: 4');
+    });
+
+    it('el aviso de distributivo sale una sola vez aunque haya varias consultas', async () => {
+      distributivo.asignaciones.mockRejectedValue(new Error('sin Drive'));
+      llm.elegirConsultas.mockResolvedValue([...datos('SELECT 1'), ...datos('SELECT 2')]);
+
+      await service.responder('x', 'c:1');
+
+      const avisos = telegram.enviarTexto.mock.calls.filter(([t]) => String(t).includes('distributivo'));
+      expect(avisos).toHaveLength(1);
     });
   });
 

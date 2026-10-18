@@ -53,6 +53,14 @@ const ESQUEMAS = {
     agrupar_por: z.unknown().transform((v) => aOpcion(AGRUPACIONES, v)),
     solo_contar: booleano,
   }),
+  consultar_datos: z.object({
+    sql: z.string().trim().min(1).max(1500),
+    titulo: z
+      .unknown()
+      .transform((v) => (typeof v === 'string' ? v.trim().slice(0, 80) : ''))
+      .transform((v) => v || 'Resultado'),
+    con_contacto: booleano,
+  }),
   estadisticas: z.object({
     periodo: z.unknown().transform((v) => {
       const t = String(v ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
@@ -77,6 +85,7 @@ export interface FiltrosRecintos {
 export type Consulta =
   | { tipo: 'buscar_recinto'; texto: string }
   | ({ tipo: 'consultar_recintos' } & FiltrosRecintos)
+  | { tipo: 'consultar_datos'; sql: string; titulo: string; conContacto: boolean }
   | { tipo: 'estadisticas'; periodo: PeriodoConsulta };
 
 /** La consulta pedida por el modelo, o null si no está en la lista o sus parámetros no son válidos. */
@@ -102,6 +111,12 @@ export function validarConsulta(nombre: string, argumentos: unknown): Consulta |
         agruparPor: d.agrupar_por,
         soloContar: d.solo_contar,
       };
+    }
+    case 'consultar_datos': {
+      const r = ESQUEMAS.consultar_datos.safeParse(argumentos ?? {});
+      return r.success
+        ? { tipo: 'consultar_datos', sql: r.data.sql, titulo: r.data.titulo, conContacto: r.data.con_contacto }
+        : null;
     }
     case 'estadisticas': {
       const r = ESQUEMAS.estadisticas.safeParse(argumentos ?? {});
@@ -192,4 +207,72 @@ export const HERRAMIENTAS_MODELO = [
       },
     },
   },
+];
+
+/**
+ * Modo SQL (ASISTENTE_SQL_ENABLED): en vez de filtros fijos, el modelo escribe un
+ * SELECT sobre la tabla `recintos` (copia en memoria, sin teléfonos). La respuesta
+ * la arma el código con el resultado; el modelo nunca ve los datos.
+ */
+export const INSTRUCCIONES_MODELO_SQL =
+  'Eres el asistente del bot de enlaces de internet de los recintos electorales del CNE Imbabura (Ecuador). ' +
+  'Tu único trabajo es traducir la pregunta del usuario a llamadas de herramientas. No respondas con texto. ' +
+  'Si la pregunta no tiene que ver con recintos, enlaces, técnicos, encargados o estadísticas, no llames a ninguna.\n' +
+  'Herramientas:\n' +
+  '- buscar_recinto: UN recinto concreto por nombre, código o apodo ("número del encargado del colegio Ibarra", ' +
+  '"cómo está el 1008", "recinto de Golondrinas"). Pasa solo el nombre, sin "teléfono", "contacto" ni "encargado".\n' +
+  '- estadisticas: caídas en el tiempo (hoy, esta semana, este mes, cuál se cayó más).\n' +
+  '- consultar_datos: todo lo demás (listas, conteos, técnicos, cantones, parroquias, aleatorios, rankings), con ' +
+  'un SELECT de SQLite sobre la tabla:\n' +
+  '  recintos(codigo TEXT, nombre TEXT, canton TEXT, parroquia TEXT, estado TEXT, numero_tecnico INTEGER, ' +
+  'tecnico TEXT, tiene_contacto INTEGER)\n' +
+  "  estado es 'caido' o 'activo'. canton: Ibarra, Otavalo, Cotacachi, Antonio Ante, Urcuquí, Pimampiro. " +
+  'parroquia en mayúsculas sin tildes (puede ser NULL). tecnico es el técnico del CNE asignado (NULL = sin técnico). ' +
+  'tiene_contacto es 1 si el recinto tiene encargado con teléfono, 0 si no. No hay más columnas ni tablas.\n' +
+  'Reglas del SQL:\n' +
+  "  1. Compara cantones con norm(canton) = norm('Urcuqui'). Para técnicos, parroquias y nombres de recintos " +
+  "usa parecido(columna, 'texto') (tolera errores de tipeo y nombres incompletos).\n" +
+  '  2. Cuando listes recintos, selecciona codigo, nombre y estado (en ese orden) y ordena por canton, codigo.\n' +
+  '  3. Para conteos o rankings usa alias en español (AS recintos, AS caidos) y ORDER BY.\n' +
+  '  4. "N al azar" o "aleatorios" → ORDER BY random() LIMIT N. "Dame N" → LIMIT N.\n' +
+  '  5. Si piden contacto, teléfono o encargado de varios recintos, pon con_contacto true e incluye codigo.\n' +
+  '  6. Si preguntan por técnicos sin pedir sus recintos, devuelve solo el técnico (y conteos si sirven), no la ' +
+  'lista de recintos.\n' +
+  '  7. titulo: frase corta en español que describe el resultado ("Recintos caídos de Cotacachi").\n' +
+  'Ejemplos:\n' +
+  '  "5 recintos de Ibarra aleatorios" → SELECT codigo, nombre, estado FROM recintos WHERE norm(canton) = ' +
+  "norm('Ibarra') ORDER BY random() LIMIT 5\n" +
+  '  "lista los técnicos" → SELECT numero_tecnico, tecnico, count(*) AS recintos FROM recintos WHERE tecnico IS NOT ' +
+  'NULL GROUP BY numero_tecnico, tecnico ORDER BY numero_tecnico\n' +
+  '  "quién es el técnico de Ilumán" → SELECT tecnico, count(*) AS recintos FROM recintos WHERE ' +
+  "parecido(parroquia, 'Iluman') OR parecido(nombre, 'Iluman') GROUP BY tecnico\n" +
+  "  \"qué cantón tiene más caídos\" → SELECT canton, count(*) AS caidos FROM recintos WHERE estado = 'caido' " +
+  'GROUP BY canton ORDER BY caidos DESC LIMIT 1\n' +
+  '  "contactos de los caídos de Ibarra" → con_contacto true, SELECT codigo, nombre, estado FROM recintos WHERE ' +
+  "estado = 'caido' AND norm(canton) = norm('Ibarra') ORDER BY codigo\n" +
+  'Si la pregunta pide cosas distintas, puedes llamar hasta 3 herramientas.';
+
+const HERRAMIENTA_CONSULTAR_DATOS = {
+  type: 'function',
+  function: {
+    name: 'consultar_datos',
+    description:
+      'Ejecuta un SELECT de SQLite sobre la tabla recintos (codigo, nombre, canton, parroquia, estado, ' +
+      'numero_tecnico, tecnico, tiene_contacto) y muestra el resultado al usuario.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sql: { type: 'string', description: 'Una sola consulta SELECT (o WITH … SELECT), sin punto y coma.' },
+        titulo: { type: 'string', description: 'Frase corta que describe el resultado.' },
+        con_contacto: { type: 'boolean', description: 'Agregar el encargado y teléfono de cada recinto (requiere codigo).' },
+      },
+      required: ['sql', 'titulo'],
+    },
+  },
+};
+
+/** Herramientas del modo SQL: consultar_datos reemplaza a consultar_recintos. */
+export const HERRAMIENTAS_MODELO_SQL = [
+  ...HERRAMIENTAS_MODELO.filter((h) => h.function.name !== 'consultar_recintos'),
+  HERRAMIENTA_CONSULTAR_DATOS,
 ];

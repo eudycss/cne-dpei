@@ -51,6 +51,20 @@ describe('ejecutarSql', () => {
     expect(r.filas).toEqual([['4']]);
   });
 
+  it('parecido() tolera errores de tipeo como la búsqueda del bot', async () => {
+    const filas = [fila('1', 'Ibarra', 'activo', 'Willy Chávez'), fila('2', 'Ibarra', 'activo', 'Jairo Leal'), fila('3', 'Ibarra', 'activo', null)];
+    const buscar = async (texto: string) =>
+      (await ejecutarSql(`SELECT codigo FROM recintos WHERE parecido(tecnico, '${texto}')`, filas)).filas.map(([c]) => c);
+    expect(await buscar('willi')).toEqual(['1']);
+    expect(await buscar('WILLY chavez')).toEqual(['1']);
+    expect(await buscar('jair')).toEqual(['2']);
+    expect(await buscar('zoila')).toEqual([]);
+    expect(await buscar('')).toEqual([]);
+    expect(await buscar(`willy ${'x'.repeat(200)}`)).toEqual([]);
+    const conNull = await ejecutarSql('SELECT parecido(NULL, \'a\') AS a, parecido(\'a\', NULL) AS b', filas);
+    expect(conNull.filas).toEqual([[0, 0]]);
+  });
+
   it('la tabla no tiene teléfonos ni encargados', async () => {
     const r = await ejecutarSql('SELECT * FROM recintos LIMIT 1', FILAS);
     expect(r.columnas).toEqual(['codigo', 'nombre', 'canton', 'parroquia', 'estado', 'numero_tecnico', 'tecnico', 'tiene_contacto']);
