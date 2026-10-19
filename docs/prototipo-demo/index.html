@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo sistema CNE Imbabura</title>
+<style>
+  :root {
+    --escena: #0b1630;
+    --texto: #1f2937;
+    --muted: #6b7280;
+    --borde: #e5e7eb;
+    --fondo-web: #f5f6fa;
+    --sidebar: #1e293b;
+    --sidebar-link: #cbd5e1;
+    --primario: #2563eb;
+    --ok-bg: #d1fae5; --ok-tx: #065f46;
+    --warn-bg: #fef3c7; --warn-tx: #92400e;
+    --err-bg: #fee2e2; --err-tx: #991b1b;
+    --tg-fondo: #0e1621; --tg-burbuja: #182533; --tg-cab: #17212b; --tg-azul: #2aabee;
+    --acento: #f5b301;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--escena); overflow: hidden; }
+  body { font-family: "Segoe UI", Inter, system-ui, sans-serif; color: var(--texto); }
+  button { font: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+
+  /* Escenario fijo de 1600x900 que se escala a la ventana */
+  #escenario { position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px; transform-origin: 0 0; }
+
+  /* Capítulos */
+  .capitulos { position: absolute; left: 24px; right: 24px; top: 14px; height: 46px; display: flex; gap: 6px; align-items: stretch; }
+  .capitulos button { flex: 1; border: 0; border-radius: 12px; background: #13264d; color: #a9b6d3; font-size: 13px; font-weight: 700; padding: 4px 8px; text-align: left; line-height: 1.15; display: flex; gap: 8px; align-items: center; transition: background .2s; }
+  .capitulos button b { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #1f3a63; color: #fff; display: grid; place-items: center; font-size: 12px; }
+  .capitulos button.hecho b { background: #047857; }
+  .capitulos button[aria-current="step"] { background: var(--acento); color: #1b1b1b; }
+  .capitulos button[aria-current="step"] b { background: #1b1b1b; color: var(--acento); }
+  .capitulos button:hover:not([aria-current="step"]) { background: #1a3363; color: #fff; }
+
+  .paneles { position: absolute; left: 24px; right: 24px; top: 72px; height: 642px; display: grid; grid-template-columns: 330px 1fr 340px; gap: 22px; }
+  .rotulo { color: #a9b6d3; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+  .rotulo .quien { color: #f4f6fb; letter-spacing: 0; text-transform: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  .rotulo .mire { margin-left: auto; display: none; background: var(--acento); color: #1b1b1b; border-radius: 999px; padding: 2px 10px; font-size: 11px; letter-spacing: .04em; animation: latido 1.4s ease-in-out infinite; }
+  .panel.foco .mire { display: inline-block; }
+  @keyframes latido { 50% { transform: scale(1.08); } }
+  .panel { position: relative; display: flex; flex-direction: column; min-height: 0; transition: opacity .35s, filter .35s; }
+  .panel.apagado { opacity: .38; filter: grayscale(.6); }
+  .marco { flex: 1; min-height: 0; border-radius: 22px; overflow: hidden; position: relative; transition: box-shadow .3s; }
+  .marco.cambio { animation: brillo 1.6s ease-out; }
+  @keyframes brillo { 0% { box-shadow: 0 0 0 0 rgba(245,179,1,.0); } 25% { box-shadow: 0 0 0 6px rgba(245,179,1,.9); } 100% { box-shadow: 0 0 0 0 rgba(245,179,1,0); } }
+
+  /* Celular */
+  .celular { background: #111; border: 10px solid #111; border-radius: 40px; }
+  .pantalla { position: absolute; inset: 0; background: var(--fondo-web); border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; }
+  .barra-estado { height: 28px; display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font-size: 12px; font-weight: 600; color: #111; background: #fff; flex: none; }
+  .app-cab { background: #fff; border-bottom: 1px solid var(--borde); padding: 8px 16px 10px; flex: none; }
+  .app-cab h3 { font-size: 17px; }
+  .app-cab small { color: var(--muted); font-size: 12px; }
+  .pestanas { display: flex; background: #fff; border-bottom: 1px solid var(--borde); flex: none; }
+  .pestanas span { flex: 1; text-align: center; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 8px 2px; border-bottom: 3px solid transparent; }
+  .pestanas span.on { color: var(--primario); border-color: var(--primario); }
+  .app-cuerpo { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .tarjeta { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 12px; font-size: 13.5px; line-height: 1.45; }
+  .tarjeta b { font-weight: 700; }
+  .et { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .btn-app { display: block; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: var(--primario); color: #fff; font-weight: 700; font-size: 14.5px; text-align: center; }
+  .btn-app.ok { background: #047857; }
+  .btn-app.sec { background: #fff; color: var(--primario); border: 1.5px solid var(--primario); }
+  .chip { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .chip.ok { background: var(--ok-bg); color: var(--ok-tx); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn-tx); }
+  .chip.err { background: var(--err-bg); color: var(--err-tx); }
+  .chip.info { background: #e0e7ff; color: #3730a3; }
+  .chip.gris { background: #f1f5f9; color: #475569; }
+  .fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .foto-mini { height: 72px; border-radius: 10px; background: linear-gradient(135deg, #cbd5e1, #94a3b8); display: grid; place-items: center; font-size: 28px; }
+  .check-li { display: flex; gap: 10px; align-items: center; padding: 5px 0; font-size: 13.5px; border-bottom: 1px solid var(--borde); }
+  .check-li:last-child { border: 0; }
+  .check-li i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; background: #059669; color: #fff; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .check-li i.alerta { background: #d97706; }
+  .opcion { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1.5px solid var(--borde); border-radius: 10px; font-size: 13px; margin-top: 6px; }
+  .opcion.sel { border-color: var(--primario); background: #eff6ff; }
+  .opcion .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #9ca3af; flex: none; }
+  .opcion.sel .radio { border: 5px solid var(--primario); }
+  .opcion small { display: block; color: var(--muted); font-size: 11.5px; }
+  .contador { display: flex; gap: 12px; align-items: center; background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 10px 14px; }
+  .contador .num { font-size: 30px; font-weight: 800; color: var(--primario); white-space: nowrap; }
+  .contador .num small { font-size: 18px; color: #64748b; font-weight: 700; }
+  .contador .lbl { font-size: 13px; font-weight: 600; line-height: 1.3; flex: 1; }
+  .barrita { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .barrita div { height: 100%; background: #059669; border-radius: 3px; transition: width .8s; }
+  .gps { display: flex; align-items: center; gap: 12px; }
+  .pulso { width: 16px; height: 16px; border-radius: 50%; background: #059669; box-shadow: 0 0 0 0 rgba(5,150,105,.6); animation: pulso 1.6s infinite; flex: none; }
+  @keyframes pulso { 70% { box-shadow: 0 0 0 14px rgba(5,150,105,0); } 100% { box-shadow: 0 0 0 0 rgba(5,150,105,0); } }
+  .login-logo { margin: 34px auto 8px; width: 70px; height: 70px; border-radius: 20px; background: var(--primario); color: #fff; display: grid; place-items: center; font-size: 28px; font-weight: 800; }
+  .campo { border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 12px; background: #fff; font-size: 13.5px; color: #6b7280; }
+  .campo.lleno { color: var(--texto); }
+  .qr { width: 100%; height: 92px; border-radius: 12px; border: 2px dashed #93c5fd; background: #eff6ff; display: grid; place-items: center; color: #1d4ed8; font-weight: 700; font-size: 13px; text-align: center; }
+
+  /* Navegador web */
+  .navegador { background: #fff; display: flex; flex-direction: column; }
+  .nav-barra { height: 36px; background: #e5e7eb; display: flex; align-items: center; gap: 8px; padding: 0 14px; flex: none; }
+  .nav-barra span { width: 11px; height: 11px; border-radius: 50%; background: #f87171; }
+  .nav-barra span:nth-child(2) { background: #fbbf24; } .nav-barra span:nth-child(3) { background: #34d399; }
+  .nav-url { margin-left: 12px; flex: 1; background: #fff; border-radius: 8px; padding: 4px 12px; font-size: 13px; color: #4b5563; }
+  .web { flex: 1; display: flex; min-height: 0; }
+  .sidebar { width: 168px; background: var(--sidebar); color: var(--sidebar-link); padding: 12px 8px; font-size: 12.5px; flex: none; }
+  .marca { background: #fff; color: var(--sidebar); border-radius: 10px; padding: 7px 10px; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
+  .menu a { display: block; padding: 6px 9px; border-radius: 8px; color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu a.activo { background: #334155; color: #fff; font-weight: 700; box-shadow: inset 3px 0 0 var(--acento); }
+  .contenido { flex: 1; background: var(--fondo-web); padding: 14px 16px; overflow: hidden; display: flex; flex-direction: column; gap: 11px; min-width: 0; position: relative; }
+  .contenido h2 { font-size: 19px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 9px 12px; }
+  .kpi small { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+  .kpi div { font-size: 24px; font-weight: 800; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 12px; overflow: hidden; font-size: 12.5px; }
+  th { text-align: left; background: #f9fafb; color: #374151; font-size: 11.5px; padding: 7px 9px; border-bottom: 1px solid var(--borde); }
+  td { padding: 7px 9px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  td small { display: block; color: var(--muted); font-size: 11px; }
+  tr.resalta td { background: #fffbeb; }
+  tr.error td { background: #fef2f2; }
+  .mono { font-family: Consolas, monospace; font-size: 11.5px; }
+  .dos-col { display: grid; grid-template-columns: 2.1fr 1fr; align-items: start; gap: 12px; min-height: 0; }
+  .dos-col table { font-size: 11.5px; }
+  .dos-col td { padding: 6px 7px; }
+  .dos-col .chip { font-size: 11px; padding: 2px 7px; }
+  .mapa { background: #fff; border: 1px solid var(--borde); border-radius: 12px; position: relative; overflow: hidden; }
+  .mapa svg { width: 100%; height: auto; display: block; }
+  .leyenda-est { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; }
+  .leyenda-est span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; background: var(--c); }
+  .barra-est { display: flex; height: 24px; border-radius: 8px; overflow: hidden; }
+  .barra-est div { transition: flex-grow .8s; color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; min-width: 0; }
+  .filtros { display: flex; gap: 10px; align-items: center; font-size: 12.5px; flex-wrap: wrap; }
+  .select { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 5px 10px; font-size: 12.5px; min-width: 150px; display: inline-flex; justify-content: space-between; gap: 10px; }
+  .select::after { content: "▾"; color: var(--muted); }
+  .select.on { border-color: var(--acento); box-shadow: 0 0 0 3px rgba(245,179,1,.35); font-weight: 700; }
+  .boton { display: inline-block; background: var(--primario); color: #fff; border-radius: 8px; padding: 5px 11px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .boton.sec { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+  .boton.on { box-shadow: 0 0 0 3px rgba(245,179,1,.7); }
+  .alerta-w { border-left: 5px solid #dc2626; }
+  .nota { font-size: 12.5px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: 10px; padding: 8px 11px; line-height: 1.4; }
+  .nota.ok { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+  .nota.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+  /* Modal dentro del panel web */
+  .velo { position: absolute; inset: 0; background: rgba(15,23,42,.45); display: grid; place-items: center; animation: aparece .35s ease-out; }
+  .modal { background: #fff; border-radius: 14px; width: 380px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 20px 50px rgba(0,0,0,.3); font-size: 13px; }
+  .modal h4 { font-size: 16px; }
+  .modal label { font-size: 11.5px; font-weight: 700; color: #374151; }
+  .modal .campo { padding: 7px 10px; font-size: 13px; color: var(--texto); }
+  .modal .campo.corregido { border-color: #059669; background: #f0fdf4; }
+  .lista-drop { border: 1px solid #d1d5db; border-radius: 8px; margin-top: -4px; font-size: 12.5px; overflow: hidden; }
+  .lista-drop div { padding: 5px 10px; border-bottom: 1px solid #f3f4f6; }
+  .lista-drop div.sel { background: #eff6ff; font-weight: 700; }
+  @keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Antes / ahora */
+  .hojas { display: flex; gap: 14px; justify-content: center; }
+  .hoja { width: 150px; height: 180px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 4px 4px 0 #e5e7eb, 8px 8px 0 #f1f5f9; padding: 12px; font-size: 11px; position: relative; display: flex; flex-direction: column; gap: 6px; }
+  .hoja b { font-size: 12px; }
+  .hoja .lin { height: 6px; border-radius: 3px; background: #e5e7eb; }
+  .hoja .firma { margin-top: auto; border-top: 1px solid #9ca3af; padding-top: 3px; color: #6b7280; font-style: italic; }
+  .tira-hojas { display: flex; gap: 8px; align-items: center; font-size: 12.5px; background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 8px 12px; }
+  .tira-hojas .h { width: 26px; height: 32px; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #475569; position: relative; flex: none; }
+  .tira-hojas .h.x { background: #fef2f2; border-color: #fca5a5; color: transparent; }
+  .tira-hojas .h.x::after { content: "✕"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #dc2626; }
+  .piezas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pieza { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.4; }
+  .pieza .ico { font-size: 24px; }
+  .glosario { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .glosario div { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 9px 12px; font-size: 12.5px; line-height: 1.4; }
+  .glosario b { display: block; font-size: 14px; color: #1e3a8a; }
+
+  /* Acta PDF */
+  .acta { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 14px 18px; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .acta h5 { font-size: 13px; text-align: center; letter-spacing: .04em; line-height: 1.4; }
+  .acta .sec { border: 1px solid #e5e7eb; border-radius: 6px; padding: 7px 9px; display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; }
+  .acta .sec i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; background: #059669; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+
+  /* Telegram */
+  .telegram { background: var(--tg-fondo); display: flex; flex-direction: column; color: #e6edf3; }
+  .tg-cab { background: var(--tg-cab); padding: 11px 14px; display: flex; gap: 10px; align-items: center; flex: none; }
+  .tg-av { width: 38px; height: 38px; border-radius: 50%; background: var(--tg-azul); display: grid; place-items: center; font-size: 20px; }
+  .tg-cab b { font-size: 15px; display: block; } .tg-cab small { font-size: 12px; color: #7f91a4; }
+  .tg-msgs { flex: 1; padding: 12px; display: flex; flex-direction: column; justify-content: flex-end; gap: 9px; overflow: hidden; }
+  .tg-b { background: var(--tg-burbuja); border-radius: 14px 14px 14px 4px; padding: 9px 12px; font-size: 13px; line-height: 1.42; animation: entra .45s ease-out; max-width: 96%; flex: none; }
+  .tg-b.yo { align-self: flex-end; background: #2b5278; border-radius: 14px 14px 4px 14px; }
+  .tg-b .h { display: block; text-align: right; font-size: 11px; color: #7f91a4; margin-top: 2px; }
+  .tg-b .quien { display: block; font-size: 12px; font-weight: 700; color: #6ab3f3; margin-bottom: 2px; }
+  .tg-inline { display: flex; gap: 4px; margin-top: 6px; }
+  .tg-inline span { flex: 1; background: #2b3a4a; border-radius: 6px; padding: 4px; text-align: center; font-size: 12px; }
+  .tg-inline span.on { background: #1b6fa3; color: #fff; }
+  .tg-teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 7px; background: var(--tg-cab); flex: none; }
+  .tg-teclado div { background: #2b3a4a; border-radius: 8px; padding: 7px 4px; text-align: center; font-size: 12px; transition: background .3s; }
+  .tg-teclado div.on { background: #1b6fa3; color: #fff; font-weight: 700; box-shadow: 0 0 0 2px var(--acento); }
+  .tg-vacio { color: #7f91a4; font-size: 13px; text-align: center; margin: auto 0; line-height: 1.5; padding: 0 10px; }
+  @keyframes entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+  /* Barra de control */
+  .control { position: absolute; left: 24px; right: 24px; top: 728px; height: 152px; background: #10224a; border-radius: 20px; padding: 16px 22px; display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: center; color: #f4f6fb; }
+  .control .paso-n { color: var(--acento); font-weight: 800; font-size: 13.5px; letter-spacing: .1em; text-transform: uppercase; }
+  .control h1 { font-size: 25px; margin: 4px 0 6px; }
+  .control p { font-size: 16.5px; color: #c9d4ea; line-height: 1.4; max-width: 1180px; }
+  .botones { display: flex; gap: 10px; align-items: center; }
+  .botones button { border: 0; border-radius: 12px; padding: 14px 20px; font-weight: 800; font-size: 16px; background: #1f3a63; color: #fff; }
+  .botones button.sig { background: var(--acento); color: #1b1b1b; }
+  .botones button[aria-disabled="true"] { opacity: .35; cursor: default; }
+  .puntos { display: flex; gap: 5px; margin-top: 8px; }
+  .puntos span { width: 22px; height: 5px; border-radius: 3px; background: #1f3a63; }
+  .puntos span.on { background: var(--acento); }
+  .progreso { position: absolute; left: 0; bottom: 0; height: 5px; background: var(--acento); border-radius: 0 0 0 20px; transition: width .4s; }
+  .ayuda { position: absolute; right: 30px; top: 884px; color: #8a99bb; font-size: 12px; }
+  body.sin-guia .control p { display: none; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="escenario">
+  <nav class="capitulos" id="capitulos" aria-label="Capítulos de la demo"></nav>
+
+  <div class="paneles">
+    <section class="panel" id="p-movil" aria-label="App móvil">
+      <div class="rotulo">📱 App móvil <span class="quien" id="rol-movil"></span><span class="mire">👀 Mire aquí</span></div>
+      <div class="marco celular" id="m-movil"><div class="pantalla" id="movil"></div></div>
+    </section>
+    <section class="panel" id="p-web" aria-label="Panel web">
+      <div class="rotulo">💻 Panel web <span class="quien" id="rol-web"></span><span class="mire">👀 Mire aquí</span></div>
+      <div class="marco navegador" id="m-web">
+        <div class="nav-barra"><span></span><span></span><span></span><div class="nav-url" id="url"></div></div>
+        <div class="web">
+          <nav class="sidebar" aria-label="Menú">
+            <div class="marca">CNE · Imbabura</div>
+            <div class="menu" id="menu"></div>
+          </nav>
+          <main class="contenido" id="web"></main>
+        </div>
+      </div>
+    </section>
+    <section class="panel" id="p-tg" aria-label="Telegram">
+      <div class="rotulo">✈️ Telegram <span class="quien">· grupo de técnicos</span><span class="mire">👀 Mire aquí</span></div>
+      <div class="marco telegram" id="m-tg">
+        <div class="tg-cab"><div class="tg-av">🤖</div><div><b>Bot Enlaces CNE</b><small>bot · grupo de técnicos</small></div></div>
+        <div class="tg-msgs" id="tg" aria-live="polite"></div>
+        <div class="tg-teclado" id="tg-teclado"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="control">
+    <div aria-live="polite" aria-atomic="true">
+      <div class="paso-n" id="paso-n"></div>
+      <h1 id="paso-t"></h1>
+      <p id="paso-d"></p>
+      <div class="puntos" id="puntos" aria-hidden="true"></div>
+    </div>
+    <div class="botones">
+      <button id="ant" aria-label="Paso anterior">◀ Anterior</button>
+      <button id="sig" class="sig" aria-label="Paso siguiente">Siguiente ▶</button>
+      <button id="pc" aria-label="Pantalla completa" title="Pantalla completa (F)">⛶</button>
+    </div>
+    <div class="progreso" id="barra"></div>
+  </div>
+  <div class="ayuda">← → avanzar · 1-8 capítulos · F pantalla completa · G ocultar guion · Datos ficticios de ejemplo</div>
+</div>
+
+<script>
+/* ---------- Datos de ejemplo (ficticios) ---------- */
+const KIT = { codigo: '1221', recinto: 'UE Otavalo', canton: 'Otavalo', operador: 'Ana Torres', asistente: 'Luis Andrade', militar: 'Sgto. Pablo Ruiz', tecnico: 'Jorge Vaca' };
+const TOTAL = 55;
+const MENU = ['Usuarios', 'Militares', 'Recintos Electorales', 'Eventos Electorales', 'Asignaciones', 'Kits Electorales', 'Monitoreo', 'Incidencias', 'Alertas', 'Enlaces', 'Cadena de custodia', 'Reportes', 'Power BI CDAS'];
+const ESTADOS = [
+  ['dpi', 'En DPEI', '#9ca3af'], ['transito', 'En tránsito', '#7c3aed'],
+  ['recinto', 'En el recinto', '#f59e0b'], ['retorno', 'En retorno', '#2563eb'], ['llego', 'Llegó al DPEI', '#16a34a'],
+];
+const COLOR = Object.fromEntries(ESTADOS.map(([k, , c]) => [k, c]));
+const chipEstado = {
+  dpi: '<span class="chip gris">En DPEI</span>',
+  transito: '<span class="chip" style="background:#ede9fe;color:#5b21b6">En tránsito</span>',
+  recinto: '<span class="chip warn">En el recinto</span>',
+  retorno: '<span class="chip info">En retorno</span>',
+  llego: '<span class="chip ok">Llegó al DPEI</span>',
+};
+
+/* 55 CDA con posiciones fijas (sin aleatorios); cada uno pertenece al cantón más cercano. */
+const PUNTOS = Array.from({ length: TOTAL }, (_, i) => {
+  const a = i * 2.39996, r = 30 + 150 * Math.sqrt((i + 0.5) / TOTAL);
+  return [300 + r * Math.cos(a) * 1.15, 200 + r * Math.sin(a) * 0.85];
+});
+const CANTONES = { Ibarra: [440, 165], Otavalo: [200, 280], Cotacachi: [140, 140], 'Antonio Ante': [300, 215], Pimampiro: [500, 290], 'Urcuquí': [320, 80] };
+const distancia = ([x1, y1], [x2, y2]) => Math.hypot(x1 - x2, y1 - y2);
+const CANTON_DE = PUNTOS.map((pt) => Object.keys(CANTONES).reduce((a, b) => (distancia(CANTONES[a], pt) <= distancia(CANTONES[b], pt) ? a : b)));
+const DPI = [450, 190], OTAVALO = [200, 285];
+
+/* Reparte los estados entre los puntos (en orden fijo) y devuelve el estado de cada punto. */
+function estadosDePuntos(c) {
+  const lista = [];
+  ['llego', 'retorno', 'recinto', 'transito', 'dpi'].forEach((k) => { for (let i = 0; i < (c[k] || 0); i++) lista.push(k); });
+  return PUNTOS.map((_, i) => lista[i] || 'dpi');
+}
+function contar(c, canton) {
+  if (!canton) return c;
+  const out = {};
+  estadosDePuntos(c).forEach((e, i) => { if (CANTON_DE[i] === canton) out[e] = (out[e] || 0) + 1; });
+  return out;
+}
+
+/* ---------- Piezas reutilizables ---------- */
+const hora = (h) => `<div class="barra-estado"><span>${h}</span><span>📶 🔋</span></div>`;
+const cab = (t, s, h) => `${hora(h)}<div class="app-cab"><h3>${t}</h3>${s ? `<small>${s}</small>` : ''}</div>`;
+const pestanas = (lista, on) => `<div class="pestanas">${lista.map((p, i) => `<span class="${i === on ? 'on' : ''}">${p}</span>`).join('')}</div>`;
+const PEST_AET = ['Entregar a militar', 'Verificar retorno', 'Verificados'];
+const PEST_SUP = ['Monitoreo', 'Alertas', 'Recintos difíciles'];
+const asignacion = `<div class="tarjeta"><div class="et">Mi asignación</div><b>Kit ${KIT.codigo}</b> · ${KIT.recinto}<br><span style="color:var(--muted)">Cantón ${KIT.canton} · Técnico: ${KIT.tecnico}</span></div>`;
+const contadorAet = (n, txt = 'kits entregados a militares') => `<div class="contador" role="status" aria-label="${n} de ${TOTAL} ${txt}"><div class="num">${n}<small> / ${TOTAL}</small></div><div class="lbl">${txt}<div class="barrita"><div style="width:${(n / TOTAL) * 100}%"></div></div></div></div>`;
+/* marcas: 1 = completo, 2 = con novedad */
+const contenido = (marcas = [1, 1, 1]) => ['Laptop', 'Escáner', 'Impresora'].map((n, i) => `<div class="check-li"><i class="${marcas[i] === 2 ? 'alerta' : ''}">${marcas[i] === 2 ? '!' : '✓'}</i>${n}${marcas[i] === 2 ? ' · con novedad' : ''}</div>`).join('');
+const militar = (ap, nom, grado, ci, rec, sel) => `<div class="opcion ${sel ? 'sel' : ''}"><span class="radio"></span><div><b>${ap} ${nom}</b> · ${grado}<small>C.I. ${ci} · ${rec}</small></div></div>`;
+
+/* ---------- Pantallas del celular ---------- */
+const MOVIL = {
+  portada: () => `${hora('07:00')}<div class="app-cuerpo" style="justify-content:center;text-align:center;gap:14px">
+      <div class="login-logo" style="margin:0 auto">CNE</div><h3>Logística electoral</h3>
+      <p style="color:var(--muted);font-size:13.5px">Una sola app para todos los que trabajan en el terreno. Cada persona ve solo lo que le toca según su rol.</p>
+      <div class="tarjeta" style="text-align:left"><div class="check-li"><i>🚐</i>Operador CDA: su ruta y su kit</div><div class="check-li"><i>📦</i>Asistente transversal: entrega y retorno</div><div class="check-li"><i>🗺️</i>Técnico supervisor: mapa y alertas</div></div>
+      <span class="chip info" style="align-self:center">Funciona aunque no haya señal</span></div>`,
+  login: () => `${hora('07:30')}<div class="app-cuerpo" style="justify-content:flex-start">
+      <div class="login-logo">CNE</div><h3 style="text-align:center">Logística electoral</h3><p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:6px">Delegación de Imbabura</p>
+      <div class="campo">Cédula</div><div class="campo">Contraseña</div><div class="btn-app">Ingresar</div>
+      <p class="nota" style="margin-top:6px">Los usuarios que se cargan en la web entran aquí con su <b>cédula</b>.</p></div>`,
+  cambioPwd: () => `${cab('Cambiar contraseña', 'Primer ingreso', '07:31')}<div class="app-cuerpo">
+      <div class="nota">🔒 Por seguridad, la primera vez cada usuario <b>debe crear su propia contraseña</b>. Sin esto no puede usar la app.</div>
+      <div class="campo lleno">Contraseña temporal ••••••</div><div class="campo lleno">Nueva contraseña ••••••••••</div><div class="campo lleno">Repetir nueva contraseña ••••••••••</div>
+      <div class="btn-app">Guardar y continuar</div></div>`,
+  aetMilitares: () => `${cab('Entregar kit a militar', 'Asistente transversal', '06:05')}${pestanas(PEST_AET, 0)}<div class="app-cuerpo">
+      <div class="tarjeta"><div class="et">Kit ${KIT.codigo} · ${KIT.recinto}</div>
+      <div class="et" style="margin-top:8px">Militares del recinto ${KIT.codigo}</div>
+      ${militar('Ruiz', 'Pablo', 'Sgto.', '1700000009', KIT.recinto, true)}${militar('Cevallos', 'Marco', 'Cbo.', '1700000002', KIT.recinto, false)}</div>
+      <div class="nota ok">✓ Aquí aparecen <b>los militares cargados en la web</b> para ese recinto. Si se corrige el recinto en la web, la app ya lo muestra bien.</div></div>`,
+  cdaAsignado: () => `${cab('Registro de salida', 'Hola, ' + KIT.operador, '06:40')}<div class="app-cuerpo">${asignacion}
+      <div class="tarjeta"><div class="et">Contenido del kit</div>${contenido()}</div>
+      <div class="btn-app">Registrar salida del DPEI</div>
+      <span class="chip info" style="align-self:center">Sin señal también funciona</span></div>`,
+  aetInicio: () => `${cab('Entregar kit a militar', 'Asistente transversal · ' + KIT.asistente, '05:58')}${pestanas(PEST_AET, 0)}<div class="app-cuerpo">
+      ${contadorAet(0)}
+      <div class="qr">📷 Escanear el QR del kit<br><span style="font-weight:500;color:#475569">o escribir el código</span></div>
+      <div class="nota">El asistente usa la app en el <b>DPEI</b>: entrega los kits a los militares en la mañana y los recibe de vuelta del operador CDA en la noche.</div></div>`,
+  aetEntrega: () => `${cab('Entregar kit a militar', 'Asistente transversal', '06:05')}${pestanas(PEST_AET, 0)}<div class="app-cuerpo">
+      ${contadorAet(1)}
+      <div class="tarjeta"><div class="fila"><b style="font-size:17px;color:var(--primario)">${KIT.codigo}</b><span class="chip info">QR leído</span></div>
+      <div class="et" style="margin-top:6px">Operador CDA</div>${KIT.operador} <span style="color:var(--primario);font-size:12px;text-decoration:underline">Cambiar operador</span>
+      <div class="et" style="margin-top:6px">Militar que lo lleva al recinto</div>
+      ${militar('Ruiz', 'Pablo', 'Sgto.', '1700000009', KIT.recinto, true)}</div>
+      <div class="btn-app ok">✓ Entrega registrada · 06:05</div></div>`,
+  aetCorregir: () => `${cab('Entregar kit a militar', 'Asistente transversal', '07:20')}${pestanas(PEST_AET, 0)}<div class="app-cuerpo">
+      ${contadorAet(38)}
+      <div class="tarjeta"><b style="color:var(--primario)">Kit 1310</b> · UE Pimampiro<div class="et" style="margin-top:6px">Cambiar militar</div>
+      ${militar('Mora', 'Diego', 'Sgto.', '1700000077', 'UE Pimampiro', true)}
+      <div class="et" style="margin-top:8px">Motivo del cambio (obligatorio)</div><div class="campo lleno" style="font-size:12.5px">El militar asignado fue reemplazado</div></div>
+      <div class="btn-app">Guardar cambio de militar</div></div>`,
+  salida: () => `${cab('Registro de salida', KIT.operador, '06:45')}<div class="app-cuerpo">${asignacion}
+      <div class="tarjeta" style="border-color:#6ee7b7"><span class="chip ok">✓ Salida del DPEI registrada</span><p style="margin-top:8px">🕖 <b>06:45</b><br>📍 Ubicación GPS guardada<br><span style="color:var(--muted);font-size:12px">Si no hay señal, se guarda y se envía al recuperarla.</span></p></div>
+      <div class="btn-app sec">Continuar</div></div>`,
+  transito: () => `${cab('En tránsito', 'Rumbo a ' + KIT.recinto, '07:05')}<div class="app-cuerpo">
+      <div class="tarjeta gps"><div class="pulso"></div><div><b>Rastreo activo</b><br><span style="color:var(--muted);font-size:12.5px">Se envía su ubicación cada minuto</span></div></div>
+      <div class="tarjeta"><div class="et">Distancia al recinto</div><div style="font-size:30px;font-weight:800">8,4 km</div></div>
+      <div class="nota">🔔 A <b>200 m</b> del recinto el celular suena y vibra para que no se pase.</div>${asignacion}</div>`,
+  llegada: () => `${cab('Llegada al recinto', KIT.recinto, '07:30')}<div class="app-cuerpo">
+      <div class="tarjeta" style="border-color:#6ee7b7"><span class="chip ok">📍 Está dentro del recinto</span><p style="margin-top:8px">A <b>35 m</b> del punto del recinto</p></div>
+      <div class="tarjeta"><span class="chip ok">✓ Llegada registrada · 07:30</span></div>
+      <div class="nota err">Si estuviera lejos, la app <b>no deja</b> registrar la llegada: así nadie marca "llegué" desde otro lugar.</div>${asignacion}</div>`,
+  recepcion: () => `${cab('Llegada al recinto', 'Paso 1 · Recibir el kit del militar', '07:35')}<div class="app-cuerpo">
+      <div class="tarjeta"><div class="et">Entrega</div>${KIT.militar}<div class="et" style="margin-top:6px">Recibe</div>${KIT.operador}</div>
+      <div class="tarjeta"><div class="et">Foto con el militar y el kit</div><div class="foto-mini">📷 🪖 📦</div></div>
+      <div class="tarjeta"><div class="et">Contenido</div>${contenido()}</div>
+      <div class="btn-app ok">✓ Kit recibido · 07:35</div></div>`,
+  actas: () => `${cab('Salida del recinto', 'Paso 2 · Actas obligatorias', '19:40')}<div class="app-cuerpo">
+      <div class="tarjeta"><div class="et">Acta de instalación</div><div class="foto-mini">📄</div><span class="chip ok" style="margin-top:6px">✓ Foto enviada · 08:10</span></div>
+      <div class="tarjeta"><div class="et">Acta de escrutinio</div><div class="foto-mini">📄</div><span class="chip ok" style="margin-top:6px">✓ Foto enviada · 19:35</span></div>
+      <div class="btn-app">Registrar salida del recinto</div></div>`,
+  retorno: () => `${cab('En retorno', 'Rumbo al DPEI', '20:05')}<div class="app-cuerpo">
+      <div class="tarjeta gps"><div class="pulso"></div><div><b>Rastreo activo</b><br><span style="color:var(--muted);font-size:12.5px">Salió del recinto a las 19:45</span></div></div>
+      <div class="tarjeta"><div class="et">Distancia al DPEI</div><div style="font-size:30px;font-weight:800">3,1 km</div></div>
+      <div class="tarjeta"><span class="chip ok">📍 Llegada al DPEI · 20:40</span><p style="margin-top:6px;font-size:12.5px;color:var(--muted)">También comprueba que está dentro del DPEI.</p></div>
+      <div class="btn-app sec">Entregar el kit al asistente</div></div>`,
+  aetVerificar: () => `${cab('Verificar retorno', 'Asistente transversal', '20:50')}${pestanas(PEST_AET, 1)}<div class="app-cuerpo">
+      <div class="tarjeta"><div class="fila"><b style="color:var(--primario);font-size:16px">${KIT.codigo}</b><span class="chip info">QR leído</span></div><div style="font-size:12.5px;color:var(--muted)">Devuelve: ${KIT.operador}</div>
+      <div class="et" style="margin-top:6px">¿Volvió completo?</div>${contenido([1, 1, 2])}
+      <div class="et" style="margin-top:6px">Observaciones</div><div class="campo lleno" style="font-size:12.5px">Impresora sin cable de poder</div></div>
+      <div class="btn-app ok">✓ Retorno confirmado · 20:50</div>
+      <p style="text-align:center;font-size:12.5px;font-weight:700">12 kits verificados en esta sesión</p></div>`,
+  aetVerificados: () => `${cab('Kits verificados', 'Asistente transversal', '21:30')}${pestanas(PEST_AET, 2)}<div class="app-cuerpo">
+      ${contadorAet(39, 'kits recibidos de vuelta y verificados')}
+      <div class="tarjeta" style="padding:6px 12px">
+      ${[[KIT.codigo, KIT.recinto, '20:50', 'con novedad'], ['1286', 'UE 17 de Julio', '20:44', ''], ['989', 'UE L. U. de la Torre', '20:31', ''], ['2066', 'UE Florencio Leary', '20:12', '']].map(([c, r, h, n]) => `<div class="check-li"><i class="${n ? 'alerta' : ''}">${n ? '!' : '✓'}</i><div style="flex:1"><b>${c}</b> ${r}<br><span style="font-size:11.5px;color:var(--muted)">${h} · ${n || 'completo'}</span></div></div>`).join('')}</div>
+      <div class="nota">Total del evento: entregados al militar <b>55</b> · de vuelta <b>39</b>.</div></div>`,
+  supMonitoreo: () => `${cab('Monitoreo de operadores', 'Técnico supervisor', '07:10')}${pestanas(PEST_SUP, 0)}
+      <svg viewBox="0 0 300 170" style="display:block;background:#e8eef5;flex:none" role="img" aria-label="Mapa de operadores en ruta">
+        <path d="M30 60 C60 15 160 8 220 22 C270 35 290 80 275 120 C262 155 200 168 140 162 C80 158 35 135 25 100Z" fill="#dbe4ef" stroke="#b6c3d6"/>
+        ${PUNTOS.filter((_, i) => i % 3 === 0).map(([x, y], i) => `<circle cx="${x / 2.1}" cy="${y / 2.4}" r="6" fill="#7c3aed" stroke="#fff" stroke-width="2"/>`).join('')}
+      </svg>
+      <div class="app-cuerpo" style="gap:0;padding-top:8px"><b style="font-size:14px">En ruta (22)</b>
+      ${[['Ana Torres', 'En tránsito · 1 kit · 07:09', '#7c3aed'], ['Jorge Vaca', 'En tránsito · 2 kits · 07:08', '#7c3aed'], ['María Pérez', 'En tránsito · 1 kit · 07:09', '#7c3aed'], ['Diego M.', 'En tránsito · 1 kit · 07:07', '#7c3aed']].map(([n, m, c]) => `<div class="check-li" style="justify-content:space-between"><div><b>${n}</b><br><span style="font-size:12px;color:var(--muted)"><span style="color:${c}">●</span> ${m}</span></div><span style="color:var(--primario);font-size:12px;font-weight:700">Ver ubicación</span></div>`).join('')}</div>`,
+  supAlertas: () => `${cab('Alertas', 'Técnico supervisor', '09:31')}${pestanas(PEST_SUP, 1)}<div class="app-cuerpo">
+      <div class="tarjeta" style="border-left:5px solid #dc2626"><span class="chip err">No llegó al recinto</span><p style="margin-top:8px"><b>Kit 1310</b> · UE Pimampiro<br><span style="color:var(--muted);font-size:12.5px">Salió 07:20 · sin llegada a las 09:30</span></p></div>
+      <div class="tarjeta" style="border-left:5px solid #d97706"><span class="chip warn">Sin sincronizar</span><p style="margin-top:6px"><b>Kit 1452</b> · 25 min sin enviar ubicación</p></div>
+      <div class="nota">Llega como <b>notificación</b> al celular del supervisor, aunque tenga la app cerrada.</div></div>`,
+  fin: () => `${cab('Retornado', KIT.operador, '21:00')}<div class="app-cuerpo" style="justify-content:center;text-align:center">
+      <div style="font-size:64px">✅</div><h3>¡Ciclo completo!</h3><p style="color:var(--muted);font-size:14px">El kit ${KIT.codigo} está de vuelta en la Delegación.<br>Gracias por su trabajo.</p></div>`,
+};
+
+/* ---------- Vistas web ---------- */
+const kpi = (t, v, c = '') => `<div class="kpi"><small>${t}</small><div style="color:${c}">${v}</div></div>`;
+const modal = (html) => `<div class="velo"><div class="modal" role="dialog" aria-label="Ventana de ejemplo">${html}</div></div>`;
+const acciones = (ok) => `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px"><span class="boton sec">Cancelar</span><span class="boton on">${ok}</span></div>`;
+const carga = (archivo) => `<div style="display:flex;gap:8px;align-items:center"><span class="boton sec">Descargar plantilla</span><span class="campo lleno" style="flex:1;padding:5px 10px">📄 ${archivo}</span><span class="boton on">Cargar</span></div>`;
+function barraEstados(c) {
+  return `<div class="barra-est">${ESTADOS.map(([k, , col]) => `<div style="flex-grow:${c[k] || 0.0001};background:${col}">${c[k] ? c[k] : ''}</div>`).join('')}</div>
+    <div class="leyenda-est">${ESTADOS.map(([k, n, col]) => `<span style="--c:${col}">${n} (${c[k] || 0})</span>`).join('')}</div>`;
+}
+function mapa(c, { kit = null, extra = '', canton = '' } = {}) {
+  const est = estadosDePuntos(c);
+  const puntos = PUNTOS.map(([x, y], i) => {
+    const fuera = canton && CANTON_DE[i] !== canton;
+    return `<circle cx="${x}" cy="${y}" r="9" fill="${COLOR[est[i]]}" stroke="#fff" stroke-width="2" opacity="${fuera ? 0.1 : 1}"/>`;
+  }).join('');
+  // Etiquetas con contorno blanco para que se lean sobre los puntos.
+  const etiquetas = Object.entries(CANTONES).map(([n, [x, y]]) => `<text x="${x}" y="${y - 24}" text-anchor="middle" font-size="19" font-weight="${n === canton ? 800 : 700}" fill="${n === canton ? '#0f172a' : '#475569'}" stroke="#eef2f7" stroke-width="4" paint-order="stroke">${n}</text>`).join('');
+  const kitSvg = kit ? `<g><circle cx="${kit[0]}" cy="${kit[1]}" r="22" fill="#f5b301" stroke="#fff" stroke-width="3"/><text x="${kit[0]}" y="${kit[1] + 7}" text-anchor="middle" font-size="20">📦</text>
+    <text x="${kit[0]}" y="${kit[1] + 44}" text-anchor="middle" font-size="18" font-weight="800" fill="#1e293b" stroke="#fff" stroke-width="4" paint-order="stroke">Kit ${KIT.codigo}</text></g>` : '';
+  return `<div class="mapa"><svg viewBox="45 20 540 360" role="img" aria-label="Mapa de Imbabura con los CDA${canton ? ' del cantón ' + canton : ''}">
+    <rect width="620" height="400" fill="#eef2f7"/>
+    <path d="M70 120 C120 40 300 20 420 50 C520 75 590 150 560 240 C540 320 440 380 300 370 C180 362 90 320 60 240 C45 190 50 150 70 120Z" fill="#dbe4ef" stroke="#b6c3d6" stroke-width="2"/>
+    ${canton ? `<circle cx="${CANTONES[canton][0]}" cy="${CANTONES[canton][1]}" r="95" fill="rgba(245,179,1,.12)" stroke="#f5b301" stroke-width="2" stroke-dasharray="6 5"/>` : ''}
+    ${kit ? `<path d="M${DPI[0]} ${DPI[1]} Q 330 200 ${OTAVALO[0]} ${OTAVALO[1]}" fill="none" stroke="#64748b" stroke-width="3" stroke-dasharray="7 6"/>` : ''}
+    ${etiquetas}${puntos}
+    <rect x="${DPI[0] - 12}" y="${DPI[1] - 12}" width="24" height="24" rx="5" fill="#1e293b"/><text x="${DPI[0] + 17}" y="${DPI[1] + 7}" font-size="18" font-weight="800" fill="#1e293b" stroke="#fff" stroke-width="4" paint-order="stroke">DPEI</text>
+    ${extra}${kitSvg}
+  </svg></div>`;
+}
+const FILAS_MON = [
+  ['1286', 'UE 17 de Julio', 'Ibarra', 'Jorge V.'], ['989', 'UE L. U. de la Torre', 'Otavalo', 'María P.'],
+  ['1126', 'UE César Borja', 'Ibarra', 'Diego M.'], ['2066', 'UE Florencio Leary', 'Otavalo', 'Paola S.'],
+  ['1240', 'UE San Pablo', 'Otavalo', 'Rosa G.'], ['1310', 'UE Pimampiro', 'Pimampiro', 'Andrés L.'],
+];
+function monitoreo(c, { kit, filaKit, extra, canton = '', estados = ['transito', 'recinto', 'dpi', 'recinto', 'transito', 'dpi'] } = {}) {
+  const cc = contar(c, canton);
+  const enVista = Object.values(cc).reduce((a, b) => a + b, 0);
+  const filas = FILAS_MON.map((f, i) => [...f, estados[i]]).filter((f) => !canton || f[2] === canton).slice(0, 3);
+  return `<div class="fila"><h2>Monitoreo de CDA</h2><span class="chip ok">● En vivo</span></div>
+    <div class="filtros">Cantón <span class="select ${canton ? 'on' : ''}">${canton || 'Todos los cantones'}</span> Estado <span class="select">Todos</span><span style="margin-left:auto;color:var(--muted)">${canton ? `${enVista} CDA en ${canton}` : `${TOTAL} CDA en la provincia`}</span></div>
+    ${barraEstados(cc)}
+    <div class="dos-col">${mapa(c, { kit, extra, canton })}
+      <table><thead><tr><th>CDA</th><th>Estado</th></tr></thead><tbody>
+        ${filaKit ? `<tr class="resalta"><td><b>${KIT.codigo}</b> ${KIT.recinto}<small>${KIT.canton} · ${KIT.operador}</small></td><td>${filaKit}</td></tr>` : ''}
+        ${filas.map(([cod, r, can, op, e]) => `<tr><td>${cod} ${r}<small>${can} · ${op}</small></td><td>${chipEstado[e]}</td></tr>`).join('')}
+      </tbody></table></div>`;
+}
+function tiraHojas(n) {
+  const nombres = ['AET → militar', 'Militar → CDA', 'CDA → AET'];
+  return `<div class="tira-hojas"><b style="margin-right:4px">Hojas que ya no se imprimen:</b>${nombres.map((t, i) => `<span class="h ${i < n ? 'x' : ''}">${i + 1}</span><span style="color:${i < n ? '#dc2626' : 'var(--muted)'};font-weight:${i < n ? 700 : 400};${i < n ? 'text-decoration:line-through' : ''}">${t}</span>`).join('')}</div>`;
+}
+const hecho = (h) => `<span style="color:var(--ok-tx);font-weight:700">✓ ${h}</span>`;
+const pend = '<span style="color:#dc2626;font-weight:700">✗ Pendiente</span>';
+function custodia(etapas, tot, { correccion = false } = {}) {
+  const [e1, e2, e3] = [etapas > 0, etapas > 1, etapas > 2];
+  const otros = tot[0] > 1;
+  return `<div class="fila"><h2>Cadena de custodia de kits</h2><div style="display:flex;gap:6px"><span class="boton sec">Imprimir tabla</span><span class="boton sec">↓ Excel</span><span class="boton">↓ Actas PDF</span></div></div>
+    <div class="filtros">Cantón <span class="select">Todos</span> Recinto <span class="select">Todos</span> Estado <span class="select">Todos</span></div>
+    <div class="filtros" style="gap:18px"><span><b>Kits:</b> ${TOTAL}</span><span><b>Entregados al militar:</b> ${tot[0]}</span><span><b>Recibidos por el CDA:</b> ${tot[1]}</span><span><b>Devueltos al DPEI:</b> ${tot[2]}</span></div>
+    <table><thead><tr><th>Kit</th><th>Recinto / operador</th><th>1. Entrega al militar</th><th>2. Recepción del CDA</th><th>3. Devolución al DPEI</th></tr></thead><tbody>
+      <tr class="resalta"><td class="mono"><b>${KIT.codigo}</b></td><td>${KIT.recinto}<small>${KIT.operador}</small></td>
+        <td>${e1 ? `${hecho('06:05')}<small>${KIT.militar} · registró ${KIT.asistente}</small>` : pend}</td>
+        <td>${e2 ? `${hecho('07:35')}<small>con foto del militar</small>` : pend}</td>
+        <td>${e3 ? `${hecho('20:50')}<small>verificó ${KIT.asistente}</small><small style="color:var(--warn-tx)">Contenido incompleto</small>` : pend}</td></tr>
+      <tr><td class="mono"><b>1310</b>${correccion ? '<small style="font-family:inherit">1 corrección</small>' : ''}</td><td>UE Pimampiro<small>Andrés L.</small></td><td>${otros ? `${hecho('06:20')}<small>Sgto. Diego Mora</small>` : pend}</td><td>${e2 ? hecho('08:02') : pend}</td><td>${e3 ? hecho('21:05') : pend}</td></tr>
+      <tr><td class="mono"><b>1286</b></td><td>UE 17 de Julio<small>Jorge V.</small></td><td>${otros ? `${hecho('06:12')}<small>Cbo. Luis Paz</small><small style="color:var(--warn-tx)">Militar de otro recinto</small>` : pend}</td><td>${e2 ? hecho('07:28') : pend}</td><td>${e3 ? hecho('20:44') : pend}</td></tr>
+    </tbody></table>
+    ${tiraHojas(etapas)}`;
+}
+const USUARIOS = [['1000000011', 'Ana Torres', 'ana.t@correo.ec', 'Operador CDA'], ['1000000012', 'Jorge Vaca', 'jorge.v@correo.ec', 'Técnico supervisor'], ['1000000013', 'María Pérez', 'maria.p@correo', 'Operador CDA'], ['1000000014', 'Luis Andrade', 'luis.a@correo.ec', 'Asistente transversal']];
+/* conCasillas: vista de "Asignar roles" con Ana y María marcadas y aún sin rol */
+const tablaUsuarios = (conCasillas = false) => `<table><thead><tr>${conCasillas ? '<th>☑</th>' : ''}<th>Cédula</th><th>Nombres</th><th>Email</th><th>Roles</th><th>Estado</th></tr></thead><tbody>
+    ${USUARIOS.map(([c, n, e, r], i) => {
+      const marcado = conCasillas && (i === 0 || i === 2);
+      return `<tr class="${(conCasillas ? marcado : i === 2) ? 'resalta' : ''}">${conCasillas ? `<td>${marcado ? '☑' : '☐'}</td>` : ''}<td class="mono">${c}</td><td>${n}</td><td>${e}</td><td>${marcado ? '<span class="chip gris">Sin rol</span>' : `<span class="chip info">${r}</span>`}</td><td><span class="chip ok">Activo</span></td></tr>`;
+    }).join('')}
+  </tbody></table>`;
+function enlaces(caidos) {
+  const filas = [['1221', 'UE Otavalo', 'Otavalo', caidos.includes('1221')], ['1240', 'UE San Pablo', 'Otavalo', caidos.includes('zona')], ['1241', 'UE Cusín', 'Otavalo', caidos.includes('zona')], ['1243', 'UE Gualabí', 'Otavalo', caidos.includes('zona')], ['1286', 'UE 17 de Julio', 'Ibarra', false]];
+  const n = filas.filter((f) => f[3]).length;
+  return `<div class="fila"><h2>Enlaces de internet de los CDA</h2><span class="chip ok">● Revisión cada 5 min</span></div>
+    <div class="kpis">${kpi('Recintos CDA', TOTAL)}${kpi('En línea', TOTAL - n, '#059669')}${kpi('Caídos ahora', n, n ? '#dc2626' : '')}${kpi('Disponibilidad hoy', n ? '98,1 %' : '99,6 %')}</div>
+    <table><thead><tr><th>Recinto</th><th>Cantón</th><th>Técnico</th><th>Enlace</th></tr></thead><tbody>
+    ${filas.map(([c, r, can, caido]) => `<tr class="${caido ? 'error' : ''}"><td><b>${c}</b> ${r}</td><td>${can}</td><td>${KIT.tecnico}</td><td>${caido ? '<span class="chip err">🔴 Caído</span>' : '<span class="chip ok">✅ En línea</span>'}</td></tr>`).join('')}</tbody></table>`;
+}
+
+const WEB = {
+  antes: () => `<h2>Antes: tres hojas impresas por cada kit</h2>
+    <div class="hojas">
+      ${[['Hoja 1', 'Entrega del AET al militar'], ['Hoja 2', 'Entrega del militar al operador CDA'], ['Hoja 3', 'Devolución del CDA al AET']].map(([h, t]) => `<div class="hoja"><b>${h}</b><span>${t}</span><div class="lin"></div><div class="lin" style="width:80%"></div><div class="lin" style="width:60%"></div><div class="lin" style="width:85%"></div><div class="firma">Firma: ____________</div></div>`).join('')}
+    </div>
+    <div class="kpis">${kpi('Kits por jornada', '55')}${kpi('Hojas por kit', '3')}${kpi('Hojas por jornada', '165', '#dc2626')}${kpi('¿Dónde va el kit?', 'Llamar', '#dc2626')}</div>
+    <div class="nota err">Las hojas se llenaban a mano, se podían perder o mojar, y para saber dónde estaba un kit o si un recinto tenía internet había que <b>llamar uno por uno</b>.</div>`,
+  piezas: () => `<h2>Ahora: un solo sistema, tres piezas conectadas</h2>
+    <div class="piezas">
+      <div class="pieza"><div class="ico">📱</div><b>App móvil</b><br>La usan en el terreno: operador CDA, asistente transversal y técnico supervisor.</div>
+      <div class="pieza"><div class="ico">💻</div><b>Panel web</b><br>Para preparar todo (usuarios, militares, kits) y ver en vivo lo que pasa.</div>
+      <div class="pieza"><div class="ico">✈️</div><b>Bot de Telegram</b><br>Avisa solo al grupo de técnicos cuando se cae el internet de un recinto.</div>
+    </div>
+    <table><thead><tr><th>Rol</th><th>Qué hace</th><th>Dónde</th></tr></thead><tbody>
+      <tr><td><b>Administrador</b></td><td>Carga usuarios, militares y kits; configura el evento</td><td>Web</td></tr>
+      <tr><td><b>Técnico supervisor</b></td><td>Sigue a los operadores en el mapa y atiende alertas</td><td>Web y app</td></tr>
+      <tr><td><b>Operador CDA</b></td><td>Lleva el kit al recinto, toma fotos de las actas y regresa</td><td>App</td></tr>
+      <tr><td><b>Asistente transversal (AET)</b></td><td>Entrega los kits a los militares y los recibe de vuelta</td><td>App y web</td></tr>
+      <tr><td><b>Lector</b></td><td>Solo consulta reportes y la cadena de custodia</td><td>Web</td></tr>
+    </tbody></table>`,
+  glosario: () => `<h2>Palabras que verá en esta demo</h2>
+    <div class="glosario">
+      <div><b>DPEI</b>Delegación Provincial Electoral de Imbabura, en Ibarra. De aquí salen y aquí vuelven los kits.</div>
+      <div><b>CDA</b>Recinto con equipo para digitalizar y transmitir las actas. En Imbabura hay 55.</div>
+      <div><b>Kit</b>Laptop, escáner e impresora que usa el CDA. Cada uno tiene un código y un QR.</div>
+      <div><b>AET</b>Asistente Electoral Transversal: custodia los kits en el DPEI.</div>
+      <div><b>Geocerca</b>Círculo alrededor del recinto o del DPEI. La app solo deja marcar la llegada dentro de él.</div>
+      <div><b>Enlace</b>La conexión a internet de cada recinto CDA. El bot avisa cuando se cae.</div>
+      <div><b>Cadena de custodia</b>Quién tuvo el kit, desde qué hora y con qué prueba (foto, GPS).</div>
+      <div><b>Evento</b>Una jornada electoral o un simulacro. Todo se registra dentro del evento activo.</div>
+    </div>`,
+  usuariosCarga: () => `<h2>Carga masiva de usuarios</h2>
+    <div class="tarjeta" style="display:flex;flex-direction:column;gap:8px">
+      <span style="color:var(--muted)">Se sube un archivo <b>.xlsx</b> o <b>.csv</b> con las columnas <span class="mono">cedula, email, nombres, apellidos, telefono</span>.</span>
+      ${carga('operadores_cda_2027.xlsx')}
+    </div>
+    <div class="tarjeta"><b>Resultado</b><p style="margin:4px 0 8px">✅ Creados: <b>54</b> · ❌ Errores: <b>1</b></p>
+      <table><thead><tr><th>Fila</th><th>Error</th><th>Datos</th></tr></thead><tbody>
+        <tr class="error"><td>12</td><td>Cédula inválida (debe tener 10 dígitos)</td><td class="mono">{"cedula":"10000002","nombres":"Carlos"…}</td></tr></tbody></table></div>
+    <div class="nota">El sistema <b>no se detiene</b> por un error: crea los que están bien y le dice exactamente qué fila corregir.</div>`,
+  usuariosEditar: () => `<div class="fila"><h2>Usuarios</h2><div style="display:flex;gap:6px"><span class="boton">+ Nuevo usuario</span><span class="boton sec">↑ Carga masiva</span></div></div>
+    ${tablaUsuarios()}
+    ${modal(`<h4>Editar usuario · María Pérez</h4><label>Nombres</label><div class="campo">María</div><label>Email</label><div class="campo corregido">maria.p@correo.ec <span style="float:right;color:#059669">✓ corregido</span></div><label>Teléfono (opcional)</label><div class="campo">09X XXX XXXX</div><label>Rol</label><div class="campo">Operador CDA ▾</div>${acciones('Guardar')}`)}`,
+  usuariosRoles: () => `<div class="fila"><h2>Usuarios</h2><span class="boton on">Asignar roles (2)</span></div>
+    ${tablaUsuarios(true)}
+    ${modal(`<h4>Asignar roles a 2 usuarios</h4>
+      ${[['Administrador', 0], ['Técnico supervisor', 0], ['Operador CDA', 1], ['Asistente Electoral Transversal', 0], ['Lector', 0]].map(([r, on]) => `<div class="opcion ${on ? 'sel' : ''}" style="margin:0"><span class="radio"></span>${r}</div>`).join('')}
+      ${acciones('Asignar')}`)}`,
+  militaresCarga: () => `<h2>Carga masiva de militares</h2>
+    <div class="tarjeta" style="display:flex;flex-direction:column;gap:8px">
+      <span style="color:var(--muted)">Columnas: <span class="mono">cedula, nombres, apellidos, codigo_recinto</span>. El código del recinto une a cada militar con su recinto.</span>
+      ${carga('militares_ffaa.xlsx')}
+    </div>
+    <div class="tarjeta"><b>Resultado</b><p style="margin:4px 0 8px">✅ Creados: <b>108</b> · ❌ Errores: <b>2</b></p>
+      <table><thead><tr><th>Fila</th><th>Error</th><th>Datos</th></tr></thead><tbody>
+        <tr class="error"><td>15</td><td>No existe un recinto con código 9999</td><td class="mono">{"cedula":"1700000015","codigo_recinto":"9999"}</td></tr>
+        <tr class="error"><td>40</td><td>Ya existe un militar con esa cédula</td><td class="mono">{"cedula":"1700000003"…}</td></tr></tbody></table></div>`,
+  militaresEditar: () => `<div class="fila"><h2>Militares</h2><div style="display:flex;gap:6px"><span class="boton">+ Nuevo</span><span class="boton sec">↑ Excel</span></div></div>
+    <table><thead><tr><th>Cédula</th><th>Nombres</th><th>Recinto asignado</th><th>Acciones</th></tr></thead><tbody>
+      <tr class="resalta"><td class="mono">1700000009</td><td>Pablo Ruiz</td><td>UE Cotacachi <span style="color:var(--muted)">(1452)</span></td><td><span class="boton sec on">Editar</span></td></tr>
+      <tr><td class="mono">1700000002</td><td>Marco Cevallos</td><td>${KIT.recinto} <span style="color:var(--muted)">(${KIT.codigo})</span></td><td><span class="boton sec">Editar</span></td></tr>
+      <tr><td class="mono">1700000077</td><td>Diego Mora</td><td>UE Pimampiro <span style="color:var(--muted)">(1310)</span></td><td><span class="boton sec">Editar</span></td></tr></tbody></table>
+    ${modal(`<h4>Editar militar · Pablo Ruiz</h4><label>Cédula</label><div class="campo">1700000009</div>
+      <label>Recinto</label><div class="campo corregido">otav|</div>
+      <div class="lista-drop"><div class="sel"><b>${KIT.codigo}</b> — ${KIT.recinto} · Otavalo</div><div><b>1240</b> — UE San Pablo · Otavalo</div><div><b>989</b> — UE L. U. de la Torre · Otavalo</div></div>
+      ${acciones('Guardar cambios')}`)}`,
+  kits: () => `<div class="fila"><h2>Kits Electorales</h2><div style="display:flex;gap:6px"><span class="boton sec">↓ Plantilla</span><span class="boton sec">↑ Importar</span><span class="boton">PDF QR (55)</span></div></div>
+    <table><thead><tr><th>Código</th><th>Contenidos</th><th>Operador</th><th>Estado</th></tr></thead><tbody>
+      <tr class="resalta"><td class="mono"><b>${KIT.codigo}</b></td><td>Laptop, escáner, impresora</td><td>${KIT.operador}</td><td><span class="chip info">Asignado</span></td></tr>
+      <tr><td class="mono">1286</td><td>Laptop, escáner, impresora</td><td>Jorge V.</td><td><span class="chip info">Asignado</span></td></tr>
+      <tr><td class="mono">1310</td><td>Laptop, escáner, impresora</td><td style="color:var(--muted)">—</td><td><span class="boton sec on">Asignar</span></td></tr></tbody></table>
+    ${modal(`<h4>Asignar operador · Kit 1310</h4><label>Operador CDA</label><div class="campo corregido">Andrés L. · C.I. 1000000031 ▾</div>
+      <div class="nota" style="font-size:12px">Cada kit trae su <b>QR</b> (botón "PDF QR" para imprimir las etiquetas). El operador ve su kit en la app al momento.</div>
+      ${acciones('Guardar')}`)}`,
+  asignaciones: () => `<h2>Asignación operador ↔ técnico supervisor</h2>
+    <div class="filtros">Evento electoral <span class="select" style="min-width:260px">Elecciones Demo 2027 (✓ Activo)</span><span class="boton sec">↓ Plantilla</span><span class="boton sec">↑ Importar</span></div>
+    <table><thead><tr><th>Operador CDA</th><th>Cédula</th><th>Técnico supervisor asignado</th></tr></thead><tbody>
+      ${[['Ana Torres', '1000000011', 'Jorge Vaca'], ['María Pérez', '1000000013', 'Jorge Vaca'], ['Andrés L.', '1000000031', 'Rosa G.'], ['Paola S.', '1000000032', '']].map(([o, c, s]) => `<tr class="${s ? '' : 'resalta'}"><td>${o}</td><td class="mono">${c}</td><td><span class="select ${s ? '' : 'on'}" style="min-width:220px;${s ? 'background:var(--ok-bg);color:var(--ok-tx)' : ''}">${s || '— Sin asignar —'}</span></td></tr>`).join('')}
+    </tbody></table>
+    <div class="nota">Cada técnico supervisor sigue en el mapa y en las alertas a <b>sus</b> operadores. Los cambios se guardan solos.</div>`,
+  monInicio: () => monitoreo({ dpi: TOTAL }, { kit: DPI, filaKit: chipEstado.dpi, estados: ['dpi', 'dpi', 'dpi', 'dpi', 'dpi', 'dpi'] }),
+  monSalida: () => monitoreo({ dpi: 40, transito: 15 }, { kit: [390, 175], filaKit: chipEstado.transito, estados: ['transito', 'dpi', 'dpi', 'transito', 'dpi', 'dpi'] }),
+  monTransito: () => monitoreo({ dpi: 20, transito: 30, recinto: 5 }, { kit: [290, 230], filaKit: chipEstado.transito }),
+  monLlegada: () => monitoreo({ dpi: 6, transito: 20, recinto: 29 }, { kit: OTAVALO, filaKit: chipEstado.recinto, extra: `<circle cx="${OTAVALO[0]}" cy="${OTAVALO[1]}" r="40" fill="rgba(34,197,94,.12)" stroke="#22c55e" stroke-width="2" stroke-dasharray="5 4"/>` }),
+  monRetorno: () => monitoreo({ recinto: 6, retorno: 20, llego: 29 }, { kit: [400, 165], filaKit: chipEstado.retorno, estados: ['llego', 'retorno', 'llego', 'recinto', 'retorno', 'llego'] }),
+  monTodos: () => monitoreo({ dpi: 3, transito: 22, recinto: 30 }, { filaKit: chipEstado.transito }),
+  monCanton: () => monitoreo({ dpi: 3, transito: 22, recinto: 30 }, { filaKit: chipEstado.transito, canton: 'Otavalo' }),
+  actasWeb: () => `<h2>Monitoreo · Actas de los CDA</h2>${barraEstados({ transito: 2, recinto: 53 })}<table><thead><tr><th>CDA</th><th>Estado</th><th>Acta de instalación</th><th>Acta de escrutinio</th></tr></thead><tbody>
+      <tr class="resalta"><td><b>${KIT.codigo}</b> ${KIT.recinto}</td><td>${chipEstado.recinto}</td><td><span class="chip ok">📷 Ver foto</span></td><td><span class="chip ok">📷 Ver foto</span></td></tr>
+      <tr><td>989 UE L. U. de la Torre</td><td>${chipEstado.recinto}</td><td><span class="chip ok">📷 Ver foto</span></td><td><span class="chip gris">Pendiente</span></td></tr>
+      <tr><td>2066 UE Florencio Leary</td><td>${chipEstado.recinto}</td><td><span class="chip ok">📷 Ver foto</span></td><td><span class="chip gris">Pendiente</span></td></tr></tbody></table>
+      <div class="nota">La app <b>no deja salir del recinto</b> sin las dos fotos. Si no hay señal, se guardan en el celular y se envían después.</div>`,
+  alertas: () => `<h2>Alertas</h2><div class="kpis">${kpi('Abiertas', '2', '#dc2626')}${kpi('No llegó al recinto', '1')}${kpi('Sin sincronizar', '1')}${kpi('Resueltas hoy', '4', '#059669')}</div>
+      <div class="tarjeta alerta-w"><div class="fila"><b>Kit 1310 · UE Pimampiro</b><span class="chip err">No llegó al recinto</span></div><span style="color:var(--muted)">Salió 07:20 · debía llegar 09:30 · Operador Andrés L. · 📞 llamar</span></div>
+      <div class="tarjeta" style="border-left:5px solid #d97706"><div class="fila"><b>Kit 1452 · UE Cotacachi</b><span class="chip warn">Sin sincronizar</span></div><span style="color:var(--muted)">25 min sin enviar ubicación</span></div>
+      <div class="nota">Los tiempos de cada alerta se configuran por evento en <b>Eventos Electorales</b>.</div>`,
+  acta: () => `<div class="fila"><h2>Acta de cadena de custodia · Kit ${KIT.codigo}</h2><span class="boton">↓ PDF</span></div>
+    <div class="acta">
+      <h5>CONSEJO NACIONAL ELECTORAL · DELEGACIÓN DE IMBABURA<br>ACTA DE CADENA DE CUSTODIA DEL KIT ${KIT.codigo}</h5>
+      <div>Recinto: <b>${KIT.codigo} — ${KIT.recinto}</b> · Cantón ${KIT.canton} · Evento: Elecciones Demo 2027</div>
+      <div class="sec"><i>1</i><div><b>Entrega al militar</b> — ${KIT.asistente} (AET) entregó a ${KIT.militar}</div><span>06:05</span></div>
+      <div class="sec"><i>2</i><div><b>Recepción del CDA</b> — ${KIT.militar} entregó a ${KIT.operador} · 📷 foto adjunta</div><span>07:35</span></div>
+      <div class="sec"><i>3</i><div><b>Devolución al DPEI</b> — ${KIT.operador} devolvió a ${KIT.asistente} · impresora sin cable de poder</div><span>20:50</span></div>
+      <div style="color:var(--muted)">Generada automáticamente con los registros de la app (hora, nombre, cédula y GPS).</div>
+    </div>
+    ${tiraHojas(3)}
+    <div class="nota ok">✓ Las <b>3 hojas por kit</b> se convirtieron en <b>1 acta</b> que se genera sola. Se descarga una por kit o todas juntas, filtrando por cantón o recinto.</div>`,
+  enlaces1: () => enlaces(['1221']),
+  enlacesZona: () => enlaces(['1221', 'zona']),
+  frecuencia: () => `${enlaces([])}<div class="tarjeta"><b>Frecuencia de avisos en Telegram</b><div class="filtros" style="margin-top:6px">Primer aviso a los <span class="select on" style="min-width:90px">10 min</span> de caído · repetir cada <span class="select" style="min-width:90px">10 min</span><span class="chip warn">Día de votaciones</span></div><small style="color:var(--muted)">Un día normal: 2 h. El día de votaciones se baja a 10 min desde aquí, sin tocar código.</small></div>`,
+  cierre: () => `<div class="fila"><h2>Cierre de jornada</h2><span class="chip ok">● En vivo</span></div>
+      <div class="kpis">${kpi('Kits de vuelta', '39 / 55', '#059669')}${kpi('En retorno', '10', '#2563eb')}${kpi('Aún en recinto', '6', '#d97706')}${kpi('Con novedad', '2', '#dc2626')}</div>
+      ${barraEstados({ recinto: 6, retorno: 10, llego: 39 })}<div class="dos-col">${mapa({ recinto: 6, retorno: 10, llego: 39 })}
+      <div class="tarjeta"><b>Antes → Ahora</b>
+        <div class="check-li"><i>✓</i>165 hojas → 1 acta PDF automática por kit</div>
+        <div class="check-li"><i>✓</i>Llamadas → mapa en vivo por cantón</div>
+        <div class="check-li"><i>✓</i>"¿Hay internet?" → aviso del bot</div>
+        <div class="check-li"><i>✓</i>Conteo a mano → contador del AET</div></div></div>`,
+};
+
+/* ---------- Telegram ---------- */
+const tgMsg = (html, h, yo = false) => `<div class="tg-b ${yo ? 'yo' : ''}">${yo ? '<span class="quien">Técnico</span>' : ''}${html}<span class="h">${h}</span></div>`;
+const TECLADO = ['🔴 Caídos', '🔍 Ingresar código', '📊 Estadísticas', '👷 Asignaciones CDA', '💬 Preguntar'];
+const TG = {
+  hola: tgMsg('👋 Hola, soy el bot de enlaces. Reviso el internet de los <b>55 recintos CDA</b> cada 5 minutos y aviso aquí si algo se cae.', '07:00'),
+  caida: tgMsg(`<b>🚨 Enlaces caídos hace 10 min o más (1)</b><br><br>🔴 <b>1221 · ${KIT.recinto}</b> · 12 min<br>Otavalo · Jordán · Técnico: ${KIT.tecnico}<br>👤 Encargado del recinto: Lic. Rosa M. · 📞 llamar`, '09:27'),
+  zona: tgMsg('<b>🚨 Enlaces caídos hace 10 min o más (4)</b><br><br><b>📍 Posible corte de zona: San Pablo · 3 recintos</b><br>🔴 1240 · UE San Pablo<br>🔴 1241 · UE Cusín<br>🔴 1243 · UE Gualabí ⚠️ inestable<br><br>🔴 1221 · UE Otavalo · 35 min', '09:50'),
+  pideAsig: tgMsg('👷 Asignaciones CDA', '10:00', true),
+  asig: tgMsg(`<b>👷 Recintos CDA por técnico</b><br><b>1. ${KIT.tecnico} (11)</b><br>🔴 1221 · UE Otavalo<br>🔴 1240 · UE San Pablo<br>✅ 989 · UE L. U. de la Torre …<br><b>2. Rosa G. (9)</b> …`, '10:00'),
+  pideCod: tgMsg('1286', '10:02', true),
+  cod: tgMsg('<b>1286 · UE 17 de Julio</b><br>Ibarra · San Francisco · Técnico: Jorge Vaca<br>Enlace: ✅ en línea · sin caídas hoy', '10:02'),
+  pideEst: tgMsg('📊 Estadísticas', '10:05', true),
+  est: tgMsg('<b>📊 Enlaces CDA · esta semana</b><br>Disponibilidad: <b>99,2 %</b><br>Caídas: 7 · más caído: 1243 (3)<div class="tg-inline"><span>Hoy</span><span class="on">• Semana •</span><span>Mes</span></div>', '10:05'),
+  pregunta: tgMsg('💬 ¿Cuánto tiempo estuvo caído el 1221 hoy?', '10:20', true),
+  respuesta: tgMsg('El <b>1221 · UE Otavalo</b> (Otavalo, técnico Jorge Vaca) estuvo caído <b>57 min</b> hoy: de 09:15 a 10:12. Ya está en línea.', '10:20'),
+  recuperado: tgMsg('✅ <b>Enlaces recuperados (1)</b><br>1221 · UE Otavalo · <b>volvió tras 57 min</b>', '10:12'),
+  resumen: tgMsg('<b>📊 Enlaces CDA · Resumen diario</b> (ayer)<br><br>✅ <b>52 de 55</b> recintos sin caídas (95 %)<br>🔴 3 caídas · 1 h 54 min en total<br>⚠️ Inestable: 1243 (3 caídas en 24 h)', '08:00'),
+};
+
+/* ---------- Capítulos y guion ---------- */
+const CAPS = ['Antes y ahora', 'Preparación', 'Entrega al militar', 'Recorrido del CDA', 'Devolución y acta', 'Monitoreo por cantón', 'Bot de Telegram', 'Cierre'];
+const W = { admin: '· administrador', sup: '· técnico supervisor', aet: '· asistente transversal (AET)' };
+const M = { cda: '· Operador CDA', aet: '· Asistente (AET)', sup: '· Técnico supervisor', todos: '· todos los roles' };
+const URL_WEB = 'cne-dpei-web.vercel.app';
+/* foco: paneles que importan en el paso (los demás se atenúan). tg: mensajes visibles; si falta, se conservan los del paso anterior. */
+const PASOS = [
+  // 1. Antes y ahora
+  { cap: 0, t: 'Antes: 3 hojas impresas por cada kit', d: 'Por cada kit se imprimía una hoja cuando el AET lo entregaba al militar, otra cuando el militar lo entregaba al operador CDA y otra cuando el CDA lo devolvía al AET: 165 hojas por jornada, y ninguna decía dónde estaba el kit en ese momento.',
+    rolM: M.todos, rolW: '· cómo se trabajaba', movil: 'portada', menu: '', url: 'antes: papel, firmas y llamadas', web: 'antes', tg: [], foco: ['web'] },
+  { cap: 0, t: 'Ahora: una app, un panel web y un bot', d: 'Cada persona usa solo la pieza que le toca. Lo que se marca en la app aparece en la web en segundos, y el bot de Telegram vigila el internet de los recintos sin que nadie tenga que llamar.',
+    rolM: M.todos, rolW: W.admin, movil: 'portada', menu: '', url: URL_WEB, web: 'piezas', tg: ['hola'], foco: ['movil', 'web', 'tg'] },
+  { cap: 0, t: 'Palabras que verá en esta demo', d: 'Si es la primera vez que ve el proyecto, estas ocho palabras bastan para seguir la historia del kit 1221, que sale de la Delegación hacia el recinto UE Otavalo y regresa.',
+    rolM: M.todos, rolW: W.admin, movil: 'portada', menu: '', url: URL_WEB, web: 'glosario', foco: ['web'] },
+  // 2. Preparación
+  { cap: 1, t: 'Se cargan los operadores CDA desde un Excel', d: 'El administrador descarga la plantilla, la llena con los 55 operadores y la sube. El sistema crea los que están bien y señala la fila exacta que tiene un error (aquí, una cédula incompleta).',
+    rolM: M.cda, rolW: W.admin, movil: 'login', menu: 'Usuarios', url: URL_WEB + '/users/upload', web: 'usuariosCarga', foco: ['web'] },
+  { cap: 1, t: 'Si hay un error, se corrige desde la web', d: 'La fila que falló se crea con "+ Nuevo usuario" ya corregida. Y si un dato de alguien ya creado está mal (aquí, un correo incompleto), se abre "Editar", se corrige y se guarda.',
+    rolM: M.cda, rolW: W.admin, movil: 'login', menu: 'Usuarios', url: URL_WEB + '/users', web: 'usuariosEditar', foco: ['web'] },
+  { cap: 1, t: 'Se les da el rol: Operador CDA', d: 'Se marcan varios usuarios a la vez y se les asigna el rol. El rol decide qué ve cada uno en la app. La primera vez que entran, la app les obliga a crear su propia contraseña.',
+    rolM: M.cda, rolW: W.admin, movil: 'cambioPwd', menu: 'Usuarios', url: URL_WEB + '/users', web: 'usuariosRoles', foco: ['web', 'movil'] },
+  { cap: 1, t: 'Se cargan los militares, cada uno con su recinto', d: 'Mismo método: plantilla de Excel con cédula, nombres y código del recinto. Si el código no existe o la cédula está repetida, esa fila se reporta y las demás se cargan igual.',
+    rolM: M.aet, rolW: W.admin, movil: 'login', menu: 'Militares', url: URL_WEB + '/militares/upload', web: 'militaresCarga', foco: ['web'] },
+  { cap: 1, t: 'Editar un militar: buscar y elegir el recinto correcto', d: 'El Sgto. Ruiz quedó en un recinto equivocado. Se abre "Editar", se escribe parte del nombre o el código del recinto y se elige de la lista. El cambio aparece al instante en la app del asistente transversal.',
+    rolM: M.aet, rolW: W.admin, movil: 'aetMilitares', menu: 'Militares', url: URL_WEB + '/militares', web: 'militaresEditar', foco: ['web', 'movil'] },
+  { cap: 1, t: 'Cada kit tiene su QR y su operador', d: 'Los kits también se pueden importar desde Excel. Se imprimen las etiquetas QR y a cada kit se le asigna su operador CDA. En ese momento el operador ya ve "Mi asignación" en su celular.',
+    rolM: M.cda, rolW: W.admin, movil: 'cdaAsignado', menu: 'Kits Electorales', url: URL_WEB + '/kits', web: 'kits', foco: ['web', 'movil'] },
+  { cap: 1, t: 'Cada operador tiene un técnico supervisor', d: 'Para cada evento se elige qué técnico supervisa a cada operador (uno por uno o con Excel). Así cada técnico sigue a su grupo y recibe sus alertas.',
+    rolM: M.cda, rolW: W.admin, movil: 'cdaAsignado', menu: 'Asignaciones', url: URL_WEB + '/asignaciones', web: 'asignaciones', foco: ['web'] },
+  // 3. Entrega al militar
+  { cap: 2, t: 'El asistente transversal (AET) abre su app', d: 'Tiene tres pestañas, en el orden de la jornada: entregar a militar (mañana), verificar retorno (noche) y verificados. Arriba ve un contador de cuántos kits lleva entregados.',
+    rolM: M.aet, rolW: W.aet, movil: 'aetInicio', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: () => custodia(0, [0, 0, 0]), foco: ['movil'] },
+  { cap: 2, t: 'Escanea el QR del kit y elige al militar', d: 'La app propone a los militares de ese recinto; si llega otro, lo busca por cédula. Un toque y queda registrado quién, a quién y a qué hora. En la web, la columna 1 del kit 1221 se pone en verde: la hoja 1 ya no se imprime.',
+    rolM: M.aet, rolW: W.aet, movil: 'aetEntrega', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: () => custodia(1, [1, 0, 0]), foco: ['movil', 'web'] },
+  { cap: 2, t: 'El contador avanza y los errores se corrigen con motivo', d: 'El contador va en 38 de 55. Si se registró al militar equivocado, el AET toca "Cambiar militar" y escribe el motivo: el cambio queda en el historial y la web muestra "1 corrección".',
+    rolM: M.aet, rolW: W.aet, movil: 'aetCorregir', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: () => custodia(1, [38, 0, 0], { correccion: true }), foco: ['movil', 'web'] },
+  // 4. Recorrido del CDA
+  { cap: 3, t: 'El operador CDA entra y ve su tarea', d: 'Con su cédula y contraseña. La app le muestra su kit, su recinto, su técnico y lo que lleva, y funciona aunque no tenga señal. En el mapa de la web todos los CDA siguen en el DPEI (gris).',
+    rolM: M.cda, rolW: W.sup, movil: 'cdaAsignado', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monInicio', foco: ['movil', 'web'] },
+  { cap: 3, t: 'Sale de la Delegación: queda la hora y el lugar', d: 'Un toque en "Registrar salida del DPEI". En la web el kit pasa a "En tránsito" (morado) y empieza a moverse en el mapa.',
+    rolM: M.cda, rolW: W.sup, movil: 'salida', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monSalida', foco: ['movil', 'web'] },
+  { cap: 3, t: 'En camino: se le sigue en vivo', d: 'La app envía la ubicación cada minuto. El supervisor ve por dónde va cada kit sin tener que llamar a nadie. Cerca del recinto, el celular suena para avisarle.',
+    rolM: M.cda, rolW: W.sup, movil: 'transito', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monTransito', foco: ['movil', 'web'] },
+  { cap: 3, t: 'Llega al recinto: la app comprueba que de verdad está ahí', d: 'Solo deja registrar la llegada si el celular está dentro del círculo del recinto (geocerca). En la web el kit pasa a "En el recinto" (naranja).',
+    rolM: M.cda, rolW: W.sup, movil: 'llegada', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monLlegada', foco: ['movil', 'web'] },
+  { cap: 3, t: 'Recibe el kit del militar, con foto', d: 'El operador se toma una foto con el militar y el kit y confirma que el contenido está completo. En la web se marca la columna 2: la hoja 2 tampoco se imprime.',
+    rolM: M.cda, rolW: W.admin, movil: 'recepcion', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: () => custodia(2, [55, 41, 0]), foco: ['movil', 'web'] },
+  { cap: 3, t: 'Fotos de las actas de instalación y escrutinio', d: 'Antes de salir del recinto debe subir las dos fotos; sin ellas la app no deja registrar la salida. En la web se ven al instante.',
+    rolM: M.cda, rolW: W.sup, movil: 'actas', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'actasWeb', foco: ['movil', 'web'] },
+  { cap: 3, t: 'Retorno al DPEI: también se rastrea', d: 'Al salir del recinto pasa a "En retorno" (azul) y se le sigue igual que a la ida. Al llegar, la app comprueba que está dentro del DPEI y en la web el kit queda en verde: "Llegó al DPEI".',
+    rolM: M.cda, rolW: W.sup, movil: 'retorno', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monRetorno', foco: ['movil', 'web'] },
+  // 5. Devolución y acta
+  { cap: 4, t: 'El AET recibe el kit y revisa que vuelva completo', d: 'Escanea el QR, marca cada artículo y escribe si falta algo (aquí, el cable de la impresora). En la web se cierra la columna 3: la tercera hoja tampoco se imprime.',
+    rolM: M.aet, rolW: W.aet, movil: 'aetVerificar', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: () => custodia(3, [55, 55, 39]), foco: ['movil', 'web'] },
+  { cap: 4, t: 'Contador de devueltos y un acta que se genera sola', d: 'El AET ve cuántos kits recibió de vuelta (39 de 55) y cuáles traen novedad. Las 3 hojas de antes ahora son 1 acta PDF por kit, con horas, nombres y foto, que se descarga solo si se necesita.',
+    rolM: M.aet, rolW: W.aet, movil: 'aetVerificados', menu: 'Cadena de custodia', url: URL_WEB + '/reportes/cadena-custodia', web: 'acta', foco: ['movil', 'web'] },
+  // 6. Monitoreo por cantón
+  { cap: 5, t: 'Ver toda la provincia a la vez', d: 'Con "Todos los cantones" el mapa de la web muestra los 55 CDA y la barra de colores dice cuántos hay en cada estado. En la app, el técnico supervisor ve en su mapa a los operadores que están en ruta.',
+    rolM: M.sup, rolW: W.sup, movil: 'supMonitoreo', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monTodos', foco: ['web', 'movil'] },
+  { cap: 5, t: 'O filtrar un solo cantón', d: 'Al elegir "Otavalo", el mapa deja solo los CDA de ese cantón, y los totales y la tabla se recalculan. Así cada técnico puede concentrarse en su zona.',
+    rolM: M.sup, rolW: W.sup, movil: 'supMonitoreo', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'monCanton', foco: ['web'] },
+  { cap: 5, t: 'Cuando algo sale mal, el sistema avisa solo', d: 'Si un kit no llega a tiempo o un celular deja de enviar su ubicación, aparece una alerta en la web y una notificación en el celular del supervisor.',
+    rolM: M.sup, rolW: W.sup, movil: 'supAlertas', menu: 'Alertas', url: URL_WEB + '/alertas', web: 'alertas', foco: ['web', 'movil'] },
+  // 7. Bot de Telegram
+  { cap: 6, t: 'Se cae el internet de un recinto: el bot avisa', d: 'Cada 5 minutos se revisa el enlace de los 55 recintos. Si uno sigue caído, el bot lo publica en el grupo con su cantón, parroquia, técnico y el encargado a quien llamar.',
+    rolM: M.sup, rolW: W.admin, movil: 'supAlertas', menu: 'Enlaces', url: URL_WEB + '/enlaces', web: 'enlaces1', tg: ['hola', 'caida'], foco: ['tg', 'web'] },
+  { cap: 6, t: 'Si caen varios de la misma zona, los agrupa', d: 'Tres recintos de San Pablo que caen casi a la vez probablemente son un corte de luz o de fibra del sector: el bot lo dice en un solo mensaje y marca los recintos inestables.',
+    rolM: M.sup, rolW: W.admin, movil: 'supAlertas', menu: 'Enlaces', url: URL_WEB + '/enlaces', web: 'enlacesZona', tg: ['caida', 'zona'], foco: ['tg', 'web'] },
+  { cap: 6, t: 'Botones: asignaciones por técnico y buscar un recinto', d: '"Asignaciones CDA" lista los recintos de cada técnico con su estado. Si se escribe un código de recinto, el bot responde con su cantón, su técnico y el estado del enlace.',
+    rolM: M.sup, rolW: W.admin, movil: 'supAlertas', menu: 'Enlaces', url: URL_WEB + '/enlaces', web: 'enlacesZona', tg: ['pideAsig', 'asig', 'pideCod', 'cod'], teclado: [1, 3], foco: ['tg'] },
+  { cap: 6, t: 'Estadísticas y preguntas en lenguaje normal', d: '"Estadísticas" da la disponibilidad del día, la semana o el mes. Con "Preguntar", el técnico escribe como hablaría y el asistente responde con los datos reales.',
+    rolM: M.sup, rolW: W.admin, movil: 'supAlertas', menu: 'Enlaces', url: URL_WEB + '/enlaces', web: 'enlacesZona', tg: ['pideEst', 'est', 'pregunta', 'respuesta'], teclado: [2, 4], foco: ['tg'] },
+  { cap: 6, t: 'Avisa cuando vuelve y manda un resumen cada mañana', d: 'Cuando un enlace se recupera, el bot dice cuánto estuvo caído, y cada mañana envía el resumen del día anterior. Desde la web se ajusta cada cuánto avisa (más seguido el día de votaciones).',
+    rolM: M.sup, rolW: W.admin, movil: 'supAlertas', menu: 'Enlaces', url: URL_WEB + '/enlaces', web: 'frecuencia', tg: ['recuperado', 'resumen'], foco: ['tg', 'web'] },
+  // 8. Cierre
+  { cap: 7, t: 'Al final, de un vistazo: cómo terminó la provincia', d: 'Cuántos kits volvieron, cuáles faltan y con qué novedades. Lo que antes era papel, llamadas y conteo a mano ahora queda registrado, con hora, nombre y prueba.',
+    rolM: M.cda, rolW: W.sup, movil: 'fin', menu: 'Monitoreo', url: URL_WEB + '/operadores', web: 'cierre', tg: ['resumen'], foco: ['web', 'movil', 'tg'] },
+];
+
+/* ---------- Motor ---------- */
+const $ = (id) => document.getElementById(id);
+const PANELES = ['movil', 'web', 'tg'];
+let paso = 0;
+let anterior = null;
+function tgDe(i) { while (i > 0 && !PASOS[i].tg) i--; return PASOS[i].tg || []; }
+const htmlWeb = (p) => (typeof p.web === 'function' ? p.web() : WEB[p.web]());
+
+$('capitulos').innerHTML = CAPS.map((c, i) => `<button data-cap="${i}"><b>${i + 1}</b><span>${c}</span></button>`).join('');
+$('capitulos').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) irA(PASOS.findIndex((p) => p.cap === Number(b.dataset.cap)));
+});
+
+function render(dir = 1) {
+  const p = PASOS[paso];
+  const delCap = PASOS.map((x, i) => (x.cap === p.cap ? i : -1)).filter((i) => i >= 0);
+  $('paso-n').textContent = `Capítulo ${p.cap + 1} · ${CAPS[p.cap]} · paso ${delCap.indexOf(paso) + 1} de ${delCap.length} · (${paso + 1} de ${PASOS.length})`;
+  $('paso-t').textContent = p.t;
+  $('paso-d').textContent = p.d;
+  $('puntos').innerHTML = delCap.map((i) => `<span class="${i <= paso ? 'on' : ''}"></span>`).join('');
+  document.querySelectorAll('#capitulos button').forEach((b) => {
+    const c = Number(b.dataset.cap);
+    if (c === p.cap) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+    b.classList.toggle('hecho', c < p.cap);
+  });
+
+  const msgs = tgDe(paso).map((k) => TG[k]);
+  const nuevo = {
+    movil: MOVIL[p.movil](),
+    web: htmlWeb(p),
+    tg: msgs.length ? msgs.join('') : '<div class="tg-vacio">Antes: para saber si un recinto tenía internet había que llamar al encargado.<br><br>Aquí aparecerán los avisos del bot.</div>',
+  };
+  $('rol-movil').textContent = p.rolM;
+  $('rol-web').textContent = p.rolW;
+  // Solo se reescribe lo que cambió: evita que el lector de pantalla relea el chat
+  // y que se repitan las animaciones de entrada.
+  PANELES.forEach((k) => { if (!anterior || anterior[k] !== nuevo[k]) $(k).innerHTML = nuevo[k]; });
+  $('url').textContent = p.url;
+  $('menu').innerHTML = MENU.map((m) => `<a class="${m === p.menu ? 'activo' : ''}">${m}</a>`).join('');
+  $('tg-teclado').innerHTML = TECLADO.map((t, i) => `<div class="${(p.teclado || []).includes(i) ? 'on' : ''}">${t}</div>`).join('');
+
+  // Atenúa lo que no importa en este paso y resalta los paneles que cambiaron.
+  const foco = p.foco || PANELES;
+  PANELES.forEach((k) => {
+    const enFoco = foco.includes(k);
+    $('p-' + k).classList.toggle('foco', enFoco && foco.length < PANELES.length);
+    $('p-' + k).classList.toggle('apagado', !enFoco);
+    const m = $('m-' + k); m.classList.remove('cambio');
+    if (dir !== 0 && enFoco && anterior && anterior[k] !== nuevo[k]) { void m.offsetWidth; m.classList.add('cambio'); }
+  });
+  anterior = nuevo;
+
+  // aria-disabled en vez de disabled: el botón conserva el foco del teclado en los extremos.
+  const ultimo = paso === PASOS.length - 1;
+  $('ant').setAttribute('aria-disabled', String(paso === 0));
+  $('sig').setAttribute('aria-disabled', String(ultimo));
+  $('sig').textContent = ultimo ? 'Fin ✓' : 'Siguiente ▶';
+  $('sig').setAttribute('aria-label', ultimo ? 'Fin de la demo' : 'Paso siguiente');
+  $('barra').style.width = ((paso + 1) / PASOS.length) * 100 + '%';
+  try { localStorage.setItem('demo-paso-v2', paso); } catch {}
+  try { history.replaceState(null, '', '#' + (paso + 1)); } catch {}
+}
+function irA(n) {
+  n = Math.min(PASOS.length - 1, Math.max(0, n));
+  if (n !== paso) { const d = n - paso; paso = n; render(d); }
+}
+const ir = (d) => irA(paso + d);
+$('sig').onclick = () => ir(1);
+$('ant').onclick = () => ir(-1);
+$('pc').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Alt/Cmd + tecla son atajos del navegador (buscar, atrás, pestañas).
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  // Espacio/Enter sobre un botón lo activa; no debe además avanzar de paso.
+  if (e.target.tagName === 'BUTTON' && [' ', 'Enter'].includes(e.key)) return;
+  if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); ir(1); }
+  else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); ir(-1); }
+  else if (e.key === 'Home') irA(0);
+  else if (e.key === 'End') irA(PASOS.length - 1);
+  else if (/^[1-8]$/.test(e.key)) irA(PASOS.findIndex((p) => p.cap === Number(e.key) - 1));
+  else if (e.key.toLowerCase() === 'f') $('pc').click();
+  else if (e.key.toLowerCase() === 'g') document.body.classList.toggle('sin-guia');
+});
+function escalar() {
+  const s = Math.min(innerWidth / 1600, innerHeight / 900);
+  $('escenario').style.transform = `scale(${s}) translate(-50%, -50%)`;
+}
+addEventListener('resize', escalar);
+escalar();
+// "#5" en la URL abre directamente ese paso; si no, se retoma donde se quedó.
+const enUrl = parseInt(location.hash.slice(1), 10) - 1;
+if (enUrl >= 0 && enUrl < PASOS.length) paso = enUrl;
+else try { const g = parseInt(localStorage.getItem('demo-paso-v2'), 10); if (g >= 0 && g < PASOS.length) paso = g; } catch {}
+render(0);
+</script>
+</body>
+</html>
