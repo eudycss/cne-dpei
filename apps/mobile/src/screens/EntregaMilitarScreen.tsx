@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import type { KitCustodiaResponse, MilitarResumen, OperadorResumen, ResumenCustodia } from '@cne/shared-types';
+import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
@@ -57,6 +58,7 @@ function hora(iso: string): string {
 export function EntregaMilitarScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const cerrarSesion = useCerrarSesion();
   const [kit, setKit] = useState<KitCustodiaResponse | null>(null);
   const [modo, setModo] = useState<Modo>('NINGUNO');
   const [seleccion, setSeleccion] = useState<OpcionPersona | null>(null);
@@ -283,6 +285,11 @@ export function EntregaMilitarScreen() {
             ) : null}
           </View>
         ) : null}
+
+        {/* Primera pestaña del asistente: como en Monitoreo del supervisor, aquí vive "Cerrar sesión". */}
+        <Pressable style={styles.logoutLink} onPress={cerrarSesion} accessibilityRole="button">
+          <Text style={styles.logoutLinkText}>Cerrar sesión</Text>
+        </Pressable>
       </ScrollView>
     </View>
   );
@@ -291,6 +298,8 @@ export function EntregaMilitarScreen() {
 const makeStyles = (c: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bgPage },
   body: { padding: 20, paddingBottom: 40 },
+  logoutLink: { marginTop: 24, minHeight: 44, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  logoutLinkText: { color: c.textMeta, fontFamily: fontFamily.medium, fontSize: 13 },
   title: { fontSize: 22, fontFamily: fontFamily.bold, color: c.textPrimary },
   subtitle: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textMeta, marginTop: 8, marginBottom: 20, lineHeight: 20 },
   card: { backgroundColor: c.bgCard, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: c.border },

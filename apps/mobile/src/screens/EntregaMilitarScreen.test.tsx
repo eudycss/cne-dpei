@@ -18,6 +18,8 @@ jest.mock('../theme/ThemeContext', () => ({
 }));
 jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 jest.mock('../components/CameraQr', () => ({ CameraQr: () => null }));
+const mockCerrarSesion = jest.fn();
+jest.mock('../auth/useCerrarSesion', () => ({ useCerrarSesion: () => mockCerrarSesion }));
 
 import { EntregaMilitarScreen } from './EntregaMilitarScreen';
 import {
@@ -92,6 +94,13 @@ async function escanear(r: ReactTestRenderer, codigo = 'ABCD2345') {
 
 describe('EntregaMilitarScreen', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it('el asistente puede cerrar sesión desde su pantalla principal', async () => {
+    const r = await render();
+    // boton() solo encuentra Pressables con rol "button" y ese texto visible.
+    await act(async () => boton(r, 'Cerrar sesión').props.onPress());
+    expect(mockCerrarSesion).toHaveBeenCalledTimes(1);
+  });
 
   it('muestra cuántos kits del evento ya se entregaron y lo actualiza tras cada entrega', async () => {
     (getResumenCustodia as jest.Mock)
