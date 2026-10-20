@@ -73,7 +73,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Necesitamos acceso a tus fotos para subir los reportes de instalación y escrutinio desde la galería.",
-          "cameraPermission": false,
+          "cameraPermission": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales.",
           "microphonePermission": false
         }
       ],
