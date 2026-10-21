@@ -73,6 +73,20 @@ Además, si existe `apps/mobile/.env.development.local` en tu máquina, Expo lo 
 
 `apps/mobile/android/` es output regenerado por `expo prebuild` y está en `.gitignore` — nunca edites archivos ahí a mano de forma permanente, se pierden en el siguiente `--clean`.
 
+### Checklist antes de repartir un APK
+
+Las APK del 16 y 19-oct salieron sin permiso de cámara (`expo-image-picker` con `cameraPermission: false` lo quitaba del manifiesto) y ninguna prueba lo detectó. Antes de entregar un APK a operadores:
+
+1. **Compilar desde `probarweb` actualizado**, no desde una rama o worktree con cambios sin mergear.
+2. **Permisos del APK** (`aapt` viene con el Android SDK, en `build-tools/<versión>/`):
+   ```bash
+   aapt dump permissions android/app/build/outputs/apk/release/app-release.apk | grep -E "CAMERA|LOCATION"
+   ```
+   Deben aparecer `CAMERA`, `ACCESS_FINE_LOCATION` y `ACCESS_BACKGROUND_LOCATION`. El CI también revisa el manifiesto generado en cada PR (job `test-mobile`).
+3. **URL de la API**: paso 3 de la sección anterior (debe ser Render, no una IP local).
+4. **Prueba en un celular real**, no solo en el emulador: login → salida del DPI → foto del militar (debe aparecer el diálogo de permiso de cámara) → kit → actas → salida del recinto → llegada al DPI.
+5. **Retirar los APK anteriores** de donde se compartan, para que nadie instale uno viejo.
+
 ## Actualizaciones OTA (EAS Update)
 
 `app.json` ya tiene configurado `expo-updates` para poder publicar cambios de **solo JS/assets** sin que los operadores tengan que instalar un APK nuevo (`runtimeVersion` con policy `appVersion` + `updates.url` apuntando al proyecto EAS + canal `production` embebido vía `updates.requestHeaders`). Esto se leyó directamente del código del config plugin instalado (`@expo/config-plugins`, `utils/Updates.js`), no es un flujo estándar de `eas build` — funciona igual con el build local (`expo prebuild` + `gradlew`) que ya usa este proyecto.

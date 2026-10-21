@@ -21,3 +21,36 @@ jobs:
       - run: pnpm --filter @cne/shared-types build
       - run: pnpm --filter @cne/shared-validation build
       - run: pnpm --filter @cne/api test
+  test-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install
+      - run: pnpm --filter @cne/shared-types build
+      - run: pnpm --filter @cne/shared-validation build
+      - run: pnpm --filter @cne/mobile test
+
+      # Un plugin mal configurado puede quitar un permiso del manifiesto aunque app.json
+      # lo pida (expo-image-picker con cameraPermission: false dejó las APK del 16 y
+      # 19-oct sin cámara). Se revisa el AndroidManifest que de verdad genera prebuild.
+      - name: Permisos del AndroidManifest generado
+        working-directory: apps/mobile
+        run: |
+          npx expo prebuild --platform android --clean --no-install
+          manifest=android/app/src/main/AndroidManifest.xml
+          for permiso in CAMERA ACCESS_FINE_LOCATION ACCESS_BACKGROUND_LOCATION; do
+            if ! grep -q "android.permission.$permiso\"/>" "$manifest"; then
+              echo "::error file=apps/mobile/app.json::Falta android.permission.$permiso en el AndroidManifest generado (o un plugin lo bloquea con tools:node=\"remove\")"
+              grep -n "android.permission.$permiso" "$manifest" || true
+              exit 1
+            fi
+          done
+          echo "Permisos OK"
