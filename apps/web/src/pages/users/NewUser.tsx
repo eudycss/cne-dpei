@@ -61,26 +61,26 @@ export function NewUser() {
       <h2>Nuevo usuario</h2>
       <form className="card" onSubmit={onSubmit} style={{ maxWidth: 520 }}>
         <div className="field">
-          <label>Cédula (10 dígitos)</label>
-          <input value={form.cedula} onChange={update('cedula')} required />
+          <label htmlFor="nuevo-usuario-cedula">Cédula (10 dígitos)</label>
+          <input id="nuevo-usuario-cedula" value={form.cedula} onChange={update('cedula')} required />
         </div>
         <div className="field">
-          <label>Email</label>
-          <input type="email" value={form.email} onChange={update('email')} required />
+          <label htmlFor="nuevo-usuario-email">Email</label>
+          <input id="nuevo-usuario-email" type="email" value={form.email} onChange={update('email')} required />
         </div>
         <div className="field">
-          <label>Nombres</label>
-          <input value={form.nombres} onChange={update('nombres')} required />
+          <label htmlFor="nuevo-usuario-nombres">Nombres</label>
+          <input id="nuevo-usuario-nombres" value={form.nombres} onChange={update('nombres')} required />
         </div>
         <div className="field">
-          <label>Apellidos</label>
-          <input value={form.apellidos} onChange={update('apellidos')} required />
+          <label htmlFor="nuevo-usuario-apellidos">Apellidos</label>
+          <input id="nuevo-usuario-apellidos" value={form.apellidos} onChange={update('apellidos')} required />
         </div>
         <div className="field">
-          <label>Teléfono (opcional)</label>
-          <input value={form.telefono} onChange={update('telefono')} />
+          <label htmlFor="nuevo-usuario-telefono">Teléfono (opcional)</label>
+          <input id="nuevo-usuario-telefono" value={form.telefono} onChange={update('telefono')} />
         </div>
-        {error && <div className="banner error">{error}</div>}
+        {error && <div className="banner error" role="alert">{error}</div>}
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <button className="btn secondary" type="button" onClick={() => navigate('/users')}>
             Cancelar

@@ -66,38 +66,45 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
 
   return (
     <div className="center" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
-      <form className="login-card" style={{ maxWidth: 480 }} onSubmit={onSubmit}>
-        <h1>Editar usuario</h1>
+      <form
+        className="login-card"
+        style={{ maxWidth: 480 }}
+        onSubmit={onSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editar-usuario-titulo"
+      >
+        <h1 id="editar-usuario-titulo">Editar usuario</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
           Cédula: <strong>{user.cedula}</strong> (no editable)
         </p>
         <div className="field">
-          <label>Nombres</label>
-          <input value={form.nombres} onChange={update('nombres')} required />
+          <label htmlFor="editar-usuario-nombres">Nombres</label>
+          <input id="editar-usuario-nombres" value={form.nombres} onChange={update('nombres')} required />
         </div>
         <div className="field">
-          <label>Apellidos</label>
-          <input value={form.apellidos} onChange={update('apellidos')} required />
+          <label htmlFor="editar-usuario-apellidos">Apellidos</label>
+          <input id="editar-usuario-apellidos" value={form.apellidos} onChange={update('apellidos')} required />
         </div>
         <div className="field">
-          <label>Email</label>
-          <input type="email" value={form.email} onChange={update('email')} required />
+          <label htmlFor="editar-usuario-email">Email</label>
+          <input id="editar-usuario-email" type="email" value={form.email} onChange={update('email')} required />
         </div>
         <div className="field">
-          <label>Teléfono (opcional)</label>
-          <input value={form.telefono} onChange={update('telefono')} />
+          <label htmlFor="editar-usuario-telefono">Teléfono (opcional)</label>
+          <input id="editar-usuario-telefono" value={form.telefono} onChange={update('telefono')} />
         </div>
         {isAdmin && (
           <div className="field">
-            <label>Rol</label>
-            <select value={rolId} onChange={(e) => setRolId(e.target.value)}>
+            <label htmlFor="editar-usuario-rol">Rol</label>
+            <select id="editar-usuario-rol" value={rolId} onChange={(e) => setRolId(e.target.value)}>
               {roles?.map((r) => (
                 <option key={r.id} value={r.id}>{r.nombre}</option>
               ))}
             </select>
           </div>
         )}
-        {error && <div className="banner error">{error}</div>}
+        {error && <div className="banner error" role="alert">{error}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn" disabled={saving}>
