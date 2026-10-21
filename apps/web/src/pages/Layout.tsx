@@ -1,27 +1,33 @@
+import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import {
-  CalendarDays,
   ChartColumn,
-  ClipboardList,
   FileChartColumn,
   LogOut,
   MapPinned,
   Moon,
   Network,
-  Package,
-  School,
-  ShieldCheck,
   Siren,
   Sun,
   TriangleAlert,
   PackageCheck,
-  Users,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
 import { esSoloAsistente, etiquetaRol } from '../lib/roles';
+import { PASOS_PREPARACION } from '../lib/flujo';
+
+/** Grupo del menú con título visible, anunciado como grupo por lectores de pantalla. */
+function SeccionMenu({ id, titulo, children }: { id: string; titulo: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-labelledby={id} className="sidebar-seccion">
+      <div id={id} className="sidebar-seccion-titulo">{titulo}</div>
+      {children}
+    </div>
+  );
+}
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -38,6 +44,7 @@ export function Layout() {
   // El asistente transversal solo usa la cadena de custodia en la web; el resto
   // de páginas consulta endpoints que no le corresponden.
   const soloAsistente = esSoloAsistente(user?.roles);
+  const puedeVerInformes = puedeVerCustodia || puedeVerReportes || !soloAsistente;
 
   return (
     <>
@@ -50,69 +57,59 @@ export function Layout() {
           <nav className="sidebar-nav" aria-label="Menú principal">
             {!soloAsistente && (
               <>
-                <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <Users size={16} aria-hidden="true" />
-                  <span>Usuarios</span>
-                </NavLink>
-                <NavLink to="/militares" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <ShieldCheck size={16} aria-hidden="true" />
-                  <span>Militares</span>
-                </NavLink>
-                <NavLink to="/recintos" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <School size={16} aria-hidden="true" />
-                  <span>Recintos Electorales</span>
-                </NavLink>
-                <NavLink to="/eventos" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <CalendarDays size={16} aria-hidden="true" />
-                  <span>Eventos Electorales</span>
-                </NavLink>
-                <NavLink to="/asignaciones" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <ClipboardList size={16} aria-hidden="true" />
-                  <span>Asignaciones</span>
-                </NavLink>
-                <NavLink to="/kits" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <Package size={16} aria-hidden="true" />
-                  <span>Kits Electorales</span>
-                </NavLink>
-                <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <MapPinned size={16} aria-hidden="true" />
-                  <span>Monitoreo</span>
-                </NavLink>
-                <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <TriangleAlert size={16} aria-hidden="true" />
-                  <span>Incidencias</span>
-                </NavLink>
-                {puedeVerAlertas && (
-                  <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-                    <Siren size={16} aria-hidden="true" />
-                    <span>Alertas</span>
+                <SeccionMenu id="menu-preparacion" titulo="Preparación">
+                  {PASOS_PREPARACION.map(({ id, ruta, etiqueta, icono: Icono }) => (
+                    <NavLink key={id} to={ruta} className={({ isActive }) => (isActive ? 'active' : '')}>
+                      <Icono size={16} aria-hidden="true" />
+                      <span>{etiqueta}</span>
+                    </NavLink>
+                  ))}
+                </SeccionMenu>
+                <SeccionMenu id="menu-operacion" titulo="Operación">
+                  <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <MapPinned size={16} aria-hidden="true" />
+                    <span>Monitoreo</span>
                   </NavLink>
-                )}
-                {puedeVerEnlaces && (
-                  <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
-                    <Network size={16} aria-hidden="true" />
-                    <span>Enlaces</span>
+                  <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <TriangleAlert size={16} aria-hidden="true" />
+                    <span>Incidencias</span>
                   </NavLink>
-                )}
+                  {puedeVerAlertas && (
+                    <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
+                      <Siren size={16} aria-hidden="true" />
+                      <span>Alertas</span>
+                    </NavLink>
+                  )}
+                  {puedeVerEnlaces && (
+                    <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
+                      <Network size={16} aria-hidden="true" />
+                      <span>Enlaces</span>
+                    </NavLink>
+                  )}
+                </SeccionMenu>
               </>
             )}
-            {puedeVerCustodia && (
-              <NavLink to="/reportes/cadena-custodia" className={({ isActive }) => (isActive ? 'active' : '')}>
-                <PackageCheck size={16} aria-hidden="true" />
-                <span>Cadena de custodia</span>
-              </NavLink>
-            )}
-            {puedeVerReportes && (
-              <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
-                <FileChartColumn size={16} aria-hidden="true" />
-                <span>Reportes</span>
-              </NavLink>
-            )}
-            {!soloAsistente && (
-              <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
-                <ChartColumn size={16} aria-hidden="true" />
-                <span>Power BI CDAS</span>
-              </NavLink>
+            {puedeVerInformes && (
+              <SeccionMenu id="menu-informes" titulo="Informes">
+                {puedeVerCustodia && (
+                  <NavLink to="/reportes/cadena-custodia" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <PackageCheck size={16} aria-hidden="true" />
+                    <span>Cadena de custodia</span>
+                  </NavLink>
+                )}
+                {puedeVerReportes && (
+                  <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <FileChartColumn size={16} aria-hidden="true" />
+                    <span>Reportes</span>
+                  </NavLink>
+                )}
+                {!soloAsistente && (
+                  <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <ChartColumn size={16} aria-hidden="true" />
+                    <span>Power BI CDAS</span>
+                  </NavLink>
+                )}
+              </SeccionMenu>
             )}
           </nav>
           <div className="me">
