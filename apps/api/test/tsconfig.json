@@ -2,6 +2,8 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    // WebAssembly (motor SQL del asistente) se tipa en lib.dom: @types/node 20 no lo declara.
+    "lib": ["ES2022", "DOM"],
     "types": ["node", "jest", "multer", "express"]
   },
   "include": ["./**/*.ts", "../src/**/*.ts"]
