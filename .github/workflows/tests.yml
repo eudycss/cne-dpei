@@ -77,6 +77,7 @@ jobs:
       - run: pnpm install
       - run: pnpm --filter @cne/shared-types build
       - run: pnpm --filter @cne/shared-validation build
+      - run: pnpm --filter @cne/shared-validation test
       - run: pnpm --filter @cne/web test
       - name: Tipos de la web
         working-directory: apps/web
