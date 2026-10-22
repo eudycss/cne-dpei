@@ -111,9 +111,9 @@ export function EstadisticasEnlaces() {
 
   return (
     <section aria-labelledby="titulo-estadisticas">
-      <h3 id="titulo-estadisticas" style={{ marginTop: 0 }}>
+      <h4 id="titulo-estadisticas" style={{ marginTop: 0 }}>
         Enlaces que más se caen
-      </h3>
+      </h4>
 
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
         <div role="group" aria-label="Período" style={{ display: 'flex', gap: '0.5rem' }}>

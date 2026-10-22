@@ -7,7 +7,6 @@ import {
   LogOut,
   MapPinned,
   Moon,
-  Network,
   Siren,
   Sun,
   TriangleAlert,
@@ -37,7 +36,6 @@ export function Layout() {
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
   const puedeVerAlertas =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
-  const puedeVerEnlaces = user?.roles.includes('ADMINISTRADOR') ?? false;
   const puedeVerReportes =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR') ?? false;
   const puedeVerCustodia =
@@ -83,12 +81,6 @@ export function Layout() {
                     <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
                       <Siren size={16} aria-hidden="true" />
                       <span>Alertas</span>
-                    </NavLink>
-                  )}
-                  {puedeVerEnlaces && (
-                    <NavLink to="/enlaces" className={({ isActive }) => (isActive ? 'active' : '')}>
-                      <Network size={16} aria-hidden="true" />
-                      <span>Enlaces</span>
                     </NavLink>
                   )}
                 </SeccionMenu>

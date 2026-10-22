@@ -10,14 +10,13 @@ import { NewUser } from './pages/users/NewUser';
 import { BulkUpload } from './pages/users/BulkUpload';
 import { MilitaresPage } from './pages/militares/MilitaresPage';
 import { BulkMilitares } from './pages/militares/BulkMilitares';
-import { RecintosPage } from './pages/recintos/RecintosPage';
+import { RecintosSeccion } from './pages/recintos/RecintosSeccion';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
-import { EnlacesPage } from './pages/enlaces/EnlacesPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { CadenaCustodiaPage } from './pages/reportes/CadenaCustodiaPage';
 import { Inicio } from './pages/Inicio';
@@ -79,7 +78,7 @@ export default function App() {
         />
 
         {/* Recintos electorales */}
-        <Route path="/recintos" element={<RecintosPage />} />
+        <Route path="/recintos" element={<RecintosSeccion />} />
 
         {/* Eventos electorales */}
         <Route path="/eventos" element={<EventosPage />} />
@@ -105,15 +104,8 @@ export default function App() {
           }
         />
 
-        {/* Enlaces caídos (CDAs Imbabura) — solo Administrador */}
-        <Route
-          path="/enlaces"
-          element={
-            <ProtectedRoute roles={['ADMINISTRADOR']}>
-              <EnlacesPage />
-            </ProtectedRoute>
-          }
-        />
+        {/* Enlaces caídos: ahora es una pestaña de Recintos (solo Administrador) */}
+        <Route path="/enlaces" element={<Navigate to="/recintos?tab=enlaces" replace />} />
 
         {/* Reporte admin de NO-CDAs pendientes */}
         <Route
