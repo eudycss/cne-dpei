@@ -33,6 +33,7 @@ import {
   getKits,
   getRecintosOcupados,
 } from '../../lib/queries/kits';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -252,6 +253,7 @@ export function KitsPage() {
   return (
     <>
       <h2>Kits Electorales</h2>
+      <PasoFlujo paso="kits" />
 
       {isAdmin && (
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>

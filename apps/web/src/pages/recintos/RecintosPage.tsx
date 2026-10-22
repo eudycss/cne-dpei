@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { SyncRecintosModal } from './SyncRecintosModal';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 const TIPOS: TipoRecinto[] = ['CDA', 'NO_CDA'];
 const TIPO_LABELS: Record<TipoRecinto, string> = {
@@ -172,6 +173,7 @@ export function RecintosPage() {
   return (
     <>
       <h2>Recintos Electorales</h2>
+      <PasoFlujo paso="recintos" />
       <div className="card">
         <div className="row" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
           <SearchInput

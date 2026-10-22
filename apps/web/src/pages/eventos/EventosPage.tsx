@@ -19,6 +19,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { getTiposEvento } from '../../lib/queries/tipos-evento';
 import { TiposEventoPage } from '../tipos-evento/TiposEventoPage';
 import { Modal } from '../../components/Modal';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 function EstadoBadge({ estado }: { estado: EstadoEvento }) {
   const styles: Record<EstadoEvento, React.CSSProperties> = {
@@ -109,6 +110,7 @@ export function EventosPage() {
   return (
     <>
       <h2>Eventos Electorales</h2>
+      <PasoFlujo paso="evento" />
 
       {isAdmin && (
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>

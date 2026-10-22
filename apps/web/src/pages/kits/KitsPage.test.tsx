@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -80,7 +81,9 @@ function renderKitsPage() {
   return render(
     <AuthProvider>
       <QueryClientProvider client={qc}>
-        <KitsPage />
+        <MemoryRouter>
+          <KitsPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AuthProvider>,
   );
