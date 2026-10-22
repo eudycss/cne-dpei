@@ -21,6 +21,11 @@ jobs:
       - run: pnpm --filter @cne/shared-types build
       - run: pnpm --filter @cne/shared-validation build
       - run: pnpm --filter @cne/api test
+      # Los e2e necesitan Postgres y no corren aquí, pero al menos deben compilar.
+      - name: Tipos de los e2e de la API
+        working-directory: apps/api
+        run: npx tsc -p test/tsconfig.json --noEmit
+
   test-mobile:
     runs-on: ubuntu-latest
     steps:
@@ -37,6 +42,8 @@ jobs:
       - run: pnpm --filter @cne/shared-types build
       - run: pnpm --filter @cne/shared-validation build
       - run: pnpm --filter @cne/mobile test
+      # tsc --noEmit: jest transpila sin revisar tipos, así que un error de tipos pasaba igual.
+      - run: pnpm --filter @cne/mobile build
 
       # Un plugin mal configurado puede quitar un permiso del manifiesto aunque app.json
       # lo pida (expo-image-picker con cameraPermission: false dejó las APK del 16 y
@@ -54,3 +61,23 @@ jobs:
             fi
           done
           echo "Permisos OK"
+
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install
+      - run: pnpm --filter @cne/shared-types build
+      - run: pnpm --filter @cne/shared-validation build
+      - run: pnpm --filter @cne/web test
+      - name: Tipos de la web
+        working-directory: apps/web
+        run: npx tsc -b
