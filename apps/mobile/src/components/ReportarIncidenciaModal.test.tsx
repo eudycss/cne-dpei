@@ -1,3 +1,7 @@
+// El primer render del árbol RN transforma los módulos mockeados: con la suite
+// completa en paralelo el beforeEach pasa de 5 s (mismo motivo que en screens/).
+jest.setTimeout(30000);
+
 jest.mock('../lib/queries/incidencias', () => ({
   misIncidencias: jest.fn(),
   reportarIncidencia: jest.fn(),

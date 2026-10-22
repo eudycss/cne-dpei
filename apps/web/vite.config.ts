@@ -38,6 +38,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Ver vitest.setup.ts: con `pnpm test` en paralelo, los flujos largos de
+    // userEvent (p. ej. CreateKitModal) pasan de los 5 s por defecto.
+    testTimeout: 20000,
     // apps/mobile fija react@18.2.0 y apps/web fija react@18.3.1: bajo
     // node-linker=hoisted, pnpm anida copias de react en algunas deps
     // (@tanstack/react-query, testing-library, etc.) para satisfacer ambos pines.

@@ -1,5 +1,5 @@
 import { ActivityIndicator, Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, create, ReactTestRenderer, TestInstance } from 'react-test-renderer';
 import type { OperadorEnRetorno } from '@cne/shared-types';
 
 // react-native-testing-library no está instalado; se usa react-test-renderer
@@ -49,7 +49,7 @@ const operadorRetorno: OperadorEnRetorno = {
   estado: 'EN_RETORNO',
 };
 
-function textoDe(t: { props: { children: unknown } }): string {
+function textoDe(t: TestInstance): string {
   const c = t.props.children;
   return Array.isArray(c) ? c.join('') : String(c ?? '');
 }
