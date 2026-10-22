@@ -297,6 +297,31 @@ describe('EventosService', () => {
       expect(prisma.eventoElectoral.update).not.toHaveBeenCalled();
     });
 
+    it('si otro admin activa a la vez (P2002) responde 409, no 500', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'CERRADO' }));
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      prisma.eventoElectoral.update.mockRejectedValueOnce(
+        Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+      );
+      await expect(service.reopen(eventoId)).rejects.toThrow(ConflictException);
+    });
+
+    it('activate también responde 409 si otro admin activa a la vez (P2002)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'BORRADOR' }));
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      prisma.eventoElectoral.update.mockRejectedValueOnce(
+        Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+      );
+      await expect(service.activate(eventoId)).rejects.toThrow(ConflictException);
+    });
+
+    it('propaga otros errores de base de datos', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'BORRADOR' }));
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      prisma.eventoElectoral.update.mockRejectedValueOnce(new Error('base caída'));
+      await expect(service.activate(eventoId)).rejects.toThrow('base caída');
+    });
+
     it('deja el evento ACTIVO marcado como reabierto', async () => {
       const reabiertoEn = new Date('2026-10-22T13:00:00Z');
       prisma.eventoElectoral.findUnique

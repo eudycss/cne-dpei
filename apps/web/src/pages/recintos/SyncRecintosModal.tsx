@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { AccionSyncRecinto, CambioSyncRecinto } from '@cne/shared-types';
 import { aplicarSyncRecintos, getPreviewSyncRecintos } from '../../lib/queries/recintos-sync';
+import { atraparFoco } from '../../components/Modal';
 
 interface Props {
   onClose: () => void;
@@ -215,22 +216,4 @@ function CambioItem({ cambio }: { cambio: CambioSyncRecinto }) {
       )}
     </li>
   );
-}
-
-/** Mantiene Tab y Shift+Tab dentro del diálogo (WCAG 2.4.3). */
-function atraparFoco(e: KeyboardEvent, dialogo: HTMLElement | null) {
-  if (!dialogo) return;
-  const enfocables = Array.from(
-    dialogo.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'),
-  );
-  if (enfocables.length === 0) return;
-  const primero = enfocables[0];
-  const ultimo = enfocables[enfocables.length - 1];
-  if (e.shiftKey && document.activeElement === primero) {
-    e.preventDefault();
-    ultimo.focus();
-  } else if (!e.shiftKey && document.activeElement === ultimo) {
-    e.preventDefault();
-    primero.focus();
-  }
 }

@@ -12,6 +12,7 @@ import type {
   UpsertAsignacionRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { assertEventoNoReabierto } from '../common/evento-no-reabierto.guard';
 import { parseUploadRows } from '../common/parse-upload-rows';
 
 @Injectable()
@@ -44,6 +45,7 @@ export class AsignacionesService {
       where: { id: parsed.eventoId },
     });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
 
     const operador = await this.prisma.usuario.findFirst({
       where: {
@@ -85,6 +87,8 @@ export class AsignacionesService {
   async remove(id: string): Promise<void> {
     const existing = await this.prisma.asignacionSupervisor.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Asignación no encontrada');
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: existing.eventoId } });
+    if (evento) assertEventoNoReabierto(evento);
     await this.prisma.asignacionSupervisor.delete({ where: { id } });
   }
 
@@ -97,6 +101,7 @@ export class AsignacionesService {
     if (!file) throw new BadRequestException('Archivo requerido');
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
 
     const rows = await parseUploadRows(file);
     if (rows.length === 0) throw new BadRequestException('El archivo no tiene filas');

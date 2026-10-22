@@ -18,6 +18,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { getTiposEvento } from '../../lib/queries/tipos-evento';
 import { TiposEventoPage } from '../tipos-evento/TiposEventoPage';
+import { Modal } from '../../components/Modal';
 
 function EstadoBadge({ estado }: { estado: EstadoEvento }) {
   const styles: Record<EstadoEvento, React.CSSProperties> = {
@@ -367,16 +368,9 @@ function EventoModal({
   }
 
   return (
-    <div
-      className="center"
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
-    >
-      <form
-        className="login-card"
-        style={{ maxWidth: 540, width: '100%' }}
-        onSubmit={onSubmit}
-      >
-        <h1>{evento ? 'Editar evento' : 'Nuevo evento electoral'}</h1>
+    <Modal labelledBy="evento-modal-titulo" onClose={onClose} maxWidth={540}>
+      <form className="login-card" style={{ width: '100%' }} onSubmit={onSubmit}>
+        <h1 id="evento-modal-titulo">{evento ? 'Editar evento' : 'Nuevo evento electoral'}</h1>
 
         <div className="field">
           <label>Nombre</label>
@@ -439,7 +433,7 @@ function EventoModal({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -484,16 +478,9 @@ function CloseEventoModal({
   }
 
   return (
-    <div
-      className="center"
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
-    >
-      <form
-        className="login-card"
-        style={{ maxWidth: 520, width: '100%' }}
-        onSubmit={onSubmit}
-      >
-        <h1>Cerrar evento</h1>
+    <Modal labelledBy="cerrar-evento-titulo" onClose={onClose}>
+      <form className="login-card" style={{ width: '100%' }} onSubmit={onSubmit}>
+        <h1 id="cerrar-evento-titulo">Cerrar evento</h1>
         <p>
           Estás a punto de cerrar el evento{' '}
           <strong>"{evento.nombre}"</strong>. Después solo podrá reabrirse para consulta.
@@ -547,7 +534,7 @@ function CloseEventoModal({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -587,17 +574,8 @@ export function ReopenEventoModal({
   }
 
   return (
-    <div
-      className="center"
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="reabrir-titulo"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
-      <form className="login-card" style={{ maxWidth: 520, width: '100%' }} onSubmit={onSubmit}>
+    <Modal labelledBy="reabrir-titulo" onClose={onClose}>
+      <form className="login-card" style={{ width: '100%' }} onSubmit={onSubmit}>
         <h1 id="reabrir-titulo">Reabrir evento</h1>
         <p>
           El evento <strong>"{evento.nombre}"</strong> volverá a estar activo solo para
@@ -649,7 +627,7 @@ export function ReopenEventoModal({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -760,19 +738,11 @@ export function ConfigAlertasModal({
   }
 
   return (
-    <div
-      className="center"
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
-    >
+    <Modal labelledBy="config-alertas-titulo" onClose={onClose} maxWidth={480}>
       {/* noValidate: la validación propia da mensajes en español con el rango
           de cada campo, en vez de las burbujas nativas del navegador. */}
-      <form
-        className="login-card"
-        style={{ maxWidth: 480, width: '100%' }}
-        onSubmit={onSubmit}
-        noValidate
-      >
-        <h1>Configurar umbrales de alerta</h1>
+      <form className="login-card" style={{ width: '100%' }} onSubmit={onSubmit} noValidate>
+        <h1 id="config-alertas-titulo">Configurar umbrales de alerta</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
           Evento: <strong>{evento.nombre}</strong>. Los valores se expresan en
           minutos.
@@ -882,6 +852,6 @@ export function ConfigAlertasModal({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

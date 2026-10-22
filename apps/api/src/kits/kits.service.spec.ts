@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
 import { itemKitDetalleSchema } from '@cne/shared-validation';
@@ -126,6 +126,14 @@ describe('KitsService', () => {
       await expect(
         service.create({ eventoId, nombre: 'Kit 1', recintoId } as any),
       ).rejects.toThrow(NotFoundException);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
+    it('no crea kits en un evento reabierto para consulta (403)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ reabiertoEn: new Date() }));
+      await expect(
+        service.create({ eventoId, nombre: 'Kit 1', recintoId } as any),
+      ).rejects.toThrow(ForbiddenException);
       expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
@@ -530,6 +538,13 @@ describe('KitsService', () => {
       );
     });
 
+    it('no edita kits de un evento reabierto para consulta (403)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ reabiertoEn: new Date() }));
+      await expect(service.editar(kitId, { recintoId } as any)).rejects.toThrow(ForbiddenException);
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
     it('lanza NotFoundException si el recinto nuevo no existe', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
@@ -651,6 +666,17 @@ describe('KitsService', () => {
       await expect(service.desasignar(kitId)).rejects.toThrow(NotFoundException);
     });
 
+    it('no desasigna kits de un evento reabierto para consulta (403)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(
+        kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
+      );
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ reabiertoEn: new Date() }));
+      await expect(service.desasignar(kitId, { justificacion: 'x' } as any)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
     it('limpia operador/recinto y vuelve a EN_BODEGA si estaba ASIGNADO', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(
         kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
@@ -758,6 +784,14 @@ describe('KitsService', () => {
       await expect(service.bulkUpload(undefined as any, eventoId)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('rechaza la carga masiva en un evento reabierto para consulta (403)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ reabiertoEn: new Date() }));
+      await expect(service.bulkUpload(csvFile('nombre\nKit A'), eventoId)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
     it('lanza NotFoundException si el evento no existe', async () => {

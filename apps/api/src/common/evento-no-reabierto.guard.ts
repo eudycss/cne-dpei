@@ -5,6 +5,15 @@ export const MENSAJE_EVENTO_REABIERTO =
   'El evento fue reabierto solo para consulta; no se pueden registrar acciones';
 
 /**
+ * Para las escrituras de la web que reciben el evento explícito (kits,
+ * asignaciones): solo bloquea si ESE evento está reabierto, así se puede seguir
+ * preparando un evento en BORRADOR mientras otro está abierto para consulta.
+ */
+export function assertEventoNoReabierto(evento: { reabiertoEn: Date | null }): void {
+  if (evento.reabiertoEn) throw new ForbiddenException(MENSAJE_EVENTO_REABIERTO);
+}
+
+/**
  * Bloquea los registros de campo (tracking, custodia, incidencias) mientras el
  * evento activo sea uno cerrado que se reabrió solo para consulta.
  *
