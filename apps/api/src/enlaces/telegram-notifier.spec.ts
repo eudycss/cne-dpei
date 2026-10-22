@@ -4,6 +4,7 @@ import {
   type AlertaRecinto,
   type ContactoRecinto,
   formatearEscalamiento,
+  formatearFichaRecinto,
   formatearListaActual,
   TelegramNotifier,
   TEXTO_BOTON_ASIGNACIONES,
@@ -156,6 +157,37 @@ describe('formatearEscalamiento', () => {
     expect(mensajes.length).toBeGreaterThan(1);
     expect(mensajes.every((m) => m.length <= 4000)).toBe(true);
     expect(mensajes.join('\n').match(/🔴/g)).toHaveLength(40);
+  });
+});
+
+describe('formatearFichaRecinto', () => {
+  const recinto = { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Ibarra', estado: 'ACTIVO' };
+
+  it('muestra recinto, estado, técnico y a quién llamar', () => {
+    const texto = formatearFichaRecinto(recinto, {
+      tecnico: 'Ana Pérez',
+      encargado: { nombre: 'Juana Ejemplo', telefono: '0990000000' },
+    });
+    expect(texto).toBe(
+      '📍 978 (Iba) — Escuela Central\nEstado: ✅ ACTIVO\n👷 Técnico: Ana Pérez\n📞 Llamar: Juana Ejemplo · 0990000000',
+    );
+  });
+
+  it('sin datos de Drive dice "sin asignar" y "sin registrar"', () => {
+    const texto = formatearFichaRecinto({ ...recinto, estado: 'FALLO' }, { tecnico: null, encargado: null });
+    expect(texto).toContain('Estado: 🔴 FALLO');
+    expect(texto).toContain('👷 Técnico: sin asignar');
+    expect(texto).toContain('📞 Llamar: sin registrar');
+  });
+
+  it('escapa el HTML de los datos que vienen de las hojas', () => {
+    const texto = formatearFichaRecinto(
+      { ...recinto, nombreRecinto: 'Escuela <b>X</b>' },
+      { tecnico: 'Ana & Luis', encargado: { nombre: '<i>Juana</i>', telefono: '099' } },
+    );
+    expect(texto).not.toMatch(/<[bi]>/);
+    expect(texto).toContain('Escuela &lt;b&gt;X&lt;/b&gt;');
+    expect(texto).toContain('Ana &amp; Luis');
   });
 });
 
