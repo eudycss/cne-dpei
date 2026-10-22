@@ -348,6 +348,8 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     const user = userEvent.setup();
     renderKitsPage();
     await screen.findByText('ABCD2345');
+    // Un operador desactivado no debe aparecer para recibir un kit.
+    expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/^\/users\?role=OPERADOR_CDA&activo=true/));
 
     await user.click(screen.getByRole('button', { name: 'Asignar' }));
     const heading = await screen.findByText('Asignar kit');
