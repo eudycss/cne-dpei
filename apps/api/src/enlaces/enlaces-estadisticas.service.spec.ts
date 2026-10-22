@@ -211,7 +211,7 @@ describe('EnlacesEstadisticasService', () => {
 
     expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { inicio: { lt: DIA_14.hasta }, OR: [{ fin: null }, { fin: { gt: DIA_14.desde } }] },
+        where: { codigoRecinto: { notIn: ['CPE'] }, inicio: { lt: DIA_14.hasta }, OR: [{ fin: null }, { fin: { gt: DIA_14.desde } }] },
       }),
     );
     expect(r).toEqual(expect.objectContaining({ periodo: 'dia', desde: DIA_14.desde.toISOString() }));

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
 import { DistributivoTecnicosClient, tecnicosPorRecinto } from './distributivo-tecnicos.client';
-import { codigosFueraDelBot, seMuestraEnBot } from './fuera-del-bot';
+import { codigosExcluidos } from './codigos-excluidos';
 import { EncargadosRecintosClient, type EncargadoRecinto } from './encargados-recintos.client';
 import { TelegramNotifier, type AlertaRecinto, type GrupoAlerta } from './telegram-notifier';
 
@@ -107,18 +107,17 @@ export class EnlacesEscalamientoService {
     try {
       const { minutosPrimerAviso, minutosRepetirAviso } = await this.frecuencia();
       const hace = (minutos: number) => new Date(ahora.getTime() - minutos * MS_MINUTO + MARGEN_MS);
-      const pendientes = (
-        await this.prisma.enlaceCaida.findMany({
-          where: {
-            fin: null,
-            codigoRecinto: { notIn: codigosFueraDelBot() },
-            inicio: { lte: hace(minutosPrimerAviso) },
-            OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: hace(minutosRepetirAviso) } }],
-          },
-          select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
-          orderBy: { inicio: 'asc' },
-        })
-      ).filter((p) => seMuestraEnBot(p.codigoRecinto));
+      const pendientes = await this.prisma.enlaceCaida.findMany({
+        where: {
+          fin: null,
+          // Por si la caída abierta del CPE no llegó a cerrarse al sacarlo de la tabla.
+          codigoRecinto: { notIn: codigosExcluidos() },
+          inicio: { lte: hace(minutosPrimerAviso) },
+          OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: hace(minutosRepetirAviso) } }],
+        },
+        select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
+        orderBy: { inicio: 'asc' },
+      });
       if (pendientes.length === 0) return;
 
       const codigos = pendientes.map((p) => p.codigoRecinto);

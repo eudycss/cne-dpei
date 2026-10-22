@@ -7,6 +7,7 @@ import type {
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { TelegramNotifier, type TarjetaEstadisticas } from './telegram-notifier';
+import { codigosExcluidos } from './codigos-excluidos';
 
 const CONFIG_ID = 1;
 const PERIODOS: readonly PeriodoEstadisticasEnlaces[] = ['dia', 'semana', 'mes'];
@@ -178,7 +179,12 @@ export class EnlacesEstadisticasService {
     const rango = rangoPeriodo(periodo, dia);
     const [caidas, recintos, config] = await Promise.all([
       this.prisma.enlaceCaida.findMany({
-        where: { inicio: { lt: rango.hasta }, OR: [{ fin: null }, { fin: { gt: rango.desde } }] },
+        where: {
+          // El historial guarda caídas del CPE de antes de excluirlo.
+          codigoRecinto: { notIn: codigosExcluidos() },
+          inicio: { lt: rango.hasta },
+          OR: [{ fin: null }, { fin: { gt: rango.desde } }],
+        },
         select: { codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, fin: true },
       }),
       this.prisma.enlaceRecinto.findMany({

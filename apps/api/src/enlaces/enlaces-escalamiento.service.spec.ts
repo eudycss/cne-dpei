@@ -193,7 +193,7 @@ describe('EnlacesEscalamientoService', () => {
     const limite = iso('2026-10-21T13:01:00Z');
     expect(prisma.enlaceCaida.findMany.mock.calls[0][0].where).toEqual({
       fin: null,
-      codigoRecinto: { notIn: ['CPE'] }, // el CPE no sale en el bot
+      codigoRecinto: { notIn: ['CPE'] }, // el CPE no se avisa
       inicio: { lte: limite },
       OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }],
     });
