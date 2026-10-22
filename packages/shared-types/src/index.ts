@@ -666,6 +666,8 @@ export interface CdaEstadoDto {
   estado: EstadoOperadorCda;
   ubicacion: CdaUbicacion | null;
   tieneFotoMilitar: boolean;
+  /** ISO de la última prueba de conexión del evento activo; null si aún no la hizo. */
+  pruebaConexionEn: string | null;
   tieneActaInstalacion: boolean;
   tieneActaEscrutinio: boolean;
 }
