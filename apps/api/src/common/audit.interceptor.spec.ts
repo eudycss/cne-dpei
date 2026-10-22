@@ -1,0 +1,156 @@
+import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { firstValueFrom, of } from 'rxjs';
+import { AuditInterceptor, datosDeLaPeticion } from './audit.interceptor';
+
+const flush = () => new Promise<void>((r) => setImmediate(r));
+
+function contexto(req: Record<string, unknown>): ExecutionContext {
+  return { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext;
+}
+
+async function auditar(req: Record<string, unknown>, resBody: unknown = {}, create = jest.fn().mockResolvedValue({})) {
+  const interceptor = new AuditInterceptor({ bitacoraAuditoria: { create } } as never);
+  const handler: CallHandler = { handle: () => of(resBody) };
+  const respuesta = await firstValueFrom(
+    interceptor.intercept(contexto({ headers: {}, ip: '127.0.0.1', params: {}, ...req }), handler),
+  );
+  await flush();
+  return { create, respuesta, data: create.mock.calls[0]?.[0]?.data };
+}
+
+const ADMIN = { sub: '00000000-0000-0000-0000-0000000000ad' };
+const OTRO = '11111111-2222-3333-4444-555555555555';
+
+describe('AuditInterceptor', () => {
+  it('al desactivar un usuario registra a QUIÉN afecta y QUÉ cambió', async () => {
+    const { data } = await auditar({
+      method: 'PATCH',
+      originalUrl: `/users/${OTRO}`,
+      params: { id: OTRO },
+      body: { activo: false },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({
+      usuarioId: ADMIN.sub,
+      accion: 'USER_UPDATE',
+      entidad: 'usuario',
+      entidadId: OTRO,
+      datosDespues: { campos: ['activo'], activo: false },
+    });
+  });
+
+  it('de los datos personales solo guarda el nombre del campo, nunca el valor', async () => {
+    const { data } = await auditar({
+      method: 'PATCH',
+      originalUrl: `/users/${OTRO}`,
+      params: { id: OTRO },
+      body: { email: 'ana@cne.gob.ec', telefono: '0991234567', nombres: 'Ana', activo: true },
+      user: ADMIN,
+    });
+
+    expect(data.datosDespues).toEqual({ campos: ['email', 'telefono', 'nombres', 'activo'], activo: true });
+    expect(JSON.stringify(data)).not.toMatch(/ana@cne|0991234567/);
+  });
+
+  it('crear un usuario o militar no guarda cédula, email ni teléfono; el id sale de la respuesta', async () => {
+    const { data } = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/users',
+        body: { cedula: '1712345675', email: 'a@cne.gob.ec', nombres: 'Ana', apellidos: 'Ruiz', telefono: '099' },
+        user: ADMIN,
+      },
+      { id: OTRO, initialPassword: 'NoDebeGuardarse1!' },
+    );
+
+    expect(data.entidadId).toBe(OTRO);
+    expect(data.datosDespues).toEqual({ campos: ['cedula', 'email', 'nombres', 'apellidos', 'telefono'] });
+    expect(JSON.stringify(data)).not.toMatch(/1712345675|NoDebeGuardarse/);
+  });
+
+  it('cerrar un evento usa el id de la ruta y guarda la justificación', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: `/eventos/${OTRO}/close`,
+      params: { id: OTRO },
+      body: { confirmar: true, justificacion: 'Ensayo terminado' },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({
+      accion: 'EVENTO_CLOSE',
+      entidadId: OTRO,
+      datosDespues: { campos: ['confirmar', 'justificacion'], confirmar: true, justificacion: 'Ensayo terminado' },
+    });
+  });
+
+  it('un cambio de márgenes de alertas queda con sus valores (pasó el 16-oct con 200000 m)', async () => {
+    const { data } = await auditar({
+      method: 'PATCH',
+      originalUrl: `/eventos/${OTRO}/config-alertas`,
+      params: { id: OTRO },
+      body: { margenLlegadaMetros: 200000, margenLlegadaDpiMetros: 200000 },
+      user: ADMIN,
+    });
+
+    expect(data.datosDespues).toMatchObject({ margenLlegadaMetros: 200000, margenLlegadaDpiMetros: 200000 });
+  });
+
+  it.each([
+    ['/auth/change-password', { currentPassword: 'Vieja*2026', newPassword: 'Nueva*2026' }],
+    ['/auth/reset-password', { token: 'tok-123', newPassword: 'Nueva*2026' }],
+    ['/auth/login', { email: 'a@cne.gob.ec', Password: 'Vieja*2026' }],
+  ])('%s no guarda contraseñas, tokens ni sus nombres en mayúsculas', async (ruta, body) => {
+    const { data } = await auditar({ method: 'POST', originalUrl: ruta, body, user: ADMIN });
+
+    expect(JSON.stringify(data)).not.toMatch(/Vieja|Nueva|tok-123|a@cne/);
+    expect(JSON.stringify(data.datosDespues ?? {})).not.toMatch(/pass|token/i);
+  });
+
+  it('claves sensibles con otros nombres (clave, contrasena, pinCode, TOKEN) tampoco aparecen', () => {
+    const datos = datosDeLaPeticion(
+      { clave: 'x', contrasena: 'y', pinCode: '1234', TOKEN: 'z', activo: true },
+      ['clave', 'contrasena', 'pinCode', 'TOKEN', 'activo'],
+    );
+    expect(datos).toEqual({ campos: ['activo'], activo: true });
+  });
+
+  it('nunca guarda objetos anidados, Buffers ni base64 aunque el campo esté permitido', () => {
+    const datos = datosDeLaPeticion(
+      { recintoId: { $ne: 1 }, justificacion: Buffer.from('foto'), operadorId: [{ token: 'x' }] },
+      ['recintoId', 'justificacion', 'operadorId'],
+    );
+    expect(datos).toEqual({ campos: ['recintoId', 'justificacion', 'operadorId'] });
+  });
+
+  it('acota textos largos, nombres de campo raros y bodies que no son objetos', () => {
+    expect((datosDeLaPeticion({ justificacion: 'x'.repeat(5000) }, ['justificacion'])!.justificacion as string).length).toBe(500);
+    expect(datosDeLaPeticion({ 'cédula 1712345675': 1, ok: 1 })).toEqual({ campos: ['ok'] });
+    expect(datosDeLaPeticion([{ cedula: '1712345675' }])).toBeUndefined();
+    expect(datosDeLaPeticion(Buffer.from('x'))).toBeUndefined();
+    expect(datosDeLaPeticion({})).toBeUndefined();
+  });
+
+  it('el id debe ser texto: un id que no es string no se guarda y uno largo se corta a 60', async () => {
+    const numerico = await auditar({ method: 'POST', originalUrl: '/militares', body: {}, user: ADMIN }, { id: 42 });
+    expect(numerico.data.entidadId).toBeNull();
+
+    const largo = 'a'.repeat(80);
+    const conRuta = await auditar({ method: 'PATCH', originalUrl: `/users/${largo}`, params: { id: largo }, body: {}, user: ADMIN });
+    expect(conRuta.data.entidadId).toHaveLength(60);
+  });
+
+  it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
+    const falla = jest.fn().mockRejectedValue(new Error('db caída'));
+    const { respuesta } = await auditar(
+      { method: 'PATCH', originalUrl: `/users/${OTRO}`, params: { id: OTRO }, body: { activo: false }, user: ADMIN },
+      { id: OTRO },
+      falla,
+    );
+    expect(respuesta).toEqual({ id: OTRO });
+
+    const { create } = await auditar({ method: 'GET', originalUrl: '/users', body: {}, user: ADMIN });
+    expect(create).not.toHaveBeenCalled();
+  });
+});
