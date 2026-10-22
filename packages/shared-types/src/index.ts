@@ -286,6 +286,8 @@ export interface EventoElectoral {
   estado: EstadoEvento;
   creadoEn: string;
   cerradoEn: string | null;
+  /** Fecha en que un evento cerrado se reabrió solo para consulta; null en uso normal. */
+  reabiertoEn: string | null;
   configAlertas?: ConfigAlertas;
 }
 

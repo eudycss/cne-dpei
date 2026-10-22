@@ -13,6 +13,7 @@ import {
   llegadaRecintoSchema,
   pruebaConexionSchema,
   recepcionKitSchema,
+  reopenEventoSchema,
   salidaDpiSchema,
   salidaRecintoSchema,
   telefonoSchema,
@@ -217,5 +218,19 @@ describe('recintos: los textos se guardan sin espacios sobrantes', () => {
     });
     expect(r).toMatchObject({ codigo_recinto: '1286', nombre: 'UE 17 de Julio', canton_codigo: '30', cda_destino_codigo: '28' });
     expect(bulkRecintoRowSchema.safeParse({ ...r, codigo_recinto: '  ' }).success).toBe(false);
+  });
+});
+
+describe('reopenEventoSchema', () => {
+  it('exige una justificación de al menos 10 caracteres (sin contar espacios)', () => {
+    expect(reopenEventoSchema.safeParse({}).success).toBe(false);
+    expect(reopenEventoSchema.safeParse({ justificacion: '   corto   ' }).success).toBe(false);
+    expect(reopenEventoSchema.parse({ justificacion: '  Sacar informe de custodia  ' })).toEqual({
+      justificacion: 'Sacar informe de custodia',
+    });
+  });
+
+  it('rechaza justificaciones de más de 500 caracteres', () => {
+    expect(reopenEventoSchema.safeParse({ justificacion: 'x'.repeat(501) }).success).toBe(false);
   });
 });

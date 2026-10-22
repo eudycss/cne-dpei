@@ -311,6 +311,9 @@ model EventoElectoral {
   estado       EstadoEvento        @default(BORRADOR)
   creadoEn     DateTime            @default(now()) @map("creado_en") @db.Timestamptz(6)
   cerradoEn    DateTime?           @map("cerrado_en") @db.Timestamptz(6)
+  // Evento cerrado que se reabrió solo para consulta: la app móvil no puede
+  // registrar y el cron de alertas lo ignora. Vuelve a null al cerrarlo.
+  reabiertoEn  DateTime?           @map("reabierto_en") @db.Timestamptz(6)
 
   @@map("eventos_electorales")
 }

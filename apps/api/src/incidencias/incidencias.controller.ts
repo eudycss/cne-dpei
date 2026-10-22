@@ -27,6 +27,7 @@ import {
 import { IncidenciasService } from './incidencias.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
@@ -40,6 +41,7 @@ export class IncidenciasController {
   constructor(private readonly incidencias: IncidenciasService) {}
 
   @Post()
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'HU14-CA1: reportar una incidencia desde el operador' })

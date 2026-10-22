@@ -22,7 +22,11 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
-import { configAlertasSchema, closeEventoSchema } from '@cne/shared-validation';
+import {
+  configAlertasSchema,
+  closeEventoSchema,
+  reopenEventoSchema,
+} from '@cne/shared-validation';
 
 @ApiTags('eventos')
 @ApiBearerAuth()
@@ -83,6 +87,19 @@ export class EventosController {
     body: { confirmar: boolean; justificacion?: string },
   ) {
     return this.eventos.close(id, body.confirmar, body.justificacion);
+  }
+
+  @Post(':id/reopen')
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reabrir un evento cerrado solo para consulta' })
+  reopen(
+    @Param('id', ParseUUIDPipe) id: string,
+    // Se valida aquí para que la justificación sea obligatoria; el servicio no
+    // la usa: la guarda la bitácora (EVENTO_REOPEN).
+    @Body(new ZodValidationPipe(reopenEventoSchema)) _body: { justificacion: string },
+  ) {
+    return this.eventos.reopen(id);
   }
 
   @Patch(':id/config-alertas')
