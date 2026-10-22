@@ -11,9 +11,12 @@ import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
+  claveGrupoAsignacion,
+  CLAVE_RESUMEN_ASIGNACIONES,
   formatearFichaRecinto,
   TelegramNotifier,
   type GrupoAsignacion,
+  PREFIJO_CALLBACK_ASIGNACIONES,
   PREFIJO_CALLBACK_ESTADISTICAS,
   PREFIJO_CALLBACK_RECINTO,
   TEXTO_BOTON_ASIGNACIONES,
@@ -49,7 +52,7 @@ export interface TelegramUpdate {
     chat?: { id: number | string };
     from?: { id: number | string };
   };
-  /** Toque de un botón bajo un mensaje del bot (Hoy/Semana/Mes de la tarjeta de estadísticas). */
+  /** Toque de un botón bajo un mensaje del bot (Hoy/Semana/Mes de estadísticas, técnicos de asignaciones, recinto elegido). */
   callback_query?: {
     id: string;
     data?: string;
@@ -63,6 +66,10 @@ const PAUSA_ENTRE_TOQUES_MS = 1500;
 const CALLBACK_PERIODO = new RegExp(`^${PREFIJO_CALLBACK_ESTADISTICAS}(dia|semana|mes)$`);
 // codigo_recinto es VarChar(20): se aceptan letras, dígitos y guion.
 const CALLBACK_RECINTO = new RegExp(`^${PREFIJO_CALLBACK_RECINTO}([\\w-]{1,20})$`);
+/** Número de técnico (orden en el distributivo, desde 1), "sin" (recintos sin técnico) o "menu" (volver al resumen). */
+const CALLBACK_TECNICO = new RegExp(
+  `^${PREFIJO_CALLBACK_ASIGNACIONES}([1-9]\\d{0,2}|sin|${CLAVE_RESUMEN_ASIGNACIONES})$`,
+);
 /** "/preguntar texto" o "/preguntar@bot texto" (así lo manda Telegram en grupos). */
 const COMANDO_PREGUNTAR = /^\/preguntar(?:@(\w+))?(?:\s+([\s\S]*))?$/i;
 
@@ -510,10 +517,40 @@ export class EnlacesService {
     return { enviados: caidas.length };
   }
 
+  /** "Asignaciones CDA": un mensaje con un botón por técnico; al tocarlo, ese
+   * mismo mensaje pasa a sus recintos (ver mostrarTecnicoTelegram). */
+  async enviarAsignacionesTelegram(): Promise<void> {
+    const grupos = await this.gruposAsignacion();
+    if (grupos.length === 0) {
+      await this.telegram.enviarTexto('El distributivo no tiene asignaciones de técnicos.', 'el aviso de asignaciones vacías');
+      return;
+    }
+    await this.telegram.enviarMenuAsignaciones(grupos);
+  }
+
+  /** Botón de un técnico (clave = su número, o "sin"): cambia ese mensaje a sus recintos.
+   * Se vuelve a leer el distributivo, así que si lo editaron se ve lo último. */
+  async mostrarTecnicoTelegram(clave: string, messageId: number): Promise<void> {
+    const grupos = await this.gruposAsignacion();
+    if (clave === CLAVE_RESUMEN_ASIGNACIONES) {
+      await this.telegram.editarMenuAsignaciones(messageId, grupos);
+      return;
+    }
+    const grupo = grupos.find((g) => claveGrupoAsignacion(g) === clave);
+    if (!grupo) {
+      await this.telegram.enviarTexto(
+        `Ese técnico ya no figura en el distributivo. Toque de nuevo "${TEXTO_BOTON_ASIGNACIONES}".`,
+        'el aviso de técnico no encontrado',
+      );
+      return;
+    }
+    await this.telegram.mostrarAsignacionTecnico(messageId, grupos, grupo);
+  }
+
   /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
    * el estado actual del enlace de cada uno. Los recintos monitoreados que no
    * están en el distributivo van al final como "Sin técnico asignado". */
-  async enviarAsignacionesTelegram(): Promise<void> {
+  private async gruposAsignacion(): Promise<GrupoAsignacion[]> {
     const [asignaciones, enlaces] = await Promise.all([
       this.distributivo.asignaciones(),
       this.prisma.enlaceRecinto.findMany({
@@ -545,17 +582,13 @@ export class EnlacesService {
 
     const lista = [...grupos.values()];
     if (sinTecnico.length > 0) lista.push({ numeroTecnico: null, tecnico: '', recintos: sinTecnico });
-    if (lista.length === 0) {
-      await this.telegram.enviarTexto('El distributivo no tiene asignaciones de técnicos.', 'el aviso de asignaciones vacías');
-      return;
-    }
-    await this.telegram.enviarAsignaciones(lista);
+    return lista;
   }
 
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
    * responde con la lista actual de recintos caídos; `/estadisticas` (o su
    * botón), con la tarjeta de hoy (y botones para la semana y el mes); `/asignaciones`
-   * (o su botón), con los recintos CDA por técnico; el botón "Ingresar código"
+   * (o su botón), con un botón por técnico para ver sus recintos CDA; el botón "Ingresar código"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
    * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
    * que no es el principal ni uno de consulta, texto que no matchea nada de esto) se ignora en
@@ -627,17 +660,7 @@ export class EnlacesService {
       texto.startsWith('/asignaciones') || texto === TEXTO_BOTON_ASIGNACIONES.toLowerCase();
     if (esComandoAsignaciones) {
       if (claveEspera) this.cancelarEsperas(claveEspera);
-      try {
-        await this.enviarAsignacionesTelegram();
-      } catch (e) {
-        this.log.error(`No se pudieron armar las asignaciones para Telegram: ${(e as Error)?.message ?? e}`);
-        await this.telegram.enviarTexto(
-          e instanceof DistributivoNoConfigurado
-            ? '⚠️ El distributivo de técnicos todavía no está configurado en el servidor.'
-            : '⚠️ No se pudieron consultar las asignaciones en este momento. Intente de nuevo en unos minutos.',
-          'el aviso de error de asignaciones',
-        );
-      }
+      await this.conAvisoErrorAsignaciones(() => this.enviarAsignacionesTelegram());
       return;
     }
 
@@ -712,14 +735,30 @@ export class EnlacesService {
     );
   }
 
+  /** Si Drive o la base fallan al armar las asignaciones, lo dice en el grupo en vez de callar. */
+  private async conAvisoErrorAsignaciones(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      this.log.error(`No se pudieron armar las asignaciones para Telegram: ${(e as Error)?.message ?? e}`);
+      await this.telegram.enviarTexto(
+        e instanceof DistributivoNoConfigurado
+          ? '⚠️ El distributivo de técnicos todavía no está configurado en el servidor.'
+          : '⚠️ No se pudieron consultar las asignaciones en este momento. Intente de nuevo en unos minutos.',
+        'el aviso de error de asignaciones',
+      );
+    }
+  }
+
   private cancelarEsperas(clave: string): void {
     this.esperandoCodigo.delete(clave);
     this.esperandoPregunta.delete(clave);
   }
 
-  /** Botones Hoy/Semana/Mes de la tarjeta de estadísticas: cambian el mismo
-   * mensaje al período tocado. Solo en el chat principal o uno de consulta, y con un
-   * callback_data conocido; cualquier otra cosa se ignora. */
+  /** Botones bajo los mensajes del bot (Hoy/Semana/Mes, técnicos de Asignaciones
+   * CDA, recinto elegido): cambian el mismo mensaje o responden lo tocado. Solo en
+   * el chat principal o uno de consulta, y con un callback_data conocido; cualquier
+   * otra cosa se ignora. */
   private async procesarBotonTelegram(boton: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
     const chatId = boton.message?.chat?.id;
     const tipoChat = chatId === undefined ? null : tipoChatTelegram(chatId);
@@ -742,8 +781,16 @@ export class EnlacesService {
       await this.asistente.responderRecintoElegido(recinto);
       return;
     }
-    const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
     const messageId = boton.message?.message_id;
+    const tecnico = CALLBACK_TECNICO.exec(boton.data ?? '')?.[1];
+    if (tecnico) {
+      if (typeof messageId !== 'number') return;
+      // Con el técnico en la clave: pasar de uno a otro rápido no se descarta.
+      if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${messageId}:${tecnico}`)) return;
+      await this.conAvisoErrorAsignaciones(() => this.mostrarTecnicoTelegram(tecnico, messageId));
+      return;
+    }
+    const periodo = CALLBACK_PERIODO.exec(boton.data ?? '')?.[1] as PeriodoEstadisticasEnlaces | undefined;
     if (!periodo || typeof messageId !== 'number') return;
     if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${messageId}`)) return;
     try {

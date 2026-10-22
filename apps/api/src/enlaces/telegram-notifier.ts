@@ -106,6 +106,48 @@ export function tecladoPeriodos(seleccionado: PeriodoEstadisticasEnlaces) {
   };
 }
 
+/** callback_data de los botones de técnico bajo "Asignaciones CDA" ("asig:3"; "asig:sin" = sin técnico). */
+export const PREFIJO_CALLBACK_ASIGNACIONES = 'asig:';
+
+/** Clave del botón de un grupo: su número de técnico, o "sin" para los que no tienen. */
+export function claveGrupoAsignacion(g: GrupoAsignacion): string {
+  return g.numeroTecnico === null ? 'sin' : String(g.numeroTecnico);
+}
+
+/** callback_data del botón que vuelve del detalle de un técnico al resumen. */
+export const CLAVE_RESUMEN_ASIGNACIONES = 'menu';
+
+/** Un botón por técnico, uno por fila para que en el celular no se corten el
+ * conteo ni los caídos ("1. Ana Pérez (11 · 2🔴)"). Viendo uno, va marcado y
+ * al final aparece "↩ Resumen". */
+export function tecladoTecnicos(grupos: GrupoAsignacion[], seleccionado?: string) {
+  const botones = grupos.map((g) => {
+    const caidos = g.recintos.filter((r) => r.estado === 'FALLO').length;
+    const nombre = g.numeroTecnico === null ? 'Sin técnico' : `${g.numeroTecnico}. ${recortar(g.tecnico, 28)}`;
+    const texto = `${nombre} (${g.recintos.length}${caidos > 0 ? ` · ${caidos}🔴` : ''})`;
+    const clave = claveGrupoAsignacion(g);
+    return { text: clave === seleccionado ? `• ${texto} •` : texto, callback_data: `${PREFIJO_CALLBACK_ASIGNACIONES}${clave}` };
+  });
+  const filas = botones.map((b) => [b]);
+  if (seleccionado !== undefined) {
+    filas.push([{ text: '↩ Resumen', callback_data: `${PREFIJO_CALLBACK_ASIGNACIONES}${CLAVE_RESUMEN_ASIGNACIONES}` }]);
+  }
+  return { inline_keyboard: filas };
+}
+
+/** Mensaje de entrada de "Asignaciones CDA": totales y la indicación de tocar un técnico. */
+export function formatearMenuAsignaciones(grupos: GrupoAsignacion[]): string {
+  const tecnicos = grupos.filter((g) => g.numeroTecnico !== null).length;
+  const recintos = grupos.reduce((n, g) => n + g.recintos.length, 0);
+  const caidos = grupos.reduce((n, g) => n + g.recintos.filter((r) => r.estado === 'FALLO').length, 0);
+  return (
+    '<b>👷 Asignaciones CDA</b>\n' +
+    `${plural(tecnicos, 'técnico')} · ${plural(recintos, 'recinto')}` +
+    `${caidos > 0 ? ` · ${caidos} caído${caidos === 1 ? '' : 's'} 🔴` : ''}\n\n` +
+    'Toque un técnico para ver sus recintos CDA.'
+  );
+}
+
 /** Límite de Telegram por mensaje (4096) con margen. */
 const MAX_LARGO_MENSAJE = 4000;
 const MAX_NOMBRE = 45;
@@ -565,11 +607,40 @@ export class TelegramNotifier {
     }
   }
 
-  /** Uno o más mensajes, en orden (se espera cada envío antes del siguiente). */
-  async enviarAsignaciones(grupos: GrupoAsignacion[]): Promise<void> {
-    for (const mensaje of formatearAsignaciones(grupos)) {
-      await this.enviarMensaje(mensaje, 'las asignaciones CDA', 'HTML');
-    }
+  /** Totales y un botón por técnico; al tocar uno, ver mostrarAsignacionTecnico. */
+  async enviarMenuAsignaciones(grupos: GrupoAsignacion[]): Promise<void> {
+    await this.enviarMensaje(formatearMenuAsignaciones(grupos), 'las asignaciones CDA', 'HTML', tecladoTecnicos(grupos));
+  }
+
+  /** "↩ Resumen": devuelve ese mensaje al menú de técnicos. */
+  async editarMenuAsignaciones(messageId: number, grupos: GrupoAsignacion[]): Promise<void> {
+    await this.llamar(
+      'editMessageText',
+      {
+        message_id: messageId,
+        text: formatearMenuAsignaciones(grupos),
+        parse_mode: 'HTML',
+        reply_markup: tecladoTecnicos(grupos),
+      },
+      'las asignaciones CDA',
+    );
+  }
+
+  /** Cambia ese mensaje a los recintos del técnico tocado, con los botones debajo
+   * para pasar a otro. Si su lista no cabe en un mensaje, el resto va aparte. */
+  async mostrarAsignacionTecnico(messageId: number, grupos: GrupoAsignacion[], grupo: GrupoAsignacion): Promise<void> {
+    const [primero, ...resto] = formatearAsignaciones([grupo]);
+    await this.llamar(
+      'editMessageText',
+      {
+        message_id: messageId,
+        text: primero,
+        parse_mode: 'HTML',
+        reply_markup: tecladoTecnicos(grupos, claveGrupoAsignacion(grupo)),
+      },
+      'las asignaciones del técnico',
+    );
+    for (const mensaje of resto) await this.enviarMensaje(mensaje, 'las asignaciones del técnico', 'HTML');
   }
 
   /** Con `conBotones`, la tarjeta lleva Hoy/Semana/Mes para cambiar de período en el mismo mensaje. */
