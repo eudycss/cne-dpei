@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 
-import { MonitoreoPage } from './MonitoreoPage';
+import { MonitoreoPage, REFRESCO_MONITOREO_MS } from './MonitoreoPage';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
 import { formatearFechaHora } from '../../lib/notifications';
 
@@ -387,6 +387,17 @@ describe('MonitoreoPage', () => {
     expect(encabezados.slice(i - 1, i + 2)).toEqual(['Foto militar', 'Prueba de conexión', 'Reporte instalación']);
     expect(within(conPrueba).getByText(formatearFechaHora('2026-07-01T09:45:00.000Z'))).toBeInTheDocument();
     expect(within(sinPrueba).getByText('Pendiente')).toBeInTheDocument();
+  });
+
+  it('avisa que se actualiza cada 30 segundos (el mismo intervalo de las consultas)', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    expect(REFRESCO_MONITOREO_MS).toBe(30_000);
+    expect(await screen.findAllByText(/Se actualiza automáticamente cada 30 segundos/)).toHaveLength(2);
+    expect(screen.queryByText(/cada 10 segundos/)).not.toBeInTheDocument();
   });
 
   it('las columnas y botones dicen "Reporte" (no "Acta")', async () => {

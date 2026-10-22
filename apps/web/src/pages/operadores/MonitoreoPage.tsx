@@ -18,6 +18,9 @@ import { IndicadorSync } from './IndicadorSync';
 // confunda con una posición en vivo.
 const COLOR_SIN_SENAL = '#6b7280';
 const RELOJ_SIN_SENAL_MS = 30_000;
+/** Refresco de la pantalla (solo con la pestaña visible). 30 s alcanza para seguir la jornada sin cargar el plan gratis de Render. */
+export const REFRESCO_MONITOREO_MS = 30_000;
+const SEGUNDOS_REFRESCO = REFRESCO_MONITOREO_MS / 1000;
 const SIN_OPERADORES: OperadorEnRetorno[] = [];
 
 // Centro aproximado de la provincia de Imbabura (Ibarra) como vista por defecto.
@@ -171,7 +174,7 @@ export function MonitoreoPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['operadores-en-retorno'],
     queryFn: getOperadoresEnRetorno,
-    refetchInterval: 10_000,
+    refetchInterval: REFRESCO_MONITOREO_MS,
     refetchOnWindowFocus: true,
   });
 
@@ -207,7 +210,7 @@ export function MonitoreoPage() {
   } = useQuery({
     queryKey: ['estado-cdas'],
     queryFn: getEstadoCdas,
-    refetchInterval: 10_000,
+    refetchInterval: REFRESCO_MONITOREO_MS,
     refetchOnWindowFocus: true,
   });
 
@@ -247,7 +250,7 @@ export function MonitoreoPage() {
       <h2>Monitoreo de operadores en ruta</h2>
       <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
         Ubicación en tiempo real de tus operadores de CDA, tanto en su trayecto hacia el recinto
-        como en su regreso al DPI. Se actualiza automáticamente cada 10 segundos.
+        como en su regreso al DPI. Se actualiza automáticamente cada {SEGUNDOS_REFRESCO} segundos.
       </p>
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
@@ -361,7 +364,7 @@ export function MonitoreoPage() {
         />
       </div>
       <p style={{ opacity: 0.7, margin: '0.25rem 0 1rem' }}>
-        Estado actual de cada CDA del evento activo. Se actualiza automáticamente cada 10 segundos.
+        Estado actual de cada CDA del evento activo. Se actualiza automáticamente cada {SEGUNDOS_REFRESCO} segundos.
       </p>
 
       <KpiEstados conteo={conteoPorEstado} total={cdasDelCanton.length} />
