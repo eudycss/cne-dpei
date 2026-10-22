@@ -21,7 +21,10 @@ import {
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
   TEXTO_BOTON_PREGUNTAR,
+  type ContactoRecinto,
 } from './telegram-notifier';
+import { ArchivoDriveNoConfigurado } from './drive-excel';
+import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MINUTOS_AVISO_POR_DEFECTO } from './enlaces-escalamiento.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
@@ -146,6 +149,7 @@ export class EnlacesService {
     private readonly distributivo: DistributivoTecnicosClient,
     private readonly escalamiento: EnlacesEscalamientoService,
     private readonly asistente: AsistenteService,
+    private readonly encargados: EncargadosRecintosClient,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -385,10 +389,44 @@ export class EnlacesService {
           canton: normalizarCanton(f.canton),
         }));
       const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
-      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos);
+      const contactos = await this.contactosDe(nuevosCodigos);
+      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos, undefined, contactos);
     } catch (e) {
       const codigos = nuevasCaidas.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando Telegram de enlaces caídos (${codigos}): ${e}`);
+    }
+  }
+
+  /** Técnico (distributivo) y persona a quien llamar (hoja de contactos) de cada
+   * recinto recién caído. Si un archivo de Drive falla, el aviso sale igual y esa
+   * parte queda "sin asignar"/"sin registrar": avisar la caída es lo primero. */
+  private async contactosDe(codigos: Set<string>): Promise<Map<string, ContactoRecinto>> {
+    const [asignaciones, encargados] = await Promise.all([
+      this.leerDeDrive(() => this.distributivo.asignaciones(), 'el distributivo de técnicos'),
+      this.leerDeDrive(() => this.encargados.encargados(), 'los encargados de recintos'),
+    ]);
+    // Un recinto puede tener más de un técnico (una fila por cada uno): van todos.
+    const tecnicos = new Map<string, Set<string>>();
+    for (const a of asignaciones ?? []) {
+      tecnicos.set(a.codigoRecinto, (tecnicos.get(a.codigoRecinto) ?? new Set<string>()).add(a.tecnico));
+    }
+    return new Map<string, ContactoRecinto>(
+      [...codigos].map((codigo) => {
+        const nombres = tecnicos.get(codigo);
+        return [codigo, { tecnico: nombres ? [...nombres].join(', ') : null, encargado: encargados?.get(codigo) ?? null }];
+      }),
+    );
+  }
+
+  /** null si el archivo no se pudo leer; un archivo sin configurar no es un error. */
+  private async leerDeDrive<T>(leer: () => Promise<T>, descripcion: string): Promise<T | null> {
+    try {
+      return await leer();
+    } catch (e) {
+      if (!(e instanceof ArchivoDriveNoConfigurado)) {
+        this.log.warn(`No se pudo leer ${descripcion} para el aviso de caídas: ${(e as Error)?.message ?? e}`);
+      }
+      return null;
     }
   }
 

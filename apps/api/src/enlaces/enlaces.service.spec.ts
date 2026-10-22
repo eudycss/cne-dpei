@@ -13,6 +13,7 @@ import { AsistenteService } from './asistente/asistente.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
+import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
@@ -26,6 +27,8 @@ describe('EnlacesService', () => {
   let service: EnlacesService;
 
   const escalamiento = { escalar: jest.fn().mockResolvedValue(undefined) };
+  const distributivo = { asignaciones: jest.fn() };
+  const encargados = { encargados: jest.fn() };
 
   const prisma = {
     enlaceRecinto: {
@@ -62,6 +65,8 @@ describe('EnlacesService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    distributivo.asignaciones.mockResolvedValue([]);
+    encargados.encargados.mockResolvedValue(new Map());
     const moduleRef = await Test.createTestingModule({
       providers: [
         EnlacesService,
@@ -70,7 +75,8 @@ describe('EnlacesService', () => {
         { provide: TelegramNotifier, useValue: telegram },
         { provide: NotificationsService, useValue: notifications },
         { provide: EnlacesEstadisticasService, useValue: estadisticas },
-        { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
+        { provide: DistributivoTecnicosClient, useValue: distributivo },
+        { provide: EncargadosRecintosClient, useValue: encargados },
         { provide: EnlacesEscalamientoService, useValue: escalamiento },
         { provide: AsistenteService, useValue: asistente },
       ],
@@ -129,6 +135,8 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
+        undefined,
+        expect.any(Map),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -165,6 +173,8 @@ describe('EnlacesService', () => {
           { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
         new Set(['978', '982']),
+        undefined,
+        expect.any(Map),
       );
     });
 
@@ -186,6 +196,8 @@ describe('EnlacesService', () => {
           { codigoRecinto: '222', nombreRecinto: 'Recién cae', canton: null },
         ],
         new Set(['222']),
+        undefined,
+        expect.any(Map),
       );
     });
 
@@ -204,10 +216,89 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [{ codigoRecinto: '111', nombreRecinto: 'Cae', canton: 'Cotacachi' }],
         new Set(['111']),
+        undefined,
+        expect.any(Map),
       );
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
         { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' },
       ], expect.any(Map));
+    });
+
+    it('pasa a Telegram el técnico y a quién llamar de cada recinto recién caído', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '111', nombreRecinto: 'Ya caído', estado: 'FALLO' },
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+        { codigoRecinto: '333', nombreRecinto: 'Sin datos', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique
+        .mockResolvedValueOnce({ estado: 'FALLO' })
+        .mockResolvedValueOnce({ estado: 'ACTIVO' })
+        .mockResolvedValueOnce({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      distributivo.asignaciones.mockResolvedValue([
+        { codigoRecinto: '222', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+      ]);
+      encargados.encargados.mockResolvedValue(
+        new Map([['222', { nombre: 'Rector Juana Ejemplo 0990000000', telefono: '' }]]),
+      );
+
+      await service.revisarEnlaces();
+
+      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      expect([...contactos.keys()]).toEqual(['222', '333']);
+      expect(contactos.get('222')).toEqual({
+        tecnico: 'Ana Pérez',
+        encargado: { nombre: 'Rector Juana Ejemplo 0990000000', telefono: '' },
+      });
+      expect(contactos.get('333')).toEqual({ tecnico: null, encargado: null });
+    });
+
+    it('junta los técnicos de un recinto que tiene más de uno, sin repetir', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      distributivo.asignaciones.mockResolvedValue([
+        { codigoRecinto: '222', localidad: 'A', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+        { codigoRecinto: '222', localidad: 'B', parroquia: '', numeroTecnico: 2, tecnico: 'Luis Gómez' },
+        { codigoRecinto: '222', localidad: 'C', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+      ]);
+
+      await service.revisarEnlaces();
+
+      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      expect(contactos.get('222').tecnico).toBe('Ana Pérez, Luis Gómez');
+    });
+
+    it('si solo falla un archivo de Drive, usa lo que sí pudo leer', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
+      encargados.encargados.mockResolvedValue(new Map([['222', { nombre: 'Juana Ejemplo', telefono: '099' }]]));
+
+      await service.revisarEnlaces();
+
+      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      expect(contactos.get('222')).toEqual({ tecnico: null, encargado: { nombre: 'Juana Ejemplo', telefono: '099' } });
+    });
+
+    it('avisa la caída aunque no se puedan leer el distributivo ni los encargados', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
+      encargados.encargados.mockRejectedValue(new Error('Drive caído'));
+
+      await service.revisarEnlaces();
+
+      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      expect(contactos.get('222')).toEqual({ tecnico: null, encargado: null });
     });
 
     it('un fallo en el envío del correo batcheado no interrumpe el ciclo ni relanza', async () => {
@@ -236,6 +327,8 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
+        undefined,
+        expect.any(Map),
       );
     });
 
@@ -263,6 +356,8 @@ describe('EnlacesService', () => {
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
         new Set(['978']),
+        undefined,
+        expect.any(Map),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -596,6 +691,8 @@ describe('EnlacesService', () => {
           { codigoRecinto: '982', nombreRecinto: 'Escuela Sana', canton: null },
         ],
         new Set(['982']),
+        undefined,
+        expect.any(Map),
       );
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
@@ -1123,7 +1220,8 @@ describe('EnlacesService', () => {
             { provide: SheetsEnlacesClient, useValue: sheetsClient },
             { provide: NotificationsService, useValue: notifications },
             { provide: EnlacesEstadisticasService, useValue: estadisticas },
-            { provide: DistributivoTecnicosClient, useValue: { asignaciones: jest.fn() } },
+            { provide: DistributivoTecnicosClient, useValue: distributivo },
+            { provide: EncargadosRecintosClient, useValue: encargados },
             { provide: EnlacesEscalamientoService, useValue: escalamiento },
             { provide: AsistenteService, useValue: asistente },
           ],
