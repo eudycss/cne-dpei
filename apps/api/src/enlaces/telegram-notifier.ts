@@ -64,6 +64,8 @@ export interface AlertaRecinto {
   caidas7d: number;
   inestable: boolean;
   encargado: EncargadoRecinto | null;
+  /** Técnico(s) del distributivo; null si el recinto no figura o no se pudo leer. */
+  tecnico: string | null;
 }
 
 /** Un aviso de escalamiento: un posible corte de zona (varios recintos) o un recinto suelto (zona null). */
@@ -332,8 +334,13 @@ function lineasAlerta(a: AlertaRecinto, enZona: boolean): string[] {
         : `⚠️ Inestable: ${a.caidas7d} caídas en 7 días`,
     );
   }
-  lineas.push(`📞 Encargado: ${formatearEncargado(a.encargado)}`);
+  lineas.push(`👷 Técnico: ${formatearTecnico(a.tecnico)}`, `📞 Encargado: ${formatearEncargado(a.encargado)}`);
   return lineas;
+}
+
+/** Nombre(s) del técnico (HTML escapado y recortado) o "sin asignar". */
+function formatearTecnico(tecnico: string | null): string {
+  return tecnico ? escapeHtml(recortar(tecnico, MAX_TECNICO)) : 'sin asignar';
 }
 
 /** "Nombre · 099…" (HTML escapado) o "sin registrar". La celda del formulario ya
@@ -371,7 +378,7 @@ export function formatearListaActual(
       if (contactos) {
         const c = contactos.get(e.codigoRecinto);
         bloque +=
-          `\n    👷 Técnico: ${c?.tecnico ? escapeHtml(recortar(c.tecnico, MAX_TECNICO)) : 'sin asignar'}` +
+          `\n    👷 Técnico: ${formatearTecnico(c?.tecnico ?? null)}` +
           `\n    📞 Llamar: ${formatearEncargado(c?.encargado ?? null)}`;
       }
     }

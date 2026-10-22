@@ -63,14 +63,14 @@ describe('SheetsEnlacesClient', () => {
     ]);
   });
 
-  it('devuelve una sola entrada por código aunque la hoja lo repita (caso real del CPE)', async () => {
+  it('devuelve una sola entrada por código aunque la hoja lo repita (pasaba con el CPE)', async () => {
     valuesGetMock.mockResolvedValue({
       data: {
         values: [
           HEADER,
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'FALLO'],
+          ['IMBABURA', '1207', 'UE Repetida', 'FALLO'],
           ['IMBABURA', '982', 'Escuela', 'ACTIVO'],
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'FALLO'],
+          ['IMBABURA', '1207', 'UE Repetida', 'FALLO'],
         ],
       },
     });
@@ -78,7 +78,7 @@ describe('SheetsEnlacesClient', () => {
 
     const rows = await client.leerEnlacesImbabura();
 
-    expect(rows.map((r) => r.codigoRecinto)).toEqual(['CPE', '982']);
+    expect(rows.map((r) => r.codigoRecinto)).toEqual(['1207', '982']);
   });
 
   it.each([
@@ -89,8 +89,8 @@ describe('SheetsEnlacesClient', () => {
       data: {
         values: [
           HEADER,
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', primero],
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', segundo],
+          ['IMBABURA', '1207', 'UE Repetida', primero],
+          ['IMBABURA', '1207', 'UE Repetida', segundo],
         ],
       },
     });
@@ -99,7 +99,7 @@ describe('SheetsEnlacesClient', () => {
     const rows = await client.leerEnlacesImbabura();
 
     expect(rows).toEqual([
-      { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', canton: '', estado: 'FALLO' },
+      { codigoRecinto: '1207', nombreRecinto: 'UE Repetida', canton: '', estado: 'FALLO' },
     ]);
   });
 
@@ -108,8 +108,8 @@ describe('SheetsEnlacesClient', () => {
       data: {
         values: [
           HEADER,
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'ACTIVO'],
-          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'ACTIVO'],
+          ['IMBABURA', '1207', 'UE Repetida', 'ACTIVO'],
+          ['IMBABURA', '1207', 'UE Repetida', 'ACTIVO'],
         ],
       },
     });
@@ -130,6 +130,23 @@ describe('SheetsEnlacesClient', () => {
     const rows = await client.leerEnlacesImbabura();
 
     expect(rows).toEqual([]);
+  });
+
+  it('descarta el CPE: no es un recinto y no se monitorea', async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          HEADER,
+          ['IMBABURA', 'CPE', 'CPE - IMBABURA', 'FALLO'],
+          ['IMBABURA', '982', 'Unidad Educativa Zaldumbide', 'FALLO'],
+        ],
+      },
+    });
+    const client = new SheetsEnlacesClient();
+
+    const rows = await client.leerEnlacesImbabura();
+
+    expect(rows.map((r) => r.codigoRecinto)).toEqual(['982']);
   });
 
   it('devuelve arreglo vacío si la hoja no tiene filas de datos', async () => {

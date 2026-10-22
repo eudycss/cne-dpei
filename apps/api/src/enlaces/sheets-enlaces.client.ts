@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { google } from 'googleapis';
+import { esRecintoMonitoreado } from './codigos-excluidos';
 
 export interface SheetEnlaceRow {
   codigoRecinto: string;
@@ -74,7 +75,8 @@ export class SheetsEnlacesClient {
       if (provincia !== 'IMBABURA') continue;
 
       const codigoRecinto = (row[idxCodigo] ?? '').toString().trim();
-      if (!codigoRecinto) continue;
+      // El CPE no es un recinto: fuera de la tabla, el cron lo borra de la base y cierra su caída.
+      if (!codigoRecinto || !esRecintoMonitoreado(codigoRecinto)) continue;
 
       const estadoTexto = (row[idxEstado] ?? '').toString().trim().toUpperCase();
       const estado: SheetEnlaceRow['estado'] = estadoTexto === 'ACTIVO' ? 'ACTIVO' : 'FALLO';

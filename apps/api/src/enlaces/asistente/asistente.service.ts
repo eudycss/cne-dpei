@@ -12,6 +12,7 @@ import { asistenteSqlHabilitado, AsistenteNoDisponible, LlmClient, type ModoCons
 import { formatearResultadoSql } from './respuesta-sql';
 import { ejecutarSql, horaEcuadorSql, type DatosSql, type FilaCaidaSql, type FilaSql } from './sql/motor-sql';
 import { ErrorSql } from './sql/validar-sql';
+import { codigosExcluidos } from '../codigos-excluidos';
 
 /** Preguntas más largas no son una consulta al bot; además acota lo que se manda al modelo. */
 export const MAX_LARGO_PREGUNTA = 300;
@@ -516,7 +517,10 @@ Error: ${error}
     try {
       // Las más recientes primero: si hubiera más del tope, se pierden las viejas, no las de hoy.
       const caidas = await this.prisma.enlaceCaida.findMany({
-        where: { OR: [{ fin: null }, { inicio: { gte: new Date(Date.now() - DIAS_HISTORIAL_SQL * 24 * 60 * MS_MINUTO) } }] },
+        where: {
+          codigoRecinto: { notIn: codigosExcluidos() },
+          OR: [{ fin: null }, { inicio: { gte: new Date(Date.now() - DIAS_HISTORIAL_SQL * 24 * 60 * MS_MINUTO) } }],
+        },
         select: { codigoRecinto: true, inicio: true, fin: true },
         orderBy: { inicio: 'desc' },
         take: MAX_CAIDAS_SQL,
@@ -533,7 +537,7 @@ Error: ${error}
   private async listaCaidasAbiertas(): Promise<Caida[]> {
     try {
       const abiertas = await this.prisma.enlaceCaida.findMany({
-        where: { fin: null },
+        where: { fin: null, codigoRecinto: { notIn: codigosExcluidos() } },
         select: { codigoRecinto: true, inicio: true },
         orderBy: { inicio: 'asc' },
       });

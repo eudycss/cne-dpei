@@ -591,7 +591,7 @@ describe('AsistenteService', () => {
 
         await service.responder('x', 'c:1');
 
-        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { fin: null } }));
+        expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { fin: null, codigoRecinto: { notIn: ['CPE'] } } }));
         expect(html()).toContain('• 1008 · 1 h 30 min');
       });
 
