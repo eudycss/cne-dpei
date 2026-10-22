@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   MARGEN_LLEGADA_MAX_METROS,
+  bulkRecintoRowSchema,
+  createRecintoSchema,
+  updateRecintoSchema,
   cedulaSchema,
   avisosEnlacesSchema,
   configAlertasSchema,
@@ -166,5 +169,53 @@ describe('avisosEnlacesSchema', () => {
   it('rechaza texto o campos faltantes', () => {
     expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: '120', minutosRepetirAviso: 120 }).success).toBe(false);
     expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 120 }).success).toBe(false);
+  });
+});
+
+describe('recintos: los textos se guardan sin espacios sobrantes', () => {
+  const base = {
+    codigoRecinto: ' PRUEBA-DPEI ',
+    nombre: '  Escuela Central ',
+    direccion: ' Av. Bolívar ',
+    cantonId: 1,
+    parroquia: ' Sagrario ',
+    zona: ' Urbana ',
+    tipo: 'CDA' as const,
+    latitud: 0.35,
+    longitud: -78.12,
+  };
+
+  it('el formulario recorta código, nombre, dirección, parroquia y zona', () => {
+    const r = createRecintoSchema.parse(base);
+    expect(r).toMatchObject({
+      codigoRecinto: 'PRUEBA-DPEI',
+      nombre: 'Escuela Central',
+      direccion: 'Av. Bolívar',
+      parroquia: 'Sagrario',
+      zona: 'Urbana',
+    });
+  });
+
+  it('un código o nombre de solo espacios se rechaza', () => {
+    expect(createRecintoSchema.safeParse({ ...base, codigoRecinto: '   ' }).success).toBe(false);
+    expect(createRecintoSchema.safeParse({ ...base, nombre: '  ' }).success).toBe(false);
+  });
+
+  it('al editar también se recorta', () => {
+    expect(updateRecintoSchema.parse({ codigoRecinto: ' 28 ' }).codigoRecinto).toBe('28');
+  });
+
+  it('la carga masiva recorta código, nombre y códigos de cantón y CDA destino', () => {
+    const r = bulkRecintoRowSchema.parse({
+      codigo_recinto: ' 1286 ',
+      nombre: ' UE 17 de Julio ',
+      canton_codigo: ' 30 ',
+      tipo: 'NO_CDA',
+      latitud: '0.35',
+      longitud: '-78.12',
+      cda_destino_codigo: ' 28 ',
+    });
+    expect(r).toMatchObject({ codigo_recinto: '1286', nombre: 'UE 17 de Julio', canton_codigo: '30', cda_destino_codigo: '28' });
+    expect(bulkRecintoRowSchema.safeParse({ ...r, codigo_recinto: '  ' }).success).toBe(false);
   });
 });

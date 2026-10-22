@@ -170,13 +170,14 @@ export const bulkMilitarRowSchema = z.object({
 });
 
 // --- Recintos electorales (HU8) ---
+// Los textos se recortan: un espacio sobrante en el código ('  28') no coincide al buscar ni con el Sheet.
 export const createRecintoSchema = z.object({
-  codigoRecinto: z.string().min(1, 'Requerido').max(20, 'Máximo 20 caracteres'),
-  nombre: z.string().min(1, 'Requerido').max(255, 'Máximo 255 caracteres'),
-  direccion: z.string().max(255).nullable().optional(),
+  codigoRecinto: z.string().trim().min(1, 'Requerido').max(20, 'Máximo 20 caracteres'),
+  nombre: z.string().trim().min(1, 'Requerido').max(255, 'Máximo 255 caracteres'),
+  direccion: z.string().trim().max(255).nullable().optional(),
   cantonId: z.number().int('Selecciona un cantón').positive('Selecciona un cantón'),
-  parroquia: z.string().max(120).nullable().optional(),
-  zona: z.string().max(120).nullable().optional(),
+  parroquia: z.string().trim().max(120).nullable().optional(),
+  zona: z.string().trim().max(120).nullable().optional(),
   tipo: z.enum(['CDA', 'NO_CDA']),
   latitud: z.number().min(-90, 'Latitud inválida').max(90, 'Latitud inválida'),
   longitud: z.number().min(-180, 'Longitud inválida').max(180, 'Longitud inválida'),
@@ -192,9 +193,9 @@ export const updateRecintoSchema = createRecintoSchema.partial();
 
 // Fila de Excel/CSV para carga masiva de recintos
 export const bulkRecintoRowSchema = z.object({
-  codigo_recinto: z.string().min(1, 'Código requerido'),
-  nombre: z.string().min(1, 'Nombre requerido'),
-  canton_codigo: z.string().min(1, 'Código de cantón requerido'),
+  codigo_recinto: z.string().trim().min(1, 'Código requerido'),
+  nombre: z.string().trim().min(1, 'Nombre requerido'),
+  canton_codigo: z.string().trim().min(1, 'Código de cantón requerido'),
   tipo: z.enum(['CDA', 'NO_CDA']),
   parroquia: z.string().optional(),
   zona: z.string().optional(),
@@ -211,7 +212,7 @@ export const bulkRecintoRowSchema = z.object({
   numero_electores: z.coerce.number().int().nonnegative().optional(),
   juntas_femeninas: z.coerce.number().int().nonnegative().optional(),
   juntas_masculinas: z.coerce.number().int().nonnegative().optional(),
-  cda_destino_codigo: z.string().optional(),
+  cda_destino_codigo: z.string().trim().optional(),
 });
 
 // --- Eventos electorales (HU20) ---
