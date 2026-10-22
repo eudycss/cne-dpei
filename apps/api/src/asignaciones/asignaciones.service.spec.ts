@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
 import { AsignacionesService } from './asignaciones.service';
@@ -70,6 +70,14 @@ describe('AsignacionesService', () => {
       expect(prisma.asignacionSupervisor.upsert).not.toHaveBeenCalled();
     });
 
+    it('lanza ForbiddenException si el evento está reabierto para consulta', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId, reabiertoEn: new Date() });
+      await expect(
+        service.upsert({ eventoId, operadorId, supervisorId } as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.asignacionSupervisor.upsert).not.toHaveBeenCalled();
+    });
+
     it('lanza BadRequestException si el operador no tiene rol OPERADOR_CDA', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId });
       prisma.usuario.findFirst.mockResolvedValueOnce(null); // operador inválido
@@ -83,6 +91,25 @@ describe('AsignacionesService', () => {
         .mockResolvedValueOnce(null); // supervisor inválido
       await expect(service.upsert(input as any)).rejects.toThrow(BadRequestException);
       expect(prisma.asignacionSupervisor.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rechaza la carga masiva en un evento reabierto para consulta (403)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId, reabiertoEn: new Date() });
+      const file = { originalname: 'a.csv', buffer: Buffer.from('cedula_operador,cedula_supervisor\n') } as any;
+      await expect(service.bulkUpload(file, eventoId)).rejects.toThrow(ForbiddenException);
+      expect(prisma.asignacionSupervisor.upsert).not.toHaveBeenCalled();
+    });
+
+    it('sí asigna en otro evento aunque haya uno reabierto (reabiertoEn null)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId, reabiertoEn: null });
+      prisma.usuario.findFirst
+        .mockResolvedValueOnce({ id: operadorId, nombres: 'A', apellidos: 'B', cedula: '1' })
+        .mockResolvedValueOnce({ id: supervisorId, nombres: 'C', apellidos: 'D', cedula: '2' });
+      prisma.asignacionSupervisor.upsert.mockResolvedValueOnce({
+        id: asignacionId, eventoId, operadorId, supervisorId, creadoEn: new Date(),
+      });
+      await expect(service.upsert({ eventoId, operadorId, supervisorId } as any)).resolves.toBeDefined();
+      expect(prisma.asignacionSupervisor.upsert).toHaveBeenCalled();
     });
 
     it('crea/actualiza la asignación y devuelve el DTO con nombres', async () => {
@@ -115,6 +142,13 @@ describe('AsignacionesService', () => {
     it('lanza NotFoundException si la asignación no existe', async () => {
       prisma.asignacionSupervisor.findUnique.mockResolvedValueOnce(null);
       await expect(service.remove(asignacionId)).rejects.toThrow(NotFoundException);
+      expect(prisma.asignacionSupervisor.delete).not.toHaveBeenCalled();
+    });
+
+    it('no elimina si la asignación es de un evento reabierto para consulta (403)', async () => {
+      prisma.asignacionSupervisor.findUnique.mockResolvedValueOnce({ id: asignacionId, eventoId });
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce({ id: eventoId, reabiertoEn: new Date() });
+      await expect(service.remove(asignacionId)).rejects.toThrow(ForbiddenException);
       expect(prisma.asignacionSupervisor.delete).not.toHaveBeenCalled();
     });
 

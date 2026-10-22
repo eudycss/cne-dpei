@@ -31,6 +31,7 @@ import type {
   PdfQrRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { assertEventoNoReabierto } from '../common/evento-no-reabierto.guard';
 import { parseUploadRows } from '../common/parse-upload-rows';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
@@ -90,6 +91,7 @@ export class KitsService {
       where: { id: parsed.eventoId },
     });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
 
     const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
     if (!recinto || recinto.activo === false) throw new NotFoundException('Recinto no encontrado');
@@ -164,6 +166,7 @@ export class KitsService {
 
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
     this.assertNoFrozen(evento, justificacion);
 
     const operador = await this.prisma.usuario.findFirst({
@@ -211,6 +214,7 @@ export class KitsService {
 
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
     this.assertNoFrozen(evento, parsed.justificacion);
 
     const data: any = {};
@@ -295,6 +299,7 @@ export class KitsService {
 
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
     this.assertNoFrozen(evento, parsed.justificacion);
 
     const updated = await this.prisma.kitElectoral.update({
@@ -346,6 +351,7 @@ export class KitsService {
     if (!file) throw new BadRequestException('Archivo requerido');
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
     // HU12-CA6: la carga masiva no admite excepciones — una vez congelado el
     // evento, las asignaciones puntuales se hacen una por una con justificación.
     this.assertNoFrozen(evento);

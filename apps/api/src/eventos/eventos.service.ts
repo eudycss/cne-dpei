@@ -116,10 +116,7 @@ export class EventosService {
     if (evento.estado === 'ACTIVO') return this.get(id);
 
     await this.assertSinOtroActivo();
-    await this.prisma.eventoElectoral.update({
-      where: { id },
-      data: { estado: 'ACTIVO' },
-    });
+    await this.marcarActivo(id, { estado: 'ACTIVO' });
     return this.get(id);
   }
 
@@ -136,10 +133,7 @@ export class EventosService {
       throw new BadRequestException('Solo se puede reabrir un evento CERRADO');
     }
     await this.assertSinOtroActivo();
-    await this.prisma.eventoElectoral.update({
-      where: { id },
-      data: { estado: 'ACTIVO', reabiertoEn: new Date() },
-    });
+    await this.marcarActivo(id, { estado: 'ACTIVO', reabiertoEn: new Date() });
     return this.get(id);
   }
 
@@ -195,6 +189,27 @@ export class EventosService {
   }
 
   // ---- internos ----
+  /**
+   * Si dos admins activan/reabren a la vez, ambos pasan assertSinOtroActivo y el
+   * índice único uq_evento_activo frena al segundo con P2002: se responde 409
+   * en vez de 500.
+   */
+  private async marcarActivo(
+    id: string,
+    data: { estado: 'ACTIVO'; reabiertoEn?: Date },
+  ): Promise<void> {
+    try {
+      await this.prisma.eventoElectoral.update({ where: { id }, data });
+    } catch (e) {
+      if ((e as { code?: string } | null)?.code === 'P2002') {
+        throw new ConflictException(
+          'Otro evento se activó al mismo tiempo. Recargue la página para ver cuál quedó activo.',
+        );
+      }
+      throw e;
+    }
+  }
+
   /** HU20-CA2: solo un evento ACTIVO a la vez. */
   private async assertSinOtroActivo(): Promise<void> {
     const activo = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' } });
