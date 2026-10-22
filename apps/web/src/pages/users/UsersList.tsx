@@ -16,6 +16,8 @@ export function UsersList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+  // Desactivar no borra al usuario: por defecto se ocultan para no confundirlos con los vigentes.
+  const [mostrarInactivos, setMostrarInactivos] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAssign, setShowAssign] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
@@ -29,10 +31,11 @@ export function UsersList() {
   }, [search]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['users', { page, search: debounced }],
+    queryKey: ['users', { page, search: debounced, mostrarInactivos }],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), pageSize: '20' });
       if (debounced) params.set('search', debounced);
+      if (!mostrarInactivos) params.set('activo', 'true');
       const res = await api.get<Paginated<User>>(`/users?${params}`);
       return res.data;
     },
@@ -103,6 +106,14 @@ export function UsersList() {
             onChange={(v) => { setSearch(v); setPage(1); }}
             style={{ flex: 1 }}
           />
+          <label className="row" style={{ margin: 0, gap: '0.35rem', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={mostrarInactivos}
+              onChange={(e) => { setMostrarInactivos(e.target.checked); setPage(1); }}
+            />
+            Mostrar inactivos
+          </label>
           {isAdmin && (
             <>
               <Link to="/users/new" className="btn">+ Nuevo</Link>
