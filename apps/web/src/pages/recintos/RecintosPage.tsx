@@ -172,7 +172,6 @@ export function RecintosPage() {
 
   return (
     <>
-      <h2>Recintos Electorales</h2>
       <PasoFlujo paso="recintos" />
       <div className="card">
         <div className="row" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>

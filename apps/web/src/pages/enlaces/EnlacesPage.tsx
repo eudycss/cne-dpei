@@ -101,7 +101,7 @@ export function EnlacesPage() {
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Enlaces (CDAs Imbabura)</h2>
+        <h3 style={{ margin: 0 }}>Enlaces (CDAs Imbabura)</h3>
         <button className="btn secondary" onClick={() => setMostrarCorreos(true)}>
           {textoBotonAvisos(config)}
         </button>

@@ -468,3 +468,13 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .paso-flujo .banner { flex: 1 1 320px; margin-bottom: 0; }
 .paso-flujo .banner a { color: inherit; font-weight: 600; text-decoration: underline; }
 .paso-flujo-siguiente { margin-left: auto; text-decoration: none; }
+
+/* Pestañas (patrón WAI-ARIA Tabs) */
+.pestanas { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.pestanas [role="tab"] {
+  background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px;
+  min-height: 44px; padding: 0.6rem 1rem; font: inherit; font-weight: 500; color: var(--text-muted); cursor: pointer;
+}
+.pestanas [role="tab"]:hover { color: var(--text); }
+.pestanas [role="tab"][aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--primary); }
+.pestanas [role="tab"]:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }

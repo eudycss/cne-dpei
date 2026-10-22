@@ -29,6 +29,7 @@ vi.mock('./pages/users/BulkUpload', () => ({ BulkUpload: () => <div>página: car
 vi.mock('./pages/militares/MilitaresPage', () => ({ MilitaresPage: () => <div>página: militares</div> }));
 vi.mock('./pages/militares/BulkMilitares', () => ({ BulkMilitares: () => <div>página: carga militares</div> }));
 vi.mock('./pages/recintos/RecintosPage', () => ({ RecintosPage: () => <div>página: recintos</div> }));
+vi.mock('./pages/enlaces/EnlacesPage', () => ({ EnlacesPage: () => <div>página: enlaces</div> }));
 vi.mock('./pages/eventos/EventosPage', () => ({ EventosPage: () => <div>página: eventos</div> }));
 vi.mock('./pages/asignaciones/AsignacionesPage', () => ({ AsignacionesPage: () => <div>página: asignaciones</div> }));
 vi.mock('./pages/kits/KitsPage', () => ({ KitsPage: () => <div>página: kits</div> }));
@@ -127,6 +128,20 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/reportes/cadena-custodia');
     expect(screen.getByText('página: cadena de custodia')).toBeInTheDocument();
+  });
+
+  it('/enlaces lleva al ADMINISTRADOR a la pestaña Enlaces de Recintos (marcadores viejos siguen sirviendo)', () => {
+    setSessionUser(['ADMINISTRADOR']);
+    renderAppAt('/enlaces');
+    expect(screen.getByRole('tab', { name: 'Enlaces' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('página: enlaces')).toBeInTheDocument();
+  });
+
+  it('/enlaces muestra a LECTOR solo el listado de recintos', () => {
+    setSessionUser(['LECTOR']);
+    renderAppAt('/enlaces');
+    expect(screen.getByText('página: recintos')).toBeInTheDocument();
+    expect(screen.queryByText('página: enlaces')).not.toBeInTheDocument();
   });
 
   it('ADMINISTRADOR entra tanto a /alertas como a /reportes/no-cda', () => {

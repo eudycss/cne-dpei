@@ -150,7 +150,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
       'Asignaciones',
       'Kits Electorales',
     ]);
-    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas', 'Enlaces']);
+    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas']);
     expect(etiquetas('Informes')).toEqual(['Cadena de custodia', 'Reportes', 'Power BI CDAS']);
     const hrefs = within(screen.getByRole('group', { name: 'Preparación' }))
       .getAllByRole('link')
@@ -166,7 +166,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
     expect(screen.getByRole('group', { name: 'Informes' })).toBeInTheDocument();
   });
 
-  it('TECNICO_SUPERVISOR ve Alertas pero no Enlaces en Operación, y solo Power BI en Informes', () => {
+  it('TECNICO_SUPERVISOR ve Alertas en Operación, y solo Power BI en Informes', () => {
     setSessionUser(['TECNICO_SUPERVISOR']);
     renderLayout();
     const etiquetas = (grupo: string) =>
