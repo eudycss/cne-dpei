@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router';
 import {
   ChartColumn,
   FileChartColumn,
+  ListChecks,
   LogOut,
   MapPinned,
   Moon,
@@ -58,6 +59,10 @@ export function Layout() {
             {!soloAsistente && (
               <>
                 <SeccionMenu id="menu-preparacion" titulo="Preparación">
+                  <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <ListChecks size={16} aria-hidden="true" />
+                    <span>Estado de la preparación</span>
+                  </NavLink>
                   {PASOS_PREPARACION.map(({ id, ruta, etiqueta, icono: Icono }) => (
                     <NavLink key={id} to={ruta} className={({ isActive }) => (isActive ? 'active' : '')}>
                       <Icono size={16} aria-hidden="true" />

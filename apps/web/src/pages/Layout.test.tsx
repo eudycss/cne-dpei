@@ -142,6 +142,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
         .getAllByRole('link')
         .map((l) => l.textContent);
     expect(etiquetas('Preparación')).toEqual([
+      'Estado de la preparación',
       'Recintos Electorales',
       'Usuarios',
       'Militares',
@@ -154,7 +155,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
     const hrefs = within(screen.getByRole('group', { name: 'Preparación' }))
       .getAllByRole('link')
       .map((l) => l.getAttribute('href'));
-    expect(hrefs).toEqual(['/recintos', '/users', '/militares', '/eventos', '/asignaciones', '/kits']);
+    expect(hrefs).toEqual(['/', '/recintos', '/users', '/militares', '/eventos', '/asignaciones', '/kits']);
   });
 
   it('ASISTENTE_TRANSVERSAL solo tiene el grupo Informes (sin títulos de grupos vacíos)', () => {

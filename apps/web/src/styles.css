@@ -446,3 +446,19 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .logo-2027 { display: inline-block; border-radius: var(--radius-md); }
 [data-theme="dark"] .logo-2027 { background: #fff; padding: 0.35rem 0.6rem; }
 @media print { [data-theme="dark"] .logo-2027 { padding: 0; } }
+
+/* Panel de inicio: preparación del evento */
+.preparacion { max-width: 760px; }
+.preparacion h2 { margin: 0 0 0.25rem; }
+.preparacion-progreso { height: 8px; background: var(--border); border: 1px solid var(--border-input); border-radius: 999px; overflow: hidden; margin: 0.75rem 0 1rem; }
+.preparacion-progreso-barra { height: 100%; background: var(--primary); border-radius: 999px; transition: width var(--dur-fast); }
+.preparacion-pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.preparacion-paso { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; }
+.preparacion-paso.actual { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+.preparacion-paso-icono { flex-shrink: 0; color: var(--text-muted); }
+.preparacion-paso.hecho .preparacion-paso-icono { color: var(--success-text); }
+.preparacion-paso.actual .preparacion-paso-icono { color: var(--primary); }
+.preparacion-paso-texto { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.preparacion-paso-nombre { font-weight: 600; }
+.preparacion-paso .btn { flex-shrink: 0; text-decoration: none; }
+@media (prefers-reduced-motion: reduce) { .preparacion-progreso-barra { transition: none; } }
