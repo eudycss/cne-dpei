@@ -17,6 +17,7 @@ const alerta = (codigo: string, inicio: string, extra: Partial<AlertaRecinto> = 
   caidas7d: 1,
   inestable: false,
   encargado: null,
+  tecnico: null,
   ...extra,
 });
 
@@ -141,7 +142,7 @@ describe('EnlacesEscalamientoService', () => {
     const limite = iso('2026-10-21T14:31:00Z');
     expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { fin: null, inicio: { lte: limite }, OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }] },
+        where: { fin: null, codigoRecinto: { notIn: ['CPE'] }, inicio: { lte: limite }, OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }] },
       }),
     );
     expect(telegram.enviarEscalamiento).not.toHaveBeenCalled();
@@ -158,6 +159,7 @@ describe('EnlacesEscalamientoService', () => {
       expect.objectContaining({
         where: {
           fin: null,
+          codigoRecinto: { notIn: ['CPE'] },
           inicio: { lte: iso('2026-10-21T13:01:00Z') },
           OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: iso('2026-10-21T14:51:00Z') } }],
         },
@@ -191,6 +193,7 @@ describe('EnlacesEscalamientoService', () => {
     const limite = iso('2026-10-21T13:01:00Z');
     expect(prisma.enlaceCaida.findMany.mock.calls[0][0].where).toEqual({
       fin: null,
+      codigoRecinto: { notIn: ['CPE'] }, // el CPE no sale en el bot
       inicio: { lte: limite },
       OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }],
     });
@@ -223,6 +226,7 @@ describe('EnlacesEscalamientoService', () => {
             caidas7d: 4,
             inestable: true,
             encargado: { nombre: 'Ana Pérez', telefono: '+593 99 000 0000' },
+            tecnico: 'X',
           }),
         ],
       },
@@ -241,7 +245,7 @@ describe('EnlacesEscalamientoService', () => {
     await service.escalar(AHORA);
 
     const [grupos] = telegram.enviarEscalamiento.mock.calls[0];
-    expect(grupos[0].recintos[0]).toEqual(expect.objectContaining({ encargado: null, parroquia: '' }));
+    expect(grupos[0].recintos[0]).toEqual(expect.objectContaining({ encargado: null, tecnico: null, parroquia: '' }));
     expect(prisma.enlaceCaida.updateMany).toHaveBeenCalled();
   });
 

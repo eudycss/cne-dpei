@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
-import { DistributivoTecnicosClient } from './distributivo-tecnicos.client';
+import { DistributivoTecnicosClient, tecnicosPorRecinto } from './distributivo-tecnicos.client';
+import { codigosFueraDelBot, seMuestraEnBot } from './fuera-del-bot';
 import { EncargadosRecintosClient, type EncargadoRecinto } from './encargados-recintos.client';
 import { TelegramNotifier, type AlertaRecinto, type GrupoAlerta } from './telegram-notifier';
 
@@ -106,27 +107,31 @@ export class EnlacesEscalamientoService {
     try {
       const { minutosPrimerAviso, minutosRepetirAviso } = await this.frecuencia();
       const hace = (minutos: number) => new Date(ahora.getTime() - minutos * MS_MINUTO + MARGEN_MS);
-      const pendientes = await this.prisma.enlaceCaida.findMany({
-        where: {
-          fin: null,
-          inicio: { lte: hace(minutosPrimerAviso) },
-          OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: hace(minutosRepetirAviso) } }],
-        },
-        select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
-        orderBy: { inicio: 'asc' },
-      });
+      const pendientes = (
+        await this.prisma.enlaceCaida.findMany({
+          where: {
+            fin: null,
+            codigoRecinto: { notIn: codigosFueraDelBot() },
+            inicio: { lte: hace(minutosPrimerAviso) },
+            OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: hace(minutosRepetirAviso) } }],
+          },
+          select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
+          orderBy: { inicio: 'asc' },
+        })
+      ).filter((p) => seMuestraEnBot(p.codigoRecinto));
       if (pendientes.length === 0) return;
 
       const codigos = pendientes.map((p) => p.codigoRecinto);
       const hace24h = ahora.getTime() - 24 * 60 * MS_MINUTO;
-      const [historial, encargados, parroquias] = await Promise.all([
+      const [historial, encargados, distributivo] = await Promise.all([
         this.prisma.enlaceCaida.findMany({
           where: { codigoRecinto: { in: codigos }, inicio: { gte: new Date(ahora.getTime() - 7 * 24 * 60 * MS_MINUTO) } },
           select: { codigoRecinto: true, inicio: true },
         }),
         this.leerEncargados(),
-        this.leerParroquias(),
+        this.leerDistributivo(),
       ]);
+      const { parroquias, tecnicos } = distributivo;
 
       const alertas: AlertaRecinto[] = pendientes.map((p) => {
         const propias = historial.filter((h) => h.codigoRecinto === p.codigoRecinto);
@@ -143,6 +148,7 @@ export class EnlacesEscalamientoService {
           caidas7d: propias.length,
           inestable: esInestable(caidas24h, propias.length),
           encargado: encargados.get(p.codigoRecinto) ?? null,
+          tecnico: tecnicos.get(p.codigoRecinto) ?? null,
         };
       });
 
@@ -185,16 +191,22 @@ export class EnlacesEscalamientoService {
     }
   }
 
-  /** Parroquia por recinto (del distributivo), para agrupar por sector; si falla, se agrupa por cantón. */
-  private async leerParroquias(): Promise<Map<string, string>> {
+  /** Del distributivo: la parroquia de cada recinto (agrupa por sector) y su técnico.
+   * Si falla, se agrupa por cantón y el técnico sale "sin asignar". */
+  private async leerDistributivo(): Promise<{ parroquias: Map<string, string>; tecnicos: Map<string, string> }> {
     try {
       const asignaciones = await this.distributivo.asignaciones();
-      return new Map<string, string>(asignaciones.filter((a) => a.parroquia).map((a) => [a.codigoRecinto, a.parroquia]));
+      return {
+        parroquias: new Map<string, string>(
+          asignaciones.filter((a) => a.parroquia).map((a) => [a.codigoRecinto, a.parroquia]),
+        ),
+        tecnicos: tecnicosPorRecinto(asignaciones),
+      };
     } catch (e) {
       if (!(e instanceof ArchivoDriveNoConfigurado)) {
         this.log.warn(`No se pudo leer el distributivo, se agrupa por cantón: ${(e as Error)?.message ?? e}`);
       }
-      return new Map();
+      return { parroquias: new Map(), tecnicos: new Map() };
     }
   }
 }

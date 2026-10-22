@@ -24,12 +24,17 @@ import {
   type ContactoRecinto,
 } from './telegram-notifier';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
+import { seMuestraEnBot } from './fuera-del-bot';
 import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MINUTOS_AVISO_POR_DEFECTO } from './enlaces-escalamiento.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
-import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
+import {
+  DistributivoNoConfigurado,
+  DistributivoTecnicosClient,
+  tecnicosPorRecinto,
+} from './distributivo-tecnicos.client';
 import { AsistenteService } from './asistente/asistente.service';
 import { asistenteHabilitado } from './asistente/llm.client';
 
@@ -353,10 +358,11 @@ export class EnlacesService {
     recuperados: EnlaceCaido[],
     minutosCaido: Map<string, number>,
   ): Promise<void> {
-    if (recuperados.length === 0) return;
+    const visibles = recuperados.filter((r) => seMuestraEnBot(r.codigoRecinto));
+    if (visibles.length === 0) return;
 
     try {
-      await this.telegram.enviarRecuperados(recuperados, minutosCaido);
+      await this.telegram.enviarRecuperados(visibles, minutosCaido);
     } catch (e) {
       const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando Telegram de enlaces recuperados (${codigos}): ${e}`);
@@ -378,17 +384,19 @@ export class EnlacesService {
     nuevasCaidas: EnlaceCaido[],
     filas: { codigoRecinto: string; nombreRecinto: string; canton: string; estado: string }[],
   ): Promise<void> {
-    if (nuevasCaidas.length === 0) return;
+    // Si solo cayó una fila que el bot no muestra (el CPE), no hay nada que avisar.
+    const nuevasVisibles = nuevasCaidas.filter((c) => seMuestraEnBot(c.codigoRecinto));
+    if (nuevasVisibles.length === 0) return;
 
     try {
       const todasCaidas: EnlaceCaido[] = filas
-        .filter((f) => f.estado === 'FALLO')
+        .filter((f) => f.estado === 'FALLO' && seMuestraEnBot(f.codigoRecinto))
         .map((f) => ({
           codigoRecinto: f.codigoRecinto,
           nombreRecinto: f.nombreRecinto,
           canton: normalizarCanton(f.canton),
         }));
-      const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
+      const nuevosCodigos = new Set(nuevasVisibles.map((c) => c.codigoRecinto));
       const contactos = await this.contactosDe(nuevosCodigos);
       await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos, undefined, contactos);
     } catch (e) {
@@ -405,16 +413,12 @@ export class EnlacesService {
       this.leerDeDrive(() => this.distributivo.asignaciones(), 'el distributivo de técnicos'),
       this.leerDeDrive(() => this.encargados.encargados(), 'los encargados de recintos'),
     ]);
-    // Un recinto puede tener más de un técnico (una fila por cada uno): van todos.
-    const tecnicos = new Map<string, Set<string>>();
-    for (const a of asignaciones ?? []) {
-      tecnicos.set(a.codigoRecinto, (tecnicos.get(a.codigoRecinto) ?? new Set<string>()).add(a.tecnico));
-    }
+    const tecnicos = tecnicosPorRecinto(asignaciones ?? []);
     return new Map<string, ContactoRecinto>(
-      [...codigos].map((codigo) => {
-        const nombres = tecnicos.get(codigo);
-        return [codigo, { tecnico: nombres ? [...nombres].join(', ') : null, encargado: encargados?.get(codigo) ?? null }];
-      }),
+      [...codigos].map((codigo) => [
+        codigo,
+        { tecnico: tecnicos.get(codigo) ?? null, encargado: encargados?.get(codigo) ?? null },
+      ]),
     );
   }
 
@@ -500,19 +504,21 @@ export class EnlacesService {
    * correo al agregar un destinatario). */
   async reenviarListaTelegram(): Promise<{ enviados: number }> {
     const recintosCaidos = await this.prisma.enlaceRecinto.findMany({ where: { estado: 'FALLO' } });
-    const caidas: EnlaceCaido[] = recintosCaidos.map((r: any) => ({
-      codigoRecinto: r.codigoRecinto,
-      nombreRecinto: r.nombreRecinto,
-      canton: r.canton,
-    }));
+    const caidas: EnlaceCaido[] = recintosCaidos
+      .filter((r: any) => seMuestraEnBot(r.codigoRecinto))
+      .map((r: any) => ({
+        codigoRecinto: r.codigoRecinto,
+        nombreRecinto: r.nombreRecinto,
+        canton: r.canton,
+      }));
     await this.telegram.enviarListaActual(caidas);
     return { enviados: caidas.length };
   }
 
   /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
    * el estado actual del enlace de cada uno. Los recintos monitoreados que no
-   * están en el distributivo (p. ej. el CPE) van al final como "Sin técnico
-   * asignado". */
+   * están en el distributivo van al final como "Sin técnico asignado" (el CPE
+   * no: el bot no lo muestra). */
   async enviarAsignacionesTelegram(): Promise<void> {
     const [asignaciones, enlaces] = await Promise.all([
       this.distributivo.asignaciones(),
@@ -540,7 +546,7 @@ export class EnlacesService {
 
     const asignados = new Set(asignaciones.map((a) => a.codigoRecinto));
     const sinTecnico = enlaces
-      .filter((e) => !asignados.has(e.codigoRecinto))
+      .filter((e) => !asignados.has(e.codigoRecinto) && seMuestraEnBot(e.codigoRecinto))
       .map((e) => ({ codigoRecinto: e.codigoRecinto, nombreRecinto: e.nombreRecinto, canton: e.canton, estado: e.estado }));
 
     const lista = [...grupos.values()];

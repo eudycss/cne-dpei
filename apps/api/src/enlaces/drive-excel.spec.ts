@@ -106,6 +106,45 @@ describe('descargarExcelDrive', () => {
     await expect(descargarExcelDrive(VARIABLE)).rejects.toThrow(/HTTP 500 .* \/ .*cualquier persona con el enlace/);
   });
 
+  it('si Drive no responde (error de red), reintenta una vez a los 2 s', async () => {
+    process.env[VARIABLE] = '1AbCdEfGhIjK_lmn-op';
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Hoja').addRow(['al segundo intento']);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce(respuesta((await wb.xlsx.writeBuffer()) as ArrayBuffer));
+    const esperar = jest.fn().mockResolvedValue(undefined);
+
+    const leido = await descargarExcelDrive(VARIABLE, esperar);
+
+    expect(leido.worksheets[0].getCell('A1').value).toBe('al segundo intento');
+    expect(esperar).toHaveBeenCalledTimes(1);
+    expect(esperar).toHaveBeenCalledWith(2000);
+  });
+
+  it('si la red sigue fallando, se rinde tras el segundo intento con el motivo', async () => {
+    process.env[VARIABLE] = '1AbCdEfGhIjK_lmn-op';
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
+    const esperar = jest.fn().mockResolvedValue(undefined);
+
+    await expect(descargarExcelDrive(VARIABLE, esperar)).rejects.toThrow(/^fetch failed$/);
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(esperar).toHaveBeenCalledTimes(1);
+  });
+
+  it('un HTTP de error (sin fallo de red) no se reintenta', async () => {
+    process.env[VARIABLE] = '1AbCdEfGhIjK_lmn-op';
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    const esperar = jest.fn();
+
+    await expect(descargarExcelDrive(VARIABLE, esperar)).rejects.toThrow(/HTTP 500/);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(esperar).not.toHaveBeenCalled();
+  });
+
   it('descarga por el enlace público, con límite de tiempo, y abre el Excel', async () => {
     process.env[VARIABLE] = '1AbCdEfGhIjK_lmn-op';
     const wb = new ExcelJS.Workbook();

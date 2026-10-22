@@ -3,6 +3,7 @@ import {
   DistributivoNoConfigurado,
   DistributivoTecnicosClient,
   leerAsignaciones,
+  tecnicosPorRecinto,
 } from './distributivo-tecnicos.client';
 
 /** Un libro como el distributivo real: título, encabezados en la fila 3 y datos. */
@@ -120,5 +121,26 @@ describe('DistributivoTecnicosClient', () => {
       .mockResolvedValueOnce({ ok: false, status: 500 });
     await expect(cliente.asignaciones(t0 + 11 * 60_000)).resolves.toEqual(primera);
     expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('tecnicosPorRecinto', () => {
+  const fila = (codigoRecinto: string, tecnico: string) => ({
+    codigoRecinto,
+    localidad: '',
+    parroquia: '',
+    numeroTecnico: 1,
+    tecnico,
+  });
+
+  it('junta los técnicos de cada recinto sin repetir, en el orden del archivo', () => {
+    const tecnicos = tecnicosPorRecinto([
+      fila('1', 'Ana Pérez'),
+      fila('1', 'Luis Gómez'),
+      fila('1', 'Ana Pérez'),
+      fila('2', 'Luis Gómez'),
+    ]);
+
+    expect(tecnicos).toEqual(new Map([['1', 'Ana Pérez, Luis Gómez'], ['2', 'Luis Gómez']]));
   });
 });

@@ -79,6 +79,16 @@ export function leerAsignaciones(workbook: ExcelJS.Workbook): AsignacionTecnico[
   throw new Error('El distributivo no tiene una hoja con CODIGO DE RECINTO y TECNICOS RESPONSABLES');
 }
 
+/** Técnico(s) de cada recinto, para los avisos: un recinto puede tener más de uno
+ * (una fila por cada uno) y van todos, sin repetir ("Ana Pérez, Luis Gómez"). */
+export function tecnicosPorRecinto(asignaciones: AsignacionTecnico[]): Map<string, string> {
+  const nombres = new Map<string, Set<string>>();
+  for (const a of asignaciones) {
+    nombres.set(a.codigoRecinto, (nombres.get(a.codigoRecinto) ?? new Set<string>()).add(a.tecnico));
+  }
+  return new Map<string, string>([...nombres].map(([codigo, set]) => [codigo, [...set].join(', ')]));
+}
+
 @Injectable()
 export class DistributivoTecnicosClient {
   private readonly lectura = new LecturaCacheada<AsignacionTecnico[]>(new Logger('DistributivoTecnicos'));

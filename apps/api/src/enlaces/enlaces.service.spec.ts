@@ -224,6 +224,44 @@ describe('EnlacesService', () => {
       ], expect.any(Map));
     });
 
+    it('el CPE no sale en el bot: ni en la lista de caídos ni en recuperados, y si cae solo no hay aviso', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', estado: 'FALLO' },
+        { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '222', nombreRecinto: 'Recién cae', canton: null }],
+        new Set(['222']),
+        undefined,
+        expect.any(Map),
+      );
+
+      jest.clearAllMocks();
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+
+      await service.revisarEnlaces();
+
+      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+
+      jest.clearAllMocks();
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', estado: 'ACTIVO' },
+      ]);
+      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+
+      await service.revisarEnlaces();
+
+      expect(telegram.enviarRecuperados).not.toHaveBeenCalled();
+    });
+
     it('pasa a Telegram el técnico y a quién llamar de cada recinto recién caído', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '111', nombreRecinto: 'Ya caído', estado: 'FALLO' },
@@ -989,6 +1027,20 @@ describe('EnlacesService', () => {
         { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
       ]);
       expect(result).toEqual({ enviados: 2 });
+    });
+
+    it('deja fuera el CPE (/caidos y su botón)', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', canton: 'Cpe', estado: 'FALLO' },
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null, estado: 'FALLO' },
+      ]);
+
+      const result = await service.reenviarListaTelegram();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
+      ]);
+      expect(result).toEqual({ enviados: 1 });
     });
 
     it('pasa el cantón de cada recinto para que Telegram lo muestre abreviado', async () => {

@@ -2,6 +2,9 @@ import { Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 
 const TIMEOUT_MS = 15_000;
+/** Un fallo de red se reintenta una vez, a los 2 s. */
+const MAX_INTENTOS = 2;
+const ESPERA_REINTENTO_MS = 2_000;
 const MAX_BYTES = 5 * 1024 * 1024;
 /** Los archivos cambian poco: se releen cada 10 min, no en cada uso. */
 const CACHE_MS = 10 * 60 * 1000;
@@ -40,27 +43,48 @@ const urlsDescarga = (id: string) => [
  * ("cualquier persona con el enlace"). `variable` es la variable de entorno con
  * el id, para los mensajes. Si el primer enlace falla, prueba el siguiente.
  */
-export async function descargarExcelDrive(variable: string): Promise<ExcelJS.Workbook> {
+export async function descargarExcelDrive(
+  variable: string,
+  esperar: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<ExcelJS.Workbook> {
   const id = process.env[variable]?.trim();
   if (!id) throw new ArchivoDriveNoConfigurado(variable);
   if (!/^[\w-]{10,100}$/.test(id)) throw new Error(`${variable} no es un id de Drive válido`);
 
-  const errores: string[] = [];
-  for (const url of urlsDescarga(id)) {
-    try {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load((await descargar(url, variable)) as unknown as ArrayBuffer);
-      return workbook;
-    } catch (e) {
-      errores.push((e as Error)?.message ?? String(e));
+  for (let intento = 1; ; intento++) {
+    const errores: string[] = [];
+    let deRed = false;
+    for (const url of urlsDescarga(id)) {
+      try {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load((await descargar(url, variable)) as unknown as ArrayBuffer);
+        return workbook;
+      } catch (e) {
+        deRed ||= e instanceof ErrorDeRed;
+        errores.push((e as Error)?.message ?? String(e));
+      }
     }
+    // Solo un fallo de red se reintenta (pasó tras un reinicio del servidor y el aviso
+    // salió sin encargado). Un HTTP de error no: el 500 es la respuesta normal del
+    // primer enlace para una hoja de Google, y repetirlo no cambia nada.
+    if (!deRed || intento >= MAX_INTENTOS) {
+      // Los dos motivos: cuál aplica depende de si es un .xlsx subido o una hoja de Google.
+      throw new Error([...new Set(errores)].join(' / '));
+    }
+    await esperar(ESPERA_REINTENTO_MS);
   }
-  // Los dos motivos: cuál aplica depende de si es un .xlsx subido o una hoja de Google.
-  throw new Error([...new Set(errores)].join(' / '));
 }
 
+/** Drive no respondió (red caída o sin respuesta a tiempo): puede arreglarse reintentando. */
+class ErrorDeRed extends Error {}
+
 async function descargar(url: string, variable: string): Promise<Buffer> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'follow' });
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'follow' });
+  } catch (e) {
+    throw new ErrorDeRed((e as Error)?.message ?? String(e));
+  }
   if (!res.ok) throw new Error(`Drive respondió HTTP ${res.status} al descargar el archivo de ${variable}`);
   // Si Drive anuncia el tamaño, se rechaza antes de cargar el cuerpo en memoria.
   if (Number(res.headers?.get('content-length') ?? 0) > MAX_BYTES) {

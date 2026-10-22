@@ -56,7 +56,7 @@ describe('Asignaciones CDA — botón del bot', () => {
   const tocar = (texto: string, chat = '-100') =>
     service.procesarComandoTelegram('secreto123', { message: { text: texto, chat: { id: chat } } });
 
-  it('agrupa por técnico en orden, con el estado de cada enlace, y deja al final los que no tienen técnico', async () => {
+  it('agrupa por técnico en orden, con el estado de cada enlace, y deja al final los que no tienen técnico (menos el CPE)', async () => {
     distributivo.asignaciones.mockResolvedValue([
       { codigoRecinto: '1126', localidad: 'UE Uno', numeroTecnico: 1, tecnico: 'Ana Pérez' },
       { codigoRecinto: '323', localidad: 'Plaza Dos', numeroTecnico: 1, tecnico: 'Ana Pérez' },
@@ -67,6 +67,7 @@ describe('Asignaciones CDA — botón del bot', () => {
       { codigoRecinto: '1126', nombreRecinto: 'UE Cesar Borja', canton: 'Ibarra', estado: 'FALLO' },
       { codigoRecinto: '323', nombreRecinto: 'Plaza Central de Angochagua', canton: 'Ibarra', estado: 'ACTIVO' },
       { codigoRecinto: '1272', nombreRecinto: 'UE Diocesana Bilingue', canton: 'Ibarra', estado: 'ACTIVO' },
+      { codigoRecinto: '777', nombreRecinto: 'UE Nueva', canton: 'Otavalo', estado: 'FALLO' },
       { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', canton: 'Internet', estado: 'ACTIVO' },
     ]);
 
@@ -76,7 +77,8 @@ describe('Asignaciones CDA — botón del bot', () => {
     expect(grupos.map((g) => [g.numeroTecnico, g.tecnico, g.recintos.map((r) => [r.codigoRecinto, r.estado])])).toEqual([
       [1, 'Ana Pérez', [['1126', 'FALLO'], ['323', 'ACTIVO']]],
       [2, 'Luis Mora', [['1272', 'ACTIVO'], ['9999', null]]],
-      [null, '', [['CPE', 'ACTIVO']]],
+      // El CPE no sale en el bot: no es un recinto ni tiene técnico.
+      [null, '', [['777', 'FALLO']]],
     ]);
     // Sin enlace monitoreado: se usa el nombre de la localidad del distributivo.
     expect(grupos[1].recintos[1].nombreRecinto).toBe('UE Sin Enlace');

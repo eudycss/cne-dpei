@@ -59,6 +59,7 @@ describe('formatearEscalamiento', () => {
     caidas7d: 1,
     inestable: false,
     encargado: { nombre: 'Ana Pérez', telefono: '+593 99 000 0000' },
+    tecnico: 'Luis Gómez',
     ...extra,
   });
 
@@ -71,6 +72,7 @@ describe('formatearEscalamiento', () => {
         '',
         '🔴 <b>1961 · UE García Moreno</b> (Cot · Quiroga)',
         '⏱ Caído hace 30 min',
+        '👷 Técnico: Luis Gómez',
         '📞 Encargado: Ana Pérez · +593 99 000 0000',
       ].join('\n'),
     );
@@ -98,6 +100,10 @@ describe('formatearEscalamiento', () => {
     expect(por24h).toContain('⚠️ Inestable: 4 caídas en 24 h');
     expect(por24h).toContain('📞 Encargado: sin registrar');
     expect(por7d).toContain('⚠️ Inestable: 6 caídas en 7 días');
+    const [sinTecnico] = formatearEscalamiento([{ zona: null, recintos: [alerta('1', { tecnico: null })] }]);
+    expect(sinTecnico).toContain('👷 Técnico: sin asignar');
+    const [raro] = formatearEscalamiento([{ zona: null, recintos: [alerta('1', { tecnico: '<b>x</b>' })] }]);
+    expect(raro).toContain('👷 Técnico: &lt;b&gt;x&lt;/b&gt;');
   });
 
   it('un posible corte de luz o internet va en un bloque, sin repetir el sector en cada recinto', () => {
