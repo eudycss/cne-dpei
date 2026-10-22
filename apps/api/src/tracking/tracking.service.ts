@@ -1448,13 +1448,19 @@ export class TrackingService {
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
-      select: { operadorId: true, tipo: true },
+      select: { operadorId: true, tipo: true, ocurridoEn: true },
     });
     const tiposPorOperador = new Map<string, Set<string>>();
+    // La app puede repetir la prueba de conexión: vale la más reciente.
+    const pruebaConexionPorOperador = new Map<string, Date>();
     for (const t of trackingRows) {
       const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
       set.add(t.tipo);
       tiposPorOperador.set(t.operadorId, set);
+      if (t.tipo === 'PRUEBA_CONEXION') {
+        const previa = pruebaConexionPorOperador.get(t.operadorId);
+        if (!previa || t.ocurridoEn > previa) pruebaConexionPorOperador.set(t.operadorId, t.ocurridoEn);
+      }
     }
 
     // Solo recepciones de kits de este evento: las de un evento cerrado no
@@ -1531,6 +1537,7 @@ export class TrackingService {
         estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
         ubicacion,
         tieneFotoMilitar: operadoresConFoto.has(operadorId),
+        pruebaConexionEn: pruebaConexionPorOperador.get(operadorId)?.toISOString() ?? null,
         tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
         tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
       };

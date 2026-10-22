@@ -405,6 +405,7 @@ export function MonitoreoPage() {
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
+                <th>Prueba de conexión</th>
                 <th>Reporte instalación</th>
                 <th>Reporte escrutinio</th>
               </tr>
@@ -449,6 +450,9 @@ export function MonitoreoPage() {
                         Ver foto
                       </BotonConMotivo>
                     </td>
+                    <td style={c.pruebaConexionEn ? undefined : { color: 'var(--text-muted)' }}>
+                      {c.pruebaConexionEn ? formatearFechaHora(c.pruebaConexionEn) : 'Pendiente'}
+                    </td>
                     <td>
                       <BotonConMotivo
                         onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
@@ -472,7 +476,7 @@ export function MonitoreoPage() {
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td colSpan={11} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     {cdas.length === 0
                       ? 'No hay CDAs con operador asignado en el evento activo'
                       : 'Ningún CDA coincide con los filtros elegidos'}
