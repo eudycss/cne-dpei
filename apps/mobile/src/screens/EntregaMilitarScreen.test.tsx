@@ -30,7 +30,7 @@ import {
   validarKitCustodia,
 } from '../lib/queries/custodia';
 
-const flush = () => new Promise((r) => setImmediate(r));
+const flush = () => new Promise<void>((r) => setImmediate(r));
 
 const recintoId = 'rec-1';
 const militar: MilitarResumen = {
