@@ -11,7 +11,7 @@ import { PrismaService } from '../db/prisma.service';
 import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
-  abreviarCanton,
+  formatearFichaRecinto,
   TelegramNotifier,
   type GrupoAsignacion,
   PREFIJO_CALLBACK_ESTADISTICAS,
@@ -402,8 +402,9 @@ export class EnlacesService {
   }
 
   /** Técnico (distributivo) y persona a quien llamar (hoja de contactos) de cada
-   * recinto recién caído. Si un archivo de Drive falla, el aviso sale igual y esa
-   * parte queda "sin asignar"/"sin registrar": avisar la caída es lo primero. */
+   * recinto (recién caído o consultado por código). Si un archivo de Drive falla,
+   * el mensaje sale igual y esa parte queda "sin asignar"/"sin registrar": el
+   * estado del enlace es lo primero. */
   private async contactosDe(codigos: Set<string>): Promise<Map<string, ContactoRecinto>> {
     const [asignaciones, encargados] = await Promise.all([
       this.leerDeDrive(() => this.distributivo.asignaciones(), 'el distributivo de técnicos'),
@@ -424,7 +425,7 @@ export class EnlacesService {
       return await leer();
     } catch (e) {
       if (!(e instanceof ArchivoDriveNoConfigurado)) {
-        this.log.warn(`No se pudo leer ${descripcion} para el aviso de caídas: ${(e as Error)?.message ?? e}`);
+        this.log.warn(`No se pudo leer ${descripcion}: ${(e as Error)?.message ?? e}`);
       }
       return null;
     }
@@ -796,9 +797,9 @@ export class EnlacesService {
   }
 
   /** Busca un recinto por código (solo Imbabura, que es lo único que este bot
-   * sincroniza) y responde con código, nombre y estado — o avisa si no existe,
-   * en vez de quedarse callado, para que la persona sepa que el código no se
-   * reconoce y no piense que el bot no le respondió. */
+   * sincroniza) y responde con código, nombre, estado, técnico y a quién llamar —
+   * o avisa si no existe, en vez de quedarse callado, para que la persona sepa que
+   * el código no se reconoce y no piense que el bot no le respondió. */
   private async responderCodigoRecinto(codigo: string): Promise<void> {
     const recinto = await this.prisma.enlaceRecinto.findUnique({
       where: { codigoRecinto: codigo },
@@ -812,13 +813,11 @@ export class EnlacesService {
       return;
     }
 
-    const emojiEstado = recinto.estado === 'FALLO' ? '🔴' : '✅';
-    const abreviatura = abreviarCanton(recinto.canton);
-    const sufijoCanton = abreviatura ? ` (${abreviatura})` : '';
-    await this.telegram.enviarTexto(
-      `📍 ${recinto.codigoRecinto}${sufijoCanton} — ${recinto.nombreRecinto}\nEstado: ${emojiEstado} ${recinto.estado}`,
-      'el resultado de búsqueda de recinto',
-    );
+    const contacto = (await this.contactosDe(new Set([recinto.codigoRecinto]))).get(recinto.codigoRecinto) ?? {
+      tecnico: null,
+      encargado: null,
+    };
+    await this.telegram.enviarHtml(formatearFichaRecinto(recinto, contacto), 'el resultado de búsqueda de recinto');
   }
 
   async removeCorreo(correo: string): Promise<ConfigEnlacesResponse> {

@@ -394,6 +394,21 @@ export function formatearListaActual(
   return mensajes;
 }
 
+/** Respuesta a "Ingresar código" (HTML escapado): el recinto, su estado, su
+ * técnico y a quién llamar, con las mismas etiquetas que el aviso de caída. */
+export function formatearFichaRecinto(
+  recinto: EnlaceCaido & { estado: string },
+  contacto: ContactoRecinto,
+): string {
+  const emojiEstado = recinto.estado === 'FALLO' ? '🔴' : '✅';
+  return [
+    `📍 ${formatearLinea(recinto)}`,
+    `Estado: ${emojiEstado} ${escapeHtml(recinto.estado)}`,
+    `👷 Técnico: ${formatearTecnico(contacto.tecnico)}`,
+    `📞 Llamar: ${formatearEncargado(contacto.encargado)}`,
+  ].join('\n');
+}
+
 /**
  * Aviso de escalamiento (HTML escapado): primero los posibles cortes de zona,
  * después los recintos sueltos, cada uno con su encargado para llamarlo. Si no

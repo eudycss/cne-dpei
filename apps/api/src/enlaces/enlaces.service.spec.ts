@@ -20,6 +20,7 @@ const sendEnlaceCaido = jest.fn().mockResolvedValue(undefined);
 const sendEnlaceRecuperado = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../auth/notifier', () => ({
+  ...jest.requireActual('../auth/notifier'),
   resolveNotifier: () => ({ sendEnlaceCaido, sendEnlaceRecuperado }),
 }));
 
@@ -54,6 +55,7 @@ describe('EnlacesService', () => {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
     enviarRecuperados: jest.fn().mockResolvedValue(undefined),
     enviarTexto: jest.fn().mockResolvedValue(undefined),
+    enviarHtml: jest.fn().mockResolvedValue(undefined),
     responderBoton: jest.fn().mockResolvedValue(undefined),
     responderEn: jest.fn((_chatId: string, fn: () => Promise<unknown>) => fn()),
   };
@@ -1156,7 +1158,7 @@ describe('EnlacesService', () => {
 
         expect(telegram.responderEn).toHaveBeenCalledTimes(2);
         expect(telegram.responderEn).toHaveBeenCalledWith('-100999', expect.any(Function));
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(expect.stringContaining('Escuela Central'), expect.any(String));
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(expect.stringContaining('Escuela Central'), expect.any(String));
       });
 
       it('una espera de código abierta en el grupo principal no se consume desde un grupo de consulta', async () => {
@@ -1436,7 +1438,7 @@ describe('EnlacesService', () => {
           where: { codigoRecinto: '978' },
           select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
         });
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
           expect.stringContaining('Escuela Central'),
           expect.any(String),
         );
@@ -1459,7 +1461,7 @@ describe('EnlacesService', () => {
           message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
         });
 
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
           expect.stringContaining('📍 978 (Iba) — Escuela Central'),
           expect.any(String),
         );
@@ -1484,12 +1486,90 @@ describe('EnlacesService', () => {
             message: { text: 'CPE', chat: { id: '-100200300' }, from: { id: 111 } },
           });
 
-          expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+          expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
             expect.stringContaining('📍 CPE — CPE - IMBABURA'),
             expect.any(String),
           );
         },
       );
+
+      it('agrega el técnico asignado y a quién llamar en el recinto', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          canton: 'Ibarra',
+          estado: 'ACTIVO',
+        });
+        distributivo.asignaciones.mockResolvedValue([
+          { codigoRecinto: '978', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
+        ]);
+        encargados.encargados.mockResolvedValue(
+          new Map([['978', { nombre: 'Juana Ejemplo', telefono: '0990000000' }]]),
+        );
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        const [texto] = telegram.enviarHtml.mock.calls.at(-1);
+        expect(texto).toContain('👷 Técnico: Ana Pérez');
+        expect(texto).toContain('📞 Llamar: Juana Ejemplo · 0990000000');
+      });
+
+      it('responde el estado aunque no se puedan leer el distributivo ni los encargados', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          canton: 'Ibarra',
+          estado: 'FALLO',
+        });
+        distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
+        encargados.encargados.mockRejectedValue(new Error('Drive caído'));
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        const [texto] = telegram.enviarHtml.mock.calls.at(-1);
+        expect(texto).toContain('Estado: 🔴 FALLO');
+        expect(texto).toContain('👷 Técnico: sin asignar');
+        expect(texto).toContain('📞 Llamar: sin registrar');
+      });
+
+      it('si falla solo el distributivo, igual muestra a quién llamar', async () => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({
+          codigoRecinto: '978',
+          nombreRecinto: 'Escuela Central',
+          canton: 'Ibarra',
+          estado: 'ACTIVO',
+        });
+        distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
+        encargados.encargados.mockResolvedValue(new Map([['978', { nombre: 'Juana Ejemplo', telefono: '' }]]));
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
+        });
+
+        const [texto] = telegram.enviarHtml.mock.calls.at(-1);
+        expect(texto).toContain('👷 Técnico: sin asignar');
+        expect(texto).toContain('📞 Llamar: Juana Ejemplo');
+        expect(texto).not.toContain('Juana Ejemplo ·');
+      });
 
       it('avisa si el código no existe, en vez de quedarse callado', async () => {
         process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
@@ -1588,7 +1668,7 @@ describe('EnlacesService', () => {
         await service.procesarComandoTelegram('secreto123', {
           message: { text: '978', chat: { id: '-100200300' }, from: { id: 111 } },
         });
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
           expect.stringContaining('Escuela Central'),
           expect.any(String),
         );
@@ -1597,7 +1677,7 @@ describe('EnlacesService', () => {
         await service.procesarComandoTelegram('secreto123', {
           message: { text: '982', chat: { id: '-100200300' }, from: { id: 222 } },
         });
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
           expect.stringContaining('Unidad Educativa Zaldumbide'),
           expect.any(String),
         );
@@ -1657,7 +1737,7 @@ describe('EnlacesService', () => {
         });
 
         expect(prisma.enlaceRecinto.findUnique).toHaveBeenCalledTimes(1);
-        expect(telegram.enviarTexto).toHaveBeenLastCalledWith(
+        expect(telegram.enviarHtml).toHaveBeenLastCalledWith(
           expect.stringContaining('Escuela Central'),
           expect.any(String),
         );
