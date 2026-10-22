@@ -7,6 +7,7 @@ import { formatearAsignaciones, TelegramNotifier, TEXTO_BOTON_ASIGNACIONES, type
 import { NotificationsService } from '../notifications/notifications.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distributivo-tecnicos.client';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
+import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { AsistenteService } from './asistente/asistente.service';
 
 // Solo se reemplaza el notificador de correo; escapeHtml es el real.
@@ -39,6 +40,7 @@ describe('Asignaciones CDA — botón del bot', () => {
         { provide: NotificationsService, useValue: {} },
         { provide: EnlacesEstadisticasService, useValue: {} },
         { provide: DistributivoTecnicosClient, useValue: distributivo },
+        { provide: EncargadosRecintosClient, useValue: { encargados: jest.fn().mockResolvedValue(new Map()) } },
         { provide: EnlacesEscalamientoService, useValue: escalamiento },
         { provide: AsistenteService, useValue: {} },
       ],

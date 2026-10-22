@@ -2,7 +2,9 @@ import { Logger } from '@nestjs/common';
 import {
   abreviarCanton,
   type AlertaRecinto,
+  type ContactoRecinto,
   formatearEscalamiento,
+  formatearListaActual,
   TelegramNotifier,
   TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
@@ -151,6 +153,76 @@ describe('formatearEscalamiento', () => {
   });
 });
 
+describe('formatearListaActual (técnico y a quién llamar)', () => {
+  const caidos = [
+    { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+    { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide' },
+  ];
+
+  it('pone técnico y contacto debajo del recinto recién caído, y no debajo de los que ya venían caídos', () => {
+    const contactos = new Map<string, ContactoRecinto>([
+      ['982', { tecnico: 'Ana Pérez', encargado: { nombre: 'Rector Juana Ejemplo 0990000000', telefono: '' } }],
+    ]);
+
+    const [texto] = formatearListaActual(caidos, new Set(['982']), undefined, contactos);
+
+    expect(texto).toContain(
+      '🚨 <b>982 — UE Zaldumbide</b>\n    👷 Técnico: Ana Pérez\n    📞 Llamar: Rector Juana Ejemplo 0990000000',
+    );
+    expect(texto).toMatch(/\n978 — Escuela Central(\n|$)/);
+    expect(texto.match(/👷/g)).toHaveLength(1);
+  });
+
+  it('dice "sin asignar"/"sin registrar" si el recinto no está en los archivos', () => {
+    const [texto] = formatearListaActual(caidos, new Set(['978']), undefined, new Map());
+
+    expect(texto).toContain('👷 Técnico: sin asignar');
+    expect(texto).toContain('📞 Llamar: sin registrar');
+  });
+
+  it('escapa el HTML de técnico y contacto, que vienen de hojas editadas a mano', () => {
+    const contactos = new Map<string, ContactoRecinto>([
+      ['978', { tecnico: '<b>x</b>', encargado: { nombre: 'Ana & <i>Luis</i>', telefono: '099' } }],
+    ]);
+
+    const [texto] = formatearListaActual(caidos, new Set(['978']), undefined, contactos);
+
+    expect(texto).toContain('👷 Técnico: &lt;b&gt;x&lt;/b&gt;');
+    expect(texto).toContain('📞 Llamar: Ana &amp; &lt;i&gt;Luis&lt;/i&gt; · 099');
+  });
+
+  it('recorta un técnico enorme para que el bloque nunca pase el límite de Telegram', () => {
+    const contactos = new Map<string, ContactoRecinto>([['978', { tecnico: 'T'.repeat(5000), encargado: null }]]);
+
+    const [texto] = formatearListaActual(caidos, new Set(['978']), undefined, contactos);
+
+    expect(texto.length).toBeLessThan(400);
+    expect(texto).toContain('…');
+  });
+
+  it('sin contactos (reenvío o /caidos) no agrega líneas', () => {
+    const [texto] = formatearListaActual(caidos, new Set(['978']));
+
+    expect(texto).not.toContain('👷');
+    expect(texto).not.toContain('📞');
+  });
+
+  it('parte entre recintos si no cabe en un mensaje de Telegram, repitiendo el título', () => {
+    const muchos = Array.from({ length: 40 }, (_, i) => ({ codigoRecinto: `${1000 + i}`, nombreRecinto: `Recinto ${i}` }));
+    const contactos = new Map<string, ContactoRecinto>(
+      muchos.map((e) => [e.codigoRecinto, { tecnico: 'Técnico', encargado: { nombre: 'x'.repeat(150), telefono: '' } }]),
+    );
+
+    const mensajes = formatearListaActual(muchos, new Set(muchos.map((e) => e.codigoRecinto)), undefined, contactos);
+
+    expect(mensajes.length).toBeGreaterThan(1);
+    mensajes.forEach((m) => expect(m.length).toBeLessThanOrEqual(4000));
+    expect(mensajes[0]).toMatch(/^🔴 Enlaces caídos ahora mismo \(40\):/);
+    expect(mensajes[1]).toMatch(/^🔴 Enlaces caídos \(cont\.\):/);
+    expect(mensajes.join('\n').match(/🚨/g)).toHaveLength(40);
+  });
+});
+
 describe('TelegramNotifier', () => {
   const originalFetch = global.fetch;
   let esperar: jest.SpyInstance;
@@ -168,6 +240,23 @@ describe('TelegramNotifier', () => {
   });
 
   describe('enviarListaActual', () => {
+    it('si la lista no cabe en un mensaje, manda cada parte en orden', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      const muchos = Array.from({ length: 40 }, (_, i) => ({ codigoRecinto: `${1000 + i}`, nombreRecinto: `Recinto ${i}` }));
+      const contactos = new Map<string, ContactoRecinto>(
+        muchos.map((e) => [e.codigoRecinto, { tecnico: 'Técnico', encargado: { nombre: 'x'.repeat(150), telefono: '' } }]),
+      );
+
+      await new TelegramNotifier().enviarListaActual(muchos, new Set(muchos.map((e) => e.codigoRecinto)), undefined, contactos);
+
+      const textos = (global.fetch as jest.Mock).mock.calls.map(([, opts]) => JSON.parse(opts.body).text);
+      expect(textos.length).toBeGreaterThan(1);
+      expect(textos[0]).toMatch(/^🔴 Enlaces caídos ahora mismo \(40\):/);
+      expect(textos.slice(1).every((t: string) => t.startsWith('🔴 Enlaces caídos (cont.):'))).toBe(true);
+    });
+
     it('no llama a fetch si faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID', async () => {
       global.fetch = jest.fn();
       const notifier = new TelegramNotifier();

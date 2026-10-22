@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { EstadisticasEnlacesResponse, PeriodoEstadisticasEnlaces } from '@cne/shared-types';
 import { escapeHtml, type EnlaceCaido } from '../auth/notifier';
 import { asistenteHabilitado } from './asistente/llm.client';
+import type { EncargadoRecinto } from './encargados-recintos.client';
 
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
 export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
@@ -41,6 +42,13 @@ export interface GrupoAsignacion {
   recintos: { codigoRecinto: string; nombreRecinto: string; canton: string | null; estado: 'ACTIVO' | 'FALLO' | null }[];
 }
 
+/** A quién recurrir cuando un recinto se cae: su técnico (distributivo) y la
+ * persona del recinto a quien llamar (hoja de contactos); null si no figura. */
+export interface ContactoRecinto {
+  tecnico: string | null;
+  encargado: EncargadoRecinto | null;
+}
+
 /** Un recinto caído hace rato (según la configuración de avisos), con lo necesario para llamar a su encargado. */
 export interface AlertaRecinto {
   codigoRecinto: string;
@@ -55,7 +63,7 @@ export interface AlertaRecinto {
   caidas24h: number;
   caidas7d: number;
   inestable: boolean;
-  encargado: { nombre: string; telefono: string } | null;
+  encargado: EncargadoRecinto | null;
 }
 
 /** Un aviso de escalamiento: un posible corte de zona (varios recintos) o un recinto suelto (zona null). */
@@ -296,9 +304,17 @@ export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }
 }
 
 export function recortarNombre(nombre: string): string {
+  return recortar(nombre, MAX_NOMBRE);
+}
+
+/** El técnico viene de una celda sin tope (y puede juntar varios nombres): sin esto
+ * un bloque solo podría pasar el límite de Telegram y el mensaje entero se perdería. */
+const MAX_TECNICO = 120;
+
+function recortar(texto: string, maximo: number): string {
   // Por caracteres, no por unidades UTF-16: no parte un emoji a la mitad.
-  const letras = Array.from(nombre);
-  return letras.length > MAX_NOMBRE ? `${letras.slice(0, MAX_NOMBRE - 1).join('')}…` : nombre;
+  const letras = Array.from(texto);
+  return letras.length > maximo ? `${letras.slice(0, maximo - 1).join('')}…` : texto;
 }
 
 /** Las líneas de un recinto en el aviso de escalamiento (HTML escapado). */
@@ -316,11 +332,59 @@ function lineasAlerta(a: AlertaRecinto, enZona: boolean): string[] {
         : `⚠️ Inestable: ${a.caidas7d} caídas en 7 días`,
     );
   }
-  const encargado = a.encargado
-    ? [a.encargado.nombre, a.encargado.telefono].filter(Boolean).map(escapeHtml).join(' · ')
-    : '';
-  lineas.push(`📞 Encargado: ${encargado || 'sin registrar'}`);
+  lineas.push(`📞 Encargado: ${formatearEncargado(a.encargado)}`);
   return lineas;
+}
+
+/** "Nombre · 099…" (HTML escapado) o "sin registrar". La celda del formulario ya
+ * trae el cargo si lo escribieron ("Rector …", "conserje …"): va tal cual. */
+function formatearEncargado(encargado: EncargadoRecinto | null): string {
+  const texto = encargado
+    ? [encargado.nombre, encargado.telefono].filter(Boolean).map(escapeHtml).join(' · ')
+    : '';
+  return texto || 'sin registrar';
+}
+
+/**
+ * Lista completa de recintos caídos (HTML escapado), con 🚨 y negrita los que
+ * acaban de caer. Con `contactos`, debajo de cada nuevo van su técnico y a quién
+ * llamar en el recinto; los que ya venían caídos no, para no alargar el mensaje.
+ * Si no cabe en un mensaje de Telegram, se parte entre recintos.
+ */
+export function formatearListaActual(
+  enlaces: EnlaceCaido[],
+  nuevosCodigos?: Set<string>,
+  canton?: string,
+  contactos?: Map<string, ContactoRecinto>,
+): string[] {
+  // `canton`: la lista viene filtrada (asistente), y el título tiene que decirlo.
+  const donde = canton ? ` en ${escapeHtml(canton)}` : '';
+  if (enlaces.length === 0) return [`✅ No hay enlaces caídos${donde} en este momento.`];
+
+  const encabezado = `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):`;
+  const mensajes: string[] = [];
+  let actual = encabezado;
+  for (const e of enlaces) {
+    let bloque = formatearLinea(e);
+    if (nuevosCodigos?.has(e.codigoRecinto)) {
+      bloque = `🚨 <b>${bloque}</b>`;
+      if (contactos) {
+        const c = contactos.get(e.codigoRecinto);
+        bloque +=
+          `\n    👷 Técnico: ${c?.tecnico ? escapeHtml(recortar(c.tecnico, MAX_TECNICO)) : 'sin asignar'}` +
+          `\n    📞 Llamar: ${formatearEncargado(c?.encargado ?? null)}`;
+      }
+    }
+    const unido = `${actual}\n${bloque}`;
+    if (unido.length > MAX_LARGO_MENSAJE && actual !== encabezado) {
+      mensajes.push(actual);
+      actual = `🔴 Enlaces caídos${donde} (cont.):\n${bloque}`;
+    } else {
+      actual = unido;
+    }
+  }
+  mensajes.push(actual);
+  return mensajes;
 }
 
 /**
@@ -442,21 +506,17 @@ export class TelegramNotifier {
   /** Manda siempre el estado COMPLETO de recintos caídos, destacando con 🚨 y negrita
    * los que pasaron de ACTIVO a FALLO en este ciclo (si los hay) — nunca un mensaje
    * aislado de un solo recinto, para que el grupo no crea que los demás ya se
-   * recuperaron. Telegram no admite texto de color, por eso la negrita. */
-  async enviarListaActual(enlaces: EnlaceCaido[], nuevosCodigos?: Set<string>, canton?: string): Promise<void> {
-    // `canton`: la lista viene filtrada (asistente), y el título tiene que decirlo.
-    const donde = canton ? ` en ${escapeHtml(canton)}` : '';
-    const texto =
-      enlaces.length === 0
-        ? `✅ No hay enlaces caídos${donde} en este momento.`
-        : `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):\n` +
-          enlaces
-            .map((e) => {
-              const linea = formatearLinea(e);
-              return nuevosCodigos?.has(e.codigoRecinto) ? `🚨 <b>${linea}</b>` : linea;
-            })
-            .join('\n');
-    await this.enviarMensaje(texto, 'la lista de enlaces caídos', 'HTML');
+   * recuperaron. Telegram no admite texto de color, por eso la negrita. Uno o más
+   * mensajes, en orden (ver formatearListaActual). */
+  async enviarListaActual(
+    enlaces: EnlaceCaido[],
+    nuevosCodigos?: Set<string>,
+    canton?: string,
+    contactos?: Map<string, ContactoRecinto>,
+  ): Promise<void> {
+    for (const mensaje of formatearListaActual(enlaces, nuevosCodigos, canton, contactos)) {
+      await this.enviarMensaje(mensaje, 'la lista de enlaces caídos', 'HTML');
+    }
   }
 
   /** Avisa qué recintos volvieron a ACTIVO tras haber estado en FALLO — sin esto,
