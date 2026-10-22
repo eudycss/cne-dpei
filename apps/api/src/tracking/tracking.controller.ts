@@ -58,6 +58,7 @@ import { InformeOperadorService } from './informe-operador.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
+import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
@@ -83,6 +84,7 @@ export class TrackingController {
   }
 
   @Post('salida-dpi')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -96,6 +98,7 @@ export class TrackingController {
   }
 
   @Post('foto-militar')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiConsumes('multipart/form-data')
@@ -121,6 +124,7 @@ export class TrackingController {
   }
 
   @Post('foto-acta')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiConsumes('multipart/form-data')
@@ -159,6 +163,7 @@ export class TrackingController {
   }
 
   @Post('recepcion-kit')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'HU3-CA6: confirma la recepción de un kit electoral' })
@@ -170,6 +175,7 @@ export class TrackingController {
   }
 
   @Post('llegada-recinto')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -183,6 +189,7 @@ export class TrackingController {
   }
 
   @Post('llegada-no-cda')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -196,6 +203,7 @@ export class TrackingController {
   }
 
   @Post('prueba-conexion')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -209,6 +217,7 @@ export class TrackingController {
   }
 
   @Post('salida-recinto')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -222,6 +231,7 @@ export class TrackingController {
   }
 
   @Post('posiciones')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -262,6 +272,7 @@ export class TrackingController {
   }
 
   @Post('llegada-recinto-manual')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -392,6 +403,7 @@ export class TrackingController {
   }
 
   @Post('llegada-dpi')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -418,6 +430,7 @@ export class TrackingController {
   }
 
   @Post('verificar-kit-retorno')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -440,6 +453,7 @@ export class TrackingController {
   }
 
   @Post('reset-operador/:operadorId')
+  @UseGuards(EventoNoReabiertoGuard)
   @Roles('ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'operadorId', description: 'ID del operador a resetear' })

@@ -40,6 +40,7 @@ describe('EventosService', () => {
       estado: 'BORRADOR',
       creadoEn: new Date('2026-06-19T10:00:00Z'),
       cerradoEn: null,
+      reabiertoEn: null,
       ...overrides,
     };
   }
@@ -257,6 +258,60 @@ describe('EventosService', () => {
       expect(prisma.eventoElectoral.update).toHaveBeenCalledWith({
         where: { id: eventoId },
         data: expect.objectContaining({ estado: 'CERRADO' }),
+      });
+    });
+
+    it('al cerrar un evento reabierto no revisa pendientes y limpia reabiertoEn', async () => {
+      prisma.eventoElectoral.findUnique
+        .mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO', reabiertoEn: new Date() }))
+        .mockResolvedValueOnce(eventoRow({ estado: 'CERRADO', cerradoEn: new Date() })); // get()
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(configRow);
+
+      const result = await service.close(eventoId, true);
+
+      expect(result.estado).toBe('CERRADO');
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(prisma.eventoElectoral.update).toHaveBeenCalledWith({
+        where: { id: eventoId },
+        data: { estado: 'CERRADO', cerradoEn: expect.any(Date), reabiertoEn: null },
+      });
+    });
+  });
+
+  describe('reopen', () => {
+    it('lanza NotFoundException si el evento no existe', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(null);
+      await expect(service.reopen(eventoId)).rejects.toThrow(NotFoundException);
+    });
+
+    it.each(['BORRADOR', 'ACTIVO'])('lanza BadRequestException si el evento está %s', async (estado) => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado }));
+      await expect(service.reopen(eventoId)).rejects.toThrow(BadRequestException);
+      expect(prisma.eventoElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('lanza ConflictException si ya existe otro evento ACTIVO', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'CERRADO' }));
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce({ id: 'otro', nombre: 'Otro evento' });
+      await expect(service.reopen(eventoId)).rejects.toThrow(ConflictException);
+      expect(prisma.eventoElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('deja el evento ACTIVO marcado como reabierto', async () => {
+      const reabiertoEn = new Date('2026-10-22T13:00:00Z');
+      prisma.eventoElectoral.findUnique
+        .mockResolvedValueOnce(eventoRow({ estado: 'CERRADO', cerradoEn: new Date() }))
+        .mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO', reabiertoEn })); // get()
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(configRow);
+
+      const result = await service.reopen(eventoId);
+
+      expect(result.estado).toBe('ACTIVO');
+      expect(result.reabiertoEn).toBe(reabiertoEn.toISOString());
+      expect(prisma.eventoElectoral.update).toHaveBeenCalledWith({
+        where: { id: eventoId },
+        data: { estado: 'ACTIVO', reabiertoEn: expect.any(Date) },
       });
     });
   });

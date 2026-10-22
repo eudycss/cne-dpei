@@ -115,16 +115,30 @@ export class EventosService {
     }
     if (evento.estado === 'ACTIVO') return this.get(id);
 
-    // HU20-CA2: solo un evento ACTIVO a la vez
-    const activo = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' } });
-    if (activo) {
-      throw new ConflictException(
-        `Ya existe un evento activo: "${activo.nombre}". Ciérralo antes de activar otro.`,
-      );
-    }
+    await this.assertSinOtroActivo();
     await this.prisma.eventoElectoral.update({
       where: { id },
       data: { estado: 'ACTIVO' },
+    });
+    return this.get(id);
+  }
+
+  /**
+   * Reabre un evento cerrado solo para consulta (sacar informes o datos). Queda
+   * ACTIVO con `reabiertoEn`: la app móvil no puede registrar
+   * (EventoNoReabiertoGuard) y el cron de alertas lo ignora. La justificación
+   * queda en la bitácora (audit.interceptor).
+   */
+  async reopen(id: string): Promise<EventoElectoral> {
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    if (evento.estado !== 'CERRADO') {
+      throw new BadRequestException('Solo se puede reabrir un evento CERRADO');
+    }
+    await this.assertSinOtroActivo();
+    await this.prisma.eventoElectoral.update({
+      where: { id },
+      data: { estado: 'ACTIVO', reabiertoEn: new Date() },
     });
     return this.get(id);
   }
@@ -148,7 +162,8 @@ export class EventosService {
       throw new BadRequestException('Solo se puede cerrar un evento ACTIVO');
     }
 
-    const pendientes = await this.operadoresSinLlegadaDpi(id);
+    // Un evento reabierto ya pasó por este control en su primer cierre.
+    const pendientes = evento.reabiertoEn ? [] : await this.operadoresSinLlegadaDpi(id);
     if (pendientes.length > 0 && !justificacion?.trim()) {
       throw new BadRequestException({
         message:
@@ -159,7 +174,7 @@ export class EventosService {
 
     await this.prisma.eventoElectoral.update({
       where: { id },
-      data: { estado: 'CERRADO', cerradoEn: new Date() },
+      data: { estado: 'CERRADO', cerradoEn: new Date(), reabiertoEn: null },
     });
     return this.get(id);
   }
@@ -180,6 +195,16 @@ export class EventosService {
   }
 
   // ---- internos ----
+  /** HU20-CA2: solo un evento ACTIVO a la vez. */
+  private async assertSinOtroActivo(): Promise<void> {
+    const activo = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' } });
+    if (activo) {
+      throw new ConflictException(
+        `Ya existe un evento activo: "${activo.nombre}". Ciérralo antes de activar otro.`,
+      );
+    }
+  }
+
   /** Operadores asignados al evento sin un evento de tracking LLEGADA_DPI. */
   private async operadoresSinLlegadaDpi(
     eventoId: string,
@@ -222,6 +247,7 @@ function toEventoDto(e: any): EventoElectoral {
     estado: e.estado,
     creadoEn: e.creadoEn?.toISOString?.() ?? String(e.creadoEn),
     cerradoEn: e.cerradoEn?.toISOString?.() ?? null,
+    reabiertoEn: e.reabiertoEn?.toISOString?.() ?? null,
   };
 }
 

@@ -41,6 +41,7 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento', campos: ['tipo', 'fechaJornada'] },
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/activate$/, accion: 'EVENTO_ACTIVATE', entidad: 'evento' },
+  { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/reopen$/, accion: 'EVENTO_REOPEN', entidad: 'evento', campos: ['justificacion'] },
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/close$/, accion: 'EVENTO_CLOSE', entidad: 'evento', campos: ['confirmar', 'justificacion'] },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+\/config-alertas$/, accion: 'CONFIG_ALERTAS_UPDATE', entidad: 'evento', campos: ['umbralLlegadaRecintoMin', 'umbralLlegadaDpiMin', 'umbralSinSyncMin', 'margenLlegadaMetros', 'margenLlegadaDpiMetros'] },
   // Fase 2 — asignaciones operador ↔ supervisor

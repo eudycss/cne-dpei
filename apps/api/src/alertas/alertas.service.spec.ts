@@ -19,6 +19,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
     asignacionSupervisor: { findMany: jest.fn() },
     kitElectoral: { findMany: jest.fn() },
     usuario: { findMany: jest.fn() },
+    eventoElectoral: { findMany: jest.fn() },
   };
 
   const filaAlerta = (over: Record<string, unknown> = {}) => ({
@@ -264,6 +265,18 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       });
 
       expect(prisma.alerta.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('evaluarAnomalias (cron)', () => {
+    it('ignora el evento reabierto solo para consulta', async () => {
+      prisma.eventoElectoral.findMany.mockResolvedValueOnce([]);
+
+      await service.evaluarAnomalias();
+
+      expect(prisma.eventoElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { estado: 'ACTIVO', reabiertoEn: null } }),
+      );
     });
   });
 });

@@ -85,6 +85,23 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: `/eventos/${OTRO}/reopen`,
+      params: { id: OTRO },
+      body: { justificacion: 'Sacar informe de custodia' },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({
+      accion: 'EVENTO_REOPEN',
+      entidad: 'evento',
+      entidadId: OTRO,
+      datosDespues: { campos: ['justificacion'], justificacion: 'Sacar informe de custodia' },
+    });
+  });
+
   it('un cambio de márgenes de alertas queda con sus valores (pasó el 16-oct con 200000 m)', async () => {
     const { data } = await auditar({
       method: 'PATCH',

@@ -249,6 +249,15 @@ export const closeEventoSchema = z.object({
   justificacion: z.string().max(1000).optional(),
 });
 
+// Reabrir un evento cerrado (solo para consulta): la justificación queda en la bitácora.
+export const reopenEventoSchema = z.object({
+  justificacion: z
+    .string()
+    .trim()
+    .min(10, 'Explique en al menos 10 caracteres por qué se reabre el evento')
+    .max(500),
+});
+
 // --- Asignaciones operador ↔ supervisor (HU10) ---
 export const upsertAsignacionSchema = z.object({
   eventoId: z.string().uuid('Evento inválido'),

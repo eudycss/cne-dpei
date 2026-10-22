@@ -178,7 +178,8 @@ export class AlertasService {
   @Cron(CronExpression.EVERY_5_MINUTES)
   async evaluarAnomalias(): Promise<void> {
     const eventos = await this.prisma.eventoElectoral.findMany({
-      where: { estado: 'ACTIVO' },
+      // Un evento reabierto solo para consulta no debe generar alertas.
+      where: { estado: 'ACTIVO', reabiertoEn: null },
       select: { id: true },
     });
     for (const evento of eventos) {

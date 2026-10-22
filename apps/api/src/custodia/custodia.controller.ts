@@ -29,6 +29,7 @@ import type {
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
+import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
@@ -62,6 +63,7 @@ export class CustodiaController {
   }
 
   @Post('entregas')
+  @UseGuards(EventoNoReabiertoGuard)
   @ApiOperation({ summary: 'Registra la entrega del kit a un militar en el DPEI' })
   registrarEntrega(
     @CurrentUser() user: AuthenticatedUser,
@@ -71,6 +73,7 @@ export class CustodiaController {
   }
 
   @Patch('entregas/:kitId/militar')
+  @UseGuards(EventoNoReabiertoGuard)
   @ApiOperation({ summary: 'Corrige el militar de la entrega (con motivo; queda en el historial)' })
   corregirMilitar(
     @CurrentUser() user: AuthenticatedUser,
@@ -81,6 +84,7 @@ export class CustodiaController {
   }
 
   @Patch('kits/:kitId/operador')
+  @UseGuards(EventoNoReabiertoGuard)
   @ApiOperation({ summary: 'Cambia el operador CDA del kit (con motivo; queda en el historial)' })
   cambiarOperador(
     @CurrentUser() user: AuthenticatedUser,

@@ -10,6 +10,7 @@ import {
   MARGEN_LLEGADA_MAX_METROS,
   configAlertasSchema,
   createEventoSchema,
+  reopenEventoSchema,
   updateEventoSchema,
 } from '@cne/shared-validation';
 import { sileo } from 'sileo';
@@ -57,6 +58,7 @@ export function EventosPage() {
   const [editing, setEditing] = useState<EventoElectoral | null>(null);
   const [closing, setClosing] = useState<EventoElectoral | null>(null);
   const [configurando, setConfigurando] = useState<EventoElectoral | null>(null);
+  const [reabriendo, setReabriendo] = useState<EventoElectoral | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
 
   const { data: eventos, isLoading } = useQuery({
@@ -158,6 +160,12 @@ export function EventosPage() {
                   <td>{e.fechaJornada}</td>
                   <td>
                     <EstadoBadge estado={e.estado} />
+                    {e.estado === 'ACTIVO' && e.reabiertoEn && (
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>
+                        <strong>Reabierto (solo consulta)</strong> ·{' '}
+                        {new Date(e.reabiertoEn).toLocaleString('es-EC')}
+                      </div>
+                    )}
                     {e.estado === 'CERRADO' && e.cerradoEn && (
                       <div className="muted" style={{ fontSize: '0.75rem' }}>
                         {new Date(e.cerradoEn).toLocaleString('es-EC')}
@@ -209,9 +217,14 @@ export function EventosPage() {
                           </>
                         )}
                         {e.estado === 'CERRADO' && (
-                          <span className="muted" style={{ fontSize: '0.78rem' }}>
-                            Cerrado
-                          </span>
+                          <button
+                            className="btn secondary"
+                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.78rem' }}
+                            onClick={() => setReabriendo(e)}
+                            aria-label={`Reabrir el evento ${e.nombre} para consulta`}
+                          >
+                            Reabrir
+                          </button>
                         )}
                       </div>
                     </td>
@@ -264,6 +277,17 @@ export function EventosPage() {
           onClose={() => setClosing(null)}
           onDone={() => {
             setClosing(null);
+            qc.invalidateQueries({ queryKey: ['eventos'] });
+          }}
+        />
+      )}
+
+      {tab === 'eventos' && reabriendo && (
+        <ReopenEventoModal
+          evento={reabriendo}
+          onClose={() => setReabriendo(null)}
+          onDone={() => {
+            setReabriendo(null);
             qc.invalidateQueries({ queryKey: ['eventos'] });
           }}
         />
@@ -472,7 +496,7 @@ function CloseEventoModal({
         <h1>Cerrar evento</h1>
         <p>
           Estás a punto de cerrar el evento{' '}
-          <strong>"{evento.nombre}"</strong>. Esta acción no se puede deshacer.
+          <strong>"{evento.nombre}"</strong>. Después solo podrá reabrirse para consulta.
         </p>
 
         {pendientes.length > 0 && (
@@ -520,6 +544,108 @@ function CloseEventoModal({
           </button>
           <button type="submit" className="btn danger" disabled={saving}>
             {saving ? 'Cerrando…' : 'Confirmar cierre'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Modal reabrir evento (solo consulta) ─────────────────────────────────────
+
+export function ReopenEventoModal({
+  evento,
+  onClose,
+  onDone,
+}: {
+  evento: EventoElectoral;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [justificacion, setJustificacion] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const parsed = reopenEventoSchema.safeParse({ justificacion });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Justificación inválida');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post(`/eventos/${evento.id}/reopen`, parsed.data);
+      onDone();
+    } catch (err: any) {
+      const m = err?.response?.data?.message;
+      setError(Array.isArray(m) ? m.join(' ') : typeof m === 'string' ? m : 'No se pudo reabrir el evento');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="center"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10 }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reabrir-titulo"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <form className="login-card" style={{ maxWidth: 520, width: '100%' }} onSubmit={onSubmit}>
+        <h1 id="reabrir-titulo">Reabrir evento</h1>
+        <p>
+          El evento <strong>"{evento.nombre}"</strong> volverá a estar activo solo para
+          consultar sus datos e informes.
+        </p>
+        <div id="reabrir-aviso" className="banner" role="note">
+          Mientras esté reabierto, la app móvil no podrá registrar acciones y no se generarán
+          alertas. Ciérrelo de nuevo cuando termine.
+        </div>
+
+        <div className="field">
+          <label htmlFor="reabrir-justificacion">Justificación (requerida)</label>
+          <div id="reabrir-ayuda" className="muted" style={{ fontSize: '0.78rem' }}>
+            Entre 10 y 500 caracteres.
+          </div>
+          <textarea
+            id="reabrir-justificacion"
+            value={justificacion}
+            onChange={(e) => setJustificacion(e.target.value)}
+            rows={3}
+            maxLength={500}
+            required
+            autoFocus
+            aria-invalid={error ? true : undefined}
+            aria-describedby={`reabrir-ayuda reabrir-aviso${error ? ' reabrir-error' : ''}`}
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.65rem',
+              border: '1px solid var(--border-input)',
+              borderRadius: 6,
+              fontSize: '0.9rem',
+              resize: 'vertical',
+            }}
+          />
+        </div>
+
+        {error && (
+          <div id="reabrir-error" className="banner error" role="alert">
+            {error}
+          </div>
+        )}
+
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button type="button" className="btn secondary" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn" disabled={saving}>
+            {saving ? 'Reabriendo…' : 'Reabrir'}
           </button>
         </div>
       </form>
