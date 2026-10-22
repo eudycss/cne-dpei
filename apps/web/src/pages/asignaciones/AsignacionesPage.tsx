@@ -5,6 +5,7 @@ import { sileo } from 'sileo';
 import { api } from '../../lib/api';
 import { SearchInput } from '../../components/SearchInput';
 import { useAuth } from '../../auth/AuthContext';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 const SIN_ASIGNAR = '';
 
@@ -155,6 +156,7 @@ export function AsignacionesPage() {
   return (
     <>
       <h2>Asignación operador ↔ supervisor</h2>
+      <PasoFlujo paso="asignaciones" />
 
       {/* ── Selector de evento ── */}
       <div className="card" style={{ marginBottom: '1rem' }}>

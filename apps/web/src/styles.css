@@ -462,3 +462,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .preparacion-paso-nombre { font-weight: 600; }
 .preparacion-paso .btn { flex-shrink: 0; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .preparacion-progreso-barra { transition: none; } }
+
+/* Guía del flujo dentro de cada paso de la preparación */
+.paso-flujo { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.75rem; margin-bottom: 1rem; }
+.paso-flujo .banner { flex: 1 1 320px; margin-bottom: 0; }
+.paso-flujo .banner a { color: inherit; font-weight: 600; text-decoration: underline; }
+.paso-flujo-siguiente { margin-left: auto; text-decoration: none; }

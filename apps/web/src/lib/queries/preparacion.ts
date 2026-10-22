@@ -36,7 +36,9 @@ async function getEstadoPreparacion(): Promise<EstadoPreparacion> {
 }
 
 export function usePreparacion() {
-  return useQuery({ queryKey: ['preparacion'], queryFn: getEstadoPreparacion });
+  // Los cambios hechos desde la web ya invalidan esta consulta (ver PasoFlujo);
+  // el margen evita repetir 4-6 peticiones en cada cambio de página.
+  return useQuery({ queryKey: ['preparacion'], queryFn: getEstadoPreparacion, staleTime: 30_000 });
 }
 
 /** Primer paso que todavía no tiene datos; undefined si todo está listo. */

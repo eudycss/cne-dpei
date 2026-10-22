@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { ExcelUploadButton } from '../../components/ExcelUploadButton';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 export function MilitaresPage() {
   const { user } = useAuth();
@@ -55,6 +56,7 @@ export function MilitaresPage() {
   return (
     <>
       <h2>Militares</h2>
+      <PasoFlujo paso="militares" />
       <div className="card">
         <div className="row">
           <SearchInput

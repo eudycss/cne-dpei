@@ -9,6 +9,7 @@ import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { SearchInput } from '../../components/SearchInput';
 import { ExcelUploadButton } from '../../components/ExcelUploadButton';
+import { PasoFlujo } from '../../components/PasoFlujo';
 
 export function UsersList() {
   const { user } = useAuth();
@@ -98,6 +99,7 @@ export function UsersList() {
   return (
     <>
       <h2>Usuarios</h2>
+      <PasoFlujo paso="usuarios" />
       <div className="card">
         <div className="row">
           <SearchInput
