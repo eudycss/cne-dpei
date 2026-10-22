@@ -134,6 +134,48 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
     }
   });
 
+  it('agrupa el menú en Preparación, Operación e Informes, con la preparación en orden de trabajo', () => {
+    setSessionUser(['ADMINISTRADOR']);
+    renderLayout();
+    const etiquetas = (grupo: string) =>
+      within(screen.getByRole('group', { name: grupo }))
+        .getAllByRole('link')
+        .map((l) => l.textContent);
+    expect(etiquetas('Preparación')).toEqual([
+      'Recintos Electorales',
+      'Usuarios',
+      'Militares',
+      'Eventos Electorales',
+      'Asignaciones',
+      'Kits Electorales',
+    ]);
+    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas', 'Enlaces']);
+    expect(etiquetas('Informes')).toEqual(['Cadena de custodia', 'Reportes', 'Power BI CDAS']);
+    const hrefs = within(screen.getByRole('group', { name: 'Preparación' }))
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'));
+    expect(hrefs).toEqual(['/recintos', '/users', '/militares', '/eventos', '/asignaciones', '/kits']);
+  });
+
+  it('ASISTENTE_TRANSVERSAL solo tiene el grupo Informes (sin títulos de grupos vacíos)', () => {
+    setSessionUser(['ASISTENTE_TRANSVERSAL']);
+    renderLayout();
+    expect(screen.queryByRole('group', { name: 'Preparación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Operación' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Informes' })).toBeInTheDocument();
+  });
+
+  it('TECNICO_SUPERVISOR ve Alertas pero no Enlaces en Operación, y solo Power BI en Informes', () => {
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    renderLayout();
+    const etiquetas = (grupo: string) =>
+      within(screen.getByRole('group', { name: grupo }))
+        .getAllByRole('link')
+        .map((l) => l.textContent);
+    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas']);
+    expect(etiquetas('Informes')).toEqual(['Power BI CDAS']);
+  });
+
   it('ASISTENTE_TRANSVERSAL solo ve "Cadena de custodia" (el resto no le corresponde)', () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderLayout();
