@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 
-import { MonitoreoPage } from './MonitoreoPage';
+import { MonitoreoPage, REFRESCO_MONITOREO_MS } from './MonitoreoPage';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
+import { formatearFechaHora } from '../../lib/notifications';
 
 vi.mock('../../lib/queries/monitoreo', () => ({
   getOperadoresEnRetorno: vi.fn(),
@@ -84,6 +85,7 @@ const cdaConUbicacionYFoto: CdaEstadoDto = {
   estado: 'EN_RETORNO',
   ubicacion: { latitud: 0.35, longitud: -78.12, capturadoEn: '2026-07-01T10:00:00.000Z' },
   tieneFotoMilitar: true,
+  pruebaConexionEn: '2026-07-01T09:45:00.000Z',
   tieneActaInstalacion: true,
   tieneActaEscrutinio: false,
 };
@@ -99,6 +101,7 @@ const cdaSinUbicacionNiFoto: CdaEstadoDto = {
   estado: 'RETORNADO',
   ubicacion: null,
   tieneFotoMilitar: false,
+  pruebaConexionEn: null,
   tieneActaInstalacion: false,
   tieneActaEscrutinio: false,
 };
@@ -369,6 +372,32 @@ describe('MonitoreoPage', () => {
 
     expect(await screen.findByAltText('Foto del militar')).toBeInTheDocument();
     expect(getFotoMilitarMock).toHaveBeenCalledWith('r1');
+  });
+
+  it('la prueba de conexión va entre la foto del militar y los reportes, con la hora o "Pendiente"', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+
+    renderPage();
+    const conPrueba = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    const sinPrueba = screen.getByText('Colegio Otavalo').closest('tr')!;
+
+    const encabezados = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    const i = encabezados.indexOf('Prueba de conexión');
+    expect(encabezados.slice(i - 1, i + 2)).toEqual(['Foto militar', 'Prueba de conexión', 'Reporte instalación']);
+    expect(within(conPrueba).getByText(formatearFechaHora('2026-07-01T09:45:00.000Z'))).toBeInTheDocument();
+    expect(within(sinPrueba).getByText('Pendiente')).toBeInTheDocument();
+  });
+
+  it('avisa que se actualiza cada 30 segundos (el mismo intervalo de las consultas)', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    expect(REFRESCO_MONITOREO_MS).toBe(30_000);
+    expect(await screen.findAllByText(/Se actualiza automáticamente cada 30 segundos/)).toHaveLength(2);
+    expect(screen.queryByText(/cada 10 segundos/)).not.toBeInTheDocument();
   });
 
   it('las columnas y botones dicen "Reporte" (no "Acta")', async () => {

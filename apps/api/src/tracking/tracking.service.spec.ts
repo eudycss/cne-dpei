@@ -1163,6 +1163,44 @@ describe('TrackingService', () => {
         }),
       );
     });
+
+    function prepararUnCda(trackingRows: { operadorId: string; tipo: string; ocurridoEn: Date }[]) {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, nombres: 'Ana', apellidos: 'Perez' }]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce(trackingRows).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    }
+
+    it('sin prueba de conexión, pruebaConexionEn es null', async () => {
+      prepararUnCda([{ operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-21T13:00:00.000Z') }]);
+
+      const [cda] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(cda.pruebaConexionEn).toBeNull();
+    });
+
+    it('si la prueba de conexión se registró más de una vez, devuelve la más reciente', async () => {
+      // La más reciente llega primero: el resultado no debe depender del orden de las filas.
+      prepararUnCda([
+        { operadorId, tipo: 'PRUEBA_CONEXION', ocurridoEn: new Date('2026-10-21T13:40:00.000Z') },
+        { operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-21T13:05:00.000Z') },
+        { operadorId, tipo: 'PRUEBA_CONEXION', ocurridoEn: new Date('2026-10-21T13:10:00.000Z') },
+      ]);
+
+      const [cda] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(cda.pruebaConexionEn).toBe('2026-10-21T13:40:00.000Z');
+      expect(cda.estado).toBe('EN_RECINTO');
+      expect(prisma.eventoTracking.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ select: { operadorId: true, tipo: true, ocurridoEn: true } }),
+      );
+    });
   });
 
   describe('recintosDificilAcceso', () => {
