@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { OperadoresCdaPage } from './OperadoresCdaPage';
 import { api } from '../../lib/api';
-import { hoyEcuador, horaEcuador } from './utils';
+import { cargoCorto, hoyEcuador, horaEcuador, partirNombre } from './utils';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }));
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles: ['ADMINISTRADOR'] } }) }));
@@ -46,10 +46,36 @@ describe('OperadoresCdaPage', () => {
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'pestana-asistencia');
   });
 
-  it('?tab=listado abre directo el listado', async () => {
+  it('?tab=listado abre directo el listado, con su acción en el encabezado (antes de las pestañas)', async () => {
     renderPagina('/operadores-cda?tab=listado');
     expect(screen.getByRole('tab', { name: 'Listado' })).toHaveAttribute('aria-selected', 'true');
-    expect(await screen.findByRole('button', { name: 'Importar Excel' })).toBeInTheDocument();
+    const importar = await screen.findByRole('button', { name: 'Importar Excel' });
+    expect(importar.closest('.ocda-encabezado')).not.toBeNull();
+    // El orden de lectura y de tabulación sigue al visual: acciones y luego pestañas.
+    expect(importar.compareDocumentPosition(screen.getByRole('tablist')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('al cambiar de pestaña cambian las acciones del encabezado', async () => {
+    renderPagina('/operadores-cda?tab=listado');
+    await screen.findByRole('button', { name: 'Importar Excel' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Asistencia' }));
+    expect(screen.queryByRole('button', { name: 'Importar Excel' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Exportar Excel' })).toBeInTheDocument();
+  });
+});
+
+describe('utils de presentación', () => {
+  it('abrevia el cargo como en Figma y conserva las siglas', () => {
+    expect(cargoCorto('ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA')).toBe('Asist. Adm. Electoral Provincial');
+    expect(cargoCorto('OPERADOR CDA')).toBe('Operador CDA');
+    expect(cargoCorto('  TÉCNICO   ELECTORAL ')).toBe('Técnico Electoral');
+  });
+
+  it('separa apellidos (dos primeras palabras) y nombres', () => {
+    expect(partirNombre('CHÁVEZ MORA LUCÍA ESTEFANÍA')).toEqual({ apellidos: 'CHÁVEZ MORA', nombres: 'LUCÍA ESTEFANÍA' });
+    expect(partirNombre('VEGA LUIS')).toEqual({ apellidos: 'VEGA LUIS', nombres: '' });
+    expect(partirNombre('  RUIZ   MORA  JUAN  ')).toEqual({ apellidos: 'RUIZ MORA', nombres: 'JUAN' });
+    expect(partirNombre('PÉREZ')).toEqual({ apellidos: 'PÉREZ', nombres: '' });
   });
 });
 

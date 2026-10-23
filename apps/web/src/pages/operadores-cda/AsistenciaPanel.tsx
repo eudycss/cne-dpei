@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { AccionesEncabezado } from './AccionesEncabezado';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { AsistenciaCdaDia, AsistenciaCdaFila, TipoMarcaAsistenciaCda } from '@cne/shared-types';
@@ -13,7 +14,7 @@ import {
   quitarAsistenciaCda,
 } from '../../lib/queries/operadores-cda';
 import { CheckMarca } from './CheckMarca';
-import { hoyEcuador, iniciales, normalizar } from './utils';
+import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
 
 type Filtro = 'todos' | 'sin-entrada' | 'sin-salida' | 'completos';
 type Marca = { operadorId: string; tipo: TipoMarcaAsistenciaCda };
@@ -37,7 +38,7 @@ function mensajeError(e: unknown, porDefecto: string): string {
  * hoy se puede marcar (los días pasados son de consulta). Se refresca cada
  * 30 s para ver lo que marcan los demás técnicos.
  */
-export function AsistenciaPanel() {
+export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const qc = useQueryClient();
   const hoy = hoyEcuador();
   const [fecha, setFecha] = useState(hoy);
@@ -127,25 +128,81 @@ export function AsistenciaPanel() {
     }
   }
 
+  const total = filas.length;
+  const presentes = total - conteo('sin-entrada');
+  const conFoto = filas.filter((f) => f.operador.tieneFoto).length;
+  const porcentaje = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+
   return (
     <>
+      <AccionesEncabezado destino={acciones}>
+        <button type="button" className="btn secondary" onClick={exportar}>
+          Exportar Excel
+        </button>
+        {esHoy && data && (
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={pendientesSalida.length === 0}
+              onClick={() => setMasiva('SALIDA')}
+            >
+              Marcar salida a pendientes ({pendientesSalida.length})
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={pendientesEntrada.length === 0}
+              onClick={() => setMasiva('ENTRADA')}
+            >
+              Marcar entrada a pendientes ({pendientesEntrada.length})
+            </button>
+          </>
+        )}
+      </AccionesEncabezado>
+
       {data && (
         <div className="ocda-kpis" role="group" aria-label="Resumen del día">
-          <Kpi etiqueta="Presentes" valor={`${filas.length - conteo('sin-entrada')} / ${filas.length}`} parte={filas.length - conteo('sin-entrada')} total={filas.length} />
-          <Kpi etiqueta="Pendientes de salida" valor={String(conteo('sin-salida'))} parte={conteo('sin-salida')} total={filas.length} />
-          <Kpi etiqueta="Sin entrada" valor={String(conteo('sin-entrada'))} parte={conteo('sin-entrada')} total={filas.length} />
-          <Kpi etiqueta="Completos" valor={String(conteo('completos'))} parte={conteo('completos')} total={filas.length} />
+          <Kpi
+            etiqueta={esHoy ? 'Presentes hoy' : 'Presentes'}
+            valor={`${presentes} / ${total}`}
+            parte={presentes}
+            total={total}
+            detalle={`${porcentaje(presentes)}% registró entrada`}
+          />
+          <Kpi
+            etiqueta="Pendientes de salida"
+            valor={String(conteo('sin-salida'))}
+            parte={conteo('sin-salida')}
+            total={total}
+            detalle="Con entrada y sin salida"
+          />
+          <Kpi
+            etiqueta="Fotos cargadas"
+            valor={`${conFoto} / ${total}`}
+            parte={conFoto}
+            total={total}
+            detalle={`${total - conFoto} sin foto`}
+          />
+          <Kpi
+            etiqueta="Completos"
+            valor={String(conteo('completos'))}
+            parte={conteo('completos')}
+            total={total}
+            detalle="Entrada y salida registradas"
+          />
         </div>
       )}
 
-      <div className="row ocda-filtros">
-        <SearchInput
-          value={busqueda}
-          onChange={setBusqueda}
-          placeholder="Buscar por nombre o cédula…"
-          ariaLabel="Buscar operador por nombre o cédula"
-          style={{ flex: '1 1 240px', maxWidth: 360 }}
-        />
+      <div className="ocda-filtros">
+        <span className="ocda-campo" style={{ flex: '1 1 260px', maxWidth: 360 }}>
+          <SearchInput
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar por nombre o cédula…"
+            ariaLabel="Buscar operador por nombre o cédula"
+          />
+        </span>
         <label className="ocda-fecha">
           <span>Día</span>
           <input
@@ -155,44 +212,20 @@ export function AsistenciaPanel() {
             onChange={(e) => e.target.value && setFecha(e.target.value)}
           />
         </label>
-        <button type="button" className="btn secondary" onClick={exportar}>
-          Exportar Excel
-        </button>
-      </div>
-
-      <div className="row ocda-chips" role="group" aria-label="Filtrar por estado">
-        {FILTROS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            className="ocda-chip"
-            aria-pressed={filtro === f.id}
-            onClick={() => setFiltro(f.id)}
-          >
-            {filtro === f.id && <span aria-hidden="true">✓ </span>}
-            {f.etiqueta} · {data ? conteo(f.id) : '…'}
-          </button>
-        ))}
-        {esHoy && data && (
-          <div className="ocda-masivas">
+        <div className="ocda-filtros" role="group" aria-label="Filtrar por estado" style={{ margin: 0 }}>
+          {FILTROS.map((f) => (
             <button
+              key={f.id}
               type="button"
-              className="btn secondary"
-              disabled={pendientesEntrada.length === 0}
-              onClick={() => setMasiva('ENTRADA')}
+              className="ocda-chip"
+              aria-pressed={filtro === f.id}
+              onClick={() => setFiltro(f.id)}
             >
-              Marcar entrada a pendientes ({pendientesEntrada.length})
+              {filtro === f.id && <span aria-hidden="true">✓ </span>}
+              {f.etiqueta} · {data ? conteo(f.id) : '…'}
             </button>
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={pendientesSalida.length === 0}
-              onClick={() => setMasiva('SALIDA')}
-            >
-              Marcar salida a pendientes ({pendientesSalida.length})
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       {!esHoy && data && (
@@ -235,7 +268,12 @@ export function AsistenciaPanel() {
                         <span className={`ocda-avatar${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
                           {iniciales(o.apellidosNombres)}
                         </span>
-                        <span>{o.apellidosNombres}</span>
+                        <span className="ocda-persona-textos">
+                          <span className="ocda-persona-nombre">{o.apellidosNombres}</span>
+                          <span className="ocda-persona-cargo" title={o.cargo}>
+                            {cargoCorto(o.cargo)}
+                          </span>
+                        </span>
                       </span>
                     </th>
                     <td className="mono">{o.cedula}</td>
@@ -271,7 +309,11 @@ export function AsistenciaPanel() {
               })}
             </tbody>
           </table>
-          {visibles.length === 0 && <p className="muted" style={{ padding: '1rem' }}>Ningún operador con este filtro.</p>}
+          {visibles.length === 0 && <p className="ocda-pie">Ningún operador con este filtro.</p>}
+          <p className="ocda-pie">
+            Mostrando {visibles.length} de {total} operadores
+            {esHoy ? ' · Los cambios se guardan automáticamente' : ' · Solo consulta'}
+          </p>
         </div>
       )}
 
@@ -287,7 +329,19 @@ export function AsistenciaPanel() {
   );
 }
 
-function Kpi({ etiqueta, valor, parte, total }: { etiqueta: string; valor: string; parte: number; total: number }) {
+function Kpi({
+  etiqueta,
+  valor,
+  parte,
+  total,
+  detalle,
+}: {
+  etiqueta: string;
+  valor: string;
+  parte: number;
+  total: number;
+  detalle: string;
+}) {
   const pct = total > 0 ? Math.round((parte / total) * 100) : 0;
   return (
     <div className="ocda-kpi">
@@ -296,6 +350,7 @@ function Kpi({ etiqueta, valor, parte, total }: { etiqueta: string; valor: strin
       <span className="ocda-kpi-barra" aria-hidden="true">
         <span style={{ width: `${pct}%` }} />
       </span>
+      <span className="ocda-kpi-detalle">{detalle}</span>
     </div>
   );
 }

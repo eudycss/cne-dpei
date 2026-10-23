@@ -172,7 +172,11 @@ describe('AsistenciaPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Todos · 3' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Buscar operador por nombre o cédula' }), 'chavez');
-    expect(screen.getAllByRole('rowheader').map((r) => r.textContent)).toEqual(['CMCHÁVEZ MORA MARÍA JOSÉ']);
+    const filas = screen.getAllByRole('rowheader');
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toHaveTextContent('CHÁVEZ MORA MARÍA JOSÉ');
+    // Bajo el nombre va el cargo abreviado, como en Figma.
+    expect(filas[0]).toHaveTextContent('Operador CDA');
   });
 
   it('el marcado masivo confirma y envía solo a los pendientes visibles', async () => {

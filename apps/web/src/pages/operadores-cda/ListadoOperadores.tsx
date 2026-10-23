@@ -7,13 +7,14 @@ import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { getOperadoresCda } from '../../lib/queries/operadores-cda';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
-import { iniciales, normalizar } from './utils';
+import { AccionesEncabezado } from './AccionesEncabezado';
+import { cargoCorto, iniciales, normalizar, partirNombre } from './utils';
 
 /**
  * Personal de los Centros de Digitalización de Actas. Son ~56 personas: se
  * traen todas y se filtra en el navegador, sin pedir a la API en cada tecla.
  */
-export function ListadoOperadores() {
+export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const [busqueda, setBusqueda] = useState('');
@@ -33,11 +34,11 @@ export function ListadoOperadores() {
   return (
     <>
       {isAdmin && (
-        <div className="row" style={{ justifyContent: 'flex-end', marginBottom: '1rem' }}>
-          <button type="button" className="btn" onClick={() => setImportando(true)}>
+        <AccionesEncabezado destino={acciones}>
+          <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
             Importar Excel
           </button>
-        </div>
+        </AccionesEncabezado>
       )}
 
       {isLoading && <Cargando />}
@@ -48,7 +49,7 @@ export function ListadoOperadores() {
       )}
 
       {data && data.length === 0 && (
-        <div className="card ocda-vacio">
+        <div className="ocda-vacio">
           <p style={{ margin: 0 }}>Aún no hay operadores registrados.</p>
           {isAdmin && (
             <p className="muted" style={{ margin: '0.25rem 0 0' }}>
@@ -60,14 +61,15 @@ export function ListadoOperadores() {
 
       {data && data.length > 0 && (
         <>
-          <div className="row ocda-filtros">
-            <SearchInput
-              value={busqueda}
-              onChange={setBusqueda}
-              placeholder="Buscar por nombre o cédula…"
-              ariaLabel="Buscar operador por nombre o cédula"
-              style={{ flex: '1 1 280px', maxWidth: 420 }}
-            />
+          <div className="ocda-filtros">
+            <span className="ocda-campo" style={{ flex: '1 1 280px', maxWidth: 420 }}>
+              <SearchInput
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Buscar por nombre o cédula…"
+                ariaLabel="Buscar operador por nombre o cédula"
+              />
+            </span>
             <p className="muted" role="status" style={{ margin: 0 }}>
               {visibles.length} de {data.length} operadores · {conFoto} con foto
             </p>
@@ -96,13 +98,17 @@ export function ListadoOperadores() {
 }
 
 function TarjetaOperador({ operador: o }: { operador: OperadorCda }) {
+  const { apellidos, nombres } = partirNombre(o.apellidosNombres);
   return (
     <>
       <div className="ocda-tarjeta-top">
-        <span className={`ocda-avatar${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
+        <span className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
           {iniciales(o.apellidosNombres)}
         </span>
-        <h3 className="ocda-nombre">{o.apellidosNombres}</h3>
+        <h3 className="ocda-nombre" aria-label={o.apellidosNombres}>
+          <span className="ocda-nombre-apellidos">{apellidos}</span>
+          {nombres && <span className="ocda-nombre-nombres">{nombres}</span>}
+        </h3>
       </div>
       <dl className="ocda-datos">
         <div>
@@ -115,7 +121,7 @@ function TarjetaOperador({ operador: o }: { operador: OperadorCda }) {
         </div>
         <div>
           <dt>Cargo</dt>
-          <dd>{o.cargo}</dd>
+          <dd title={o.cargo}>{cargoCorto(o.cargo)}</dd>
         </div>
       </dl>
       <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
