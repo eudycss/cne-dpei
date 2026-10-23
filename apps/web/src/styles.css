@@ -479,72 +479,225 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .pestanas [role="tab"][aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--primary); }
 .pestanas [role="tab"]:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
 
-/* Operadores CDA — acento cian/violeta del diseño (Figma "CNE Futurista"). */
-:root { --ocda-cian: #0e7490; --ocda-violeta: #6d28d9; --ocda-cian-suave: #ecfeff; }
-[data-theme="dark"] { --ocda-cian: #22d3ee; --ocda-violeta: #a78bfa; --ocda-cian-suave: #0b3342; }
-.mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
-.ocda-encabezado { justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
-.ocda-filtros { align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.ocda-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+/* =====================================================================
+   Tema "CNE Futurista" (Figma: CNE DPEI · Operadores CDA, variables
+   "CNE Futurista"). Hoy envuelve solo Operadores CDA; para migrar toda la
+   app basta con aplicar .tema-futurista más arriba (p. ej. en .main o body).
+   Redefine también las variables generales de la app para que los
+   componentes comunes (buscador, modales, avisos) adopten el tema.
+   ===================================================================== */
+.tema-futurista {
+  --f-bg-base: #070b17;
+  --f-bg-surface: #0f1629;
+  --f-bg-elevated: #16203b;
+  --f-border-subtle: #1f2a47;
+  --f-border-strong: #2e3e66;
+  --f-text: #e6edf7;
+  --f-text-muted: #8a9bbd;
+  --f-text-on-accent: #04121a;
+  --f-cian: #22d3ee;
+  --f-violeta: #8b5cf6;
+  --f-cian-suave: #0b3342;
+  --f-violeta-suave: #25194a;
+  --f-exito: #34d399;
+  --f-exito-suave: #0d3a2c;
+  --f-aviso: #fbbf24;
+  --f-aviso-suave: #3a2e0c;
+  --f-error: #f87171;
+  --f-error-suave: #3f1a20;
+  /* Termina en #9468fa (no #8b5cf6) para que el texto #04121a supere 4.5:1 en todo el botón. */
+  --f-degradado: linear-gradient(90deg, #22d3ee, #9468fa);
+  /* Borde de controles (buscador, fecha, checks): 3:1 contra la superficie (WCAG 1.4.11). */
+  --f-borde-control: #5b6f9e;
+  --f-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --bg: var(--f-bg-base);
+  --bg-card: var(--f-bg-surface);
+  --text: var(--f-text);
+  --text-muted: var(--f-text-muted);
+  --text-label: var(--f-text-muted);
+  --border: var(--f-border-subtle);
+  --border-subtle: var(--f-border-subtle);
+  --border-input: var(--f-border-strong);
+  --primary: var(--f-cian);
+  --icon: var(--f-text-muted);
+  --success-bg: var(--f-exito-suave);
+  --success-text: var(--f-exito);
+  --warn-bg: var(--f-aviso-suave);
+  --warn-text: var(--f-aviso);
+  --error-bg: var(--f-error-suave);
+  --error-text: var(--f-error);
+  --shadow-card: none;
+  --shadow-login: 0 20px 60px -10px rgb(34 211 238 / 0.25);
+  --focus-ring: 0 0 0 3px rgb(34 211 238 / 0.55);
+  color-scheme: dark;
+
+  /* Ocupa todo el área de contenido (anula el padding de .main). */
+  margin: -1.5rem -2rem;
+  padding: 2rem 2.25rem 2.5rem;
+  color: var(--f-text);
+  background:
+    radial-gradient(900px 420px at 85% -10%, rgb(34 211 238 / 0.10), transparent 60%),
+    radial-gradient(700px 380px at 0% 0%, rgb(139 92 246 / 0.08), transparent 60%),
+    var(--f-bg-base);
+}
+/* Mientras solo este módulo usa el tema, el área de contenido (incluida la
+   barra superior con tema y notificaciones) toma el fondo oscuro. */
+.main:has(.tema-futurista) { background: #070b17; }
+.main:has(.tema-futurista) .topbar {
+  --text: #e6edf7; --text-muted: #8a9bbd; --icon: #8a9bbd; --bg-card: #0f1629; --border: #2e3e66;
+  color: #e6edf7;
+}
+.tema-futurista .mono { font-family: var(--f-mono); font-size: 0.85em; }
+.tema-futurista .muted { color: var(--f-text-muted); }
+
+/* Botones: primario con degradado y brillo, secundario elevado. */
+.tema-futurista .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 44px; padding: 0.6rem 1.15rem; border-radius: 12px; border: 0;
+  font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--f-text-on-accent);
+  background: var(--f-degradado); box-shadow: 0 6px 20px -6px rgb(34 211 238 / 0.45);
+  transition: box-shadow 150ms ease, transform 150ms ease, filter 150ms ease;
+}
+.tema-futurista .btn:hover:not(:disabled) { filter: brightness(1.08); }
+.tema-futurista .btn.secondary {
+  color: var(--f-text); background: var(--f-bg-elevated); border: 1px solid var(--f-border-strong); box-shadow: none;
+}
+.tema-futurista .btn.secondary:hover:not(:disabled) { border-color: var(--f-cian); filter: none; }
+.tema-futurista .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.tema-futurista .btn:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; box-shadow: var(--focus-ring); }
+
+/* Avisos y diálogos dentro del módulo. */
+.tema-futurista .banner { background: var(--f-cian-suave); color: var(--f-text); border: 1px solid var(--f-cian); border-radius: 12px; }
+.tema-futurista .banner.error { background: var(--f-error-suave); color: var(--f-text); border-color: var(--f-error); }
+.tema-futurista .banner.success { background: var(--f-exito-suave); color: var(--f-text); border-color: var(--f-exito); }
+.tema-futurista .login-card { background: var(--f-bg-surface); border: 1px solid var(--f-cian); border-radius: 24px; }
+.tema-futurista .login-card h1 { color: var(--f-text); }
+.tema-futurista input[type='file'] { color: var(--f-text-muted); }
+.tema-futurista table th { background: var(--f-bg-elevated); color: var(--f-text-muted); }
+.tema-futurista table td { color: var(--f-text); }
+
+/* Pestañas con subrayado cian. */
+.tema-futurista .pestanas { border-bottom-color: var(--f-border-subtle); gap: 1.75rem; margin: 1.5rem 0; }
+.tema-futurista .pestanas [role='tab'] { padding-left: 0; padding-right: 0; color: var(--f-text-muted); }
+.tema-futurista .pestanas [role='tab']:hover { color: var(--f-text); }
+.tema-futurista .pestanas [role='tab'][aria-selected='true'] { color: var(--f-text); border-bottom-color: var(--f-cian); }
+
+/* --- Operadores CDA ------------------------------------------------- */
+.ocda-encabezado { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.ocda-ruta { margin: 0 0 0.35rem; font-size: 0.78rem; font-weight: 500; color: var(--f-text-muted); }
+.ocda-titulo { margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; }
+.ocda-subtitulo { margin: 0.35rem 0 0; font-size: 0.9rem; color: var(--f-text-muted); }
+/* Acciones de cada pestaña: van en el encabezado (a la derecha, como en Figma). */
+.ocda-acciones { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; }
+.ocda-acciones:empty { display: none; }
+
+.ocda-kpis { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 1.5rem; }
+.ocda-kpi {
+  display: flex; flex-direction: column; gap: 0.4rem; padding: 1.1rem 1.25rem;
+  background: var(--f-bg-surface); border: 1px solid var(--f-border-subtle); border-radius: 16px;
+}
+.ocda-kpi-etiqueta { font-size: 0.78rem; font-weight: 500; color: var(--f-text-muted); }
+.ocda-kpi-valor { font-size: 1.9rem; font-weight: 700; line-height: 1.1; color: var(--f-text); }
+.ocda-kpi-barra { height: 6px; border-radius: 99px; background: var(--f-bg-elevated); overflow: hidden; }
+.ocda-kpi-barra span { display: block; height: 100%; border-radius: inherit; background: var(--f-degradado); transition: width 600ms ease-out; }
+.ocda-kpi-detalle { font-size: 0.78rem; color: var(--f-text-muted); }
+
+.ocda-filtros { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+/* El buscador común trae estilos en línea: aquí se ajusta al tema. */
+.ocda-campo input {
+  min-height: 44px; border-radius: 12px !important; border-color: var(--f-borde-control) !important;
+  background: var(--f-bg-surface) !important; font-size: 0.9rem !important;
+}
+/* 7: foco explícito (el buscador común no define uno). */
+.ocda-campo input:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--f-cian) !important; }
+.ocda-fecha {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.85rem;
+  background: var(--f-bg-surface); border: 1px solid var(--f-borde-control); border-radius: 12px;
+  font-size: 0.85rem; color: var(--f-text-muted);
+}
+.ocda-fecha input { border: 0; background: transparent; color: var(--f-text); font: inherit; font-size: 0.9rem; min-height: 40px; }
+.ocda-fecha:focus-within { box-shadow: var(--focus-ring); }
+.ocda-fecha input:focus { outline: none; }
+.ocda-chip {
+  min-height: 36px; padding: 0.35rem 0.95rem; border-radius: 999px; font: inherit; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--f-border-subtle); background: var(--f-bg-surface); color: var(--f-text-muted); cursor: pointer;
+}
+.ocda-chip:hover { color: var(--f-text); }
+.ocda-chip[aria-pressed='true'] { border-color: var(--f-cian); background: var(--f-cian-suave); color: var(--f-text); font-weight: 600; }
+.ocda-chip:focus-visible, .ocda-check:focus-visible, .ocda-tabla:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.ocda-tabla { overflow-x: auto; background: var(--f-bg-surface); border: 1px solid var(--f-border-subtle); border-radius: 16px; }
+.ocda-tabla table { width: 100%; min-width: 820px; border-collapse: collapse; }
+.ocda-tabla th, .ocda-tabla td { padding: 0.75rem 1.25rem; text-align: left; border-bottom: 1px solid var(--f-border-subtle); vertical-align: middle; }
+.ocda-tabla thead th { background: var(--f-bg-elevated); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--f-text-muted); }
+.ocda-tabla tbody th { background: transparent; }
+.ocda-tabla tbody tr { transition: background 150ms ease; }
+.ocda-tabla tbody tr:hover { background: rgb(22 32 59 / 0.55); }
+.ocda-tabla td.mono { color: var(--f-text-muted); }
+.ocda-pie { padding: 0.8rem 1.25rem; font-size: 0.78rem; color: var(--f-text-muted); }
+.ocda-persona { display: flex; align-items: center; gap: 0.75rem; }
+.ocda-persona-textos { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ocda-persona-nombre { font-size: 0.88rem; font-weight: 600; color: var(--f-text); }
+.ocda-persona-cargo { font-size: 0.75rem; font-weight: 400; color: var(--f-text-muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ocda-avatar {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; font-size: 0.8rem; color: var(--f-text-muted);
+  background: var(--f-bg-elevated); border: 1.5px dashed var(--f-border-strong);
+}
+.ocda-avatar.con-foto {
+  color: var(--f-text-on-accent); border: 2px solid var(--f-cian);
+  background: linear-gradient(135deg, var(--f-cian), var(--f-violeta));
+}
+.ocda-avatar.grande { width: 52px; height: 52px; font-size: 0.95rem; }
+
+/* Check de entrada (cian) / salida (violeta), 150 × 44 como en Figma. */
+.ocda-check {
+  display: inline-flex; align-items: center; gap: 0.65rem; width: 150px; min-height: 44px; padding: 0.35rem 0.8rem 0.35rem 0.4rem;
+  border-radius: 12px; border: 1px solid var(--f-borde-control); background: var(--f-bg-elevated);
+  color: var(--f-text); font: inherit; cursor: pointer; text-align: left;
+  transition: border-color 150ms ease, box-shadow 200ms ease, background 150ms ease;
+}
+.ocda-check:hover:not([aria-disabled='true']) { border-color: var(--f-text-muted); }
+.ocda-check[aria-disabled='true'] { cursor: not-allowed; opacity: 0.7; }
+.ocda-check.marcado[aria-disabled='true'] { opacity: 0.85; }
+.ocda-check-caja {
+  flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+  border: 1px solid var(--f-borde-control); background: var(--f-bg-surface); color: var(--f-text-on-accent);
+}
+.ocda-check-texto { display: flex; flex-direction: column; font-size: 0.82rem; font-weight: 600; line-height: 1.25; }
+.ocda-check-texto .mono { font-weight: 500; font-size: 0.72rem; color: var(--f-text-muted); }
+.ocda-check.entrada.marcado { border-color: var(--f-cian); background: var(--f-cian-suave); box-shadow: 0 0 14px rgb(34 211 238 / 0.3); }
+.ocda-check.entrada.marcado .ocda-check-caja { background: var(--f-cian); border-color: var(--f-cian); }
+.ocda-check.entrada.marcado .mono { color: var(--f-cian); }
+.ocda-check.salida.marcado { border-color: var(--f-violeta); background: var(--f-violeta-suave); box-shadow: 0 0 14px rgb(139 92 246 / 0.3); }
+.ocda-check.salida.marcado .ocda-check-caja { background: var(--f-violeta); border-color: var(--f-violeta); }
+.ocda-check.salida.marcado .mono { color: #a78bfa; }
+.ocda-check:focus-visible,
+.ocda-check.marcado:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; box-shadow: var(--focus-ring); }
+
+/* Listado: tarjetas 263 px, radio 18. */
+.ocda-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 .ocda-tarjeta {
-  display: flex; flex-direction: column; gap: 0.75rem; padding: 1.1rem 1.15rem;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; gap: 0.85rem; padding: 1.25rem 1.25rem 1rem;
+  background: var(--f-bg-surface); border: 1px solid var(--f-border-subtle); border-radius: 18px;
 }
 .ocda-tarjeta-top { display: flex; align-items: center; gap: 0.75rem; }
-.ocda-avatar {
-  flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 700; font-size: 0.85rem; color: var(--text-muted); background: var(--bg); border: 1.5px dashed var(--border-input);
-}
-.ocda-avatar.con-foto { color: #04121a; border: 2px solid var(--ocda-cian); background: linear-gradient(135deg, #22d3ee, #8b5cf6); }
-.ocda-nombre { margin: 0; font-size: 0.95rem; line-height: 1.3; }
-.ocda-datos { margin: 0; padding-top: 0.6rem; border-top: 1px solid var(--border-subtle); display: grid; gap: 0.3rem; font-size: 0.82rem; }
+.ocda-nombre { margin: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.ocda-nombre-apellidos { font-size: 0.9rem; font-weight: 700; color: var(--f-text); }
+.ocda-nombre-nombres { font-size: 0.82rem; font-weight: 400; color: var(--f-text-muted); }
+.ocda-datos { margin: 0; padding-top: 0.75rem; border-top: 1px solid var(--f-border-subtle); display: grid; gap: 0.35rem; font-size: 0.78rem; }
 .ocda-datos div { display: flex; justify-content: space-between; gap: 0.75rem; }
-.ocda-datos dt { color: var(--text-muted); }
-.ocda-datos dd { margin: 0; text-align: right; font-weight: 500; }
-.ocda-estado { align-self: flex-start; font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; }
-.ocda-estado.ok { background: var(--success-bg); color: var(--success-text); }
-.ocda-estado.pendiente { background: var(--warn-bg); color: var(--warn-text); }
-.ocda-vacio { border: 1px dashed var(--ocda-cian); background: var(--ocda-cian-suave); }
-:root { --ocda-violeta-suave: #f5f3ff; }
-[data-theme="dark"] { --ocda-violeta-suave: #25194a; }
-.ocda-kpis { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 1.25rem; }
-.ocda-kpi { display: flex; flex-direction: column; gap: 0.3rem; padding: 1rem 1.1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; }
-.ocda-kpi-etiqueta { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
-.ocda-kpi-valor { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
-.ocda-kpi-barra { height: 6px; border-radius: 99px; background: var(--border-subtle); overflow: hidden; }
-.ocda-kpi-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #22d3ee, #8b5cf6); transition: width 600ms ease-out; }
-.ocda-fecha { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); }
-.ocda-fecha input { padding: 0.45rem 0.6rem; border: 1px solid var(--border-input); border-radius: 6px; background: var(--bg-card); color: var(--text); font: inherit; min-height: 38px; }
-.ocda-chips { align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.ocda-chip {
-  min-height: 36px; padding: 0.35rem 0.9rem; border-radius: 999px; font: inherit; font-size: 0.85rem; font-weight: 500;
-  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); cursor: pointer;
+.ocda-datos dt { color: var(--f-text-muted); }
+.ocda-datos dd { margin: 0; text-align: right; font-weight: 500; color: var(--f-text); }
+.ocda-estado { display: inline-flex; align-items: center; gap: 0.4rem; align-self: flex-start; font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.65rem; border-radius: 999px; }
+.ocda-estado::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ocda-estado.ok { background: var(--f-exito-suave); color: var(--f-exito); }
+.ocda-estado.pendiente { background: var(--f-cian-suave); color: var(--f-cian); }
+.ocda-vacio { padding: 1.25rem; border: 1px dashed var(--f-cian); background: var(--f-cian-suave); border-radius: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ocda-kpi-barra span, .ocda-check, .ocda-tabla tbody tr, .tema-futurista .btn { transition: none; }
 }
-.ocda-chip[aria-pressed="true"] { border-color: var(--ocda-cian); background: var(--ocda-cian-suave); color: var(--text); font-weight: 600; }
-.ocda-chip:focus-visible, .ocda-check:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.ocda-masivas { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.ocda-tabla { overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; }
-.ocda-tabla:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.ocda-tabla table { width: 100%; min-width: 760px; border-collapse: collapse; }
-.ocda-tabla th, .ocda-tabla td { padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
-.ocda-tabla tbody th { background: transparent; }
-.ocda-tabla thead th { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
-.ocda-persona { display: flex; align-items: center; gap: 0.75rem; font-weight: 600; font-size: 0.9rem; }
-.ocda-persona .ocda-avatar { width: 36px; height: 36px; font-size: 0.75rem; }
-.ocda-check {
-  display: inline-flex; align-items: center; gap: 0.6rem; min-width: 138px; min-height: 44px; padding: 0.3rem 0.8rem 0.3rem 0.35rem;
-  border-radius: 12px; border: 1px solid var(--border-input); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; text-align: left;
-}
-.ocda-check[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
-.ocda-check.marcado[aria-disabled="true"] { opacity: 0.85; }
-.ocda-check-caja { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--border-input); background: var(--bg-card); }
-.ocda-check-texto { display: flex; flex-direction: column; font-size: 0.82rem; font-weight: 600; line-height: 1.2; }
-.ocda-check-texto .mono { font-weight: 500; color: var(--text-muted); font-size: 0.75rem; }
-.ocda-check.entrada.marcado { border-color: var(--ocda-cian); background: var(--ocda-cian-suave); box-shadow: 0 0 14px color-mix(in srgb, #22d3ee 30%, transparent); }
-.ocda-check.entrada.marcado .ocda-check-caja { background: var(--ocda-cian); border-color: var(--ocda-cian); color: #fff; }
-.ocda-check.entrada.marcado .mono { color: var(--ocda-cian); }
-.ocda-check.salida.marcado { border-color: var(--ocda-violeta); background: var(--ocda-violeta-suave); box-shadow: 0 0 14px color-mix(in srgb, #8b5cf6 30%, transparent); }
-.ocda-check.salida.marcado .ocda-check-caja { background: var(--ocda-violeta); border-color: var(--ocda-violeta); color: #fff; }
-.ocda-check.salida.marcado .mono { color: var(--ocda-violeta); }
-[data-theme="dark"] .ocda-check.marcado .ocda-check-caja { color: #04121a; }
-@media (prefers-reduced-motion: reduce) { .ocda-kpi-barra span { transition: none; } }

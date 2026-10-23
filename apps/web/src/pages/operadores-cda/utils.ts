@@ -9,6 +9,31 @@ export function iniciales(apellidosNombres: string): string {
   return ((p[0]?.[0] ?? '') + (p[2]?.[0] ?? p[1]?.[0] ?? '')).toUpperCase();
 }
 
+/**
+ * "APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2" → apellidos y nombres por separado
+ * (las dos primeras palabras son los apellidos). Con dos palabras o menos
+ * todo queda como apellidos.
+ */
+export function partirNombre(apellidosNombres: string): { apellidos: string; nombres: string } {
+  const p = apellidosNombres.trim().split(/\s+/);
+  if (p.length <= 2) return { apellidos: p.join(' '), nombres: '' };
+  return { apellidos: p.slice(0, 2).join(' '), nombres: p.slice(2).join(' ') };
+}
+
+const ABREVIATURAS: Record<string, string> = { asistente: 'Asist.', administrativo: 'Adm.', administrativa: 'Adm.' };
+const SIGLAS = new Set(['cda', 'cne', 'dpe', 'cpe', 'upsi']);
+
+/** "ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA" → "Asist. Adm. Electoral Provincial". */
+export function cargoCorto(cargo: string): string {
+  return cargo
+    .split(' - ')[0]
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => ABREVIATURAS[w] ?? (SIGLAS.has(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
+
 const ZONA = 'America/Guayaquil';
 
 /** Hoy (AAAA-MM-DD) en Ecuador, como lo calcula la API. */
