@@ -1,5 +1,10 @@
 import type {
+  ActaCdaFila,
+  ActaEntregaCda,
   AsistenciaCdaDia,
+  GenerarActasCdaRequest,
+  GenerarActasCdaResult,
+  PersonaEntregaCda,
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
@@ -102,4 +107,60 @@ export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
   fd.append('version', VERSION_AVISO_FOTO_CDA);
   fd.append('foto', foto, 'foto.jpg');
   await api.post('/publico/foto-cda/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+}
+
+// Actas de entrega de indumentaria y credencial.
+
+export async function getActasCda(): Promise<ActaCdaFila[]> {
+  const { data } = await api.get<ActaCdaFila[]>('/operadores-cda/actas');
+  return data;
+}
+
+export async function getPersonasEntregaCda(): Promise<PersonaEntregaCda[]> {
+  const { data } = await api.get<PersonaEntregaCda[]>('/operadores-cda/actas/entregan');
+  return data;
+}
+
+export async function generarActasCda(body: GenerarActasCdaRequest): Promise<GenerarActasCdaResult> {
+  const { data } = await api.post<GenerarActasCdaResult>('/operadores-cda/actas', body);
+  return data;
+}
+
+export async function firmarActaCda(operadorId: string): Promise<ActaEntregaCda> {
+  const { data } = await api.post<ActaEntregaCda>(`/operadores-cda/${operadorId}/acta/firmar`);
+  return data;
+}
+
+export async function reabrirActaCda(operadorId: string): Promise<ActaEntregaCda> {
+  const { data } = await api.post<ActaEntregaCda>(`/operadores-cda/${operadorId}/acta/reabrir`);
+  return data;
+}
+
+/** Nombre del archivo que manda la API (Content-Disposition) o el de respaldo. */
+export function nombreDeDescarga(cabecera: unknown, respaldo: string): string {
+  const m = typeof cabecera === 'string' ? /filename="([^"]+)"/.exec(cabecera) : null;
+  return m?.[1] ?? respaldo;
+}
+
+function guardar(blob: Blob, nombre: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revocar en el mismo instante hace fallar la descarga en algunos navegadores (Safari).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function descargarActaCda(operadorId: string, formato: 'docx' | 'pdf'): Promise<void> {
+  const res = await api.get<Blob>(`/operadores-cda/${operadorId}/acta.${formato}`, { responseType: 'blob' });
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `acta-entrega.${formato}`));
+}
+
+/** ZIP con el Word y el PDF de los operadores elegidos que ya tienen acta. */
+export async function descargarActasCdaZip(operadorIds: string[]): Promise<void> {
+  const res = await api.post<Blob>('/operadores-cda/actas/zip', { operadorIds }, { responseType: 'blob' });
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'actas-entrega-operadores-cda.zip'));
 }

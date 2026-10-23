@@ -124,6 +124,53 @@ const AUDIT_TABLE: Array<{
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
     },
   },
+  // Actas de entrega de indumentaria: conteos y estados de las prendas (sin nombres
+  // ni cédulas de quien entrega). Las descargas llevan cédulas: queda el formato.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/actas$/,
+    accion: 'ACTA_CDA_GENERAR',
+    entidad: 'acta_entrega_cda',
+    resumen: (res, req) => {
+      const r = (res ?? {}) as Record<string, unknown>;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : null);
+      return {
+        generadas: Number(r.generadas) || 0,
+        actualizadas: Number(r.actualizadas) || 0,
+        omitidasFirmadas: Number(r.omitidasFirmadas) || 0,
+        operadorIds: Array.isArray(b.operadorIds)
+          ? b.operadorIds.filter((x): x is string => typeof x === 'string').slice(0, 100).map((x) => x.slice(0, 40))
+          : [],
+        fecha: texto(b.fecha, 10),
+        entregaUsuarioId: texto(b.entregaUsuarioId, 40),
+        estadoPeto: texto(b.estadoPeto, 10),
+        estadoCredencial: texto(b.estadoCredencial, 10),
+        estadoCordon: texto(b.estadoCordon, 10),
+      };
+    },
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/actas\/zip$/,
+    accion: 'ACTA_CDA_DESCARGAR',
+    entidad: 'acta_entrega_cda',
+    // Los ids de las actas que salieron de verdad (no los pedidos): quién bajó el acta de quién.
+    resumen: (_res, req) => {
+      const ids = (req as Request & { actasCdaOperadorIds?: unknown }).actasCdaOperadorIds;
+      const operadorIds = Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string').slice(0, 100) : [];
+      return { formato: 'zip', cantidad: operadorIds.length, operadorIds };
+    },
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/[^/]+\/acta\.(docx|pdf)$/,
+    accion: 'ACTA_CDA_DESCARGAR',
+    entidad: 'operador_cda',
+    resumen: (_res, req) => ({ formato: req.path.endsWith('.pdf') ? 'pdf' : 'docx' }),
+  },
+  { method: 'POST', pathRegex: /^\/operadores-cda\/[^/]+\/acta\/firmar$/, accion: 'ACTA_CDA_FIRMAR', entidad: 'operador_cda' },
+  { method: 'POST', pathRegex: /^\/operadores-cda\/[^/]+\/acta\/reabrir$/, accion: 'ACTA_CDA_REABRIR', entidad: 'operador_cda' },
   // Fase 2 — eventos electorales
   { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento', campos: ['tipo', 'fechaJornada'] },

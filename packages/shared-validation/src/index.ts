@@ -664,3 +664,47 @@ export const subirFotoCdaSchema = z.object({
     errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
   }),
 });
+
+// Actas de entrega de indumentaria y credencial (operadores CDA).
+
+export const estadoPrendaSchema = z.enum(['NUEVO', 'BUENO', 'REGULAR', 'MALO']);
+export type EstadoPrendaInput = z.infer<typeof estadoPrendaSchema>;
+
+/** Hasta cuántas actas se generan o descargan de una vez (los 56 operadores caben). */
+export const MAX_ACTAS_CDA_LOTE = 100;
+
+/** Texto libre del acta: sin caracteres de control (dejarían el Word dañado). */
+const textoActa = (min: number, max: number, requerido: string) =>
+  z
+    .string()
+    .trim()
+    .min(min, requerido)
+    .max(max, `Máximo ${max} caracteres`)
+    .refine((v) => !/[\u0000-\u001F\u007F]/.test(v), 'Contiene caracteres no permitidos');
+
+const operadorIdsActasSchema = z
+  .array(z.string().uuid())
+  .min(1, 'Seleccione al menos un operador')
+  .max(MAX_ACTAS_CDA_LOTE, `Máximo ${MAX_ACTAS_CDA_LOTE} operadores a la vez`);
+
+/**
+ * Quién entrega: nombre, cédula y cargo van siempre (se prellenan desde el
+ * usuario elegido y se pueden corregir, p. ej. el nombre completo). Con
+ * `entregaUsuarioId` la API comprueba que la cédula sea la de ese usuario; sin
+ * él es "otra persona" (un técnico de enlaces sin usuario en el sistema).
+ */
+export const generarActasCdaSchema = z.object({
+  operadorIds: operadorIdsActasSchema,
+  entregaUsuarioId: z.string().uuid().optional(),
+  entregaNombre: textoActa(3, 200, 'Nombre requerido'),
+  entregaCedula: cedulaSchema,
+  entregaCargo: textoActa(3, 160, 'Cargo requerido'),
+  fecha: diaAsistenciaSchema,
+  lugar: textoActa(2, 80, 'Lugar requerido'),
+  estadoPeto: estadoPrendaSchema,
+  estadoCredencial: estadoPrendaSchema,
+  estadoCordon: estadoPrendaSchema,
+});
+export type GenerarActasCdaInput = z.infer<typeof generarActasCdaSchema>;
+
+export const descargarActasCdaSchema = z.object({ operadorIds: operadorIdsActasSchema });
