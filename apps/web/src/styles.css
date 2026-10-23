@@ -696,6 +696,117 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-estado::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .ocda-estado.ok { background: var(--f-exito-suave); color: var(--f-exito); }
 .ocda-estado.pendiente { background: var(--f-cian-suave); color: var(--f-cian); }
+.ocda-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.ocda-avatar:has(img) { overflow: hidden; }
+.ocda-tarjeta-pie { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.tema-futurista .btn.ocda-btn-chico { min-height: 44px; padding: 0.35rem 0.8rem; font-size: 0.8rem; border-radius: 10px; }
+
+/* Ventana "Enlace para subir foto" (Figma 02). */
+.ocda-modal {
+  display: flex; flex-direction: column; gap: 1rem; padding: 1.5rem; border-radius: 20px;
+  background: var(--f-bg-surface); border: 1px solid var(--f-cian); color: var(--f-text);
+  box-shadow: 0 0 40px -10px rgb(34 211 238 / 0.45);
+}
+.ocda-modal-cabecera { display: flex; align-items: flex-start; gap: 0.85rem; }
+.ocda-modal-cabecera h2 { margin: 0; font-size: 1.1rem; }
+.ocda-modal-cabecera p { margin: 0.15rem 0 0; font-size: 0.78rem; }
+.ocda-modal-icono {
+  flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--f-degradado); color: var(--f-text-on-accent);
+}
+.ocda-modal-cerrar {
+  margin-left: auto; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent;
+  color: var(--f-text-muted); font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.ocda-modal-cerrar:hover { color: var(--f-text); background: var(--f-bg-elevated); }
+.ocda-modal-cerrar:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.ocda-enlace {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.4rem 0.4rem 0.9rem;
+  border: 1px solid var(--f-borde-control); border-radius: 12px; background: var(--f-bg-base);
+}
+.ocda-enlace input {
+  flex: 1; min-width: 0; min-height: 40px; border: 0; background: transparent; color: var(--f-cian);
+  font-size: 0.8rem; text-overflow: ellipsis;
+}
+.ocda-enlace input:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; border-radius: 6px; }
+.ocda-modal-estado { margin: 0; font-size: 0.85rem; color: var(--f-exito); }
+.ocda-modal-estado:empty { display: none; }
+.ocda-enlace-aviso { margin: 0; padding: 0.75rem 0.9rem; border-radius: 12px; font-size: 0.8rem; background: var(--f-exito-suave); color: var(--f-text); }
+.ocda-modal-acciones { display: flex; justify-content: flex-end; gap: 0.6rem; flex-wrap: wrap; }
+.ocda-modal-acciones a.btn { text-decoration: none; }
+
+/* Página pública del enlace de foto (Figma M1–M4), pensada para celular. */
+.tema-futurista.fcda { margin: 0; padding: 0; min-height: 100vh; min-height: 100dvh; }
+.fcda-contenedor {
+  max-width: 430px; margin: 0 auto; padding: 1.75rem 1.25rem 2rem; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 1rem; min-height: 100vh; min-height: 100dvh;
+}
+.fcda-cabecera { display: flex; flex-direction: column; gap: 1rem; }
+.fcda-marca { display: flex; align-items: center; gap: 0.7rem; }
+.fcda-marca p { margin: 0; }
+.fcda-logo {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 0.7rem; font-weight: 800; color: var(--f-text-on-accent); background: var(--f-degradado);
+}
+.fcda-marca-titulo { font-size: 0.85rem; font-weight: 700; }
+.fcda-marca-sub { font-size: 0.78rem; color: var(--f-text-muted); }
+.fcda-progreso { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+.fcda-progreso span { height: 4px; border-radius: 4px; background: var(--f-border-subtle); }
+.fcda-progreso span.hecho { background: var(--f-degradado); }
+.fcda-titulo { margin: 0.25rem 0 0; font-size: 1.6rem; line-height: 1.2; }
+.fcda-titulo.centrado { text-align: center; font-size: 1.35rem; }
+.fcda-titulo:focus { outline: none; }
+.fcda-texto { margin: 0; color: var(--f-text-muted); font-size: 0.95rem; line-height: 1.45; }
+.fcda-centro .fcda-texto { text-align: center; }
+.fcda-datos {
+  margin: 0; padding: 0.9rem 1rem; display: grid; gap: 0.6rem; border-radius: 14px; font-size: 0.85rem;
+  background: var(--f-bg-surface); border: 1px solid var(--f-border-strong);
+}
+.fcda-datos div { display: flex; justify-content: space-between; gap: 0.75rem; }
+.fcda-datos dt { color: var(--f-text-muted); }
+.fcda-datos dd { margin: 0; text-align: right; font-weight: 600; }
+.fcda-consejos {
+  margin: 0; padding: 0.85rem 1rem; list-style: none; display: grid; gap: 0.55rem; font-size: 0.85rem;
+  border-radius: 14px; background: var(--f-cian-suave); border: 1px solid var(--f-cian);
+}
+.fcda-consejos li::before { content: '\2713'; color: var(--f-cian); font-weight: 700; margin-right: 0.6rem; }
+.fcda-consentimiento {
+  padding: 0.9rem 1rem; border-radius: 14px; font-size: 0.82rem; line-height: 1.45;
+  background: var(--f-bg-surface); border: 1px solid var(--f-borde-control);
+}
+.fcda-consentimiento.marcado { border-color: var(--f-violeta); background: var(--f-violeta-suave); }
+.fcda-consentimiento label { display: flex; gap: 0.75rem; align-items: flex-start; cursor: pointer; }
+.fcda-consentimiento input { flex: none; width: 22px; height: 22px; margin: 0.1rem 0 0; accent-color: var(--f-violeta); }
+.fcda-consentimiento input:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.fcda-consentimiento details { margin: 0.6rem 0 0 2.1rem; }
+.fcda-consentimiento summary { color: var(--f-cian); text-decoration: underline; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.fcda-consentimiento summary:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.fcda-consentimiento details ul { margin: 0.5rem 0 0; padding-left: 1rem; display: grid; gap: 0.35rem; color: var(--f-text-muted); }
+.fcda-acciones { margin-top: auto; display: grid; gap: 0.75rem; }
+.fcda-acciones .btn { width: 100%; min-height: 52px; font-size: 1rem; }
+.fcda-nota { margin: 0; text-align: center; font-size: 0.8rem; color: var(--f-aviso); }
+.fcda-pie { margin: 0; text-align: center; font-size: 0.8rem; color: var(--f-text-muted); }
+.fcda-circulo {
+  flex: none; width: min(260px, 70vw); height: min(260px, 70vw); box-sizing: border-box; margin: 1.5rem auto 0; border-radius: 50%; padding: 4px;
+  background: var(--f-degradado); box-shadow: 0 0 40px rgb(34 211 238 / 0.35);
+}
+.fcda-circulo img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; background: var(--f-bg-elevated); }
+.fcda-chip { margin: 0; text-align: center; }
+.fcda-chip span { display: inline-block; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.78rem; background: var(--f-exito-suave); color: var(--f-exito); }
+.fcda-centro { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+.fcda-icono { width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center; }
+.fcda-icono.exito { background: var(--f-exito); color: var(--f-text-on-accent); box-shadow: 0 0 40px rgb(52 211 153 / 0.45); }
+.fcda-icono.aviso { background: var(--f-aviso-suave); color: var(--f-aviso); border: 2px solid var(--f-aviso); }
+.fcda-credencial {
+  width: 100%; box-sizing: border-box; display: flex; gap: 1rem; align-items: center; padding: 1rem; border-radius: 16px;
+  border: 1px solid var(--f-cian); background: linear-gradient(120deg, var(--f-bg-surface), var(--f-violeta-suave));
+}
+.fcda-credencial img { width: 72px; height: 88px; object-fit: cover; border-radius: 10px; }
+.fcda-credencial p { margin: 0; }
+.fcda-credencial-cargo { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--f-cian); }
+.fcda-credencial-apellidos { font-weight: 700; }
+.fcda-credencial-nombres { font-size: 0.85rem; color: var(--f-text-muted); }
+
 .ocda-vacio { padding: 1.25rem; border: 1px dashed var(--f-cian); background: var(--f-cian-suave); border-radius: 16px; }
 
 @media (prefers-reduced-motion: reduce) {

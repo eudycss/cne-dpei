@@ -21,6 +21,13 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  // En Render la petición llega por un proxy local: sin esto req.ip es 127.0.0.1
+  // para todos (visto en la bitácora), y los límites por IP (@Throttle del login
+  // y de la página pública de foto) se comparten entre todos los usuarios.
+  // Se confía solo en proxies de red interna; req.ip pasa a ser la IP pública más
+  // cercana que agregó el balanceador de Render en X-Forwarded-For.
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   app.enableCors({
     // Orígenes exactos (WEB_ORIGIN) + comodines opcionales (WEB_ORIGIN_PATTERNS),

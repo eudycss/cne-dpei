@@ -97,6 +97,33 @@ const AUDIT_TABLE: Array<{
       return { desde: dia(q.desde), hasta: dia(q.hasta) };
     },
   },
+  // Enlace de foto: solo la vigencia (nunca el token). La subida es pública: el
+  // operador sale de req.operadorCdaId (lo pone el controller) y queda la versión
+  // del aviso LOPDP que aceptó.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/[^/]+\/enlace-foto$/,
+    accion: 'ENLACE_FOTO_CDA_CREAR',
+    entidad: 'operador_cda',
+    resumen: (res) => {
+      const r = (res ?? {}) as { expiraEn?: unknown };
+      return { expiraEn: typeof r.expiraEn === 'string' ? r.expiraEn.slice(0, 40) : null };
+    },
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/foto-cda\/subir$/,
+    accion: 'FOTO_CDA_SUBIR',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    resumen: (_res, req) => {
+      const v = (req.body as { version?: unknown } | undefined)?.version;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
+    },
+  },
   // Fase 2 — eventos electorales
   { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento', campos: ['tipo', 'fechaJornada'] },

@@ -1080,3 +1080,27 @@ export interface MarcarAsistenciaCdaMasivaResult {
   /** Ids que no corresponden a un operador activo. */
   ignorados: number;
 }
+
+// Enlace personal para que el operador CDA suba su foto (sin sesión).
+
+/** Lo que devuelve la API al crear el enlace. El token se muestra una sola vez. */
+export interface EnlaceFotoCdaCreado {
+  token: string;
+  /** ISO 8601 */
+  expiraEn: string;
+}
+
+/** Lo que ve el operador al abrir su enlace. Datos enmascarados. */
+export type EnlaceFotoCdaPublico =
+  | {
+      estado: 'ACTIVO';
+      apellidosNombres: string;
+      /** Cédula enmascarada (p. ej. 1050xxxx12). */
+      cedula: string;
+      /** Teléfono enmascarado o null. */
+      telefono: string | null;
+      cargo: string;
+      expiraEn: string;
+    }
+  /** Caducó, ya se usó, se generó otro, superó los intentos o no existe. */
+  | { estado: 'INACTIVO' };

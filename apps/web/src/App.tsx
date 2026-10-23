@@ -4,6 +4,7 @@ import { Logout } from './pages/Logout';
 import { ChangePassword } from './pages/ChangePassword';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
+import { FotoCdaPage } from './pages/foto-cda/FotoCdaPage';
 import { Layout } from './pages/Layout';
 import { UsersList } from './pages/users/UsersList';
 import { NewUser } from './pages/users/NewUser';
@@ -31,6 +32,8 @@ export default function App() {
       <Route path="/logout" element={<Logout />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* Pública: el operador CDA sube su foto con su enlace personal (token en el #). */}
+      <Route path="/foto-cda" element={<FotoCdaPage />} />
       <Route
         path="/change-password"
         element={
