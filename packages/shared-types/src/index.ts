@@ -1042,3 +1042,41 @@ export interface ImportOperadoresCdaResult {
   filas: OperadorCdaFila[];
   errores: BulkUploadRow[];
 }
+
+export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
+
+/** Asistencia de un operador en un día (marcas en null = pendientes). */
+export interface AsistenciaCdaFila {
+  operador: OperadorCda;
+  /** ISO 8601 */
+  entradaEn: string | null;
+  /** Nombre de quien marcó la entrada. */
+  entradaPor: string | null;
+  salidaEn: string | null;
+  salidaPor: string | null;
+}
+
+export interface AsistenciaCdaDia {
+  /** AAAA-MM-DD (calendario de Ecuador). */
+  fecha: string;
+  /** Solo el día de hoy se puede marcar. */
+  esHoy: boolean;
+  filas: AsistenciaCdaFila[];
+}
+
+export interface MarcarAsistenciaCdaRequest {
+  tipo: TipoMarcaAsistenciaCda;
+}
+
+export interface MarcarAsistenciaCdaMasivaRequest {
+  tipo: TipoMarcaAsistenciaCda;
+  operadorIds: string[];
+}
+
+export interface MarcarAsistenciaCdaMasivaResult {
+  marcados: number;
+  /** Ya tenían la marca, o (salida) aún no tenían entrada. */
+  omitidos: number;
+  /** Ids que no corresponden a un operador activo. */
+  ignorados: number;
+}

@@ -171,6 +171,41 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
   });
 
+  it('asistencia CDA: el marcado masivo guarda tipo y conteos; quitar una marca guarda operador y tipo', async () => {
+    const masiva = await auditar(
+      { method: 'POST', originalUrl: '/operadores-cda/asistencia/masiva', body: { tipo: 'ENTRADA', operadorIds: [OTRO] }, user: ADMIN },
+      { marcados: 40, omitidos: 16 },
+    );
+    expect(masiva.data).toMatchObject({ accion: 'ASISTENCIA_CDA_MASIVA', datosDespues: { tipo: 'ENTRADA', marcados: 40, omitidos: 16 } });
+
+    const deshacer = await auditar(
+      {
+        method: 'DELETE',
+        originalUrl: `/operadores-cda/${OTRO}/asistencia/SALIDA?marcaEn=2026-10-22T22%3A45%3A00.000Z`,
+        params: { id: OTRO, tipo: 'SALIDA' },
+        body: {},
+        user: ADMIN,
+      },
+      { deshecho: true, marcaEn: '2026-10-22T22:45:00.000Z', marcadaPorId: ADMIN.sub },
+    );
+    // La fila ya no tiene la marca: la bitácora guarda qué hora se quitó y quién la había puesto.
+    expect(deshacer.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_DESHACER',
+      entidad: 'operador_cda',
+      entidadId: OTRO,
+      datosDespues: { tipo: 'SALIDA', marcaEn: '2026-10-22T22:45:00.000Z', marcadaPorId: ADMIN.sub },
+    });
+
+    const exportar = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/asistencia/exportar.xlsx?hasta=2026-10-22',
+      query: { hasta: '2026-10-22', desde: ['x'] },
+      body: {},
+      user: ADMIN,
+    });
+    expect(exportar.data).toMatchObject({ accion: 'ASISTENCIA_CDA_EXPORTAR', datosDespues: { desde: null, hasta: '2026-10-22' } });
+  });
+
   it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
     const falla = jest.fn().mockRejectedValue(new Error('db caída'));
     const { respuesta } = await auditar(

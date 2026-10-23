@@ -24,7 +24,7 @@ const AUDIT_TABLE: Array<{
   /** Solo se audita si devuelve true (p. ej. no auditar una vista previa). */
   cuando?: (req: Request) => boolean;
   /** Qué guardar en datosDespues a partir de la respuesta (en vez del body). Sin datos personales. */
-  resumen?: (res: unknown) => Record<string, unknown>;
+  resumen?: (res: unknown, req: Request) => Record<string, unknown>;
 }> = [
   { method: 'POST',  pathRegex: /^\/auth\/login$/,           accion: 'LOGIN' },
   { method: 'POST',  pathRegex: /^\/auth\/logout$/,          accion: 'LOGOUT' },
@@ -51,6 +51,50 @@ const AUDIT_TABLE: Array<{
     resumen: (res) => {
       const r = (res ?? {}) as { nuevos?: unknown; actualizados?: unknown };
       return { nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
+    },
+  },
+  // Asistencia: cada marca ya guarda quién y a qué hora; aquí quedan el marcado
+  // masivo (con conteos) y las correcciones (quitar una marca).
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/asistencia\/masiva$/,
+    accion: 'ASISTENCIA_CDA_MASIVA',
+    entidad: 'asistencia_cda',
+    resumen: (res, req) => {
+      const r = (res ?? {}) as { marcados?: unknown; omitidos?: unknown };
+      const tipo = (req.body as { tipo?: unknown } | undefined)?.tipo;
+      return {
+        tipo: tipo === 'ENTRADA' || tipo === 'SALIDA' ? tipo : null,
+        marcados: Number(r.marcados) || 0,
+        omitidos: Number(r.omitidos) || 0,
+      };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/operadores-cda\/[^/]+\/asistencia\/(ENTRADA|SALIDA)$/,
+    accion: 'ASISTENCIA_CDA_DESHACER',
+    entidad: 'operador_cda',
+    // La fila ya no conserva la marca quitada: queda aquí (hora e id de quien la había puesto).
+    resumen: (res, req) => {
+      const r = (res ?? {}) as { marcaEn?: unknown; marcadaPorId?: unknown };
+      return {
+        tipo: req.params?.tipo === 'SALIDA' ? 'SALIDA' : 'ENTRADA',
+        marcaEn: typeof r.marcaEn === 'string' ? r.marcaEn.slice(0, 40) : null,
+        marcadaPorId: typeof r.marcadaPorId === 'string' ? r.marcadaPorId.slice(0, 40) : null,
+      };
+    },
+  },
+  // Descarga cédulas de todos los operadores: queda el rango pedido.
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/asistencia\/exportar\.xlsx$/,
+    accion: 'ASISTENCIA_CDA_EXPORTAR',
+    entidad: 'asistencia_cda',
+    resumen: (_res, req) => {
+      const q = (req.query ?? {}) as Record<string, unknown>;
+      const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+      return { desde: dia(q.desde), hasta: dia(q.hasta) };
     },
   },
   // Fase 2 — eventos electorales
@@ -164,7 +208,7 @@ export class AuditInterceptor implements NestInterceptor {
               accion: match.accion,
               entidad: match.entidad ?? null,
               entidadId: match.entidadId?.(req, resBody) ?? idEntidad(req, resBody) ?? null,
-              datosDespues: (match.resumen ? match.resumen(resBody) : datosDeLaPeticion(req.body, match.campos)) as any,
+              datosDespues: (match.resumen ? match.resumen(resBody, req) : datosDeLaPeticion(req.body, match.campos)) as any,
               dispositivo: req.headers['user-agent']?.slice(0, 160) ?? null,
               ip: req.ip ?? null,
             },

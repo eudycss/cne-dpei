@@ -505,3 +505,46 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-estado.ok { background: var(--success-bg); color: var(--success-text); }
 .ocda-estado.pendiente { background: var(--warn-bg); color: var(--warn-text); }
 .ocda-vacio { border: 1px dashed var(--ocda-cian); background: var(--ocda-cian-suave); }
+:root { --ocda-violeta-suave: #f5f3ff; }
+[data-theme="dark"] { --ocda-violeta-suave: #25194a; }
+.ocda-kpis { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 1.25rem; }
+.ocda-kpi { display: flex; flex-direction: column; gap: 0.3rem; padding: 1rem 1.1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; }
+.ocda-kpi-etiqueta { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+.ocda-kpi-valor { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+.ocda-kpi-barra { height: 6px; border-radius: 99px; background: var(--border-subtle); overflow: hidden; }
+.ocda-kpi-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #22d3ee, #8b5cf6); transition: width 600ms ease-out; }
+.ocda-fecha { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); }
+.ocda-fecha input { padding: 0.45rem 0.6rem; border: 1px solid var(--border-input); border-radius: 6px; background: var(--bg-card); color: var(--text); font: inherit; min-height: 38px; }
+.ocda-chips { align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.ocda-chip {
+  min-height: 36px; padding: 0.35rem 0.9rem; border-radius: 999px; font: inherit; font-size: 0.85rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); cursor: pointer;
+}
+.ocda-chip[aria-pressed="true"] { border-color: var(--ocda-cian); background: var(--ocda-cian-suave); color: var(--text); font-weight: 600; }
+.ocda-chip:focus-visible, .ocda-check:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ocda-masivas { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.ocda-tabla { overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; }
+.ocda-tabla:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ocda-tabla table { width: 100%; min-width: 760px; border-collapse: collapse; }
+.ocda-tabla th, .ocda-tabla td { padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+.ocda-tabla tbody th { background: transparent; }
+.ocda-tabla thead th { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.ocda-persona { display: flex; align-items: center; gap: 0.75rem; font-weight: 600; font-size: 0.9rem; }
+.ocda-persona .ocda-avatar { width: 36px; height: 36px; font-size: 0.75rem; }
+.ocda-check {
+  display: inline-flex; align-items: center; gap: 0.6rem; min-width: 138px; min-height: 44px; padding: 0.3rem 0.8rem 0.3rem 0.35rem;
+  border-radius: 12px; border: 1px solid var(--border-input); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; text-align: left;
+}
+.ocda-check[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
+.ocda-check.marcado[aria-disabled="true"] { opacity: 0.85; }
+.ocda-check-caja { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--border-input); background: var(--bg-card); }
+.ocda-check-texto { display: flex; flex-direction: column; font-size: 0.82rem; font-weight: 600; line-height: 1.2; }
+.ocda-check-texto .mono { font-weight: 500; color: var(--text-muted); font-size: 0.75rem; }
+.ocda-check.entrada.marcado { border-color: var(--ocda-cian); background: var(--ocda-cian-suave); box-shadow: 0 0 14px color-mix(in srgb, #22d3ee 30%, transparent); }
+.ocda-check.entrada.marcado .ocda-check-caja { background: var(--ocda-cian); border-color: var(--ocda-cian); color: #fff; }
+.ocda-check.entrada.marcado .mono { color: var(--ocda-cian); }
+.ocda-check.salida.marcado { border-color: var(--ocda-violeta); background: var(--ocda-violeta-suave); box-shadow: 0 0 14px color-mix(in srgb, #8b5cf6 30%, transparent); }
+.ocda-check.salida.marcado .ocda-check-caja { background: var(--ocda-violeta); border-color: var(--ocda-violeta); color: #fff; }
+.ocda-check.salida.marcado .mono { color: var(--ocda-violeta); }
+[data-theme="dark"] .ocda-check.marcado .ocda-check-caja { color: #04121a; }
+@media (prefers-reduced-motion: reduce) { .ocda-kpi-barra span { transition: none; } }
