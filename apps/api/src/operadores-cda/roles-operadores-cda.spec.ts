@@ -4,6 +4,7 @@ import { AsistenciaCdaController } from './asistencia-cda.controller';
 import { OperadoresCdaController } from './operadores-cda.controller';
 import { FotoCdaController, FotoCdaPublicoController } from './foto-cda.controller';
 import { ActasCdaController } from './actas-cda.controller';
+import { AtrasosCdaController } from './atrasos-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -47,6 +48,14 @@ describe('RBAC de Operadores CDA', () => {
       expect(rolesDe(ActasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
     },
   );
+
+  it.each(['config', 'reporte', 'exportar'])('atrasos.%s: los mismos tres roles', (metodo) => {
+    expect(rolesDe(AtrasosCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+  });
+
+  it('cambiar la hora oficial de entrada: solo administrador', () => {
+    expect(rolesDe(AtrasosCdaController, 'guardarConfig')).toEqual(['ADMINISTRADOR']);
+  });
 
   it('reabrir un acta firmada: solo administrador', () => {
     expect(rolesDe(ActasCdaController, 'reabrir')).toEqual(['ADMINISTRADOR']);

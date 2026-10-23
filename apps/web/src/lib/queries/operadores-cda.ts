@@ -2,6 +2,7 @@ import type {
   ActaCdaFila,
   ActaEntregaCda,
   AsistenciaCdaDia,
+  ConfigAsistenciaCda,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
   GenerarActasCdaRequest,
@@ -13,6 +14,7 @@ import type {
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
+  ReporteAtrasosCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
@@ -182,4 +184,31 @@ export async function descargarActaCda(operadorId: string, formato: 'docx' | 'pd
 export async function descargarActasCdaZip(operadorIds: string[]): Promise<void> {
   const res = await api.post<Blob>('/operadores-cda/actas/zip', { operadorIds }, { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'actas-entrega-operadores-cda.zip'));
+}
+
+// Reporte de atrasos: hora oficial de entrada + minutos de gracia.
+
+export async function getConfigAsistenciaCda(): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.get<ConfigAsistenciaCda>('/operadores-cda/asistencia/config');
+  return data;
+}
+
+export async function guardarConfigAsistenciaCda(body: ConfigAsistenciaCda): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.put<ConfigAsistenciaCda>('/operadores-cda/asistencia/config', body);
+  return data;
+}
+
+const rango = (desde: string, hasta: string) =>
+  `desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
+
+export async function getAtrasosCda(desde: string, hasta: string): Promise<ReporteAtrasosCda> {
+  const { data } = await api.get<ReporteAtrasosCda>(`/operadores-cda/asistencia/atrasos?${rango(desde, hasta)}`);
+  return data;
+}
+
+export async function descargarAtrasosCda(desde: string, hasta: string): Promise<void> {
+  const res = await api.get<Blob>(`/operadores-cda/asistencia/atrasos.xlsx?${rango(desde, hasta)}`, {
+    responseType: 'blob',
+  });
+  guardar(res.data, `atrasos_operadores_cda_${desde}_${hasta}.xlsx`);
 }

@@ -814,6 +814,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-casilla:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
 .ocda-fila-acciones { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .ocda-estado.vacio { background: var(--f-bg-elevated); color: var(--f-text-muted); }
+/* Reporte de atrasos: el estado va siempre con texto, el color solo refuerza. */
+.ocda-estado.aviso { background: var(--f-aviso-suave); color: var(--f-aviso); }
+.ocda-estado.error { background: var(--f-error-suave); color: var(--f-error); }
 /* CRUD del listado (solo administrador): acciones discretas al pie de la tarjeta. */
 .ocda-tarjeta.oculta { border-style: dashed; border-color: var(--f-border-strong); }
 .ocda-tarjeta-admin { display: flex; gap: 0.25rem; padding-top: 0.5rem; border-top: 1px solid var(--f-border-subtle); }

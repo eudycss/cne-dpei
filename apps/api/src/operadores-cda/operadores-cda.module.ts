@@ -7,9 +7,11 @@ import { FotoCdaController, FotoCdaPublicoController } from './foto-cda.controll
 import { FotoCdaService } from './foto-cda.service';
 import { ActasCdaController } from './actas-cda.controller';
 import { ActasCdaService } from './actas-cda.service';
+import { AtrasosCdaController } from './atrasos-cda.controller';
+import { AtrasosCdaService } from './atrasos-cda.service';
 
 @Module({
-  controllers: [OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController],
-  providers: [OperadoresCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService],
+  controllers: [AtrasosCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController],
+  providers: [AtrasosCdaService, OperadoresCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService],
 })
 export class OperadoresCdaModule {}

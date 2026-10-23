@@ -7,6 +7,8 @@ import {
   cedulaSchema,
   avisosEnlacesSchema,
   configAlertasSchema,
+  configAsistenciaCdaSchema,
+  rangoAsistenciaSchema,
   isValidCedulaEcuatoriana,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
@@ -322,6 +324,26 @@ describe('asistencia CDA', () => {
     expect(diaAsistenciaSchema.safeParse('2026-10-22').success).toBe(true);
     expect(diaAsistenciaSchema.safeParse('2026-02-30').success).toBe(false);
     expect(diaAsistenciaSchema.safeParse('22/10/2026').success).toBe(false);
+  });
+
+  it('la hora de entrada es HH:MM y la gracia de 0 a 120 min enteros', () => {
+    const ok = (horaEntrada: string, minutosGracia: unknown) =>
+      configAsistenciaCdaSchema.safeParse({ horaEntrada, minutosGracia }).success;
+    expect(ok('08:00', 10)).toBe(true);
+    expect(ok('23:59', 0)).toBe(true);
+    expect(ok('24:00', 10)).toBe(false);
+    expect(ok('8:00', 10)).toBe(false);
+    expect(ok('08:00', 121)).toBe(false);
+    expect(ok('08:00', 2.5)).toBe(false);
+    expect(ok('08:00', '10')).toBe(false);
+  });
+
+  it('el rango de atrasos va en orden y hasta 120 días', () => {
+    const ok = (desde: string, hasta: string) => rangoAsistenciaSchema.safeParse({ desde, hasta }).success;
+    expect(ok('2026-10-01', '2026-10-01')).toBe(true);
+    expect(ok('2026-10-02', '2026-10-01')).toBe(false);
+    expect(ok('2026-06-04', '2026-10-01')).toBe(true); // 120 días
+    expect(ok('2026-06-03', '2026-10-01')).toBe(false); // 121 días
   });
 });
 

@@ -1078,6 +1078,48 @@ export interface AsistenciaCdaDia {
   filas: AsistenciaCdaFila[];
 }
 
+/** Hora oficial de entrada ("HH:MM", Ecuador) y minutos de gracia. */
+export interface ConfigAsistenciaCda {
+  horaEntrada: string;
+  minutosGracia: number;
+}
+
+/** PENDIENTE: hoy, sin entrada y todavía dentro de la hora + gracia. */
+export type EstadoPuntualidad = 'PUNTUAL' | 'ATRASO' | 'FALTA' | 'PENDIENTE';
+
+export interface FilaAtrasoCda {
+  /** AAAA-MM-DD */
+  fecha: string;
+  operadorId: string;
+  apellidosNombres: string;
+  cedula: string;
+  /** "HH:MM" o null si no marcó. */
+  entrada: string | null;
+  /** Minutos después de la hora oficial (0 si llegó antes). */
+  minutosAtraso: number;
+  estado: EstadoPuntualidad;
+}
+
+export interface ResumenAtrasoOperadorCda {
+  operadorId: string;
+  apellidosNombres: string;
+  cedula: string;
+  puntuales: number;
+  atrasos: number;
+  faltas: number;
+  /** Suma de minutos de atraso de los días con ATRASO. */
+  minutosAtraso: number;
+}
+
+export interface ReporteAtrasosCda {
+  desde: string;
+  hasta: string;
+  config: ConfigAsistenciaCda;
+  totales: { puntuales: number; atrasos: number; faltas: number; pendientes: number; minutosAtraso: number };
+  resumen: ResumenAtrasoOperadorCda[];
+  filas: FilaAtrasoCda[];
+}
+
 export interface MarcarAsistenciaCdaRequest {
   tipo: TipoMarcaAsistenciaCda;
 }

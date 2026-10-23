@@ -102,6 +102,26 @@ const AUDIT_TABLE: Array<{
       return { desde: dia(q.desde), hasta: dia(q.hasta) };
     },
   },
+  // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
+  // y la descarga del Excel (lleva cédulas), con el rango pedido.
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/asistencia\/config$/,
+    accion: 'ASISTENCIA_CDA_CONFIG',
+    entidad: 'config_asistencia_cda',
+    campos: ['horaEntrada', 'minutosGracia'],
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/asistencia\/atrasos\.xlsx$/,
+    accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
+    entidad: 'asistencia_cda',
+    resumen: (_res, req) => {
+      const q = (req.query ?? {}) as Record<string, unknown>;
+      const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+      return { desde: dia(q.desde), hasta: dia(q.hasta) };
+    },
+  },
   // Enlace de foto: solo la vigencia (nunca el token). La subida es pública: el
   // operador sale de req.operadorCdaId (lo pone el controller) y queda la versión
   // del aviso LOPDP que aceptó.

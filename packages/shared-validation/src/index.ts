@@ -655,6 +655,33 @@ export const diaAsistenciaSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
 
+/** Máximo de días del reporte de atrasos (igual que el Excel de asistencia). */
+export const MAX_DIAS_REPORTE_ASISTENCIA = 120;
+
+// Hora oficial de entrada (Ecuador) y minutos de gracia: hasta hora + gracia es puntual.
+export const configAsistenciaCdaSchema = z
+  .object({
+    horaEntrada: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (use HH:MM, 00:00 a 23:59)'),
+    minutosGracia: z
+      .number({ invalid_type_error: 'Ingrese los minutos de gracia' })
+      .int('Use minutos enteros')
+      .min(0, 'Mínimo 0 minutos')
+      .max(120, 'Máximo 120 minutos'),
+  })
+  .strict();
+export type ConfigAsistenciaCdaInput = z.infer<typeof configAsistenciaCdaSchema>;
+
+export const rangoAsistenciaSchema = z
+  .object({ desde: diaAsistenciaSchema, hasta: diaAsistenciaSchema })
+  .refine((r) => r.desde <= r.hasta, { message: 'La fecha inicial es posterior a la final', path: ['desde'] })
+  .refine(
+    (r) =>
+      (Date.parse(`${r.hasta}T00:00:00Z`) - Date.parse(`${r.desde}T00:00:00Z`)) / 86_400_000 <
+      MAX_DIAS_REPORTE_ASISTENCIA,
+    { message: `El rango es demasiado largo (máximo ${MAX_DIAS_REPORTE_ASISTENCIA} días)`, path: ['hasta'] },
+  );
+export type RangoAsistenciaInput = z.infer<typeof rangoAsistenciaSchema>;
+
 // Enlace de foto de operador CDA (página pública).
 
 /** Versión del aviso de consentimiento LOPDP que acepta el operador. Cambiarla si cambia el texto. */

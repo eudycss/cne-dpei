@@ -729,6 +729,19 @@ model AsistenciaCda {
   @@map("asistencias_cda")
 }
 
+/// Singleton (id = 1): hora oficial de entrada de los operadores CDA y minutos
+/// de gracia. Entrada hasta hora + gracia = puntual; después, atraso. Quién lo
+/// cambió queda en la bitácora (ASISTENCIA_CDA_CONFIG).
+model ConfigAsistenciaCda {
+  id            Int      @id @default(1)
+  /// "HH:MM" en hora de Ecuador.
+  horaEntrada   String   @default("08:00") @map("hora_entrada") @db.VarChar(5)
+  minutosGracia Int      @default(10) @map("minutos_gracia")
+  actualizadoEn DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("config_asistencia_cda")
+}
+
 /// Enlace personal para que el operador suba su foto desde el celular.
 /// Solo se guarda el SHA-256 del token; de un solo uso y con caducidad.
 model EnlaceFotoCda {
