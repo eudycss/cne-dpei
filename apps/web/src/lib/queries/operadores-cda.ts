@@ -2,6 +2,8 @@ import type {
   ActaCdaFila,
   ActaEntregaCda,
   AsistenciaCdaDia,
+  CrearOperadorCdaRequest,
+  EditarOperadorCdaRequest,
   GenerarActasCdaRequest,
   GenerarActasCdaResult,
   PersonaEntregaCda,
@@ -16,8 +18,25 @@ import type {
 import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
 import { api } from '../api';
 
-export async function getOperadoresCda(): Promise<OperadorCda[]> {
-  const { data } = await api.get<OperadorCda[]>('/operadores-cda');
+/** `incluirInactivos`: también los ocultos (la API solo lo respeta al administrador). */
+export async function getOperadoresCda(incluirInactivos = false): Promise<OperadorCda[]> {
+  const { data } = await api.get<OperadorCda[]>(`/operadores-cda${incluirInactivos ? '?incluirInactivos=true' : ''}`);
+  return data;
+}
+
+export async function crearOperadorCda(body: CrearOperadorCdaRequest): Promise<OperadorCda> {
+  const { data } = await api.post<OperadorCda>('/operadores-cda', body);
+  return data;
+}
+
+export async function editarOperadorCda(id: string, body: EditarOperadorCdaRequest): Promise<OperadorCda> {
+  const { data } = await api.patch<OperadorCda>(`/operadores-cda/${id}`, body);
+  return data;
+}
+
+/** false = ocultar (baja lógica); true = reactivar. */
+export async function cambiarActivoOperadorCda(id: string, activo: boolean): Promise<OperadorCda> {
+  const { data } = await api.patch<OperadorCda>(`/operadores-cda/${id}/activo`, { activo });
   return data;
 }
 

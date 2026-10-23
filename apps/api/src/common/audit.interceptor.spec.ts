@@ -238,6 +238,26 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
   });
 
+  it('CRUD de operadores CDA: no guarda nombres, cédulas ni teléfonos; de ocultar sí guarda el valor', async () => {
+    const crear = await auditar(
+      { method: 'POST', originalUrl: '/operadores-cda', body: { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', telefono: '0987111222', cargo: 'X' }, user: ADMIN },
+      { id: OTRO },
+    );
+    expect(crear.data).toMatchObject({ accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda', entidadId: OTRO });
+    expect(JSON.stringify(crear.data)).not.toMatch(/RUIZ|1710034065|0987111222/);
+
+    const editar = await auditar({
+      method: 'PATCH', originalUrl: `/operadores-cda/${OTRO}`, params: { id: OTRO }, body: { apellidosNombres: 'RUIZ', cargo: 'X' }, user: ADMIN,
+    });
+    expect(editar.data).toMatchObject({ accion: 'OPERADOR_CDA_UPDATE', entidadId: OTRO });
+    expect(JSON.stringify(editar.data)).not.toContain('RUIZ');
+
+    const ocultar = await auditar({
+      method: 'PATCH', originalUrl: `/operadores-cda/${OTRO}/activo`, params: { id: OTRO }, body: { activo: false }, user: ADMIN,
+    });
+    expect(ocultar.data).toMatchObject({ accion: 'OPERADOR_CDA_ACTIVO', entidadId: OTRO, datosDespues: { activo: false } });
+  });
+
   it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
     const falla = jest.fn().mockRejectedValue(new Error('db caída'));
     const { respuesta } = await auditar(

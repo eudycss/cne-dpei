@@ -1,4 +1,4 @@
-import { cloneElement, useState, type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { ActaCdaFila, EstadoPrenda, GenerarActasCdaRequest } from '@cne/shared-types';
@@ -6,6 +6,7 @@ import { generarActasCdaSchema } from '@cne/shared-validation';
 import { Modal } from '../../components/Modal';
 import { generarActasCda, getPersonasEntregaCda } from '../../lib/queries/operadores-cda';
 import { hoyEcuador } from './utils';
+import { Campo } from './Campo';
 
 const ESTADOS: EstadoPrenda[] = ['NUEVO', 'BUENO', 'REGULAR', 'MALO'];
 const PRENDAS = [
@@ -100,7 +101,7 @@ export function GenerarActasModal({
   }
 
   const campo = (id: string, etiqueta: string, control: ReactElement, ancho = false, ayuda?: string) => (
-    <Campo key={id} id={id} etiqueta={etiqueta} error={errores[id]} ayuda={ayuda} ancho={ancho}>
+    <Campo key={id} id={`acta-${id}`} etiqueta={etiqueta} error={errores[id]} ayuda={ayuda} ancho={ancho}>
       {control}
     </Campo>
   );
@@ -220,49 +221,5 @@ export function GenerarActasModal({
         </div>
       </form>
     </Modal>
-  );
-}
-
-/**
- * Etiqueta + control + ayuda + error. El error va fuera de la etiqueta y,
- * como la ayuda, se enlaza con aria-describedby. Todos son obligatorios.
- */
-function Campo({
-  id,
-  etiqueta,
-  error,
-  ayuda,
-  ancho,
-  children,
-}: {
-  id: string;
-  etiqueta: string;
-  error?: string;
-  ayuda?: string;
-  ancho: boolean;
-  children: ReactElement;
-}) {
-  const idControl = `acta-${id}`;
-  const describe = [ayuda && `${idControl}-ayuda`, error && `${idControl}-error`].filter(Boolean).join(' ');
-  return (
-    <div className={`ocda-form-campo${ancho ? ' ancho' : ''}`}>
-      <label htmlFor={idControl}>{etiqueta}</label>
-      {cloneElement(children, {
-        id: idControl,
-        'aria-required': true,
-        'aria-invalid': error ? true : undefined,
-        'aria-describedby': describe || undefined,
-      })}
-      {ayuda && (
-        <span id={`${idControl}-ayuda`} className="ocda-form-ayuda">
-          {ayuda}
-        </span>
-      )}
-      {error && (
-        <span id={`${idControl}-error`} className="ocda-form-error">
-          {error}
-        </span>
-      )}
-    </div>
   );
 }

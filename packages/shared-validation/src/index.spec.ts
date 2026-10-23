@@ -18,6 +18,9 @@ import {
   salidaRecintoSchema,
   telefonoSchema,
   operadorCdaFilaSchema,
+  crearOperadorCdaSchema,
+  editarOperadorCdaSchema,
+  cambiarActivoOperadorCdaSchema,
   marcarAsistenciaCdaSchema,
   marcarAsistenciaCdaMasivaSchema,
   generarActasCdaSchema,
@@ -277,6 +280,28 @@ describe('operadorCdaFilaSchema', () => {
   it('rechaza fecha que no sea AAAA-MM-DD y cargo vacío', () => {
     expect(operadorCdaFilaSchema.safeParse({ ...fila, fechaInicio: '20 de octubre de 2026' }).success).toBe(false);
     expect(operadorCdaFilaSchema.safeParse({ ...fila, cargo: '   ' }).success).toBe(false);
+  });
+});
+
+describe('CRUD de operadores CDA', () => {
+  const alta = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+
+  it('alta: valida como una fila del Excel y no acepta campos de más (numero, activo)', () => {
+    expect(crearOperadorCdaSchema.safeParse(alta).success).toBe(true);
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, cedula: '1710034066' }).success).toBe(false);
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, numero: 3 }).success).toBe(false);
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, activo: false }).success).toBe(false);
+  });
+
+  it('edición: no permite cambiar la cédula', () => {
+    const { cedula: _c, ...sinCedula } = alta;
+    expect(editarOperadorCdaSchema.safeParse(sinCedula).success).toBe(true);
+    expect(editarOperadorCdaSchema.safeParse(alta).success).toBe(false);
+  });
+
+  it('activo: solo booleano', () => {
+    expect(cambiarActivoOperadorCdaSchema.safeParse({ activo: false }).success).toBe(true);
+    expect(cambiarActivoOperadorCdaSchema.safeParse({ activo: 'false' }).success).toBe(false);
   });
 });
 

@@ -1034,6 +1034,20 @@ export interface OperadorCdaFila {
   accion: 'NUEVO' | 'ACTUALIZAR';
 }
 
+/** Alta manual de un operador (los mismos campos que una fila del Excel). */
+export interface CrearOperadorCdaRequest {
+  apellidosNombres: string;
+  cedula: string;
+  telefono?: string;
+  cargo: string;
+  unidad?: string;
+  /** AAAA-MM-DD */
+  fechaInicio?: string;
+}
+
+/** Edición: todo menos la cédula. Un opcional ausente se guarda vacío. */
+export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula'>;
+
 export interface ImportOperadoresCdaResult {
   /** true = solo vista previa, no se guardó nada. */
   vistaPrevia: boolean;
