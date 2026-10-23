@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
@@ -231,5 +231,45 @@ describe('Layout — sin banner de enlace caído', () => {
     expect(screen.getByText('campanita')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ya notifiqué' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout — módulos configurados por el administrador', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  function responderModulos(modulos: string[]) {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url === '/permisos-modulos/mios' ? { modulos } : { items: [], total: 0, noLeidas: 0 },
+      }),
+    );
+  }
+
+  it('oculta del menú los módulos que el administrador quitó al rol, y los grupos que quedan vacíos', async () => {
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    responderModulos(['monitoreo', 'kits']);
+    renderLayout();
+    await waitFor(() => expect(screen.queryByText('Incidencias')).not.toBeInTheDocument());
+    const menu = screen.getByRole('navigation', { name: 'Menú principal' });
+    expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual(['Kits Electorales', 'Monitoreo']);
+    expect(screen.queryByRole('group', { name: 'Informes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Personal' })).not.toBeInTheDocument();
+  });
+
+  it('solo el administrador ve el acceso a "Módulos por rol"', () => {
+    responderModulos([]);
+    setSessionUser(['ADMINISTRADOR']);
+    const { unmount } = renderLayout();
+    expect(
+      within(screen.getByRole('group', { name: 'Administración' })).getByRole('link', { name: 'Módulos por rol' }),
+    ).toHaveAttribute('href', '/configuracion/modulos');
+    unmount();
+
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    renderLayout();
+    expect(screen.queryByRole('link', { name: 'Módulos por rol' })).not.toBeInTheDocument();
   });
 });

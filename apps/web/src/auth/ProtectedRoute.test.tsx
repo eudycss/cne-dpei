@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
 
 import { AuthProvider } from './AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
+import { api } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
-  api: { post: vi.fn() },
+  api: { post: vi.fn(), get: vi.fn() },
   tokenStore: { set: vi.fn(), clear: vi.fn() },
 }));
 
@@ -91,5 +93,82 @@ describe('ProtectedRoute', () => {
     setSessionUser();
     renderProtected('/protegido');
     expect(screen.getByText('contenido protegido')).toBeInTheDocument();
+  });
+});
+
+function renderConModulo(modulo: 'alertas' | 'kits') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/protegido']}>
+          <Routes>
+            <Route
+              path="/protegido"
+              element={
+                <ProtectedRoute modulo={modulo}>
+                  <div>contenido protegido</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/kits" element={<div>página de kits</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+describe('ProtectedRoute — módulos configurados por el administrador', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(api.get).mockReset();
+  });
+
+  it('muestra el módulo si está entre los visibles del usuario', async () => {
+    setSessionUser({ roles: ['TECNICO_SUPERVISOR'] });
+    vi.mocked(api.get).mockResolvedValue({ data: { modulos: ['alertas'] } });
+    renderConModulo('alertas');
+    expect(await screen.findByText('contenido protegido')).toBeInTheDocument();
+  });
+
+  it('si el módulo está oculto, lleva al primer módulo visible', async () => {
+    setSessionUser({ roles: ['TECNICO_SUPERVISOR'] });
+    vi.mocked(api.get).mockResolvedValue({ data: { modulos: ['kits'] } });
+    renderConModulo('alertas');
+    expect(await screen.findByText('página de kits')).toBeInTheDocument();
+  });
+
+  it('si no le queda ningún módulo visible, muestra "Acceso denegado"', async () => {
+    setSessionUser({ roles: ['LECTOR'] });
+    vi.mocked(api.get).mockResolvedValue({ data: { modulos: [] } });
+    renderConModulo('kits');
+    expect(await screen.findByText('Acceso denegado')).toBeInTheDocument();
+  });
+
+  it('mientras carga no redirige: espera la respuesta del servidor', async () => {
+    setSessionUser({ roles: ['LECTOR'] });
+    let responder!: (v: unknown) => void;
+    vi.mocked(api.get).mockReturnValue(new Promise((r) => (responder = r)));
+    // Alertas no es de fábrica para el lector: con la de fábrica se lo redirigiría.
+    renderConModulo('alertas');
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando…');
+    expect(screen.queryByText('página de kits')).not.toBeInTheDocument();
+    responder({ data: { modulos: ['alertas', 'kits'] } });
+    expect(await screen.findByText('contenido protegido')).toBeInTheDocument();
+  });
+
+  it('si el servidor falla usa la visibilidad de fábrica (sin bloquear al usuario)', async () => {
+    setSessionUser({ roles: ['TECNICO_SUPERVISOR'] });
+    vi.mocked(api.get).mockRejectedValue(new Error('red caída'));
+    renderConModulo('alertas');
+    expect(await screen.findByText('contenido protegido')).toBeInTheDocument();
+  });
+
+  it('el administrador ve todos los módulos sin consultar el servidor', () => {
+    setSessionUser({ roles: ['ADMINISTRADOR'] });
+    renderConModulo('kits');
+    expect(screen.getByText('contenido protegido')).toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalled();
   });
 });

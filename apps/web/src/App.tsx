@@ -23,6 +23,7 @@ import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { CadenaCustodiaPage } from './pages/reportes/CadenaCustodiaPage';
 import { Inicio } from './pages/Inicio';
 import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
+import { PermisosModulosPage } from './pages/permisos-modulos/PermisosModulosPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -52,7 +53,14 @@ export default function App() {
         <Route path="/" element={<Inicio />} />
 
         {/* Usuarios */}
-        <Route path="/users" element={<UsersList />} />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute modulo="usuarios">
+              <UsersList />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/users/new"
           element={
@@ -71,7 +79,14 @@ export default function App() {
         />
 
         {/* Militares */}
-        <Route path="/militares" element={<MilitaresPage />} />
+        <Route
+          path="/militares"
+          element={
+            <ProtectedRoute modulo="militares">
+              <MilitaresPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/militares/upload"
           element={
@@ -82,36 +97,78 @@ export default function App() {
         />
 
         {/* Recintos electorales */}
-        <Route path="/recintos" element={<RecintosSeccion />} />
+        <Route
+          path="/recintos"
+          element={
+            <ProtectedRoute modulo="recintos">
+              <RecintosSeccion />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Eventos electorales */}
-        <Route path="/eventos" element={<EventosPage />} />
+        <Route
+          path="/eventos"
+          element={
+            <ProtectedRoute modulo="eventos">
+              <EventosPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Asignaciones operador ↔ supervisor */}
-        <Route path="/asignaciones" element={<AsignacionesPage />} />
+        <Route
+          path="/asignaciones"
+          element={
+            <ProtectedRoute modulo="asignaciones">
+              <AsignacionesPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Kits electorales */}
-        <Route path="/kits" element={<KitsPage />} />
+        <Route
+          path="/kits"
+          element={
+            <ProtectedRoute modulo="kits">
+              <KitsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Monitoreo de operadores en retorno (HU6) */}
-        <Route path="/operadores" element={<MonitoreoPage />} />
+        <Route
+          path="/operadores"
+          element={
+            <ProtectedRoute modulo="monitoreo">
+              <MonitoreoPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Operadores CDA: personal de los CDA (asistencia, foto y actas) */}
         <Route
           path="/operadores-cda"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']}>
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']} modulo="operadores-cda">
               <OperadoresCdaPage />
             </ProtectedRoute>
           }
         />
         {/* Incidencias (HU14) */}
-        <Route path="/incidencias" element={<IncidenciasPage />} />
+        <Route
+          path="/incidencias"
+          element={
+            <ProtectedRoute modulo="incidencias">
+              <IncidenciasPage />
+            </ProtectedRoute>
+          }
+        />
         {/* Alertas (HU18) — fuera del alcance de LECTOR */}
         <Route
           path="/alertas"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']}>
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']} modulo="alertas">
               <AlertasPage />
             </ProtectedRoute>
           }
@@ -124,7 +181,7 @@ export default function App() {
         <Route
           path="/reportes/no-cda"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']}>
+            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']} modulo="reportes">
               <ReporteNoCdaPage />
             </ProtectedRoute>
           }
@@ -134,14 +191,31 @@ export default function App() {
         <Route
           path="/reportes/cadena-custodia"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']}>
+            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']} modulo="cadena-custodia">
               <CadenaCustodiaPage />
             </ProtectedRoute>
           }
         />
 
         {/* Reporte Power BI "Proyecto CDAS" — el acceso real lo controla Power BI */}
-        <Route path="/reportes/cdas" element={<PowerBiCdasPage />} />
+        <Route
+          path="/reportes/cdas"
+          element={
+            <ProtectedRoute modulo="powerbi-cdas">
+              <PowerBiCdasPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Administración: qué módulos de la web ve cada rol */}
+        <Route
+          path="/configuracion/modulos"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR']}>
+              <PermisosModulosPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
