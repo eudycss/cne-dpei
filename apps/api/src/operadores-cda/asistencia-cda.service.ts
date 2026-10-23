@@ -39,7 +39,7 @@ export class AsistenciaCdaService {
       this.prisma.operadorCda.findMany({ where: { activo: true }, orderBy: { apellidosNombres: 'asc' } }),
       this.prisma.asistenciaCda.findMany({ where: { fecha: fechaDb(dia) }, include: CON_QUIEN_MARCO }),
     ]);
-    const porOperador = new Map(asistencias.map((a) => [a.operadorId, a]));
+    const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
     return {
       fecha: dia,
       esHoy: dia === hoy,
@@ -190,7 +190,9 @@ export class AsistenciaCdaService {
       include: CON_QUIEN_MARCO,
     });
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
-    const porClave = new Map(asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a]));
+    const porClave = new Map<string, (typeof asistencias)[number]>(
+      asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a]),
+    );
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Asistencia');
