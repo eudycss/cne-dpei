@@ -5,6 +5,7 @@ import {
   type DatosActaCda,
   generarPdfActasCda,
   generarWordActaCda,
+  NOMBRE_UNIDAD,
   nombreArchivoActa,
   nombresUnicos,
   textoActaCda,
@@ -50,6 +51,12 @@ describe('acta de entrega CDA (documento)', () => {
     expect(texto).toContain('PÉREZ LÓPEZ JUAN &amp; HIJOS &lt;X&gt;');
     expect(texto).toContain('PETO BUENOCREDENCIALNUEVOCORDON CREDENCIALREGULAR');
     expect(texto).not.toMatch(/[{}]/); // ningún campo sin reemplazar
+  });
+
+  it('el encabezado del Word lleva el nombre completo de la Unidad', () => {
+    const header = new PizZip(generarWordActaCda(DATOS)).file('word/header1.xml')!.asText();
+    expect(header).toContain(`>${NOMBRE_UNIDAD}</w:t>`);
+    expect(header).not.toContain('UNIDAD PROVINCIAL DE SEGURIDAD INFORMÁTICA');
   });
 
   it('la plantilla del repositorio no trae datos personales ni la combinación de correspondencia', () => {
