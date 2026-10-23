@@ -115,9 +115,9 @@ const AZUL_UNIDAD = '#1f3864';
 export const NOMBRE_UNIDAD =
   'Unidad Provincial de Seguridad Informática y Proyectos Tecnológicos Electorales de Imbabura';
 const ESPACIO_FIRMA = 70;
-// Columna del encabezado a la derecha del logo (que ocupa x 40-140).
-const ENCABEZADO_IZQ = 150;
-const ENCABEZADO_DER = 595.28 - 40;
+// Columna del encabezado: junto al logo (x 40-140) hasta el margen derecho del texto.
+const ENCABEZADO_IZQ = 145;
+const ENCABEZADO_DER = IZQ + ANCHO_TEXTO;
 
 function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   doc.addPage();
@@ -127,10 +127,10 @@ function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   // derecha, la Unidad (dos líneas) y el título del acta; abajo, una línea fina.
   if (hayLogo) doc.image(RUTA_LOGO, 40, 26, { fit: [100, 61] });
   const columna = { width: ENCABEZADO_DER - ENCABEZADO_IZQ, align: 'center' as const };
-  doc.font('Times-Bold').fontSize(12.5).fillColor(AZUL_UNIDAD)
-    .text(NOMBRE_UNIDAD, ENCABEZADO_IZQ, 30, columna);
-  doc.font('Times-Bold').fontSize(12).fillColor('#000')
-    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', ENCABEZADO_IZQ, doc.y + 8, columna);
+  doc.font('Times-Bold').fontSize(14).fillColor(AZUL_UNIDAD)
+    .text(NOMBRE_UNIDAD, ENCABEZADO_IZQ, 28, columna);
+  doc.font('Times-Bold').fontSize(11).fillColor('#000')
+    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', ENCABEZADO_IZQ, doc.y + 6, columna);
   const yLinea = Math.max(96, doc.y + 8);
   doc.lineWidth(0.8).moveTo(40, yLinea).lineTo(595.28 - 40, yLinea).stroke(AZUL_UNIDAD);
 
