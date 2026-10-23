@@ -807,6 +807,30 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .fcda-credencial-apellidos { font-weight: 700; }
 .fcda-credencial-nombres { font-size: 0.85rem; color: var(--f-text-muted); }
 
+/* Actas de entrega: casillas, acciones por fila y formulario. */
+.ocda-col-check { width: 52px; }
+.ocda-casilla { width: 22px; height: 22px; margin: 0; accent-color: var(--f-cian); cursor: pointer; }
+.ocda-casilla:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.ocda-fila-acciones { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.ocda-estado.vacio { background: var(--f-bg-elevated); color: var(--f-text-muted); }
+.ocda-form { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.ocda-form .ancho { grid-column: 1 / -1; }
+.ocda-form-campo { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: var(--f-text-muted); }
+.ocda-form-campo input, .ocda-form-campo select {
+  min-height: 44px; padding: 0 0.8rem; border-radius: 12px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-base); color: var(--f-text); font: inherit; font-size: 0.9rem;
+}
+.ocda-form-campo input[readonly] { color: var(--f-text-muted); }
+.ocda-form-campo input:focus-visible, .ocda-form-campo select:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
+.ocda-form-campo [aria-invalid='true'] { border-color: var(--f-error); }
+.ocda-form-error { color: var(--f-error); font-size: 0.78rem; }
+.ocda-form-ayuda { color: var(--f-text-muted); font-size: 0.75rem; }
+.ocda-form-prendas {
+  display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0; padding: 0.9rem; border: 1px solid var(--f-border-subtle); border-radius: 14px;
+}
+.ocda-form-prendas legend { padding: 0 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--f-text); }
+
 .ocda-vacio { padding: 1.25rem; border: 1px dashed var(--f-cian); background: var(--f-cian-suave); border-radius: 16px; }
 
 @media (prefers-reduced-motion: reduce) {

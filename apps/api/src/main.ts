@@ -34,6 +34,8 @@ async function bootstrap() {
     // p. ej. los previews de Vercel. Sin WEB_ORIGIN_PATTERNS no cambia nada.
     origin: [...parseWebOrigins(webOrigin), ...parseOriginPatterns(process.env.WEB_ORIGIN_PATTERNS)],
     credentials: true,
+    // La web lee el nombre del archivo de las descargas (actas en Word, PDF y ZIP).
+    exposedHeaders: ['Content-Disposition'],
   });
 
   app.useGlobalPipes(

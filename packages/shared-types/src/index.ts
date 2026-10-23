@@ -1104,3 +1104,65 @@ export type EnlaceFotoCdaPublico =
     }
   /** Caducó, ya se usó, se generó otro, superó los intentos o no existe. */
   | { estado: 'INACTIVO' };
+
+// Actas de entrega de indumentaria y credencial (peto, credencial y cordón).
+
+export type EstadoPrenda = 'NUEVO' | 'BUENO' | 'REGULAR' | 'MALO';
+/** GENERADA se puede corregir; FIRMADA queda bloqueada (solo un administrador la reabre). */
+export type EstadoActaCda = 'GENERADA' | 'FIRMADA';
+
+export interface ActaEntregaCda {
+  id: string;
+  operadorId: string;
+  entregaUsuarioId: string | null;
+  entregaNombre: string;
+  entregaCedula: string;
+  entregaCargo: string;
+  lugar: string;
+  /** AAAA-MM-DD */
+  fecha: string;
+  estadoPeto: EstadoPrenda;
+  estadoCredencial: EstadoPrenda;
+  estadoCordon: EstadoPrenda;
+  estado: EstadoActaCda;
+  /** ISO 8601 */
+  firmadaEn: string | null;
+  actualizadoEn: string;
+}
+
+/** Operador con su acta vigente (null = aún no se genera). */
+export interface ActaCdaFila {
+  operador: OperadorCda;
+  acta: ActaEntregaCda | null;
+}
+
+/** Quien puede entregar (usuario del sistema), con el cargo que se sugiere en el acta. */
+export interface PersonaEntregaCda {
+  usuarioId: string;
+  nombre: string;
+  cedula: string;
+  cargoSugerido: string;
+}
+
+export interface GenerarActasCdaRequest {
+  operadorIds: string[];
+  entregaUsuarioId?: string;
+  entregaNombre: string;
+  entregaCedula: string;
+  entregaCargo: string;
+  /** AAAA-MM-DD */
+  fecha: string;
+  lugar: string;
+  estadoPeto: EstadoPrenda;
+  estadoCredencial: EstadoPrenda;
+  estadoCordon: EstadoPrenda;
+}
+
+export interface GenerarActasCdaResult {
+  generadas: number;
+  actualizadas: number;
+  /** Ya estaban firmadas: no se tocaron. */
+  omitidasFirmadas: number;
+  /** Ids que no corresponden a un operador activo. */
+  ignorados: number;
+}

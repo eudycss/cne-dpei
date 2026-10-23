@@ -20,6 +20,8 @@ import {
   operadorCdaFilaSchema,
   marcarAsistenciaCdaSchema,
   marcarAsistenciaCdaMasivaSchema,
+  generarActasCdaSchema,
+  descargarActasCdaSchema,
   diaAsistenciaSchema,
 } from './index';
 
@@ -295,5 +297,36 @@ describe('asistencia CDA', () => {
     expect(diaAsistenciaSchema.safeParse('2026-10-22').success).toBe(true);
     expect(diaAsistenciaSchema.safeParse('2026-02-30').success).toBe(false);
     expect(diaAsistenciaSchema.safeParse('22/10/2026').success).toBe(false);
+  });
+});
+
+describe('actas de entrega CDA', () => {
+  const id = '11111111-2222-4333-8444-555555555555';
+  const acta = {
+    operadorIds: [id],
+    entregaNombre: '  William Paspuel ',
+    entregaCedula: '1710034065',
+    entregaCargo: 'Asistente Electoral Transversal',
+    fecha: '2026-10-22',
+    lugar: 'Ibarra',
+    estadoPeto: 'BUENO',
+    estadoCredencial: 'NUEVO',
+    estadoCordon: 'BUENO',
+  };
+
+  it('acepta un acta válida, con o sin usuario, y recorta el nombre', () => {
+    expect(generarActasCdaSchema.parse(acta).entregaNombre).toBe('William Paspuel');
+    expect(generarActasCdaSchema.safeParse({ ...acta, entregaUsuarioId: id }).success).toBe(true);
+  });
+
+  it('rechaza cédula inválida, estados desconocidos, fecha inexistente y listas vacías o enormes', () => {
+    expect(generarActasCdaSchema.safeParse({ ...acta, entregaCedula: '1710034066' }).success).toBe(false);
+    expect(generarActasCdaSchema.safeParse({ ...acta, estadoPeto: 'ROTO' }).success).toBe(false);
+    expect(generarActasCdaSchema.safeParse({ ...acta, fecha: '2026-02-30' }).success).toBe(false);
+    expect(generarActasCdaSchema.safeParse({ ...acta, entregaCargo: '  ' }).success).toBe(false);
+    expect(generarActasCdaSchema.safeParse({ ...acta, entregaNombre: 'Ana\u0000 Ruiz' }).success).toBe(false);
+    expect(generarActasCdaSchema.safeParse({ ...acta, lugar: 'Iba\nrra' }).success).toBe(false);
+    expect(descargarActasCdaSchema.safeParse({ operadorIds: [] }).success).toBe(false);
+    expect(descargarActasCdaSchema.safeParse({ operadorIds: Array(101).fill(id) }).success).toBe(false);
   });
 });

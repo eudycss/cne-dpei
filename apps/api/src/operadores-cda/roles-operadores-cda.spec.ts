@@ -3,6 +3,7 @@ import { ROLES_KEY } from '../common/roles.decorator';
 import { AsistenciaCdaController } from './asistencia-cda.controller';
 import { OperadoresCdaController } from './operadores-cda.controller';
 import { FotoCdaController, FotoCdaPublicoController } from './foto-cda.controller';
+import { ActasCdaController } from './actas-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -26,6 +27,17 @@ describe('RBAC de Operadores CDA', () => {
 
   it.each(['crearEnlace', 'foto'])('foto.%s: los mismos tres roles', (metodo) => {
     expect(rolesDe(FotoCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+  });
+
+  it.each(['lista', 'personasEntrega', 'generar', 'zip', 'word', 'pdf', 'firmar'])(
+    'actas.%s: los mismos tres roles',
+    (metodo) => {
+      expect(rolesDe(ActasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+    },
+  );
+
+  it('reabrir un acta firmada: solo administrador', () => {
+    expect(rolesDe(ActasCdaController, 'reabrir')).toEqual(['ADMINISTRADOR']);
   });
 
   it('la página del enlace es pública (sin sesión) y no expone rutas con roles', () => {
