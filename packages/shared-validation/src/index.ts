@@ -719,3 +719,5 @@ export const generarActasCdaSchema = z.object({
 export type GenerarActasCdaInput = z.infer<typeof generarActasCdaSchema>;
 
 export const descargarActasCdaSchema = z.object({ operadorIds: operadorIdsActasSchema });
+
+export * from './modulos';
