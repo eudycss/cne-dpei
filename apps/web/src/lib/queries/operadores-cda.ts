@@ -1,11 +1,14 @@
 import type {
   AsistenciaCdaDia,
+  EnlaceFotoCdaCreado,
+  EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
+import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
 import { api } from '../api';
 
 export async function getOperadoresCda(): Promise<OperadorCda[]> {
@@ -66,4 +69,37 @@ export async function descargarAsistenciaCda(hasta: string): Promise<void> {
   a.download = `asistencia_operadores_cda_${hasta}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Genera el enlace de foto (anula el anterior). El token solo llega esta vez. */
+export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFotoCdaCreado> {
+  const { data } = await api.post<EnlaceFotoCdaCreado>(`/operadores-cda/${operadorId}/enlace-foto`);
+  return data;
+}
+
+/** Foto descifrada del operador como blob (la API no la deja en caché). */
+export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
+  return data;
+}
+
+/** URL que se envía al operador. El token va en el fragmento (#): no llega a ningún servidor ni log. */
+export function urlEnlaceFotoCda(token: string, origen = window.location.origin): string {
+  return `${origen}/foto-cda#${token}`;
+}
+
+// Página pública (sin sesión). El token va en el cuerpo, nunca en la URL de la API.
+
+export async function consultarEnlaceFotoCda(token: string): Promise<EnlaceFotoCdaPublico> {
+  const { data } = await api.post<EnlaceFotoCdaPublico>('/publico/foto-cda/consultar', { token });
+  return data;
+}
+
+export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
+  const fd = new FormData();
+  fd.append('token', token);
+  fd.append('consentimiento', 'true');
+  fd.append('version', VERSION_AVISO_FOTO_CDA);
+  fd.append('foto', foto, 'foto.jpg');
+  await api.post('/publico/foto-cda/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 }

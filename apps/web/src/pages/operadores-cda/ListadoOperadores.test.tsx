@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { OperadorCda, RoleName } from '@cne/shared-types';
@@ -13,6 +13,7 @@ let roles: RoleName[] = ['ADMINISTRADOR'];
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles } }) }));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 
 const operador = (over: Partial<OperadorCda>): OperadorCda => ({
   id: 'o1',
@@ -102,5 +103,29 @@ describe('iniciales / normalizar', () => {
 
   it('quita tildes y pasa a minúsculas', () => {
     expect(normalizar('CHÁVEZ Núñez')).toBe('chavez nunez');
+  });
+
+  it('"Enlace de foto" abre la ventana del enlace de ese operador; con foto muestra la foto y dice "Cambiar foto"', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda'
+        ? { data: [operador({}), operador({ id: 'o2', apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    postMock.mockResolvedValue({ data: { token: 'T'.repeat(43), expiraEn: '2026-10-24T19:00:00.000Z' } });
+    renderPagina();
+
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    const [lucia, maria] = within(lista).getAllByRole('listitem');
+    expect(within(maria).getByRole('button', { name: 'Cambiar foto: ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    await waitFor(() => expect(maria.querySelector('img')).toHaveAttribute('src', 'blob:foto'));
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda/o2/foto', { responseType: 'blob' });
+    expect(getMock).not.toHaveBeenCalledWith('/operadores-cda/o1/foto', expect.anything());
+
+    await userEvent.click(within(lucia).getByRole('button', { name: 'Enlace de foto: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    expect(await screen.findByRole('dialog', { name: 'Enlace para subir foto' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Generar enlace' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/enlace-foto'));
   });
 });

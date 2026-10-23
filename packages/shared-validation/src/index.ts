@@ -643,3 +643,24 @@ export const diaAsistenciaSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
+
+// Enlace de foto de operador CDA (página pública).
+
+/** Versión del aviso de consentimiento LOPDP que acepta el operador. Cambiarla si cambia el texto. */
+export const VERSION_AVISO_FOTO_CDA = 'LOPDP-2026-10';
+
+/** Token del enlace: 32 bytes aleatorios en base64url. */
+export const tokenFotoCdaSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'Enlace inválido');
+
+export const consultarEnlaceFotoCdaSchema = z.object({ token: tokenFotoCdaSchema });
+
+/** Campos de texto que acompañan a la foto (multipart). */
+export const subirFotoCdaSchema = z.object({
+  token: tokenFotoCdaSchema,
+  consentimiento: z.literal('true', {
+    errorMap: () => ({ message: 'Debe autorizar el uso de su foto para continuar' }),
+  }),
+  version: z.literal(VERSION_AVISO_FOTO_CDA, {
+    errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
+  }),
+});

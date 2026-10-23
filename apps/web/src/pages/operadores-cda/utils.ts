@@ -48,3 +48,11 @@ export function horaEcuador(iso: string): string {
   // hourCycle h23 (no hour12:false): algunos motores ICU dan "24:05" a medianoche.
   return new Date(iso).toLocaleTimeString('es-EC', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
+
+/** Celular de Ecuador para wa.me: "0968 333 444" → "593968333444". null si no parece un celular. */
+export function numeroWhatsApp(telefono: string | null): string | null {
+  const d = (telefono ?? '').replace(/\D/g, '');
+  if (/^09\d{8}$/.test(d)) return `593${d.slice(1)}`;
+  if (/^5939\d{8}$/.test(d)) return d;
+  return null;
+}

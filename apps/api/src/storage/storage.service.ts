@@ -119,6 +119,15 @@ export class StorageService implements OnModuleInit {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   }
 
+  /** Borra un archivo (p. ej. la foto anterior de un operador). Un id inválido no hace nada. */
+  async remove(fileId: string): Promise<void> {
+    if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) return;
+    const { error } = await this.client.from(this.bucket).remove([fileId]);
+    if (error) {
+      throw new Error(`No se pudo borrar el archivo de Supabase Storage: ${error.message}`);
+    }
+  }
+
   /** Verifica que el archivo identificado existe en el bucket. */
   async exists(fileId: string): Promise<boolean> {
     if (!/^[a-z0-9_-]+\/[a-f0-9-]+\.bin$/i.test(fileId)) return false;

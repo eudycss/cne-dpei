@@ -24,6 +24,10 @@ function buildFakeSupabaseClient() {
       if (!buf) return { data: null, error: { message: 'no encontrado' } };
       return { data: new Blob([buf]), error: null };
     },
+    remove: async (paths: string[]) => {
+      for (const path of paths) objects.delete(path);
+      return { data: [], error: null };
+    },
     list: async (prefix: string, opts?: { search?: string }) => {
       const matches = [...objects.keys()]
         .filter((k) => k.startsWith(`${prefix}/`))
@@ -148,5 +152,13 @@ describe('StorageService', () => {
     it('exists devuelve false ante un identificador con formato inválido', async () => {
       expect(await service.exists('formato/invalido.txt')).toBe(false);
     });
+  });
+
+  it('remove borra el archivo y no toca nada con un id inválido', async () => {
+    const id = await service.saveEncrypted({ categoria: 'fotos-cda', buffer: Buffer.from('hola') });
+    await service.remove('../otro/archivo');
+    expect(objects.has(id)).toBe(true);
+    await service.remove(id);
+    expect(objects.has(id)).toBe(false);
   });
 });

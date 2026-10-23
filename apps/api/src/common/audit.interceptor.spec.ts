@@ -206,6 +206,38 @@ describe('AuditInterceptor', () => {
     expect(exportar.data).toMatchObject({ accion: 'ASISTENCIA_CDA_EXPORTAR', datosDespues: { desde: null, hasta: '2026-10-22' } });
   });
 
+  it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {
+    const crear = await auditar(
+      { method: 'POST', originalUrl: `/operadores-cda/${OTRO}/enlace-foto`, params: { id: OTRO }, body: {}, user: ADMIN },
+      { token: 'secreto-que-no-debe-quedar', expiraEn: '2026-10-24T19:00:00.000Z' },
+    );
+    expect(crear.data).toMatchObject({
+      usuarioId: ADMIN.sub,
+      accion: 'ENLACE_FOTO_CDA_CREAR',
+      entidadId: OTRO,
+      datosDespues: { expiraEn: '2026-10-24T19:00:00.000Z' },
+    });
+    expect(JSON.stringify(crear.data)).not.toContain('secreto-que-no-debe-quedar');
+
+    const subir = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/publico/foto-cda/subir',
+        body: { token: 'secreto-que-no-debe-quedar', consentimiento: 'true', version: 'LOPDP-2026-10' },
+        operadorCdaId: OTRO,
+      },
+      { ok: true },
+    );
+    expect(subir.data).toMatchObject({
+      usuarioId: null,
+      accion: 'FOTO_CDA_SUBIR',
+      entidad: 'operador_cda',
+      entidadId: OTRO,
+      datosDespues: { consentimientoVersion: 'LOPDP-2026-10' },
+    });
+    expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
+  });
+
   it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
     const falla = jest.fn().mockRejectedValue(new Error('db caída'));
     const { respuesta } = await auditar(
