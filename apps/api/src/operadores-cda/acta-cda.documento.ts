@@ -112,6 +112,8 @@ const ANCHO_TEXTO = 595.28 - IZQ * 2;
 const ABAJO = 50;
 const INTERLINEA = 7;
 const AZUL_UNIDAD = '#1f3864';
+export const NOMBRE_UNIDAD =
+  'Unidad Provincial de Seguridad Informática y Proyectos Tecnológicos Electorales de Imbabura';
 const ESPACIO_FIRMA = 70;
 
 function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
@@ -119,11 +121,12 @@ function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   const c = camposPlantilla(d);
 
   // Encabezado: logo a la izquierda, la Unidad y el título a su lado (como el header del Word).
+  // El nombre de la Unidad ocupa dos líneas: el título va debajo de donde termine.
   if (hayLogo) doc.image(RUTA_LOGO, 40, 26, { fit: [100, 61] });
   doc.font('Times-Bold').fontSize(12.5).fillColor(AZUL_UNIDAD)
-    .text('UNIDAD PROVINCIAL DE SEGURIDAD INFORMÁTICA', 156, 40, { width: 400 });
+    .text(NOMBRE_UNIDAD, 156, 34, { width: 380 });
   doc.font('Times-Roman').fontSize(12).fillColor('#000')
-    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', 153, 74, { width: 400 });
+    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', 156, Math.max(74, doc.y + 6), { width: 380 });
 
   const [antes, negrita, despues] = partesTextoActa(d);
   const parrafo = { width: ANCHO_TEXTO, align: 'justify' as const, lineGap: INTERLINEA };
