@@ -17,6 +17,7 @@ import {
   salidaDpiSchema,
   salidaRecintoSchema,
   telefonoSchema,
+  operadorCdaFilaSchema,
 } from './index';
 
 describe('configAlertasSchema', () => {
@@ -232,5 +233,44 @@ describe('reopenEventoSchema', () => {
 
   it('rechaza justificaciones de más de 500 caracteres', () => {
     expect(reopenEventoSchema.safeParse({ justificacion: 'x'.repeat(501) }).success).toBe(false);
+  });
+});
+
+describe('operadorCdaFilaSchema', () => {
+  const fila = {
+    numero: 1,
+    apellidosNombres: '  ALMEIDA PÉREZ JUAN CARLOS ',
+    cedula: '1710034065',
+    telefono: '0987 923 273',
+    cargo: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA',
+    unidad: 'UNIDAD PROVINCIAL DE SEGURIDAD INFORMATICA',
+    fechaInicio: '2026-10-20',
+  };
+
+  it('acepta una fila válida, recorta textos y normaliza el teléfono', () => {
+    const r = operadorCdaFilaSchema.parse(fila);
+    expect(r.apellidosNombres).toBe('ALMEIDA PÉREZ JUAN CARLOS');
+    expect(r.telefono).toBe('0987923273');
+  });
+
+  it('acepta campos opcionales vacíos', () => {
+    const r = operadorCdaFilaSchema.parse({ ...fila, numero: undefined, telefono: '', unidad: undefined, fechaInicio: undefined });
+    expect(r.telefono).toBeUndefined();
+  });
+
+  it('rechaza cédula con dígito verificador inválido', () => {
+    expect(operadorCdaFilaSchema.safeParse({ ...fila, cedula: '1710034066' }).success).toBe(false);
+  });
+
+  it('rechaza fechas que no existen o fuera de rango', () => {
+    for (const fechaInicio of ['2026-02-31', '2026-13-45', '1999-10-20', '2200-01-01']) {
+      expect(operadorCdaFilaSchema.safeParse({ ...fila, fechaInicio }).success).toBe(false);
+    }
+    expect(operadorCdaFilaSchema.safeParse({ ...fila, fechaInicio: '2028-02-29' }).success).toBe(true);
+  });
+
+  it('rechaza fecha que no sea AAAA-MM-DD y cargo vacío', () => {
+    expect(operadorCdaFilaSchema.safeParse({ ...fila, fechaInicio: '20 de octubre de 2026' }).success).toBe(false);
+    expect(operadorCdaFilaSchema.safeParse({ ...fila, cargo: '   ' }).success).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { MilitaresModule } from './militares/militares.module';
+import { OperadoresCdaModule } from './operadores-cda/operadores-cda.module';
 import { EventosModule } from './eventos/eventos.module';
 import { AsignacionesModule } from './asignaciones/asignaciones.module';
 import { KitsModule } from './kits/kits.module';
@@ -63,6 +64,7 @@ import { CustodiaModule } from './custodia/custodia.module';
     RolesModule,
     CatalogModule,
     MilitaresModule,
+    OperadoresCdaModule,
     EventosModule,
     AsignacionesModule,
     KitsModule,

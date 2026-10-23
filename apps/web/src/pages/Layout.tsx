@@ -11,6 +11,7 @@ import {
   Sun,
   TriangleAlert,
   PackageCheck,
+  IdCard,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -44,6 +45,9 @@ export function Layout() {
   // de páginas consulta endpoints que no le corresponden.
   const soloAsistente = esSoloAsistente(user?.roles);
   const puedeVerInformes = puedeVerCustodia || puedeVerReportes || !soloAsistente;
+  const puedeVerOperadoresCda =
+    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR' || r === 'ASISTENTE_TRANSVERSAL') ??
+    false;
 
   return (
     <>
@@ -85,6 +89,14 @@ export function Layout() {
                   )}
                 </SeccionMenu>
               </>
+            )}
+            {puedeVerOperadoresCda && (
+              <SeccionMenu id="menu-personal" titulo="Personal">
+                <NavLink to="/operadores-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+                  <IdCard size={16} aria-hidden="true" />
+                  <span>Operadores CDA</span>
+                </NavLink>
+              </SeccionMenu>
             )}
             {puedeVerInformes && (
               <SeccionMenu id="menu-informes" titulo="Informes">

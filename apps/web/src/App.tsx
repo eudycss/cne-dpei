@@ -10,6 +10,7 @@ import { NewUser } from './pages/users/NewUser';
 import { BulkUpload } from './pages/users/BulkUpload';
 import { MilitaresPage } from './pages/militares/MilitaresPage';
 import { BulkMilitares } from './pages/militares/BulkMilitares';
+import { OperadoresCdaPage } from './pages/operadores-cda/OperadoresCdaPage';
 import { RecintosSeccion } from './pages/recintos/RecintosSeccion';
 import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
@@ -92,6 +93,15 @@ export default function App() {
         {/* Monitoreo de operadores en retorno (HU6) */}
         <Route path="/operadores" element={<MonitoreoPage />} />
 
+        {/* Operadores CDA: personal de los CDA (asistencia, foto y actas) */}
+        <Route
+          path="/operadores-cda"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']}>
+              <OperadoresCdaPage />
+            </ProtectedRoute>
+          }
+        />
         {/* Incidencias (HU14) */}
         <Route path="/incidencias" element={<IncidenciasPage />} />
         {/* Alertas (HU18) — fuera del alcance de LECTOR */}

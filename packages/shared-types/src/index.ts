@@ -1003,3 +1003,42 @@ export interface FilaInformeCustodia {
   } | null;
   correcciones: number;
 }
+
+// --- Operadores CDA (personal de los Centros de Digitalización de Actas) ---
+export interface OperadorCda {
+  id: string;
+  numero: number | null;
+  apellidosNombres: string;
+  cedula: string;
+  telefono: string | null;
+  cargo: string;
+  unidad: string | null;
+  /** AAAA-MM-DD */
+  fechaInicio: string | null;
+  tieneFoto: boolean;
+  activo: boolean;
+  creadoEn: string;
+}
+
+/** Fila del Excel ya leída y normalizada. */
+export interface OperadorCdaFila {
+  fila: number;
+  numero?: number;
+  apellidosNombres: string;
+  cedula: string;
+  telefono?: string;
+  cargo: string;
+  unidad?: string;
+  fechaInicio?: string;
+  /** NUEVO si la cédula no existe; ACTUALIZAR si ya estaba registrada. */
+  accion: 'NUEVO' | 'ACTUALIZAR';
+}
+
+export interface ImportOperadoresCdaResult {
+  /** true = solo vista previa, no se guardó nada. */
+  vistaPrevia: boolean;
+  nuevos: number;
+  actualizados: number;
+  filas: OperadorCdaFila[];
+  errores: BulkUploadRow[];
+}

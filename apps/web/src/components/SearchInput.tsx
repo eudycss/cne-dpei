@@ -3,9 +3,11 @@ interface Props {
   onChange: (value: string) => void;
   placeholder?: string;
   style?: React.CSSProperties;
+  /** Nombre accesible del campo (un placeholder no reemplaza a la etiqueta). */
+  ariaLabel?: string;
 }
 
-export function SearchInput({ value, onChange, placeholder, style }: Props) {
+export function SearchInput({ value, onChange, placeholder, style, ariaLabel }: Props) {
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', ...style }}>
       <svg
@@ -25,6 +27,7 @@ export function SearchInput({ value, onChange, placeholder, style }: Props) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={ariaLabel ?? placeholder}
         style={{
           width: '100%',
           padding: '0.5rem 0.5rem 0.5rem 2rem',
