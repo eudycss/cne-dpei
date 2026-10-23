@@ -6,11 +6,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { ActaEntregaCda as ActaDb } from '@prisma/client';
 import type {
   ActaCdaFila,
   ActaEntregaCda,
   GenerarActasCdaRequest,
+  EstadoActaCda,
+  EstadoPrenda,
   GenerarActasCdaResult,
   PersonaEntregaCda,
 } from '@cne/shared-types';
@@ -39,6 +40,25 @@ export interface ArchivoActa {
 
 type OperadorBasico = { id: string; apellidosNombres: string; cedula: string };
 
+// Fila de actas_entrega_cda. Se declara aquí (no se importa de @prisma/client)
+// porque el CI no genera el cliente de Prisma, como en el resto de la API.
+interface ActaDb {
+  id: string;
+  operadorId: string;
+  entregaPorId: string | null;
+  entregaNombre: string;
+  entregaCedula: string;
+  entregaCargo: string;
+  lugar: string;
+  fecha: Date;
+  estadoPeto: EstadoPrenda;
+  estadoCredencial: EstadoPrenda;
+  estadoCordon: EstadoPrenda;
+  estado: EstadoActaCda;
+  firmadaEn: Date | null;
+  actualizadoEn: Date;
+}
+
 /**
  * Actas de entrega de indumentaria y credencial: una vigente por operador (la
  * más reciente). Mientras está GENERADA se corrige generándola otra vez;
@@ -57,9 +77,9 @@ export class ActasCdaService {
       orderBy: { apellidosNombres: 'asc' },
       include: { actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1 } },
     });
-    return operadores.map(({ actas, ...o }) => ({
+    return operadores.map((o) => ({
       operador: toOperadorCdaDto(o),
-      acta: actas[0] ? toActaDto(actas[0]) : null,
+      acta: o.actas[0] ? toActaDto(o.actas[0]) : null,
     }));
   }
 
