@@ -25,6 +25,18 @@ describe('RBAC de Operadores CDA', () => {
     expect(rolesDe(OperadoresCdaController, 'importar')).toEqual(['ADMINISTRADOR']);
   });
 
+  it.each(['crear', 'editar', 'cambiarActivo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {
+    expect(rolesDe(OperadoresCdaController, metodo)).toEqual(['ADMINISTRADOR']);
+  });
+
+  it('ver los ocultos: solo administrador, aunque otro rol mande ?incluirInactivos=true', () => {
+    const list = jest.fn();
+    const ctrl = new OperadoresCdaController({ list } as never);
+    ctrl.list({ roles: ['TECNICO_SUPERVISOR'] } as never, undefined, 'true');
+    ctrl.list({ roles: ['ADMINISTRADOR'] } as never, undefined, 'true');
+    expect(list.mock.calls.map(([o]) => o.incluirInactivos)).toEqual([false, true]);
+  });
+
   it.each(['crearEnlace', 'foto'])('foto.%s: los mismos tres roles', (metodo) => {
     expect(rolesDe(FotoCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
   });

@@ -56,3 +56,8 @@ export function numeroWhatsApp(telefono: string | null): string | null {
   if (/^5939\d{8}$/.test(d)) return d;
   return null;
 }
+
+/** El mensaje que manda la API (400/404/409) o uno genérico. */
+export function mensajeError(e: unknown, porDefecto: string): string {
+  return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
+}

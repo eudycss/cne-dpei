@@ -1,8 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { operadorCdaFilaSchema } from '@cne/shared-validation';
 import type {
   BulkUploadRow,
+  CrearOperadorCdaRequest,
+  EditarOperadorCdaRequest,
   ImportOperadoresCdaResult,
   OperadorCda,
   OperadorCdaFila,
@@ -25,11 +27,11 @@ const MAX_TEXTO_ERROR = 200;
 export class OperadoresCdaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(opts: { search?: string } = {}): Promise<OperadorCda[]> {
+  async list(opts: { search?: string; incluirInactivos?: boolean } = {}): Promise<OperadorCda[]> {
     const search = opts.search?.trim();
     const items = await this.prisma.operadorCda.findMany({
       where: {
-        activo: true,
+        ...(!opts.incluirInactivos && { activo: true }),
         ...(search && {
           OR: [
             { apellidosNombres: { contains: search, mode: 'insensitive' as const } },
@@ -40,6 +42,49 @@ export class OperadoresCdaService {
       orderBy: { apellidosNombres: 'asc' },
     });
     return items.map(toOperadorCdaDto);
+  }
+
+  /** Alta manual (alguien que no vino en el Excel). La cédula no puede repetirse. */
+  async crear(datos: CrearOperadorCdaRequest): Promise<OperadorCda> {
+    const existente = await this.prisma.operadorCda.findUnique({
+      where: { cedula: datos.cedula },
+      select: { activo: true },
+    });
+    if (existente) throw new ConflictException(mensajeCedulaRepetida(existente.activo));
+    try {
+      const creado = await this.prisma.operadorCda.create({
+        data: { cedula: datos.cedula, ...datosEditables(datos) },
+      });
+      return toOperadorCdaDto(creado);
+    } catch (e) {
+      // Dos altas simultáneas con la misma cédula: la segunda choca con el índice único.
+      if ((e as { code?: string } | null)?.code === 'P2002') {
+        throw new ConflictException(mensajeCedulaRepetida(true));
+      }
+      throw e;
+    }
+  }
+
+  /** Corrige los datos de un operador (activo u oculto). La cédula no cambia. */
+  async editar(id: string, datos: EditarOperadorCdaRequest): Promise<OperadorCda> {
+    await this.existe(id);
+    const editado = await this.prisma.operadorCda.update({ where: { id }, data: datosEditables(datos) });
+    return toOperadorCdaDto(editado);
+  }
+
+  /**
+   * Oculta (baja lógica) o reactiva. Nunca se borra la fila: tiene asistencias y
+   * actas ligadas. Al ocultar, el cron de la madrugada borra su foto (LOPDP).
+   */
+  async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
+    await this.existe(id);
+    const editado = await this.prisma.operadorCda.update({ where: { id }, data: { activo } });
+    return toOperadorCdaDto(editado);
+  }
+
+  private async existe(id: string): Promise<void> {
+    const o = await this.prisma.operadorCda.findUnique({ where: { id }, select: { id: true } });
+    if (!o) throw new NotFoundException('Operador no encontrado');
   }
 
   /**
@@ -134,6 +179,23 @@ export class OperadoresCdaService {
       'No se encontró la fila de encabezados (debe tener las columnas "Apellidos Nombres" y "Cédula")',
     );
   }
+}
+
+/** Lo que el formulario manda; un opcional ausente o vacío se guarda vacío (null). */
+function datosEditables(d: EditarOperadorCdaRequest) {
+  return {
+    apellidosNombres: d.apellidosNombres,
+    telefono: d.telefono || null,
+    cargo: d.cargo,
+    unidad: d.unidad || null,
+    fechaInicio: d.fechaInicio ? new Date(`${d.fechaInicio}T00:00:00Z`) : null,
+  };
+}
+
+function mensajeCedulaRepetida(activo: boolean): string {
+  return activo
+    ? 'Ya existe un operador con esa cédula'
+    : 'Ya existe un operador oculto con esa cédula: actívelo desde "Mostrar ocultos"';
 }
 
 /** Corta textos largos y la cantidad de errores para no devolver respuestas enormes. */

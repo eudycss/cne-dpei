@@ -1,15 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { sileo } from 'sileo';
 import { motion, useReducedMotion } from 'motion/react';
 import type { OperadorCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
-import { getFotoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
+import { cambiarActivoOperadorCda, getFotoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
-import { cargoCorto, iniciales, normalizar, partirNombre } from './utils';
+import { OperadorFormModal } from './OperadorFormModal';
+import { OcultarOperadorModal } from './OcultarOperadorModal';
+import { cargoCorto, iniciales, mensajeError, normalizar, partirNombre } from './utils';
+
+/**
+ * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
+ * actas. No se tocan las fotos ya descifradas (cada una cuesta CPU en la API).
+ */
+function refrescarOperadores(qc: QueryClient) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ['operadores-cda'], exact: true }),
+    qc.invalidateQueries({ queryKey: ['operadores-cda', 'con-ocultos'], exact: true }),
+    qc.invalidateQueries({ queryKey: ['asistencia-cda'] }),
+    qc.invalidateQueries({ queryKey: ['actas-cda'] }),
+  ]);
+}
 
 /**
  * Personal de los Centros de Digitalización de Actas. Son ~56 personas: se
@@ -21,9 +37,35 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const [busqueda, setBusqueda] = useState('');
   const [importando, setImportando] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
+  // null = cerrado; 'nuevo' = agregar; un operador = editarlo.
+  const [formulario, setFormulario] = useState<OperadorCda | 'nuevo' | null>(null);
+  const [ocultarA, setOcultarA] = useState<OperadorCda | null>(null);
+  const [conOcultos, setConOcultos] = useState(false);
+  const verOcultos = isAdmin && conOcultos;
   const reducirMovimiento = useReducedMotion();
+  const qc = useQueryClient();
+  const refrescar = () => refrescarOperadores(qc);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const agregarRef = useRef<HTMLButtonElement>(null);
+  // Ocultar o reactivar cambia los botones de la tarjeta: el que tenía el foco
+  // desaparece al refrescar. El foco pasa a un control estable (WCAG 2.4.3).
+  const refrescarYEnfocar = () =>
+    refrescar().then(() => (chipRef.current?.isConnected ? chipRef.current : agregarRef.current)?.focus());
 
-  const { data, isLoading, error } = useQuery({ queryKey: ['operadores-cda'], queryFn: getOperadoresCda });
+  const { data, isLoading, error } = useQuery({
+    queryKey: verOcultos ? ['operadores-cda', 'con-ocultos'] : ['operadores-cda'],
+    queryFn: () => getOperadoresCda(verOcultos),
+    // Al alternar "Mostrar ocultos" la lista (y el foco en el botón) se queda mientras carga.
+    placeholderData: keepPreviousData,
+  });
+  const reactivar = useMutation({
+    mutationFn: (o: OperadorCda) => cambiarActivoOperadorCda(o.id, true),
+    onSuccess: (o) => {
+      sileo.success({ title: 'Operador reactivado', description: o.apellidosNombres });
+      refrescarYEnfocar();
+    },
+    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo reactivar al operador') }),
+  });
 
   const visibles = useMemo(() => {
     const q = normalizar(busqueda.trim());
@@ -31,7 +73,8 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     return (data ?? []).filter((o) => normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q));
   }, [data, busqueda]);
 
-  const conFoto = data?.filter((o) => o.tieneFoto).length ?? 0;
+  const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
+  const ocultos = data?.filter((o) => !o.activo).length ?? 0;
 
   return (
     <>
@@ -39,6 +82,9 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         <AccionesEncabezado destino={acciones}>
           <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
             Importar Excel
+          </button>
+          <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
+            Agregar operador
           </button>
         </AccionesEncabezado>
       )}
@@ -50,18 +96,19 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         </div>
       )}
 
-      {data && data.length === 0 && (
+      {data && data.length === 0 && !verOcultos && (
         <div className="ocda-vacio">
           <p style={{ margin: 0 }}>Aún no hay operadores registrados.</p>
           {isAdmin && (
             <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-              Use <strong>Importar Excel</strong> con el archivo de talento humano (20. OPERADORES CDA.xlsx).
+              Use <strong>Importar Excel</strong> con el archivo de talento humano (20. OPERADORES CDA.xlsx) o{' '}
+              <strong>Agregar operador</strong> para registrar a alguien a mano.
             </p>
           )}
         </div>
       )}
 
-      {data && data.length > 0 && (
+      {data && (data.length > 0 || verOcultos) && (
         <>
           <div className="ocda-filtros">
             <span className="ocda-campo" style={{ flex: '1 1 280px', maxWidth: 420 }}>
@@ -72,8 +119,20 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 ariaLabel="Buscar operador por nombre o cédula"
               />
             </span>
+            {isAdmin && (
+              <button
+                ref={chipRef}
+                type="button"
+                className="ocda-chip"
+                aria-pressed={conOcultos}
+                onClick={() => setConOcultos((v) => !v)}
+              >
+                Mostrar ocultos
+              </button>
+            )}
             <p className="muted" role="status" style={{ margin: 0 }}>
               {visibles.length} de {data.length} operadores · {conFoto} con foto
+              {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
             </p>
           </div>
 
@@ -81,12 +140,25 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
             {visibles.map((o, i) => (
               <motion.li
                 key={o.id}
-                className="ocda-tarjeta"
+                className={`ocda-tarjeta${o.activo ? '' : ' oculta'}`}
                 initial={reducirMovimiento ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: Math.min(i, 20) * 0.03 }}
               >
-                <TarjetaOperador operador={o} onEnlace={() => setEnlacePara(o)} />
+                <TarjetaOperador
+                  operador={o}
+                  onEnlace={() => setEnlacePara(o)}
+                  admin={
+                    isAdmin
+                      ? {
+                          onEditar: () => setFormulario(o),
+                          onOcultar: () => setOcultarA(o),
+                          onReactivar: () => reactivar.mutate(o),
+                          reactivando: reactivar.isPending && reactivar.variables?.id === o.id,
+                        }
+                      : undefined
+                  }
+                />
               </motion.li>
             ))}
           </ul>
@@ -96,6 +168,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
 
       {importando && <ImportarOperadoresModal onClose={() => setImportando(false)} />}
       {enlacePara && <EnlaceFotoModal operador={enlacePara} onClose={() => setEnlacePara(null)} />}
+      {formulario && (
+        <OperadorFormModal
+          operador={formulario === 'nuevo' ? undefined : formulario}
+          onClose={() => setFormulario(null)}
+          onHecho={refrescar}
+        />
+      )}
+      {ocultarA && <OcultarOperadorModal operador={ocultarA} onClose={() => setOcultarA(null)} onHecho={refrescarYEnfocar} />}
     </>
   );
 }
@@ -141,7 +221,18 @@ function AvatarOperador({ operador: o }: { operador: OperadorCda }) {
   );
 }
 
-function TarjetaOperador({ operador: o, onEnlace }: { operador: OperadorCda; onEnlace: () => void }) {
+type AccionesAdmin = { onEditar: () => void; onOcultar: () => void; onReactivar: () => void; reactivando: boolean };
+
+function TarjetaOperador({
+  operador: o,
+  onEnlace,
+  admin,
+}: {
+  operador: OperadorCda;
+  onEnlace: () => void;
+  /** Solo el administrador agrega, edita u oculta. */
+  admin?: AccionesAdmin;
+}) {
   const { apellidos, nombres } = partirNombre(o.apellidosNombres);
   const accion = o.tieneFoto ? 'Cambiar foto' : 'Enlace de foto';
   return (
@@ -168,18 +259,53 @@ function TarjetaOperador({ operador: o, onEnlace }: { operador: OperadorCda; onE
         </div>
       </dl>
       <div className="ocda-tarjeta-pie">
-        <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
-          {o.tieneFoto ? 'Foto cargada' : 'Sin foto'}
-        </span>
-        <button
-          type="button"
-          className="btn secondary ocda-btn-chico"
-          onClick={onEnlace}
-          aria-label={`${accion}: ${o.apellidosNombres}`}
-        >
-          {accion}
-        </button>
+        {o.activo ? (
+          <>
+            <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
+              {o.tieneFoto ? 'Foto cargada' : 'Sin foto'}
+            </span>
+            <button
+              type="button"
+              className="btn secondary ocda-btn-chico"
+              onClick={onEnlace}
+              aria-label={`${accion}: ${o.apellidosNombres}`}
+            >
+              {accion}
+            </button>
+          </>
+        ) : (
+          <span className="ocda-estado vacio">Oculto</span>
+        )}
       </div>
+      {admin && (
+        <div className="ocda-tarjeta-admin">
+          {o.activo ? (
+            <>
+              <button type="button" className="ocda-btn-texto" onClick={admin.onEditar} aria-label={`Editar: ${o.apellidosNombres}`}>
+                Editar
+              </button>
+              <button
+                type="button"
+                className="ocda-btn-texto peligro"
+                onClick={admin.onOcultar}
+                aria-label={`Ocultar: ${o.apellidosNombres}`}
+              >
+                Ocultar
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="ocda-btn-texto"
+              onClick={admin.onReactivar}
+              disabled={admin.reactivando}
+              aria-label={`Reactivar: ${o.apellidosNombres}`}
+            >
+              {admin.reactivando ? 'Reactivando…' : 'Reactivar'}
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

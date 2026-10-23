@@ -628,6 +628,17 @@ export const operadorCdaFilaSchema = z.object({
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
 
+// Alta manual: los mismos campos que una fila del Excel, sin el N° de la hoja.
+export const crearOperadorCdaSchema = operadorCdaFilaSchema.omit({ numero: true }).strict();
+export type CrearOperadorCdaInput = z.infer<typeof crearOperadorCdaSchema>;
+
+// Edición: la cédula no cambia (es la llave con la que el Excel reimporta).
+// Un campo opcional ausente o vacío se guarda vacío: el formulario manda todo.
+export const editarOperadorCdaSchema = crearOperadorCdaSchema.omit({ cedula: true }).strict();
+export type EditarOperadorCdaInput = z.infer<typeof editarOperadorCdaSchema>;
+
+export const cambiarActivoOperadorCdaSchema = z.object({ activo: z.boolean() }).strict();
+
 export const tipoMarcaAsistenciaCdaSchema = z.enum(['ENTRADA', 'SALIDA']);
 export type TipoMarcaAsistenciaCdaInput = z.infer<typeof tipoMarcaAsistenciaCdaSchema>;
 

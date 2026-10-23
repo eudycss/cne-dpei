@@ -565,6 +565,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   color: var(--f-text); background: var(--f-bg-elevated); border: 1px solid var(--f-border-strong); box-shadow: none;
 }
 .tema-futurista .btn.secondary:hover:not(:disabled) { border-color: var(--f-cian); filter: none; }
+.tema-futurista .btn.danger { color: var(--f-text-on-accent); background: var(--f-error); box-shadow: none; }
 .tema-futurista .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 .tema-futurista .btn:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; box-shadow: var(--focus-ring); }
 
@@ -813,6 +814,18 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-casilla:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
 .ocda-fila-acciones { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .ocda-estado.vacio { background: var(--f-bg-elevated); color: var(--f-text-muted); }
+/* CRUD del listado (solo administrador): acciones discretas al pie de la tarjeta. */
+.ocda-tarjeta.oculta { border-style: dashed; border-color: var(--f-border-strong); }
+.ocda-tarjeta-admin { display: flex; gap: 0.25rem; padding-top: 0.5rem; border-top: 1px solid var(--f-border-subtle); }
+.ocda-btn-texto {
+  min-height: 44px; padding: 0 0.75rem; border: 0; border-radius: 10px; background: transparent;
+  font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--f-cian); cursor: pointer;
+}
+.ocda-btn-texto:hover:not(:disabled) { background: var(--f-bg-elevated); }
+.ocda-btn-texto.peligro { color: var(--f-error); margin-left: auto; }
+.ocda-btn-texto:disabled { opacity: 0.6; cursor: wait; }
+.ocda-btn-texto:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; box-shadow: var(--focus-ring); }
+.ocda-aviso-lista { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.5rem; font-size: 0.88rem; color: var(--f-text); }
 .ocda-form { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .ocda-form .ancho { grid-column: 1 / -1; }
 .ocda-form-campo { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: var(--f-text-muted); }

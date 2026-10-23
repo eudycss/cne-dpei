@@ -53,6 +53,11 @@ const AUDIT_TABLE: Array<{
       return { nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
     },
   },
+  // CRUD manual: nombres, cédulas y teléfonos son datos personales, así que solo
+  // queda qué campos se tocaron; de ocultar/reactivar queda el valor.
+  { method: 'POST',  pathRegex: /^\/operadores-cda$/,          accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda' },
+  { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+$/,   accion: 'OPERADOR_CDA_UPDATE', entidad: 'operador_cda' },
+  { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/activo$/, accion: 'OPERADOR_CDA_ACTIVO', entidad: 'operador_cda', campos: ['activo'] },
   // Asistencia: cada marca ya guarda quién y a qué hora; aquí quedan el marcado
   // masivo (con conteos) y las correcciones (quitar una marca).
   {

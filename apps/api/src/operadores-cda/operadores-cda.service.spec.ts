@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as ExcelJS from 'exceljs';
 
@@ -24,6 +24,9 @@ describe('OperadoresCdaService', () => {
   const prisma = {
     operadorCda: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
       upsert: jest.fn((args: unknown) => args),
     },
     $transaction: jest.fn((ops: unknown[]) => Promise.resolve(ops)),
@@ -198,6 +201,89 @@ describe('OperadoresCdaService', () => {
       });
       expect(r[0]).toMatchObject({ fechaInicio: '2026-10-20', tieneFoto: true });
       expect(r[0]).not.toHaveProperty('fotoKey');
+    });
+  });
+
+  describe('CRUD manual', () => {
+    const FILA_BD = {
+      id: 'o1',
+      numero: null,
+      apellidosNombres: 'RUIZ MORA JUAN',
+      cedula: '1710034065',
+      telefono: null,
+      cargo: 'OPERADOR CDA',
+      unidad: null,
+      fechaInicio: null,
+      fotoKey: null,
+      activo: true,
+      creadoEn: new Date('2026-10-23T10:00:00Z'),
+    };
+    const ALTA = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+
+    it('list con incluirInactivos no filtra por activo', async () => {
+      await service.list({ incluirInactivos: true });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({});
+    });
+
+    it('crear guarda los opcionales ausentes como null y devuelve el DTO', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce(FILA_BD);
+
+      const r = await service.crear({ ...ALTA, fechaInicio: '2026-10-20', unidad: '' });
+
+      expect(prisma.operadorCda.create).toHaveBeenCalledWith({
+        data: {
+          cedula: '1710034065',
+          apellidosNombres: 'RUIZ MORA JUAN',
+          telefono: null,
+          cargo: 'OPERADOR CDA',
+          unidad: null,
+          fechaInicio: new Date('2026-10-20T00:00:00Z'),
+        },
+      });
+      expect(r).toMatchObject({ id: 'o1', activo: true, tieneFoto: false });
+    });
+
+    it('crear con cédula ya registrada: 409, y si está oculto lo dice', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: false });
+      await expect(service.crear(ALTA)).rejects.toThrow(/oculto/);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: true });
+      await expect(service.crear(ALTA)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+    });
+
+    it('crear: dos altas simultáneas (P2002) responden 409, no 500', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+      await expect(service.crear(ALTA)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('editar no toca la cédula y vacía lo que el formulario manda vacío', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce(FILA_BD);
+
+      await service.editar('o1', { apellidosNombres: 'RUIZ MORA JUAN', cargo: 'OPERADOR CDA', telefono: undefined });
+
+      const { data } = prisma.operadorCda.update.mock.calls[0][0];
+      expect(data).not.toHaveProperty('cedula');
+      expect(data).toMatchObject({ telefono: null, unidad: null, fechaInicio: null });
+    });
+
+    it('ocultar y reactivar cambian solo activo; un id inexistente da 404', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA_BD, activo: false });
+      const r = await service.cambiarActivo('o1', false);
+      expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { activo: false } });
+      expect(r.activo).toBe(false);
+
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce(FILA_BD);
+      expect((await service.cambiarActivo('o1', true)).activo).toBe(true);
+      expect(prisma.operadorCda.update).toHaveBeenLastCalledWith({ where: { id: 'o1' }, data: { activo: true } });
+
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      await expect(service.cambiarActivo('no-existe', true)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.editar('no-existe', ALTA)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });
