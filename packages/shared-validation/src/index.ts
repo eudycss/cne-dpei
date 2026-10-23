@@ -597,3 +597,33 @@ export const cambiarOperadorSchema = z.object({
 export type RegistrarEntregaInput = z.infer<typeof registrarEntregaSchema>;
 export type CorregirMilitarInput = z.infer<typeof corregirMilitarSchema>;
 export type CambiarOperadorInput = z.infer<typeof cambiarOperadorSchema>;
+
+// --- Operadores CDA ---
+/** "2026-02-31" tiene formato válido pero no existe; también acota el año. */
+function esFechaReal(iso: string): boolean {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const anio = Number(iso.slice(0, 4));
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(iso) && anio >= 2020 && anio <= 2100;
+}
+
+// Una fila del Excel de talento humano ya normalizada por la API (encabezados
+// "N°, Apellidos Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial").
+export const operadorCdaFilaSchema = z.object({
+  numero: z.number().int().positive().optional(),
+  apellidosNombres: z
+    .string()
+    .trim()
+    .min(3, 'Apellidos y nombres requeridos')
+    .max(200, 'Máximo 200 caracteres'),
+  cedula: cedulaSchema,
+  telefono: telefonoSchema,
+  cargo: z.string().trim().min(1, 'Cargo requerido').max(160, 'Máximo 160 caracteres'),
+  unidad: z.string().trim().max(200, 'Máximo 200 caracteres').optional(),
+  fechaInicio: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
+    .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)')
+    .optional(),
+});
+
+export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;

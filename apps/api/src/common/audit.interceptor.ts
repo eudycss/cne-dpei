@@ -21,6 +21,10 @@ const AUDIT_TABLE: Array<{
   entidadId?: (req: Request, res: unknown) => string | undefined;
   /** Campos cuyo VALOR se guarda (sin datos personales). Del resto solo queda el nombre. */
   campos?: readonly string[];
+  /** Solo se audita si devuelve true (p. ej. no auditar una vista previa). */
+  cuando?: (req: Request) => boolean;
+  /** Qué guardar en datosDespues a partir de la respuesta (en vez del body). Sin datos personales. */
+  resumen?: (res: unknown) => Record<string, unknown>;
 }> = [
   { method: 'POST',  pathRegex: /^\/auth\/login$/,           accion: 'LOGIN' },
   { method: 'POST',  pathRegex: /^\/auth\/logout$/,          accion: 'LOGOUT' },
@@ -37,6 +41,18 @@ const AUDIT_TABLE: Array<{
   { method: 'PATCH', pathRegex: /^\/militares\/[^/]+$/,      accion: 'MILITAR_UPDATE', entidad: 'militar' },
   { method: 'DELETE',pathRegex: /^\/militares\/[^/]+$/,      accion: 'MILITAR_DELETE', entidad: 'militar' },
   { method: 'POST',  pathRegex: /^\/militares\/bulk$/,       accion: 'BULK_MILITAR_UPLOAD', entidad: 'militar' },
+  // Operadores CDA: solo la importación aplicada (la vista previa no guarda nada). Solo conteos.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/importar$/,
+    accion: 'OPERADORES_CDA_IMPORT',
+    entidad: 'operador_cda',
+    cuando: (req) => req.query?.aplicar === 'true',
+    resumen: (res) => {
+      const r = (res ?? {}) as { nuevos?: unknown; actualizados?: unknown };
+      return { nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
+    },
+  },
   // Fase 2 — eventos electorales
   { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento', campos: ['tipo', 'fechaJornada'] },
@@ -130,7 +146,7 @@ export class AuditInterceptor implements NestInterceptor {
     const method = req.method;
 
     const match = AUDIT_TABLE.find(
-      (e) => e.method === method && e.pathRegex.test(path),
+      (e) => e.method === method && e.pathRegex.test(path) && (!e.cuando || e.cuando(req)),
     );
 
     return next.handle().pipe(
@@ -148,7 +164,7 @@ export class AuditInterceptor implements NestInterceptor {
               accion: match.accion,
               entidad: match.entidad ?? null,
               entidadId: match.entidadId?.(req, resBody) ?? idEntidad(req, resBody) ?? null,
-              datosDespues: datosDeLaPeticion(req.body, match.campos) as any,
+              datosDespues: (match.resumen ? match.resumen(resBody) : datosDeLaPeticion(req.body, match.campos)) as any,
               dispositivo: req.headers['user-agent']?.slice(0, 160) ?? null,
               ip: req.ip ?? null,
             },

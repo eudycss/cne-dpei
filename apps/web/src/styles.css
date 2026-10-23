@@ -478,3 +478,30 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .pestanas [role="tab"]:hover { color: var(--text); }
 .pestanas [role="tab"][aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--primary); }
 .pestanas [role="tab"]:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+
+/* Operadores CDA — acento cian/violeta del diseño (Figma "CNE Futurista"). */
+:root { --ocda-cian: #0e7490; --ocda-violeta: #6d28d9; --ocda-cian-suave: #ecfeff; }
+[data-theme="dark"] { --ocda-cian: #22d3ee; --ocda-violeta: #a78bfa; --ocda-cian-suave: #0b3342; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+.ocda-encabezado { justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.ocda-filtros { align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.ocda-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ocda-tarjeta {
+  display: flex; flex-direction: column; gap: 0.75rem; padding: 1.1rem 1.15rem;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-card);
+}
+.ocda-tarjeta-top { display: flex; align-items: center; gap: 0.75rem; }
+.ocda-avatar {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; font-size: 0.85rem; color: var(--text-muted); background: var(--bg); border: 1.5px dashed var(--border-input);
+}
+.ocda-avatar.con-foto { color: #04121a; border: 2px solid var(--ocda-cian); background: linear-gradient(135deg, #22d3ee, #8b5cf6); }
+.ocda-nombre { margin: 0; font-size: 0.95rem; line-height: 1.3; }
+.ocda-datos { margin: 0; padding-top: 0.6rem; border-top: 1px solid var(--border-subtle); display: grid; gap: 0.3rem; font-size: 0.82rem; }
+.ocda-datos div { display: flex; justify-content: space-between; gap: 0.75rem; }
+.ocda-datos dt { color: var(--text-muted); }
+.ocda-datos dd { margin: 0; text-align: right; font-weight: 500; }
+.ocda-estado { align-self: flex-start; font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; }
+.ocda-estado.ok { background: var(--success-bg); color: var(--success-text); }
+.ocda-estado.pendiente { background: var(--warn-bg); color: var(--warn-text); }
+.ocda-vacio { border: 1px dashed var(--ocda-cian); background: var(--ocda-cian-suave); }

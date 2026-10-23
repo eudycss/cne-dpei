@@ -157,6 +157,12 @@ model Usuario {
   dispositivos        Dispositivo[]
   kitsAsignados       KitElectoral[]
 
+  asistenciasCdaEntrada AsistenciaCda[]  @relation("AsistenciaCdaEntradaPor")
+  asistenciasCdaSalida  AsistenciaCda[]  @relation("AsistenciaCdaSalidaPor")
+  enlacesFotoCda        EnlaceFotoCda[]  @relation("EnlaceFotoCdaCreadoPor")
+  actasCdaEntregadas    ActaEntregaCda[] @relation("ActaEntregaCdaEntregaPor")
+  actasCdaCreadas       ActaEntregaCda[] @relation("ActaEntregaCdaCreadoPor")
+
   @@map("usuarios")
 }
 
@@ -650,6 +656,124 @@ model EnlaceCaida {
   @@index([inicio], map: "idx_enlaces_caidas_inicio")
   @@index([codigoRecinto], map: "idx_enlaces_caidas_recinto")
   @@map("enlaces_caidas")
+}
+
+// =====================================================================
+// OPERADORES CDA — personal de servicio de los Centros de Digitalización
+// de Actas. No son usuarios del sistema (no inician sesión): se importan
+// del Excel de talento humano y solo se les toma asistencia, foto y acta.
+// =====================================================================
+
+enum EstadoPrenda {
+  NUEVO
+  BUENO
+  REGULAR
+  MALO
+
+  @@map("estado_prenda")
+}
+
+enum EstadoActaCda {
+  GENERADA
+  FIRMADA
+
+  @@map("estado_acta_cda")
+}
+
+/// Columnas tal cual vienen en el Excel (fila de encabezados "N°, Apellidos
+/// Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial"). El nombre
+/// llega en una sola columna "APELLIDOS NOMBRES" y no se puede partir con
+/// seguridad (hay apellidos compuestos), por eso se guarda entero.
+model OperadorCda {
+  id               String    @id @default(uuid()) @db.Uuid
+  numero           Int?
+  apellidosNombres String    @map("apellidos_nombres") @db.VarChar(200)
+  cedula           String    @unique @db.VarChar(10)
+  telefono         String?   @db.VarChar(20)
+  cargo            String    @db.VarChar(160)
+  unidad           String?   @db.VarChar(200)
+  fechaInicio      DateTime? @map("fecha_inicio") @db.Date
+  /// Clave del archivo cifrado en Storage (null = aún no sube su foto).
+  fotoKey          String?   @map("foto_key") @db.VarChar(255)
+  fotoSubidaEn     DateTime? @map("foto_subida_en") @db.Timestamptz(6)
+  activo           Boolean   @default(true)
+  creadoEn         DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn    DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  asistencias AsistenciaCda[]
+  enlacesFoto EnlaceFotoCda[]
+  actas       ActaEntregaCda[]
+
+  @@map("operadores_cda")
+}
+
+/// Una fila por operador y día: check de entrada y de salida con hora y
+/// quién lo marcó (web hoy, APK después).
+model AsistenciaCda {
+  id            String    @id @default(uuid()) @db.Uuid
+  operadorId    String    @map("operador_id") @db.Uuid
+  fecha         DateTime  @db.Date
+  entradaEn     DateTime? @map("entrada_en") @db.Timestamptz(6)
+  entradaPorId  String?   @map("entrada_por_id") @db.Uuid
+  salidaEn      DateTime? @map("salida_en") @db.Timestamptz(6)
+  salidaPorId   String?   @map("salida_por_id") @db.Uuid
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  operador   OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+  entradaPor Usuario?    @relation("AsistenciaCdaEntradaPor", fields: [entradaPorId], references: [id])
+  salidaPor  Usuario?    @relation("AsistenciaCdaSalidaPor", fields: [salidaPorId], references: [id])
+
+  @@unique([operadorId, fecha], map: "uq_asistencias_cda_operador_fecha")
+  @@index([fecha], map: "idx_asistencias_cda_fecha")
+  @@map("asistencias_cda")
+}
+
+/// Enlace personal para que el operador suba su foto desde el celular.
+/// Solo se guarda el SHA-256 del token; de un solo uso y con caducidad.
+model EnlaceFotoCda {
+  id          String    @id @default(uuid()) @db.Uuid
+  operadorId  String    @map("operador_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
+  expiraEn    DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn     DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoPorId String?   @map("creado_por_id") @db.Uuid
+  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  operador  OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  creadoPor Usuario?    @relation("EnlaceFotoCdaCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([operadorId], map: "idx_enlaces_foto_cda_operador")
+  @@map("enlaces_foto_cda")
+}
+
+/// Acta de entrega de peto, credencial y cordón. Quien entrega se copia
+/// (nombre, cédula, cargo) porque el acta es un documento: no debe cambiar
+/// si luego cambia el usuario.
+model ActaEntregaCda {
+  id               String        @id @default(uuid()) @db.Uuid
+  operadorId       String        @map("operador_id") @db.Uuid
+  entregaPorId     String?       @map("entrega_por_id") @db.Uuid
+  entregaNombre    String        @map("entrega_nombre") @db.VarChar(200)
+  entregaCedula    String        @map("entrega_cedula") @db.VarChar(10)
+  entregaCargo     String        @map("entrega_cargo") @db.VarChar(160)
+  lugar            String        @default("Ibarra") @db.VarChar(80)
+  fecha            DateTime      @db.Date
+  estadoPeto       EstadoPrenda  @map("estado_peto")
+  estadoCredencial EstadoPrenda  @map("estado_credencial")
+  estadoCordon     EstadoPrenda  @map("estado_cordon")
+  estado           EstadoActaCda @default(GENERADA)
+  firmadaEn        DateTime?     @map("firmada_en") @db.Timestamptz(6)
+  creadoPorId      String?       @map("creado_por_id") @db.Uuid
+  creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn    DateTime      @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  operador   OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+  entregaPor Usuario?    @relation("ActaEntregaCdaEntregaPor", fields: [entregaPorId], references: [id])
+  creadoPor  Usuario?    @relation("ActaEntregaCdaCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([operadorId], map: "idx_actas_entrega_cda_operador")
+  @@map("actas_entrega_cda")
 }
 
 // =====================================================================

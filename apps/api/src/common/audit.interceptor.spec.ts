@@ -158,6 +158,19 @@ describe('AuditInterceptor', () => {
     expect(conRuta.data.entidadId).toHaveLength(60);
   });
 
+  it('importar operadores CDA: audita solo al aplicar y guarda solo los conteos', async () => {
+    const res = { vistaPrevia: false, nuevos: 3, actualizados: 53, filas: [{ cedula: '1710034065', apellidosNombres: 'PÉREZ ANA' }], errores: [] };
+    const vista = await auditar({ method: 'POST', originalUrl: '/operadores-cda/importar', query: {}, body: {}, user: ADMIN }, res);
+    expect(vista.create).not.toHaveBeenCalled();
+
+    const { data } = await auditar(
+      { method: 'POST', originalUrl: '/operadores-cda/importar?aplicar=true', query: { aplicar: 'true' }, body: {}, user: ADMIN },
+      res,
+    );
+    expect(data).toMatchObject({ accion: 'OPERADORES_CDA_IMPORT', entidad: 'operador_cda', datosDespues: { nuevos: 3, actualizados: 53 } });
+    expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
+  });
+
   it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
     const falla = jest.fn().mockRejectedValue(new Error('db caída'));
     const { respuesta } = await auditar(
