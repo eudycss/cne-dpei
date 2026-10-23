@@ -627,3 +627,19 @@ export const operadorCdaFilaSchema = z.object({
 });
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
+
+export const tipoMarcaAsistenciaCdaSchema = z.enum(['ENTRADA', 'SALIDA']);
+export type TipoMarcaAsistenciaCdaInput = z.infer<typeof tipoMarcaAsistenciaCdaSchema>;
+
+export const marcarAsistenciaCdaSchema = z.object({ tipo: tipoMarcaAsistenciaCdaSchema });
+
+export const marcarAsistenciaCdaMasivaSchema = z.object({
+  tipo: tipoMarcaAsistenciaCdaSchema,
+  operadorIds: z.array(z.string().uuid()).min(1, 'Seleccione al menos un operador').max(500),
+});
+
+/** Día en formato AAAA-MM-DD (calendario de Ecuador). */
+export const diaAsistenciaSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
+  .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');

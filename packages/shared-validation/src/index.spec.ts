@@ -18,6 +18,9 @@ import {
   salidaRecintoSchema,
   telefonoSchema,
   operadorCdaFilaSchema,
+  marcarAsistenciaCdaSchema,
+  marcarAsistenciaCdaMasivaSchema,
+  diaAsistenciaSchema,
 } from './index';
 
 describe('configAlertasSchema', () => {
@@ -272,5 +275,25 @@ describe('operadorCdaFilaSchema', () => {
   it('rechaza fecha que no sea AAAA-MM-DD y cargo vacío', () => {
     expect(operadorCdaFilaSchema.safeParse({ ...fila, fechaInicio: '20 de octubre de 2026' }).success).toBe(false);
     expect(operadorCdaFilaSchema.safeParse({ ...fila, cargo: '   ' }).success).toBe(false);
+  });
+});
+
+describe('asistencia CDA', () => {
+  it('marcar acepta solo ENTRADA o SALIDA', () => {
+    expect(marcarAsistenciaCdaSchema.safeParse({ tipo: 'ENTRADA' }).success).toBe(true);
+    expect(marcarAsistenciaCdaSchema.safeParse({ tipo: 'entrada' }).success).toBe(false);
+  });
+
+  it('el marcado masivo exige ids válidos y al menos uno', () => {
+    const id = '11111111-2222-4333-8444-555555555555';
+    expect(marcarAsistenciaCdaMasivaSchema.safeParse({ tipo: 'ENTRADA', operadorIds: [id] }).success).toBe(true);
+    expect(marcarAsistenciaCdaMasivaSchema.safeParse({ tipo: 'ENTRADA', operadorIds: [] }).success).toBe(false);
+    expect(marcarAsistenciaCdaMasivaSchema.safeParse({ tipo: 'ENTRADA', operadorIds: ['x'] }).success).toBe(false);
+  });
+
+  it('el día debe existir', () => {
+    expect(diaAsistenciaSchema.safeParse('2026-10-22').success).toBe(true);
+    expect(diaAsistenciaSchema.safeParse('2026-02-30').success).toBe(false);
+    expect(diaAsistenciaSchema.safeParse('22/10/2026').success).toBe(false);
   });
 });
