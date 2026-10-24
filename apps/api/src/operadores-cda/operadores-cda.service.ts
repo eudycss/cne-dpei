@@ -111,7 +111,7 @@ export class OperadoresCdaService {
       where: { cedula: { in: validadas.filas.map((f) => f.cedula) } },
       select: { cedula: true, grupo: true },
     });
-    const grupoDe = new Map(existentes.map((e) => [e.cedula, e.grupo]));
+    const grupoDe = new Map<string, GrupoCda>(existentes.map((e) => [e.cedula, e.grupo]));
     const yaRegistradas = new Set(existentes.filter((e) => e.grupo === grupo).map((e) => e.cedula));
     const errores = [...validadas.errores];
     const filas = validadas.filas.filter((f) => {
