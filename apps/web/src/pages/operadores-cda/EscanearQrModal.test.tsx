@@ -101,19 +101,16 @@ describe('EscanearQrModal', () => {
     expect(campo()).toHaveValue('');
   });
 
-  it('sin foto: no deja registrar hasta marcar que se verificó la cédula', async () => {
+  it('sin foto: avisa que verifique la cédula y deja registrar directo, sin casilla', async () => {
     postMock.mockResolvedValueOnce({ data: consulta() });
     renderModal();
     await userEvent.type(campo(), `${TOKEN}{Enter}`);
 
-    const verificar = await screen.findByRole('checkbox', { name: 'Verifiqué la cédula de identidad de la persona' });
-    expect(verificar).toHaveFocus();
-    expect(screen.getByText(/Sin foto registrada/)).toBeInTheDocument();
+    expect(await screen.findByText(/Sin foto registrada/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     const confirmar = screen.getByRole('button', { name: 'Registrar entrada' });
-    expect(confirmar).toBeDisabled();
-
-    await userEvent.click(verificar);
     expect(confirmar).toBeEnabled();
+    expect(confirmar).toHaveFocus();
   });
 
   it('si otro técnico marcó antes (409), muestra el motivo y vuelve a esperar', async () => {
