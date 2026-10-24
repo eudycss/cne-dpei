@@ -146,7 +146,7 @@ export default function App() {
           }
         />
 
-        {/* Operadores CDA: personal de los CDA (asistencia, foto y actas) */}
+        {/* CDAs: Operadores y Asistentes CDA (asistencia, foto y actas) */}
         <Route
           path="/operadores-cda"
           element={

@@ -6,6 +6,7 @@ import { crearOperadorCdaSchema, editarOperadorCdaSchema } from '@cne/shared-val
 import { Modal } from '../../components/Modal';
 import { crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
 import { Campo } from './Campo';
+import { useGrupoCda } from './grupo';
 import { mensajeError } from './utils';
 
 /** Orden en pantalla: el foco va al primero con error. */
@@ -13,13 +14,11 @@ const ORDEN_CAMPOS = ['apellidosNombres', 'cedula', 'cargo', 'telefono', 'unidad
 type CampoForm = (typeof ORDEN_CAMPOS)[number];
 type Formulario = Record<CampoForm, string>;
 
-const CARGO_POR_DEFECTO = 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA';
-
-function inicial(o?: OperadorCda): Formulario {
+function inicial(cargoPorDefecto: string, o?: OperadorCda): Formulario {
   return {
     apellidosNombres: o?.apellidosNombres ?? '',
     cedula: o?.cedula ?? '',
-    cargo: o?.cargo ?? CARGO_POR_DEFECTO,
+    cargo: o?.cargo ?? cargoPorDefecto,
     telefono: o?.telefono ?? '',
     unidad: o?.unidad ?? '',
     fechaInicio: o?.fechaInicio ?? '',
@@ -40,19 +39,22 @@ export function OperadorFormModal({
   onHecho: () => void;
 }) {
   const editando = !!operador;
-  const [f, setF] = useState<Formulario>(() => inicial(operador));
+  const { grupo, singular, Singular, cargoPorDefecto } = useGrupoCda();
+  const [f, setF] = useState<Formulario>(() => inicial(cargoPorDefecto, operador));
   const [errores, setErrores] = useState<Partial<Record<CampoForm, string>>>({});
   const cambiar = (c: Partial<Formulario>) => setF((prev) => ({ ...prev, ...c }));
 
   const guardar = useMutation({
     mutationFn: ({ cedula, ...resto }: EditarOperadorCdaRequest & { cedula?: string }) =>
-      operador ? editarOperadorCda(operador.id, resto) : crearOperadorCda({ ...resto, cedula: cedula ?? '' }),
+      operador
+        ? editarOperadorCda(operador.id, resto)
+        : crearOperadorCda({ ...resto, cedula: cedula ?? '', grupo }),
     onSuccess: (o) => {
-      sileo.success({ title: editando ? 'Datos actualizados' : 'Operador agregado', description: o.apellidosNombres });
+      sileo.success({ title: editando ? 'Datos actualizados' : `${Singular} agregado`, description: o.apellidosNombres });
       onHecho();
       onClose();
     },
-    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo guardar el operador') }),
+    onError: (e) => sileo.error({ title: mensajeError(e, `No se pudo guardar el ${singular}`) }),
   });
 
   function enviar(e: FormEvent) {
@@ -86,7 +88,7 @@ export function OperadorFormModal({
     </Campo>
   );
   const cantidadErrores = Object.keys(errores).length;
-  const titulo = editando ? 'Editar operador' : 'Agregar operador';
+  const titulo = editando ? `Editar ${singular}` : `Agregar ${singular}`;
 
   return (
     <Modal labelledBy="operador-form-titulo" onClose={onClose} maxWidth={620}>
@@ -165,7 +167,7 @@ export function OperadorFormModal({
             Cancelar
           </button>
           <button type="submit" className="btn" disabled={guardar.isPending}>
-            {guardar.isPending ? 'Guardando…' : editando ? 'Guardar cambios' : 'Agregar operador'}
+            {guardar.isPending ? 'Guardando…' : editando ? 'Guardar cambios' : `Agregar ${singular}`}
           </button>
         </div>
       </form>

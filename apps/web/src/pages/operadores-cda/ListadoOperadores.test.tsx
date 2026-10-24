@@ -147,6 +147,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
         cedula: '1002003000',
         telefono: '0987111222',
         cargo: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA',
+        grupo: 'OPERADOR',
       }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -190,7 +191,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     URL.createObjectURL = vi.fn(() => 'blob:foto');
     URL.revokeObjectURL = vi.fn();
     getMock.mockImplementation(async (url: string) =>
-      url === '/operadores-cda' ? { data: [operador({ tieneFoto: true })] } : { data: new Blob(['jpg']) },
+      url === '/operadores-cda?grupo=OPERADOR' ? { data: [operador({ tieneFoto: true })] } : { data: new Blob(['jpg']) },
     );
     patchMock.mockResolvedValueOnce({ data: operador({ activo: false }) });
     renderPagina();
@@ -210,7 +211,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
   it('"Mostrar ocultos" pide también los inactivos y permite reactivarlos', async () => {
     getMock.mockImplementation(async (url: string) => ({
       data:
-        url === '/operadores-cda?incluirInactivos=true'
+        url === '/operadores-cda?grupo=OPERADOR&incluirInactivos=true'
           ? [operador({}), operador({ id: 'o2', apellidosNombres: 'VEGA RÍOS LUIS', activo: false })]
           : [operador({})],
     }));
@@ -256,7 +257,7 @@ describe('iniciales / normalizar', () => {
     URL.createObjectURL = vi.fn(() => 'blob:foto');
     URL.revokeObjectURL = vi.fn();
     getMock.mockImplementation(async (url: string) =>
-      url === '/operadores-cda'
+      url === '/operadores-cda?grupo=OPERADOR'
         ? { data: [operador({}), operador({ id: 'o2', apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true })] }
         : { data: new Blob(['jpg']) },
     );

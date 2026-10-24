@@ -9,6 +9,20 @@ import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
 import { PrismaService } from '../db/prisma.service';
 
+/** Grupo del personal CDA (?grupo=); ausente = OPERADOR, como en la API. */
+function grupoCda(req: Request): 'OPERADOR' | 'ASISTENTE' {
+  return req.query?.grupo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
+}
+
+/** Descargas de reportes de operadores CDA: grupo, rango, modo y formato pedidos (nada personal). */
+function resumenDescargaReporte(req: Request): Record<string, unknown> {
+  const q = (req.query ?? {}) as Record<string, unknown>;
+  const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const modo = q.modo === 'POR_DIA' ? 'POR_DIA' : 'GENERAL';
+  const formato = (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx';
+  return { grupo: grupoCda(req), desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
+}
+
 /**
  * Mapeo: método+ruta -> { accion, entidad }
  * Preparación de HU17. Las HU posteriores extenderán esta tabla.
@@ -48,9 +62,9 @@ const AUDIT_TABLE: Array<{
     accion: 'OPERADORES_CDA_IMPORT',
     entidad: 'operador_cda',
     cuando: (req) => req.query?.aplicar === 'true',
-    resumen: (res) => {
+    resumen: (res, req) => {
       const r = (res ?? {}) as { nuevos?: unknown; actualizados?: unknown };
-      return { nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
+      return { grupo: grupoCda(req), nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
     },
   },
   // CRUD manual: nombres, cédulas y teléfonos son datos personales, así que solo
@@ -90,17 +104,52 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Carnets QR: a quiénes se emitió (anula sus carnets anteriores) y las anulaciones.
+  // El token nunca pasa por aquí: va solo dentro del PDF.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/credenciales\/carnets\.pdf$/,
+    accion: 'CREDENCIAL_QR_CDA_EMITIR',
+    entidad: 'credencial_qr_cda',
+    resumen: (_res, req) => {
+      const ids = (req.body as { operadorIds?: unknown } | undefined)?.operadorIds;
+      const operadorIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string').map((x) => x.slice(0, 40)).slice(0, 200) : [];
+      return { cantidad: operadorIds.length, operadorIds };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/operadores-cda\/[^/]+\/credencial$/,
+    accion: 'CREDENCIAL_QR_CDA_REVOCAR',
+    entidad: 'operador_cda',
+  },
   // Descarga cédulas de todos los operadores: queda el rango pedido.
   {
     method: 'GET',
-    pathRegex: /^\/operadores-cda\/asistencia\/exportar\.xlsx$/,
+    pathRegex: /^\/operadores-cda\/asistencia\/exportar\.(xlsx|pdf)$/,
     accion: 'ASISTENCIA_CDA_EXPORTAR',
     entidad: 'asistencia_cda',
-    resumen: (_res, req) => {
-      const q = (req.query ?? {}) as Record<string, unknown>;
-      const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-      return { desde: dia(q.desde), hasta: dia(q.hasta) };
+    resumen: (_res, req) => resumenDescargaReporte(req),
+  },
+  // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
+  // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/asistencia\/config$/,
+    accion: 'ASISTENCIA_CDA_CONFIG',
+    entidad: 'config_asistencia_cda',
+    // Cada grupo tiene su hora: sin el grupo no se sabría a quién se le cambió.
+    resumen: (res, req) => {
+      const c = (res ?? {}) as { horaEntrada?: unknown; minutosGracia?: unknown };
+      return { grupo: grupoCda(req), horaEntrada: c.horaEntrada, minutosGracia: c.minutosGracia };
     },
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/asistencia\/atrasos\.(xlsx|pdf)$/,
+    accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
+    entidad: 'asistencia_cda',
+    resumen: (_res, req) => resumenDescargaReporte(req),
   },
   // Enlace de foto: solo la vigencia (nunca el token). La subida es pública: el
   // operador sale de req.operadorCdaId (lo pone el controller) y queda la versión

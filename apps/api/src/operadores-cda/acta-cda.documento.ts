@@ -34,6 +34,8 @@ export interface DatosActaCda {
   entregaCargo: string;
   operadorNombre: string;
   operadorCedula: string;
+  /** "OPERADOR CDA" o "ASISTENTE CDA". */
+  operadorCargo: string;
   estadoPeto: EstadoPrenda;
   estadoCredencial: EstadoPrenda;
   estadoCordon: EstadoPrenda;
@@ -55,6 +57,7 @@ export function camposPlantilla(d: DatosActaCda): Record<string, string> {
     entregaCargo: d.entregaCargo.toUpperCase(),
     operadorNombre: d.operadorNombre.toUpperCase(),
     operadorCedula: d.operadorCedula,
+    operadorCargo: d.operadorCargo,
     estadoPeto: d.estadoPeto,
     estadoCredencial: d.estadoCredencial,
     estadoCordon: d.estadoCordon,
@@ -70,7 +73,7 @@ function partesTextoActa(d: DatosActaCda): [string, string, string] {
     `En la ciudad de ${c.lugar} a los ${c.dia} días del mes de ${c.mes} del ${c.anio}, ` +
       `el Ing. ${c.entregaNombre} con C.I. ${c.entregaCedula} ${c.entregaCargo}; realiza la `,
     'Entrega de indumentaria y credencial',
-    `; al Sr./Srta. ${c.operadorNombre} con C.I. ${c.operadorCedula} OPERADOR CDA`,
+    `; al Sr./Srta. ${c.operadorNombre} con C.I. ${c.operadorCedula} ${c.operadorCargo}`,
   ];
 }
 
@@ -112,18 +115,27 @@ const ANCHO_TEXTO = 595.28 - IZQ * 2;
 const ABAJO = 50;
 const INTERLINEA = 7;
 const AZUL_UNIDAD = '#1f3864';
+export const NOMBRE_UNIDAD =
+  'Unidad Provincial de Seguridad Informática y Proyectos Tecnológicos Electorales de Imbabura';
 const ESPACIO_FIRMA = 70;
+// Columna del encabezado: junto al logo (x 40-140) hasta el margen derecho del texto.
+const ENCABEZADO_IZQ = 145;
+const ENCABEZADO_DER = IZQ + ANCHO_TEXTO;
 
 function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   doc.addPage();
   const c = camposPlantilla(d);
 
-  // Encabezado: logo a la izquierda, la Unidad y el título a su lado (como el header del Word).
+  // Encabezado: logo a la izquierda y, centrados en el espacio que queda a su
+  // derecha, la Unidad (dos líneas) y el título del acta; abajo, una línea fina.
   if (hayLogo) doc.image(RUTA_LOGO, 40, 26, { fit: [100, 61] });
-  doc.font('Times-Bold').fontSize(12.5).fillColor(AZUL_UNIDAD)
-    .text('UNIDAD PROVINCIAL DE SEGURIDAD INFORMÁTICA', 156, 40, { width: 400 });
-  doc.font('Times-Roman').fontSize(12).fillColor('#000')
-    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', 153, 74, { width: 400 });
+  const columna = { width: ENCABEZADO_DER - ENCABEZADO_IZQ, align: 'center' as const };
+  doc.font('Times-Bold').fontSize(14).fillColor(AZUL_UNIDAD)
+    .text(NOMBRE_UNIDAD, ENCABEZADO_IZQ, 28, columna);
+  doc.font('Times-Bold').fontSize(11).fillColor('#000')
+    .text('ACTA ENTREGA DE INDUMENTARIA Y CREDENCIAL', ENCABEZADO_IZQ, doc.y + 6, columna);
+  const yLinea = Math.max(96, doc.y + 8);
+  doc.lineWidth(0.8).moveTo(40, yLinea).lineTo(595.28 - 40, yLinea).stroke(AZUL_UNIDAD);
 
   const [antes, negrita, despues] = partesTextoActa(d);
   const parrafo = { width: ANCHO_TEXTO, align: 'justify' as const, lineGap: INTERLINEA };
@@ -156,7 +168,7 @@ function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   // Recuadro de firmas de dos columnas. Con textos muy largos sube para no partir el acta en dos páginas.
   const firmas: [string, string, string][] = [
     ['Entrega conforme:', `Ing. ${c.entregaNombre}`, c.entregaCargo],
-    ['Recibe conforme:', c.operadorNombre, 'OPERADOR CDA'],
+    ['Recibe conforme:', c.operadorNombre, c.operadorCargo],
   ];
   const altoRecuadro = Math.max(...firmas.map(([, nombre, cargo]) => altoFirma(doc, mitad, nombre, cargo)));
   const y0 = Math.min(doc.y + 80, doc.page.height - ABAJO - altoRecuadro);

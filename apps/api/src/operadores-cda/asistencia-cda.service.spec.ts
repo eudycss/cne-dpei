@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Test } from '@nestjs/testing';
 import * as ExcelJS from 'exceljs';
 
-import { AsistenciaCdaService } from './asistencia-cda.service';
+import { AsistenciaCdaService, contadoresDelDia } from './asistencia-cda.service';
 import { PrismaService } from '../db/prisma.service';
+import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -13,6 +14,7 @@ const HOY = new Date('2026-10-22T00:00:00Z');
 
 const operador = (over: Record<string, unknown> = {}) => ({
   id: OP,
+  grupo: 'OPERADOR',
   numero: 1,
   apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
   cedula: '1710034065',
@@ -67,7 +69,8 @@ describe('AsistenciaCdaService', () => {
 
       expect(r.fecha).toBe('2026-10-22');
       expect(r.esHoy).toBe(true);
-      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY, operador: { grupo: 'OPERADOR' } });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
       expect(r.filas[0]).toMatchObject({ entradaEn: '2026-10-22T13:05:00.000Z', entradaPor: 'Ana Técnica', salidaEn: null });
       expect(r.filas[1]).toMatchObject({ entradaEn: null, entradaPor: null });
     });
@@ -98,7 +101,7 @@ describe('AsistenciaCdaService', () => {
       expect(prisma.asistenciaCda.upsert.mock.calls[0][0].where).toEqual({ operadorId_fecha: { operadorId: OP, fecha: HOY } });
       expect(prisma.asistenciaCda.updateMany).toHaveBeenCalledWith({
         where: { id: 'a1', entradaEn: null },
-        data: { entradaEn: AHORA, entradaPorId: USR },
+        data: { entradaEn: AHORA, entradaPorId: USR, entradaOrigen: 'MANUAL' },
       });
       expect(r).toMatchObject({ entradaPor: 'Ana Técnica', entradaEn: AHORA.toISOString() });
     });
@@ -143,7 +146,7 @@ describe('AsistenciaCdaService', () => {
       });
       expect(prisma.asistenciaCda.updateMany).toHaveBeenCalledWith({
         where: { id: 'a1', salidaEn: AHORA },
-        data: { salidaEn: null, salidaPorId: null },
+        data: { salidaEn: null, salidaPorId: null, salidaOrigen: null },
       });
     });
 
@@ -189,6 +192,7 @@ describe('AsistenciaCdaService', () => {
         operadorId: { in: [OP] },
         entradaEn: null,
       });
+      expect(prisma.asistenciaCda.updateMany.mock.calls[0][0].data).toMatchObject({ entradaOrigen: 'MASIVA' });
       // 'inactivo' no es un operador activo: se cuenta aparte.
       expect(r).toEqual({ marcados: 1, omitidos: 0, ignorados: 1 });
     });
@@ -206,8 +210,27 @@ describe('AsistenciaCdaService', () => {
     });
   });
 
+  describe('contadoresDelDia', () => {
+    it('cuenta como asistieron a los que tienen entrada, sobre el total del día', () => {
+      const f = (conEntrada: boolean, conSalida: boolean) => ({ conEntrada, conSalida });
+      expect(contadoresDelDia([f(true, true), f(true, false), f(false, false)])).toEqual({
+        asistieron: '2/3',
+        entrada: '2/3',
+        salida: '1/3',
+      });
+      expect(contadoresDelDia([])).toEqual({ asistieron: '0/0', entrada: '0/0', salida: '0/0' });
+    });
+  });
+
   describe('exportar', () => {
-    it('una fila por operador y día desde su fecha de inicio, con horas de Ecuador y estado', async () => {
+    const leerExcel = async (contenido: Buffer) => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(contenido as any);
+      return wb;
+    };
+    const datos = (ws: ExcelJS.Worksheet) => ws.getSheetValues().slice(FILA_ENCABEZADOS_EXCEL + 1) as unknown[][];
+
+    const conDosOperadores = () => {
       prisma.operadorCda.findMany.mockResolvedValueOnce([
         operador(),
         operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000', fechaInicio: new Date('2026-10-22T00:00:00Z') }),
@@ -222,41 +245,166 @@ describe('AsistenciaCdaService', () => {
           salidaPor: ANA_TECNICA,
         },
       ]);
+    };
 
-      const buf = await service.exportar(undefined, '2026-10-22');
+    it('general: resumen por día, detalle numerado con estado y hoja de faltantes', async () => {
+      conDosOperadores();
 
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf as any);
-      const filas = wb.worksheets[0].getSheetValues().slice(2) as unknown[][];
-      // Ana desde el 20 (3 días) + Juan solo el 22 = 4 filas.
+      const archivo = await service.exportar(undefined, '2026-10-22', undefined, 'xlsx');
+
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-20_2026-10-22.xlsx');
+      const wb = await leerExcel(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen por día', 'Asistencia', 'Faltaron']);
+      const [resumen, ws, faltaron] = wb.worksheets;
+
+      // Ana desde el 20; Juan solo el 22 (su fecha de inicio).
+      expect(datos(resumen)).toEqual([
+        [undefined, '2026-10-20', 'martes, 20 de octubre de 2026', '0/1', '0/1', '0/1'],
+        [undefined, '2026-10-21', 'miércoles, 21 de octubre de 2026', '1/1', '1/1', '1/1'],
+        [undefined, '2026-10-22', 'jueves, 22 de octubre de 2026', '0/2', '0/2', '0/2'],
+      ]);
+
+      expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Operadores CDA');
+      expect(String(ws.getCell('A7').value)).toContain('Del 20/10/2026 al 22/10/2026');
+      expect(ws.getRow(FILA_ENCABEZADOS_EXCEL).values).toEqual([
+        undefined, 'Fecha', 'N.º', 'Apellidos y nombres', 'Cédula', 'Entrada', 'Registró entrada', 'Salida', 'Registró salida', 'Estado',
+      ]);
+      const filas = datos(ws);
       expect(filas).toHaveLength(4);
       expect(filas[1]).toEqual([
-        undefined, '2026-10-21', 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa',
+        undefined, '2026-10-21', 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa',
       ]);
-      expect(filas[0][8]).toBe('Sin registro');
-      expect(filas.map((f) => f[1])).toEqual(['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-22']);
+      // El 22 es "hoy" (AHORA): sin entrada todavía no es falta.
+      expect(filas.map((f) => [f[1], f[2], f[9]])).toEqual([
+        ['2026-10-20', 1, 'Faltó'],
+        ['2026-10-21', 1, 'Completa'],
+        ['2026-10-22', 1, 'Sin entrada'],
+        ['2026-10-22', 2, 'Sin entrada'],
+      ]);
+      const fondo = (fila: number) =>
+        (ws.getCell(FILA_ENCABEZADOS_EXCEL + fila, 3).fill as ExcelJS.FillPattern | undefined)?.fgColor?.argb;
+      expect([1, 2, 3, 4].map(fondo)).toEqual(['FFFEE2E2', undefined, 'FFFEE2E2', 'FFFEE2E2']);
+
+      expect(faltaron.getCell('A6').value).toBe('Sin registro de entrada / Faltaron: 3');
+      expect(datos(faltaron)).toEqual([
+        [undefined, '2026-10-20', 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273'],
+        [undefined, '2026-10-22', 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273'],
+        [undefined, '2026-10-22', 2, 'RUIZ MORA JUAN', '1002003000', '0987923273'],
+      ]);
     });
 
-    it('rechaza rangos invertidos, demasiado largos o con fecha final futura', async () => {
+    it('día pasado con entrada y sin salida: "Sin salida", sin resaltar; teléfono vacío en faltantes', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        operador(),
+        operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000', telefono: null }),
+      ]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([
+        { operadorId: OP, fecha: new Date('2026-10-21T00:00:00Z'), entradaEn: new Date('2026-10-21T13:00:00Z'), entradaPor: ANA_TECNICA, salidaEn: null, salidaPor: null },
+      ]);
+
+      const wb = await leerExcel((await service.exportar('2026-10-21', '2026-10-21', 'POR_DIA', 'xlsx')).contenido);
+
+      const ws = wb.worksheets[0];
+      expect(ws.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Operadores 1/2 · Entrada 1/2 · Salida 0/2');
+      const filas = datos(ws);
+      expect(filas.slice(0, 2).map((f) => f[8])).toEqual(['Sin salida', 'Faltó']);
+      expect(ws.getCell(FILA_ENCABEZADOS_EXCEL + 1, 2).fill).toBeUndefined();
+      expect(filas[5]).toEqual([undefined, 2, 'RUIZ MORA JUAN', '1002003000', '']);
+    });
+
+    it('asistentes: solo su grupo, con su título, su archivo y "Asistentes X/N"', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ grupo: 'ASISTENTE' })]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-21', 'POR_DIA', 'xlsx', 'ASISTENTE');
+
+      expect(archivo.nombre).toBe('asistencia_asistentes_cda_2026-10-21_2026-10-21_por_dia.xlsx');
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operador).toEqual({ grupo: 'ASISTENTE' });
+      const ws = (await leerExcel(archivo.contenido)).worksheets[0];
+      expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Asistentes CDA');
+      expect(ws.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Asistentes 0/1 · Entrada 0/1 · Salida 0/1');
+    });
+
+    it('lleva el logo de las Elecciones 2027 en cada hoja', async () => {
+      conDosOperadores();
+
+      const wb = await leerExcel((await service.exportar(undefined, '2026-10-22', 'POR_DIA', 'xlsx')).contenido);
+
+      expect(wb.model.media).toHaveLength(1);
+      for (const ws of wb.worksheets) expect(ws.getImages()).toHaveLength(1);
+    });
+
+    it('por día: una hoja por día, numerada, con contadores y la lista de quienes no registraron entrada', async () => {
+      conDosOperadores();
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-22', 'POR_DIA', 'xlsx');
+
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-21_2026-10-22_por_dia.xlsx');
+      const wb = await leerExcel(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['2026-10-21', '2026-10-22']);
+      const [dia21, dia22] = wb.worksheets;
+      expect(dia21.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Operadores 1/1 · Entrada 1/1 · Salida 1/1');
+      // La fila del día, una en blanco y el título del anexo sin tabla.
+      expect(datos(dia21)).toEqual([
+        [undefined, 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa'],
+        undefined,
+        [undefined, 'Sin registro de entrada / Faltaron: ninguno'],
+      ]);
+
+      expect(dia22.getCell('A6').value).toBe('jueves, 22 de octubre de 2026 · Operadores 0/2 · Entrada 0/2 · Salida 0/2');
+      const filas22 = datos(dia22);
+      expect(filas22.slice(0, 2).map((f) => [f[1], f[2]])).toEqual([
+        [1, 'PÉREZ LÓPEZ ANA MARÍA'],
+        [2, 'RUIZ MORA JUAN'],
+      ]);
+      expect(filas22.slice(3)).toEqual([
+        [undefined, 'Sin registro de entrada / Faltaron: 2'],
+        [undefined, 'N.º', 'Apellidos y nombres', 'Cédula', 'Teléfono'],
+        [undefined, 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273'],
+        [undefined, 2, 'RUIZ MORA JUAN', '1002003000', '0987923273'],
+      ]);
+    });
+
+    it('PDF: devuelve un PDF con su nombre y tipo', async () => {
+      conDosOperadores();
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-22', 'POR_DIA', 'pdf');
+
+      expect(archivo.tipo).toBe('application/pdf');
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-21_2026-10-22_por_dia.pdf');
+      expect(archivo.contenido.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('sin operadores activos igual genera un archivo válido', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+
+      const wb = await leerExcel((await service.exportar('2026-10-22', '2026-10-22', 'POR_DIA', 'xlsx')).contenido);
+
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Reporte']);
+    });
+
+    it('rechaza rangos invertidos, demasiado largos, con fecha final futura o un modo desconocido', async () => {
       prisma.operadorCda.findMany.mockResolvedValue([]);
-      await expect(service.exportar('2026-10-22', '2026-10-20')).rejects.toThrow('posterior');
-      await expect(service.exportar('2026-01-01', '2026-10-20')).rejects.toThrow('demasiado largo');
-      await expect(service.exportar(undefined, '2026-10-23')).rejects.toThrow('no puede ser futura');
+      prisma.asistenciaCda.findMany.mockResolvedValue([]);
+      await expect(service.exportar('2026-10-22', '2026-10-20', undefined, 'xlsx')).rejects.toThrow('posterior');
+      await expect(service.exportar('2026-01-01', '2026-10-20', undefined, 'xlsx')).rejects.toThrow('demasiado largo');
+      await expect(service.exportar(undefined, '2026-10-23', undefined, 'xlsx')).rejects.toThrow('no puede ser futura');
+      await expect(service.exportar(undefined, '2026-10-22', 'DIARIO', 'pdf')).rejects.toThrow(BadRequestException);
     });
 
     it('sin "desde" y con operadores de hace más de 120 días, exporta solo los últimos 120 días', async () => {
       prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ fechaInicio: new Date('2026-01-05T00:00:00Z') })]);
       prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
 
-      const buf = await service.exportar(undefined, '2026-10-22');
+      const archivo = await service.exportar(undefined, '2026-10-22', undefined, 'xlsx');
 
       expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.fecha).toEqual({
         gte: new Date('2026-06-25T00:00:00Z'),
         lte: new Date('2026-10-22T00:00:00Z'),
       });
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf as any);
-      expect(wb.worksheets[0].rowCount).toBe(121);
+      expect(datos((await leerExcel(archivo.contenido)).worksheets[1])).toHaveLength(120);
     });
   });
 });

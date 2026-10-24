@@ -111,18 +111,33 @@ export class UsersService {
     if (parsed.email && parsed.email !== existing.email) {
       await this.assertUniqueEmailCedula(parsed.email);
     }
-    const user = await this.prisma.usuario.update({
-      where: { id },
-      data: {
-        email: parsed.email ?? existing.email,
-        nombres: parsed.nombres ?? existing.nombres,
-        apellidos: parsed.apellidos ?? existing.apellidos,
-        telefono: parsed.telefono ?? existing.telefono,
-        activo: parsed.activo ?? existing.activo,
-      },
-      include: { roles: { include: { rol: true } } },
-    });
-    return toUserDto(user);
+    // La PK es `id` (UUID): todas las relaciones apuntan a él, así que cambiar
+    // la cédula no rompe asignaciones, kits ni actas; solo hay que mantenerla única.
+    if (parsed.cedula && parsed.cedula !== existing.cedula) {
+      const existsCed = await this.prisma.usuario.findUnique({ where: { cedula: parsed.cedula } });
+      if (existsCed) throw new ConflictException(`Cédula ya registrada: ${parsed.cedula}`);
+    }
+    try {
+      const user = await this.prisma.usuario.update({
+        where: { id },
+        data: {
+          cedula: parsed.cedula ?? existing.cedula,
+          email: parsed.email ?? existing.email,
+          nombres: parsed.nombres ?? existing.nombres,
+          apellidos: parsed.apellidos ?? existing.apellidos,
+          telefono: parsed.telefono ?? existing.telefono,
+          activo: parsed.activo ?? existing.activo,
+        },
+        include: { roles: { include: { rol: true } } },
+      });
+      return toUserDto(user);
+    } catch (e) {
+      // Dos ediciones simultáneas con la misma cédula o email: la segunda choca con el índice único.
+      if ((e as { code?: string } | null)?.code === 'P2002') {
+        throw new ConflictException('La cédula o el email ya pertenecen a otro usuario');
+      }
+      throw e;
+    }
   }
 
   /**

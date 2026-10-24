@@ -78,12 +78,64 @@ describe('EditUserModal — accesibilidad', () => {
       </QueryClientProvider>,
     );
 
+    expect(screen.getByLabelText('Cédula (10 dígitos)')).toHaveValue('1712345678');
     expect(screen.getByLabelText('Nombres')).toHaveValue('Ana');
     expect(screen.getByLabelText('Apellidos')).toHaveValue('Torres');
     expect(screen.getByLabelText('Email')).toHaveValue('ana@cne-imbabura.gob.ec');
     expect(screen.getByLabelText('Teléfono (opcional)')).toHaveValue('');
     expect(screen.getByLabelText('Rol')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Editar usuario' })).toHaveAttribute('aria-modal', 'true');
+  });
+});
+
+describe('EditUserModal — cédula', () => {
+  function renderModal() {
+    return render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EditUserModal user={USER} isAdmin={false} onClose={vi.fn()} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('envía la cédula nueva cuando se cambia', async () => {
+    const user = userEvent.setup();
+    patchMock.mockResolvedValue({ data: {} });
+    renderModal();
+    const input = screen.getByLabelText('Cédula (10 dígitos)');
+    await user.clear(input);
+    await user.type(input, '1710034065');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(patchMock).toHaveBeenCalledWith('/users/u1', expect.objectContaining({ cedula: '1710034065' }));
+  });
+
+  it('al pegar una cédula con espacios o guiones deja solo los dígitos', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const input = screen.getByLabelText('Cédula (10 dígitos)');
+    await user.clear(input);
+    await user.click(input);
+    await user.paste('171 003-4065');
+    expect(input).toHaveValue('1710034065');
+    expect(input).toHaveAccessibleDescription(/no afecta sus asignaciones/);
+  });
+
+  it('no envía la cédula si no cambió', async () => {
+    const user = userEvent.setup();
+    patchMock.mockResolvedValue({ data: {} });
+    renderModal();
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(patchMock).toHaveBeenCalledWith('/users/u1', expect.not.objectContaining({ cedula: expect.anything() }));
+  });
+
+  it('bloquea una cédula inválida y lo anuncia', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const input = screen.getByLabelText('Cédula (10 dígitos)');
+    await user.clear(input);
+    await user.type(input, '1710034066');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/c[eé]dula/i);
+    expect(patchMock).not.toHaveBeenCalled();
   });
 });
 

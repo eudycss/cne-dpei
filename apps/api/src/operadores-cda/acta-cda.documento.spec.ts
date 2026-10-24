@@ -5,6 +5,7 @@ import {
   type DatosActaCda,
   generarPdfActasCda,
   generarWordActaCda,
+  NOMBRE_UNIDAD,
   nombreArchivoActa,
   nombresUnicos,
   textoActaCda,
@@ -19,6 +20,7 @@ const DATOS: DatosActaCda = {
   entregaCargo: 'Asistente Electoral Transversal',
   operadorNombre: 'Pérez López Juan & Hijos <x>',
   operadorCedula: '1001001005',
+  operadorCargo: 'OPERADOR CDA',
   estadoPeto: 'BUENO',
   estadoCredencial: 'NUEVO',
   estadoCordon: 'REGULAR',
@@ -44,12 +46,27 @@ describe('acta de entrega CDA (documento)', () => {
     );
   });
 
+  it('un asistente CDA recibe como "ASISTENTE CDA" en el texto y en las firmas, en Word y en PDF', async () => {
+    const asistente = { ...DATOS, operadorCargo: 'ASISTENTE CDA' };
+    expect(textoActaCda(asistente)).toMatch(/con C.I. 1001001005 ASISTENTE CDA$/);
+    const texto = textoDocx(generarWordActaCda(asistente));
+    expect(texto.match(/ASISTENTE CDA/g)).toHaveLength(2);
+    expect(texto).not.toContain('OPERADOR CDA');
+    expect((await generarPdfActasCda([asistente])).subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
   it('el Word sale de la plantilla con todos los campos llenos y el XML escapado', () => {
     const texto = textoDocx(generarWordActaCda(DATOS));
     expect(texto).toContain('En la ciudad de Ibarra a los 5 días del mes de octubre del 2026, el Ing. ANA TÉCNICA');
     expect(texto).toContain('PÉREZ LÓPEZ JUAN &amp; HIJOS &lt;X&gt;');
     expect(texto).toContain('PETO BUENOCREDENCIALNUEVOCORDON CREDENCIALREGULAR');
     expect(texto).not.toMatch(/[{}]/); // ningún campo sin reemplazar
+  });
+
+  it('el encabezado del Word lleva el nombre completo de la Unidad', () => {
+    const header = new PizZip(generarWordActaCda(DATOS)).file('word/header1.xml')!.asText();
+    expect(header).toContain(`>${NOMBRE_UNIDAD}</w:t>`);
+    expect(header).not.toContain('UNIDAD PROVINCIAL DE SEGURIDAD INFORMÁTICA');
   });
 
   it('la plantilla del repositorio no trae datos personales ni la combinación de correspondencia', () => {

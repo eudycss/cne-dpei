@@ -53,6 +53,20 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data)).not.toMatch(/ana@cne|0991234567/);
   });
 
+  it('al cambiar la cédula de un usuario queda que se cambió, pero no el valor', async () => {
+    const { data } = await auditar({
+      method: 'PATCH',
+      originalUrl: `/users/${OTRO}`,
+      params: { id: OTRO },
+      body: { cedula: '1710034065', nombres: 'Ana' },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({ usuarioId: ADMIN.sub, accion: 'USER_UPDATE', entidadId: OTRO });
+    expect(data.datosDespues).toEqual({ campos: ['cedula', 'nombres'] });
+    expect(JSON.stringify(data)).not.toMatch(/1710034065/);
+  });
+
   it('crear un usuario o militar no guarda cédula, email ni teléfono; el id sale de la respuesta', async () => {
     const { data } = await auditar(
       {
@@ -167,7 +181,11 @@ describe('AuditInterceptor', () => {
       { method: 'POST', originalUrl: '/operadores-cda/importar?aplicar=true', query: { aplicar: 'true' }, body: {}, user: ADMIN },
       res,
     );
-    expect(data).toMatchObject({ accion: 'OPERADORES_CDA_IMPORT', entidad: 'operador_cda', datosDespues: { nuevos: 3, actualizados: 53 } });
+    expect(data).toMatchObject({
+      accion: 'OPERADORES_CDA_IMPORT',
+      entidad: 'operador_cda',
+      datosDespues: { grupo: 'OPERADOR', nuevos: 3, actualizados: 53 },
+    });
     expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
   });
 
@@ -203,7 +221,67 @@ describe('AuditInterceptor', () => {
       body: {},
       user: ADMIN,
     });
-    expect(exportar.data).toMatchObject({ accion: 'ASISTENCIA_CDA_EXPORTAR', datosDespues: { desde: null, hasta: '2026-10-22' } });
+    expect(exportar.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_EXPORTAR',
+      datosDespues: { grupo: 'OPERADOR', desde: null, hasta: '2026-10-22', modo: 'GENERAL', formato: 'xlsx' },
+    });
+
+    const pdf = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA&grupo=ASISTENTE',
+      query: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', grupo: 'ASISTENTE' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(pdf.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
+      datosDespues: { grupo: 'ASISTENTE', desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', formato: 'pdf' },
+    });
+  });
+
+  it('hora oficial de entrada: queda a qué grupo se le cambió y los valores guardados', async () => {
+    const { data } = await auditar(
+      {
+        method: 'PUT',
+        originalUrl: '/operadores-cda/asistencia/config?grupo=ASISTENTE',
+        query: { grupo: 'ASISTENTE' },
+        body: { horaEntrada: '09:00', minutosGracia: 15 },
+        user: ADMIN,
+      },
+      { horaEntrada: '09:00', minutosGracia: 15 },
+    );
+    expect(data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_CONFIG',
+      entidad: 'config_asistencia_cda',
+      datosDespues: { grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 },
+    });
+
+    // Un grupo desconocido no se copia tal cual a la bitácora (la API ya respondió 400).
+    const sinGrupo = await auditar(
+      { method: 'PUT', originalUrl: '/operadores-cda/asistencia/config', query: { grupo: '<x>' }, body: {}, user: ADMIN },
+      { horaEntrada: '08:00', minutosGracia: 10 },
+    );
+    expect(sinGrupo.data.datosDespues.grupo).toBe('OPERADOR');
+  });
+
+  it('carnets QR: guarda a quiénes se emitió y las anulaciones', async () => {
+    const emitir = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/credenciales/carnets.pdf',
+      body: { operadorIds: [OTRO, 42] },
+      user: ADMIN,
+    });
+    expect(emitir.data).toMatchObject({
+      accion: 'CREDENCIAL_QR_CDA_EMITIR',
+      entidad: 'credencial_qr_cda',
+      datosDespues: { cantidad: 1, operadorIds: [OTRO] },
+    });
+
+    const revocar = await auditar(
+      { method: 'DELETE', originalUrl: `/operadores-cda/${OTRO}/credencial`, params: { id: OTRO }, body: {}, user: ADMIN },
+      { revocada: true },
+    );
+    expect(revocar.data).toMatchObject({ accion: 'CREDENCIAL_QR_CDA_REVOCAR', entidadId: OTRO });
   });
 
   it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {

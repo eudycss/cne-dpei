@@ -13,6 +13,7 @@ const ENTREGA = '88888888-2222-4333-8444-555555555555';
 
 const operador = (over: Record<string, unknown> = {}) => ({
   id: OP,
+  grupo: 'OPERADOR',
   numero: 1,
   apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
   cedula: '1710034065',
@@ -90,7 +91,13 @@ describe('ActasCdaService', () => {
     const r = await service.lista();
     expect(r[0].acta).toMatchObject({ estado: 'GENERADA', fecha: '2026-10-22', entregaUsuarioId: ENTREGA });
     expect(r[1].acta).toBeNull();
-    expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true });
+    expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
+  });
+
+  it('lista de asistentes: filtra por su grupo', async () => {
+    prisma.operadorCda.findMany.mockResolvedValue([]);
+    await service.lista('ASISTENTE');
+    expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
   });
 
   it('personasEntrega: administradores como analistas, los demás como transversales', async () => {

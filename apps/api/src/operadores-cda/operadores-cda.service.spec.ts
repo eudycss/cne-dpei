@@ -43,7 +43,7 @@ describe('OperadoresCdaService', () => {
 
   describe('importar (vista previa)', () => {
     it('marca NUEVO o ACTUALIZAR según la cédula y no guarda nada', async () => {
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ cedula: '1710034065' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ cedula: '1710034065', grupo: 'OPERADOR' }]);
       const file = await excel([FILA_OK, [2, 'RUIZ MORA JUAN', '1002003000', '0987111222', 'OPERADOR CDA']]);
 
       const r = await service.importar(file, { aplicar: false });
@@ -54,6 +54,19 @@ describe('OperadoresCdaService', () => {
         [11, '1002003000', 'NUEVO'],
       ]);
       expect(r.filas[0].fechaInicio).toBe('2026-10-20');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('una cédula que ya está en el otro grupo es un error de esa fila (una persona, un solo grupo)', async () => {
+      prisma.operadorCda.findMany.mockResolvedValue([{ cedula: '1710034065', grupo: 'OPERADOR' }]);
+      const file = await excel([FILA_OK, [2, 'RUIZ MORA JUAN', '1002003000', '0987111222', 'ASISTENTE CDA']]);
+
+      const r = await service.importar(file, { aplicar: false, grupo: 'ASISTENTE' });
+
+      expect(r).toMatchObject({ nuevos: 1, actualizados: 0 });
+      expect(r.filas.map((f) => f.cedula)).toEqual(['1002003000']);
+      expect(r.errores).toEqual([{ fila: 10, error: 'La cédula ya está registrada en Operadores CDA' }]);
+      await expect(service.importar(file, { aplicar: true, grupo: 'ASISTENTE' })).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -84,6 +97,7 @@ describe('OperadoresCdaService', () => {
         where: { cedula: '1710034065' },
         create: expect.objectContaining({
           cedula: '1710034065',
+          grupo: 'OPERADOR',
           apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
           fechaInicio: new Date('2026-10-20T00:00:00Z'),
         }),
@@ -193,6 +207,7 @@ describe('OperadoresCdaService', () => {
       const r = await service.list({ search: ' pérez ' });
 
       expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        grupo: 'OPERADOR',
         activo: true,
         OR: [
           { apellidosNombres: { contains: 'pérez', mode: 'insensitive' } },
@@ -222,7 +237,12 @@ describe('OperadoresCdaService', () => {
 
     it('list con incluirInactivos no filtra por activo', async () => {
       await service.list({ incluirInactivos: true });
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({});
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ grupo: 'OPERADOR' });
+    });
+
+    it('list de asistentes: filtra por su grupo', async () => {
+      await service.list({ grupo: 'ASISTENTE' });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ grupo: 'ASISTENTE', activo: true });
     });
 
     it('crear guarda los opcionales ausentes como null y devuelve el DTO', async () => {
@@ -234,6 +254,7 @@ describe('OperadoresCdaService', () => {
       expect(prisma.operadorCda.create).toHaveBeenCalledWith({
         data: {
           cedula: '1710034065',
+          grupo: 'OPERADOR',
           apellidosNombres: 'RUIZ MORA JUAN',
           telefono: null,
           cargo: 'OPERADOR CDA',
@@ -245,11 +266,27 @@ describe('OperadoresCdaService', () => {
     });
 
     it('crear con cédula ya registrada: 409, y si está oculto lo dice', async () => {
-      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: false });
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: false, grupo: 'OPERADOR' });
       await expect(service.crear(ALTA)).rejects.toThrow(/oculto/);
-      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: true });
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: true, grupo: 'OPERADOR' });
       await expect(service.crear(ALTA)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+    });
+
+    it('crear un asistente con la cédula de un operador: 409 que dice en qué grupo está', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ activo: true, grupo: 'OPERADOR' });
+      await expect(service.crear({ ...ALTA, grupo: 'ASISTENTE' })).rejects.toThrow(
+        'Esa cédula ya está registrada en Operadores CDA',
+      );
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+    });
+
+    it('crear un asistente lo guarda en su grupo', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce({ ...FILA_BD, grupo: 'ASISTENTE' });
+      const r = await service.crear({ ...ALTA, grupo: 'ASISTENTE' });
+      expect(prisma.operadorCda.create.mock.calls[0][0].data.grupo).toBe('ASISTENTE');
+      expect(r.grupo).toBe('ASISTENTE');
     });
 
     it('crear: dos altas simultáneas (P2002) responden 409, no 500', async () => {

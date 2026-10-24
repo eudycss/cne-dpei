@@ -83,6 +83,7 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
+  cedula?: string;
   email?: string;
   nombres?: string;
   apellidos?: string;
@@ -1005,8 +1006,12 @@ export interface FilaInformeCustodia {
 }
 
 // --- Operadores CDA (personal de los Centros de Digitalización de Actas) ---
+/** El personal de los CDA se divide en dos grupos con la misma gestión. */
+export type GrupoCda = 'OPERADOR' | 'ASISTENTE';
+
 export interface OperadorCda {
   id: string;
+  grupo: GrupoCda;
   numero: number | null;
   apellidosNombres: string;
   cedula: string;
@@ -1043,10 +1048,12 @@ export interface CrearOperadorCdaRequest {
   unidad?: string;
   /** AAAA-MM-DD */
   fechaInicio?: string;
+  /** Por defecto OPERADOR. */
+  grupo?: GrupoCda;
 }
 
-/** Edición: todo menos la cédula. Un opcional ausente se guarda vacío. */
-export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula'>;
+/** Edición: todo menos la cédula y el grupo. Un opcional ausente se guarda vacío. */
+export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula' | 'grupo'>;
 
 export interface ImportOperadoresCdaResult {
   /** true = solo vista previa, no se guardó nada. */
@@ -1058,6 +1065,43 @@ export interface ImportOperadoresCdaResult {
 }
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
+
+/** Cómo se registró una marca: check individual, "marcar a pendientes" o carnet QR. */
+export type OrigenMarcaCda = 'MANUAL' | 'MASIVA' | 'QR';
+
+/** Qué toca registrar al escanear el carnet hoy. */
+export type SiguienteMarcaQrCda = 'ENTRADA' | 'SALIDA' | 'COMPLETO';
+
+/** Resultado de escanear un carnet (todavía sin marcar: se confirma viendo la foto). */
+export interface ConsultaQrCda {
+  operador: OperadorCda;
+  siguiente: SiguienteMarcaQrCda;
+  /** ISO 8601 */
+  entradaEn: string | null;
+  salidaEn: string | null;
+  /** ISO: antes de esta hora no se acepta la salida por QR (evita el doble escaneo). */
+  salidaDesde: string | null;
+}
+
+export interface ConsultarQrCdaRequest {
+  token: string;
+}
+
+export interface MarcarQrCdaRequest {
+  token: string;
+  tipo: TipoMarcaAsistenciaCda;
+}
+
+export interface EmitirCarnetsCdaRequest {
+  operadorIds: string[];
+}
+
+/** Carnet vigente de un operador (sin el token: solo se imprime al emitirlo). */
+export interface CredencialQrCdaVigente {
+  operadorId: string;
+  /** ISO 8601 */
+  emitidaEn: string;
+}
 
 /** Asistencia de un operador en un día (marcas en null = pendientes). */
 export interface AsistenciaCdaFila {
@@ -1077,6 +1121,52 @@ export interface AsistenciaCdaDia {
   esHoy: boolean;
   filas: AsistenciaCdaFila[];
 }
+
+/** Hora oficial de entrada ("HH:MM", Ecuador) y minutos de gracia. */
+export interface ConfigAsistenciaCda {
+  horaEntrada: string;
+  minutosGracia: number;
+}
+
+/** PENDIENTE: hoy, sin entrada y todavía dentro de la hora + gracia. */
+export type EstadoPuntualidad = 'PUNTUAL' | 'ATRASO' | 'FALTA' | 'PENDIENTE';
+
+export interface FilaAtrasoCda {
+  /** AAAA-MM-DD */
+  fecha: string;
+  operadorId: string;
+  apellidosNombres: string;
+  cedula: string;
+  /** "HH:MM" o null si no marcó. */
+  entrada: string | null;
+  /** Minutos después de la hora oficial (0 si llegó antes). */
+  minutosAtraso: number;
+  estado: EstadoPuntualidad;
+}
+
+export interface ResumenAtrasoOperadorCda {
+  operadorId: string;
+  apellidosNombres: string;
+  cedula: string;
+  puntuales: number;
+  atrasos: number;
+  faltas: number;
+  /** Suma de minutos de atraso de los días con ATRASO. */
+  minutosAtraso: number;
+}
+
+export interface ReporteAtrasosCda {
+  desde: string;
+  hasta: string;
+  config: ConfigAsistenciaCda;
+  totales: { puntuales: number; atrasos: number; faltas: number; pendientes: number; minutosAtraso: number };
+  resumen: ResumenAtrasoOperadorCda[];
+  filas: FilaAtrasoCda[];
+}
+
+/** Reportes de asistencia y atrasos: todo en una tabla o una hoja/sección por día. */
+export type ModoReporteCda = 'GENERAL' | 'POR_DIA';
+export type FormatoReporteCda = 'xlsx' | 'pdf';
 
 export interface MarcarAsistenciaCdaRequest {
   tipo: TipoMarcaAsistenciaCda;
