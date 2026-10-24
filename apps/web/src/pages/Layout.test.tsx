@@ -177,26 +177,26 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
     expect(etiquetas('Informes')).toEqual(['Power BI CDAS']);
   });
 
-  it('ASISTENTE_TRANSVERSAL solo ve "Operadores CDA" y "Cadena de custodia" (el resto no le corresponde)', () => {
+  it('ASISTENTE_TRANSVERSAL solo ve "CDAs" y "Cadena de custodia" (el resto no le corresponde)', () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderLayout();
     const menu = screen.getByRole('navigation', { name: 'Menú principal' });
     expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual([
-      'Operadores CDA',
+      'CDAs',
       'Cadena de custodia',
     ]);
   });
 
-  it('"Operadores CDA" aparece en el grupo Personal para administrador y técnico supervisor, no para el lector', () => {
+  it('"CDAs" aparece en el grupo Personal para administrador y técnico supervisor, no para el lector', () => {
     for (const rol of ['ADMINISTRADOR', 'TECNICO_SUPERVISOR'] as const) {
       setSessionUser([rol]);
       const { unmount } = renderLayout();
-      expect(within(screen.getByRole('group', { name: 'Personal' })).getByRole('link', { name: 'Operadores CDA' })).toHaveAttribute('href', '/operadores-cda');
+      expect(within(screen.getByRole('group', { name: 'Personal' })).getByRole('link', { name: 'CDAs' })).toHaveAttribute('href', '/operadores-cda');
       unmount();
     }
     setSessionUser(['LECTOR']);
     renderLayout();
-    expect(screen.queryByRole('link', { name: 'Operadores CDA' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'CDAs' })).not.toBeInTheDocument();
   });
 
   it('ADMINISTRADOR y LECTOR ven "Cadena de custodia"; TECNICO_SUPERVISOR no', () => {

@@ -4,11 +4,13 @@ import type {
   AsistenciaCdaDia,
   AsistenciaCdaFila,
   FormatoReporteCda,
+  GrupoCda,
   MarcarAsistenciaCdaMasivaResult,
   OrigenMarcaCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { TEXTOS_GRUPO } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import {
@@ -31,8 +33,12 @@ const CON_QUIEN_MARCO = {
   salidaPor: { select: { nombres: true, apellidos: true } },
 } as const;
 
+const N: ColumnaReporte = { titulo: 'N.º', ancho: 6 };
+const FECHA: ColumnaReporte = { titulo: 'Fecha', ancho: 12 };
+
 /** Columnas del reporte; en el general va además "Fecha" al inicio. */
 const COLUMNAS: ColumnaReporte[] = [
+  N,
   { titulo: 'Apellidos y nombres', ancho: 40 },
   { titulo: 'Cédula', ancho: 13 },
   { titulo: 'Entrada', ancho: 9 },
@@ -42,7 +48,60 @@ const COLUMNAS: ColumnaReporte[] = [
   { titulo: 'Estado', ancho: 14 },
 ];
 
-type FilaExportada = { fecha: string; celdas: Celda[]; conEntrada: boolean };
+/** Quienes no registraron entrada; el N.º es el de la tabla del día. */
+const COLUMNAS_FALTARON: ColumnaReporte[] = [
+  N,
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Teléfono', ancho: 14 },
+];
+
+const columnasResumenDia = (grupo: GrupoCda): ColumnaReporte[] => [
+  FECHA,
+  { titulo: 'Día', ancho: 34 },
+  { titulo: TEXTOS_GRUPO[grupo].contador, ancho: 13 },
+  { titulo: 'Entrada', ancho: 11 },
+  { titulo: 'Salida', ancho: 11 },
+];
+
+type FilaExportada = {
+  fecha: string;
+  /** Empieza con el N.º: la posición en la lista del día (1, 2, 3…). */
+  celdas: Celda[];
+  conEntrada: boolean;
+  conSalida: boolean;
+  faltante: Celda[];
+};
+
+/**
+ * "Operadores 60/64 · Entrada 60/64 · Salida 58/64". El primero (Operadores o
+ * Asistentes) cuenta a los que asistieron, es decir, los que registraron
+ * entrada: por decisión del usuario coincide siempre con "Entrada".
+ */
+export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida'>[]): {
+  asistieron: string;
+  entrada: string;
+  salida: string;
+} {
+  const total = filas.length;
+  const entrada = filas.filter((f) => f.conEntrada).length;
+  const salida = filas.filter((f) => f.conSalida).length;
+  return { asistieron: `${entrada}/${total}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
+}
+
+function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
+  const c = contadoresDelDia(filas);
+  return `${TEXTOS_GRUPO[grupo].contador} ${c.asistieron} · Entrada ${c.entrada} · Salida ${c.salida}`;
+}
+
+const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
+
+/** Hoy todavía pueden llegar: "Sin entrada"; un día pasado sin entrada es "Faltó". */
+function estado(entrada: boolean, salida: boolean, esHoy: boolean): string {
+  if (salida) return 'Completa';
+  if (entrada) return 'Sin salida';
+  return esHoy ? 'Sin entrada' : 'Faltó';
+}
 
 type Persona = { nombres: string; apellidos: string } | null;
 const nombre = (p: Persona) => (p ? `${p.nombres} ${p.apellidos}` : null);
@@ -56,13 +115,16 @@ const nombre = (p: Persona) => (p ? `${p.nombres} ${p.apellidos}` : null);
 export class AsistenciaCdaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async dia(fecha?: string): Promise<AsistenciaCdaDia> {
+  async dia(fecha?: string, grupo: GrupoCda = 'OPERADOR'): Promise<AsistenciaCdaDia> {
     const hoy = diaEcuador();
     const dia = fecha ? parsearDia(fecha) : hoy;
     if (dia > hoy) throw new BadRequestException('No se puede consultar la asistencia de un día futuro');
     const [operadores, asistencias] = await Promise.all([
-      this.prisma.operadorCda.findMany({ where: { activo: true }, orderBy: { apellidosNombres: 'asc' } }),
-      this.prisma.asistenciaCda.findMany({ where: { fecha: fechaDb(dia) }, include: CON_QUIEN_MARCO }),
+      this.prisma.operadorCda.findMany({ where: { activo: true, grupo }, orderBy: { apellidosNombres: 'asc' } }),
+      this.prisma.asistenciaCda.findMany({
+        where: { fecha: fechaDb(dia), operador: { grupo } },
+        include: CON_QUIEN_MARCO,
+      }),
     ]);
     const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
     return {
@@ -201,13 +263,14 @@ export class AsistenciaCdaService {
     hastaParam: string | undefined,
     modoParam: unknown,
     formato: FormatoReporteCda,
+    grupo: GrupoCda = 'OPERADOR',
   ): Promise<ArchivoReporte> {
     const modo = parsearModo(modoParam);
     const hoy = diaEcuador();
     const hasta = hastaParam ? parsearDia(hastaParam) : hoy;
     if (hasta > hoy) throw new BadRequestException('La fecha final no puede ser futura');
     const operadores = await this.prisma.operadorCda.findMany({
-      where: { activo: true },
+      where: { activo: true, grupo },
       orderBy: { apellidosNombres: 'asc' },
     });
     const primerInicio = operadores
@@ -225,7 +288,7 @@ export class AsistenciaCdaService {
     }
 
     const asistencias = await this.prisma.asistenciaCda.findMany({
-      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) } },
+      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operador: { grupo } },
       include: CON_QUIEN_MARCO,
     });
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
@@ -235,47 +298,83 @@ export class AsistenciaCdaService {
 
     const filas: FilaExportada[] = [];
     for (const dia of dias) {
+      let numero = 0;
       for (const o of operadores) {
         if (o.fechaInicio && diaDeFechaDb(o.fechaInicio) > dia) continue;
         const a = porClave.get(clave(o.id, dia));
+        const conEntrada = !!a?.entradaEn;
+        const conSalida = !!a?.salidaEn;
+        numero++;
         filas.push({
           fecha: dia,
           celdas: [
+            numero,
             o.apellidosNombres,
             o.cedula,
             a?.entradaEn ? horaEcuador(a.entradaEn) : '',
             nombre(a?.entradaPor ?? null) ?? '',
             a?.salidaEn ? horaEcuador(a.salidaEn) : '',
             nombre(a?.salidaPor ?? null) ?? '',
-            a?.salidaEn ? 'Completa' : a?.entradaEn ? 'Falta salida' : 'Sin registro',
+            estado(conEntrada, conSalida, dia === hoy),
           ],
-          conEntrada: !!a?.entradaEn,
+          conEntrada,
+          conSalida,
+          faltante: [numero, o.apellidosNombres, o.cedula, o.telefono ?? ''],
         });
       }
     }
+    const porDia = agruparPorDia(filas);
+    const indicesSinEntrada = (lista: FilaExportada[]) =>
+      lista.flatMap((f, i) => (f.conEntrada ? [] : [i]));
+    const sinEntrada = filas.filter((f) => !f.conEntrada);
 
     const tablas: TablaReporte[] =
       modo === 'GENERAL'
         ? [
             {
+              hoja: 'Resumen por día',
+              titulo: 'Resumen por día',
+              columnas: columnasResumenDia(grupo),
+              filas: [...porDia].map(([dia, delDia]) => {
+                const c = contadoresDelDia(delDia);
+                return [dia, diaLargo(dia), c.asistieron, c.entrada, c.salida];
+              }),
+            },
+            {
               hoja: 'Asistencia',
-              titulo: 'Detalle por operador y día',
-              columnas: [{ titulo: 'Fecha', ancho: 12 }, ...COLUMNAS],
+              titulo: `Detalle por ${TEXTOS_GRUPO[grupo].singular} y día`,
+              columnas: [FECHA, ...COLUMNAS],
               filas: filas.map((f) => [f.fecha, ...f.celdas]),
+              resaltadas: indicesSinEntrada(filas),
+            },
+            {
+              hoja: 'Faltaron',
+              titulo: tituloFaltaron(sinEntrada.length),
+              columnas: [FECHA, ...COLUMNAS_FALTARON],
+              filas: sinEntrada.map((f) => [f.fecha, ...f.faltante]),
             },
           ]
-        : [...agruparPorDia(filas)].map(([dia, delDia]) => ({
-            hoja: dia,
-            titulo: `${diaLargo(dia)} · ${delDia.filter((f) => f.conEntrada).length} de ${delDia.length} con entrada`,
-            columnas: COLUMNAS,
-            filas: delDia.map((f) => f.celdas),
-          }));
+        : [...porDia].map(([dia, delDia]) => {
+            const faltaron = delDia.filter((f) => !f.conEntrada);
+            return {
+              hoja: dia,
+              titulo: `${diaLargo(dia)} · ${textoContadores(delDia, grupo)}`,
+              columnas: COLUMNAS,
+              filas: delDia.map((f) => f.celdas),
+              resaltadas: indicesSinEntrada(delDia),
+              anexo: {
+                titulo: tituloFaltaron(faltaron.length),
+                columnas: COLUMNAS_FALTARON,
+                filas: faltaron.map((f) => f.faltante),
+              },
+            };
+          });
 
     return generarReporte(
       {
-        titulo: 'Reporte de asistencia — Operadores CDA',
+        titulo: `Reporte de asistencia — ${TEXTOS_GRUPO[grupo].titulo}`,
         detalle: `Del ${diaCorto(desde)} al ${diaCorto(hasta)} · hora de Ecuador`,
-        archivo: 'asistencia_operadores_cda',
+        archivo: `asistencia_${TEXTOS_GRUPO[grupo].archivo}`,
         desde,
         hasta,
         modo,

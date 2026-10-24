@@ -4,6 +4,7 @@ import { sileo } from 'sileo';
 import type { ImportOperadoresCdaResult } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { importarOperadoresCda } from '../../lib/queries/operadores-cda';
+import { useGrupoCda } from './grupo';
 
 function mensajeError(e: unknown, porDefecto: string): string {
   return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
@@ -16,6 +17,7 @@ function mensajeError(e: unknown, porDefecto: string): string {
  */
 export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const { grupo, titulo, singular } = useGrupoCda();
   const [archivo, setArchivo] = useState<File | null>(null);
   const [vista, setVista] = useState<ImportOperadoresCdaResult | null>(null);
   // Si se elige otro archivo mientras se lee el anterior, la respuesta vieja
@@ -23,16 +25,16 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
   const archivoActual = useRef<File | null>(null);
 
   const previsualizar = useMutation({
-    mutationFn: (file: File) => importarOperadoresCda(file, false),
+    mutationFn: (file: File) => importarOperadoresCda(file, false, grupo),
     onSuccess: (r, file) => {
       if (archivoActual.current === file) setVista(r);
     },
   });
 
   const aplicar = useMutation({
-    mutationFn: (file: File) => importarOperadoresCda(file, true),
+    mutationFn: (file: File) => importarOperadoresCda(file, true, grupo),
     onSuccess: ({ nuevos, actualizados }) => {
-      qc.invalidateQueries({ queryKey: ['operadores-cda'] });
+      qc.invalidateQueries({ queryKey: ['operadores-cda', grupo] });
       sileo.success({ title: `Importación lista: ${nuevos} nuevo(s), ${actualizados} actualizado(s).` });
       onClose();
     },
@@ -53,10 +55,11 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal labelledBy="importar-ocda-titulo" onClose={onClose} maxWidth={760}>
       <div className="login-card" style={{ width: '100%', maxWidth: 'none' }} aria-busy={previsualizar.isPending || aplicar.isPending}>
-        <h1 id="importar-ocda-titulo">Importar operadores CDA</h1>
+        <h1 id="importar-ocda-titulo">Importar {titulo}</h1>
         <p className="muted">
           Suba el Excel de talento humano (.xlsx). Se detecta solo la fila de encabezados (N°, Apellidos Nombres,
-          Cédula, Teléfonos, Cargo, Unidad, Inicial). Si la cédula ya existe, se actualizan sus datos.
+          Cédula, Teléfonos, Cargo, Unidad, Inicial). Si la cédula ya existe, se actualizan sus datos; si está
+          en el otro grupo, esa fila se marca como error.
         </p>
 
         <div className="field">
@@ -80,7 +83,7 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
         {vista && (
           <>
             <p role="status">
-              <strong>{total}</strong> operador(es): <strong>{vista.nuevos}</strong> nuevo(s) ·{' '}
+              <strong>{total}</strong> {singular}(es): <strong>{vista.nuevos}</strong> nuevo(s) ·{' '}
               <strong>{vista.actualizados}</strong> actualizado(s)
               {vista.errores.length > 0 && (
                 <>
@@ -152,7 +155,7 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
             disabled={!puedeImportar}
             onClick={() => archivo && aplicar.mutate(archivo)}
           >
-            {aplicar.isPending ? 'Importando…' : `Importar ${total} operador(es)`}
+            {aplicar.isPending ? 'Importando…' : `Importar ${total} ${singular}(es)`}
           </button>
         </div>
       </div>

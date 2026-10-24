@@ -6,6 +6,7 @@ import { configAsistenciaCdaSchema } from '@cne/shared-validation';
 import type { ConfigAsistenciaCda } from '@cne/shared-types';
 
 import { AtrasosCdaService } from './atrasos-cda.service';
+import { parsearGrupo } from './grupo-cda';
 import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -25,35 +26,38 @@ export class AtrasosCdaController {
   constructor(private readonly atrasos: AtrasosCdaService) {}
 
   @Get('config')
-  @ApiOperation({ summary: 'Hora oficial de entrada y minutos de gracia' })
-  config() {
-    return this.atrasos.getConfig();
+  @ApiOperation({ summary: 'Hora oficial de entrada y minutos de gracia del grupo (?grupo=OPERADOR|ASISTENTE)' })
+  config(@Query('grupo') grupo?: unknown) {
+    return this.atrasos.getConfig(parsearGrupo(grupo));
   }
 
   @Put('config')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Cambia la hora oficial de entrada y los minutos de gracia' })
-  guardarConfig(@Body(new ZodValidationPipe(configAsistenciaCdaSchema)) body: ConfigAsistenciaCda) {
-    return this.atrasos.guardarConfig(body);
+  @ApiOperation({ summary: 'Cambia la hora oficial de entrada y los minutos de gracia del grupo (?grupo=)' })
+  guardarConfig(
+    @Body(new ZodValidationPipe(configAsistenciaCdaSchema)) body: ConfigAsistenciaCda,
+    @Query('grupo') grupo?: unknown,
+  ) {
+    return this.atrasos.guardarConfig(body, parsearGrupo(grupo));
   }
 
   @Get('atrasos')
   @ApiOperation({ summary: 'Puntuales, atrasos y faltas por operador y día (desde/hasta AAAA-MM-DD)' })
-  reporte(@Query('desde') desde?: unknown, @Query('hasta') hasta?: unknown) {
-    return this.atrasos.reporte(texto(desde), texto(hasta));
+  reporte(@Query('desde') desde?: unknown, @Query('hasta') hasta?: unknown, @Query('grupo') grupo?: unknown) {
+    return this.atrasos.reporte(texto(desde), texto(hasta), parsearGrupo(grupo));
   }
 
   @Get('atrasos.xlsx')
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'Excel de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
   async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
-    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'xlsx'));
+    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'xlsx', parsearGrupo(q.grupo)));
   }
 
   @Get('atrasos.pdf')
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'PDF de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
   async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {
-    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'pdf'));
+    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'pdf', parsearGrupo(q.grupo)));
   }
 }

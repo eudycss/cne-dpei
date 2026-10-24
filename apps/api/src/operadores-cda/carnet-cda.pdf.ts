@@ -24,6 +24,8 @@ const X0 = (595.28 - ANCHO * COLUMNAS) / 2;
 const Y0 = (841.89 - ALTO * FILAS) / 2;
 
 export interface DatosCarnet {
+  /** "OPERADOR CDA" o "ASISTENTE CDA", arriba a la derecha. */
+  grupo: string;
   nombre: string;
   cargo: string;
   token: string;
@@ -49,7 +51,7 @@ function dibujarCarnet(doc: PDFKit.PDFDocument, c: DatosCarnet, x: number, y: nu
 
   if (hayLogo) doc.image(RUTA_LOGO, x + PAD, y + 6, { fit: [92, 34] });
   doc.font('Helvetica-Bold').fontSize(8).fillColor('#0e7490')
-    .text('OPERADOR CDA', x + 104, y + 10, { width: ANCHO - 104 - PAD, align: 'right' });
+    .text(c.grupo, x + 104, y + 10, { width: ANCHO - 104 - PAD, align: 'right' });
   doc.font('Helvetica').fontSize(5.8).fillColor(GRIS)
     .text('Delegación Provincial Electoral de Imbabura', x + 104, y + 21, { width: ANCHO - 104 - PAD, align: 'right' });
 

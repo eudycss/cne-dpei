@@ -11,8 +11,10 @@ import type { FormatoReporteCda, ModoReporteCda } from '@cne/shared-types';
 
 import {
   ANCHO_HORIZONTAL,
+  FONDO_RESALTADO,
   GRIS,
   RUTA_LOGO,
+  asegurarEspacio,
   encabezado,
   fecha as fechaHora,
   hayLogo,
@@ -46,12 +48,23 @@ export interface ColumnaReporte {
   ancho: number;
 }
 
+/** Tabla corta que va debajo de la principal, en la misma hoja/sección. */
+export interface AnexoReporte {
+  titulo: string;
+  columnas: ColumnaReporte[];
+  /** Vacío = solo se imprime el título. */
+  filas: Celda[][];
+}
+
 export interface TablaReporte {
   /** Nombre de la hoja del Excel (único, se recorta a 31 caracteres). */
   hoja: string;
   titulo: string;
   columnas: ColumnaReporte[];
   filas: Celda[][];
+  /** Índices de `filas` con fondo rojo claro. */
+  resaltadas?: number[];
+  anexo?: AnexoReporte;
 }
 
 export interface ReporteCda {
@@ -75,6 +88,12 @@ export interface ArchivoReporte {
 const TIPO: Record<FormatoReporteCda, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   pdf: 'application/pdf',
+};
+
+const RESALTADO_EXCEL: ExcelJS.Fill = {
+  type: 'pattern',
+  pattern: 'solid',
+  fgColor: { argb: `FF${FONDO_RESALTADO.slice(1).toUpperCase()}` },
 };
 
 const SIN_DATOS: TablaReporte = {
@@ -164,14 +183,24 @@ async function excelReporte(r: ReporteCda): Promise<Buffer> {
       if (n > 1) ws.mergeCells(fila, 1, fila, n);
     });
 
-    const enc = ws.getRow(FILA_ENCABEZADOS_EXCEL);
-    enc.values = t.columnas.map((c) => c.titulo);
-    enc.font = { bold: true };
-    enc.eachCell((c) => {
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
-      c.border = { bottom: { style: 'thin', color: { argb: 'FF9CA3AF' } } };
+    encabezadosExcel(ws.getRow(FILA_ENCABEZADOS_EXCEL), t.columnas);
+    const resaltadas = new Set(t.resaltadas);
+    t.filas.forEach((f, i) => {
+      const fila = ws.getRow(FILA_ENCABEZADOS_EXCEL + 1 + i);
+      fila.values = f;
+      if (resaltadas.has(i)) for (let c = 1; c <= n; c++) fila.getCell(c).fill = RESALTADO_EXCEL;
     });
-    t.filas.forEach((f, i) => (ws.getRow(FILA_ENCABEZADOS_EXCEL + 1 + i).values = f));
+
+    if (t.anexo) {
+      // Una fila en blanco, el título y (si hay) la tabla con sus encabezados.
+      const inicio = FILA_ENCABEZADOS_EXCEL + t.filas.length + 2;
+      ws.getCell(inicio, 1).value = t.anexo.titulo;
+      ws.getCell(inicio, 1).font = { bold: true, size: 11 };
+      if (t.anexo.filas.length > 0) {
+        encabezadosExcel(ws.getRow(inicio + 1), t.anexo.columnas);
+        t.anexo.filas.forEach((f, i) => (ws.getRow(inicio + 2 + i).values = f));
+      }
+    }
 
     ws.views = [{ state: 'frozen', ySplit: FILA_ENCABEZADOS_EXCEL }];
     ws.autoFilter = { from: { row: FILA_ENCABEZADOS_EXCEL, column: 1 }, to: { row: FILA_ENCABEZADOS_EXCEL, column: n } };
@@ -181,6 +210,20 @@ async function excelReporte(r: ReporteCda): Promise<Buffer> {
   return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 }
 
+function encabezadosExcel(fila: ExcelJS.Row, columnas: ColumnaReporte[]): void {
+  fila.values = columnas.map((c) => c.titulo);
+  fila.font = { bold: true };
+  fila.eachCell((c) => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+    c.border = { bottom: { style: 'thin', color: { argb: 'FF9CA3AF' } } };
+  });
+}
+
+const proporciones = (columnas: ColumnaReporte[]) => {
+  const total = columnas.reduce((s, c) => s + c.ancho, 0);
+  return columnas.map((c) => c.ancho / total);
+};
+
 async function pdfReporte(r: ReporteCda): Promise<Buffer> {
   const { doc, terminado } = nuevoPdf('landscape', { paginar: true });
   for (const t of r.tablas.length ? r.tablas : [SIN_DATOS]) {
@@ -188,14 +231,28 @@ async function pdfReporte(r: ReporteCda): Promise<Buffer> {
     encabezado(doc, ANCHO_HORIZONTAL, r.titulo);
     doc.font('Helvetica').fontSize(9).fillColor(GRIS).text(r.detalle, { width: ANCHO_HORIZONTAL, align: 'center' });
     titulo(doc, t.titulo);
-    const total = t.columnas.reduce((s, c) => s + c.ancho, 0);
     tabla(
       doc,
       t.columnas.map((c) => c.titulo),
-      t.columnas.map((c) => c.ancho / total),
+      proporciones(t.columnas),
       t.filas.map((f) => f.map(String)),
       ANCHO_HORIZONTAL,
+      new Set(t.resaltadas),
     );
+    if (t.anexo) {
+      // Que el título no quede solo al pie de una página.
+      asegurarEspacio(doc, 60);
+      titulo(doc, t.anexo.titulo);
+      if (t.anexo.filas.length > 0) {
+        tabla(
+          doc,
+          t.anexo.columnas.map((c) => c.titulo),
+          proporciones(t.anexo.columnas),
+          t.anexo.filas.map((f) => f.map(String)),
+          ANCHO_HORIZONTAL,
+        );
+      }
+    }
   }
   piePaginas(doc, `Generado el ${fechaHora(new Date())}`);
   doc.end();

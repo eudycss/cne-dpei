@@ -6,6 +6,7 @@ import { Modal } from '../../components/Modal';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import { anularCredencialCda, getCredencialesVigentesCda, pedirCarnetsCda } from '../../lib/queries/operadores-cda';
 import { hoyEcuador, mensajeError } from './utils';
+import { useGrupoCda } from './grupo';
 
 const CLAVE = ['credenciales-cda'];
 /** Mismo tope que emitirCarnetsCdaSchema (un PDF de 20 hojas). */
@@ -22,6 +23,7 @@ function fechaCorta(iso: string): string {
  */
 export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCda[]; onClose: () => void }) {
   const qc = useQueryClient();
+  const { plural } = useGrupoCda();
   const vigentes = useQuery({ queryKey: CLAVE, queryFn: getCredencialesVigentesCda });
   const emitidoEn = useMemo(
     () => new Map((vigentes.data ?? []).map((v) => [v.operadorId, v.emitidaEn])),
@@ -64,7 +66,7 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
     ) {
       return;
     }
-    await descargar('carnets', () => pedirCarnetsCda(ids), `carnets_operadores_cda_${hoyEcuador()}.pdf`);
+    await descargar('carnets', () => pedirCarnetsCda(ids), `carnets_cda_${hoyEcuador()}.pdf`);
     qc.invalidateQueries({ queryKey: CLAVE });
   }
 
@@ -123,7 +125,7 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
         </div>
 
         <fieldset className="ocda-carnets-lista">
-          <legend className="sr-only">Operadores para imprimir carnet</legend>
+          <legend className="sr-only">{plural[0].toUpperCase() + plural.slice(1)} para imprimir carnet</legend>
           {operadores.map((o) => {
             const emitido = emitidoEn.get(o.id);
             return (

@@ -61,7 +61,7 @@ export class CredencialQrCdaController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(emitirCarnetsCdaSchema)) body: EmitirCarnetsCdaRequest,
   ) {
-    enviarPdf(res, await this.credenciales.carnetsPdf(body.operadorIds, user.sub), 'carnets_operadores_cda.pdf');
+    enviarPdf(res, await this.credenciales.carnetsPdf(body.operadorIds, user.sub), 'carnets_cda.pdf');
   }
 
   @Delete(':id/credencial')

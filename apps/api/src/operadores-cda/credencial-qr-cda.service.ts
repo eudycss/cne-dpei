@@ -15,6 +15,7 @@ import { AsistenciaCdaService } from './asistencia-cda.service';
 import { diaEcuador, fechaDb, horaEcuador } from './dia-ecuador';
 import { hashToken } from './foto-cda.service';
 import { toOperadorCdaDto } from './operadores-cda.service';
+import { TEXTOS_GRUPO } from './grupo-cda';
 
 const PREFIJO = 'CDA1';
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -80,7 +81,7 @@ export class CredencialQrCdaService {
       where: { id: { in: [...new Set(operadorIds)] }, activo: true },
       orderBy: { apellidosNombres: 'asc' },
     });
-    if (operadores.length === 0) throw new NotFoundException('Ninguno de los operadores elegidos está activo');
+    if (operadores.length === 0) throw new NotFoundException('Ninguna de las personas elegidas está activa');
     const emitidas: CredencialEmitida[] = operadores.map((o) => ({
       operador: toOperadorCdaDto(o),
       token: generarTokenCredencial(),
@@ -94,6 +95,7 @@ export class CredencialQrCdaService {
     }
     const pdf = await carnetsPdf(
       emitidas.map((e, i) => ({
+        grupo: TEXTOS_GRUPO[e.operador.grupo].cargo,
         nombre: e.operador.apellidosNombres,
         cargo: e.operador.cargo.split(' - ')[0],
         token: e.token,

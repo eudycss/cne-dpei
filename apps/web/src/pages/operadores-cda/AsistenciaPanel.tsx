@@ -17,6 +17,7 @@ import { ExportarReporteModal } from './ExportarReporteModal';
 import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
 import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
+import { useGrupoCda } from './grupo';
 
 type Filtro = 'todos' | 'sin-entrada' | 'sin-salida' | 'completos';
 type Marca = { operadorId: string; tipo: TipoMarcaAsistenciaCda };
@@ -42,6 +43,7 @@ function mensajeError(e: unknown, porDefecto: string): string {
  */
 export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const qc = useQueryClient();
+  const { grupo, plural, singular, Singular } = useGrupoCda();
   const hoy = hoyEcuador();
   const [fecha, setFecha] = useState(hoy);
   const [busqueda, setBusqueda] = useState('');
@@ -50,11 +52,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const [exportando, setExportando] = useState(false);
   const [escaneando, setEscaneando] = useState(false);
   const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
-  const clave = ['asistencia-cda', fecha];
+  const clave = ['asistencia-cda', grupo, fecha];
 
   const { data, isLoading, error } = useQuery({
     queryKey: clave,
-    queryFn: () => getAsistenciaCda(fecha),
+    queryFn: () => getAsistenciaCda(fecha, grupo),
     refetchInterval: fecha === hoy ? 30_000 : false,
   });
 
@@ -199,7 +201,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
             value={busqueda}
             onChange={setBusqueda}
             placeholder="Buscar por nombre o cédula…"
-            ariaLabel="Buscar operador por nombre o cédula"
+            ariaLabel={`Buscar ${singular} por nombre o cédula`}
           />
         </span>
         <label className="ocda-fecha">
@@ -239,18 +241,18 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
         </div>
       )}
       {data && filas.length === 0 && (
-        <p className="muted">Aún no hay operadores. Impórtelos desde la pestaña Listado.</p>
+        <p className="muted">Aún no hay {plural}. Impórtelos desde la pestaña Listado.</p>
       )}
 
       {data && filas.length > 0 && (
-        <div className="ocda-tabla" tabIndex={0} role="region" aria-label="Asistencia de operadores">
+        <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Asistencia de ${plural}`}>
           <table>
             <caption className="sr-only">
-              Asistencia del {fecha}: {visibles.length} operador(es) con el filtro actual
+              Asistencia del {fecha}: {visibles.length} {singular}(es) con el filtro actual
             </caption>
             <thead>
               <tr>
-                <th scope="col">Operador</th>
+                <th scope="col">{Singular}</th>
                 <th scope="col">Cédula</th>
                 <th scope="col">Teléfono</th>
                 <th scope="col">Entrada</th>
@@ -308,9 +310,9 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
               })}
             </tbody>
           </table>
-          {visibles.length === 0 && <p className="ocda-pie">Ningún operador con este filtro.</p>}
+          {visibles.length === 0 && <p className="ocda-pie">Ningún {singular} con este filtro.</p>}
           <p className="ocda-pie">
-            Mostrando {visibles.length} de {total} operadores
+            Mostrando {visibles.length} de {total} {plural}
             {esHoy ? ' · Los cambios se guardan automáticamente' : ' · Solo consulta'}
           </p>
         </div>
@@ -360,6 +362,7 @@ function ConfirmarMasiva({
   onClose: () => void;
   onHecho: () => void;
 }) {
+  const { singular } = useGrupoCda();
   const aplicar = useMutation({
     mutationFn: () => marcarAsistenciaCdaMasiva(tipo, filas.map((f) => f.operador.id)),
     onSuccess: ({ marcados, omitidos }) => {
@@ -376,7 +379,9 @@ function ConfirmarMasiva({
   return (
     <Modal labelledBy="masiva-titulo" onClose={onClose}>
       <div className="login-card" style={{ width: '100%', maxWidth: 'none' }}>
-        <h1 id="masiva-titulo">Marcar {ETIQUETA[tipo]} a {filas.length} operador(es)</h1>
+        <h1 id="masiva-titulo">
+          Marcar {ETIQUETA[tipo]} a {filas.length} {singular}(es)
+        </h1>
         <p>
           Se registrará la {ETIQUETA[tipo]} de hoy con la hora actual a quienes se muestran ahora como pendientes
           {tipo === 'SALIDA' ? ' (solo los que ya tienen entrada)' : ''}. Revise que todos estén presentes.

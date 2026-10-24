@@ -10,6 +10,7 @@ import { Modal } from '../../components/Modal';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import { nombreReporteCda, pedirReporteCda, type ReporteCda } from '../../lib/queries/operadores-cda';
 import { Campo } from './Campo';
+import { useGrupoCda } from './grupo';
 import { hoyEcuador } from './utils';
 
 type Opcion<T> = { valor: T; etiqueta: string; detalle: string };
@@ -72,7 +73,8 @@ function Opciones<T extends string>({
 
 /**
  * Rango, organización (general o una hoja por día) y formato (Excel o PDF) de
- * los reportes de Operadores CDA. Queda abierto tras descargar para poder bajar
+ * los reportes de Operadores o Asistentes CDA (un archivo por grupo, el que se
+ * está viendo). Queda abierto tras descargar para poder bajar
  * también el otro formato.
  */
 export function ExportarReporteModal({
@@ -86,6 +88,7 @@ export function ExportarReporteModal({
   hastaInicial: string;
   onClose: () => void;
 }) {
+  const { grupo } = useGrupoCda();
   const [desde, setDesde] = useState(desdeInicial);
   const [hasta, setHasta] = useState(hastaInicial);
   const [modo, setModo] = useState<ModoReporteCda>('GENERAL');
@@ -117,7 +120,7 @@ export function ExportarReporteModal({
       document.getElementById(`exportar-${conError}`)?.focus();
       return;
     }
-    const o = { desde, hasta, modo, formato };
+    const o = { desde, hasta, modo, formato, grupo };
     void descargar('reporte', () => pedirReporteCda(reporte, o), nombreReporteCda(reporte, o));
   }
 

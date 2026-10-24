@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -6,6 +6,7 @@ import { descargarActasCdaSchema, generarActasCdaSchema } from '@cne/shared-vali
 import type { GenerarActasCdaRequest } from '@cne/shared-types';
 
 import { ActasCdaService, type ArchivoActa } from './actas-cda.service';
+import { parsearGrupo } from './grupo-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -40,9 +41,9 @@ export class ActasCdaController {
   constructor(private readonly actas: ActasCdaService) {}
 
   @Get('actas')
-  @ApiOperation({ summary: 'Operadores activos con su acta de entrega vigente (o null)' })
-  lista() {
-    return this.actas.lista();
+  @ApiOperation({ summary: 'Operadores (o, con ?grupo=ASISTENTE, asistentes) activos con su acta de entrega vigente (o null)' })
+  lista(@Query('grupo') grupo?: unknown) {
+    return this.actas.lista(parsearGrupo(grupo));
   }
 
   @Get('actas/entregan')

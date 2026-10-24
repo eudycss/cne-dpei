@@ -200,7 +200,7 @@ describe('AsistenciaPanel', () => {
     fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
 
     expect(await screen.findByText(/Está viendo un día pasado/)).toBeInTheDocument();
-    expect(getMock).toHaveBeenLastCalledWith('/operadores-cda/asistencia?fecha=2026-10-21');
+    expect(getMock).toHaveBeenLastCalledWith('/operadores-cda/asistencia?fecha=2026-10-21&grupo=OPERADOR');
     expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
     expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAttribute('aria-disabled', 'true');
   });

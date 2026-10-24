@@ -5,6 +5,7 @@ import type {
   BulkUploadRow,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
+  GrupoCda,
   ImportOperadoresCdaResult,
   OperadorCda,
   OperadorCdaFila,
@@ -12,6 +13,7 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { leerFilasOperadoresCda, type FilaLeida } from './excel-operadores-cda';
 import { tamanoDescomprimidoZip } from './zip';
+import { TEXTOS_GRUPO } from './grupo-cda';
 
 // Un .xlsx es un ZIP: empieza con "PK\x03\x04".
 const FIRMA_ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -27,10 +29,11 @@ const MAX_TEXTO_ERROR = 200;
 export class OperadoresCdaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(opts: { search?: string; incluirInactivos?: boolean } = {}): Promise<OperadorCda[]> {
+  async list(opts: { search?: string; incluirInactivos?: boolean; grupo?: GrupoCda } = {}): Promise<OperadorCda[]> {
     const search = opts.search?.trim();
     const items = await this.prisma.operadorCda.findMany({
       where: {
+        grupo: opts.grupo ?? 'OPERADOR',
         ...(!opts.incluirInactivos && { activo: true }),
         ...(search && {
           OR: [
@@ -44,22 +47,26 @@ export class OperadoresCdaService {
     return items.map(toOperadorCdaDto);
   }
 
-  /** Alta manual (alguien que no vino en el Excel). La cédula no puede repetirse. */
+  /**
+   * Alta manual (alguien que no vino en el Excel). La cédula no puede repetirse
+   * en ninguno de los dos grupos: una persona está en un solo grupo.
+   */
   async crear(datos: CrearOperadorCdaRequest): Promise<OperadorCda> {
+    const grupo = datos.grupo ?? 'OPERADOR';
     const existente = await this.prisma.operadorCda.findUnique({
       where: { cedula: datos.cedula },
-      select: { activo: true },
+      select: { activo: true, grupo: true },
     });
-    if (existente) throw new ConflictException(mensajeCedulaRepetida(existente.activo));
+    if (existente) throw new ConflictException(mensajeCedulaRepetida(existente, grupo));
     try {
       const creado = await this.prisma.operadorCda.create({
-        data: { cedula: datos.cedula, ...datosEditables(datos) },
+        data: { cedula: datos.cedula, grupo, ...datosEditables(datos) },
       });
       return toOperadorCdaDto(creado);
     } catch (e) {
       // Dos altas simultáneas con la misma cédula: la segunda choca con el índice único.
       if ((e as { code?: string } | null)?.code === 'P2002') {
-        throw new ConflictException(mensajeCedulaRepetida(true));
+        throw new ConflictException('Ya existe una persona con esa cédula');
       }
       throw e;
     }
@@ -90,20 +97,30 @@ export class OperadoresCdaService {
   /**
    * Importa el Excel de operadores. Con `aplicar=false` solo devuelve la vista
    * previa; con `aplicar=true` guarda todo o nada (si hay errores no guarda).
-   * La cédula identifica al operador: si ya existe se actualizan sus datos.
+   * La cédula identifica a la persona: si ya existe en este grupo se
+   * actualizan sus datos; si está en el otro grupo, la fila es un error.
    */
   async importar(
     file: Express.Multer.File | undefined,
-    { aplicar }: { aplicar: boolean },
+    { aplicar, grupo = 'OPERADOR' }: { aplicar: boolean; grupo?: GrupoCda },
   ): Promise<ImportOperadoresCdaResult> {
     const leidas = await this.leerExcel(file);
-    const { filas, errores } = validarFilas(leidas);
+    const validadas = validarFilas(leidas);
 
     const existentes = await this.prisma.operadorCda.findMany({
-      where: { cedula: { in: filas.map((f) => f.cedula) } },
-      select: { cedula: true },
+      where: { cedula: { in: validadas.filas.map((f) => f.cedula) } },
+      select: { cedula: true, grupo: true },
     });
-    const yaRegistradas = new Set(existentes.map((e) => e.cedula));
+    const grupoDe = new Map<string, GrupoCda>(existentes.map((e) => [e.cedula, e.grupo]));
+    const yaRegistradas = new Set(existentes.filter((e) => e.grupo === grupo).map((e) => e.cedula));
+    const errores = [...validadas.errores];
+    const filas = validadas.filas.filter((f) => {
+      const otro = grupoDe.get(f.cedula);
+      if (!otro || otro === grupo) return true;
+      errores.push({ fila: f.fila, error: `La cédula ya está registrada en ${TEXTOS_GRUPO[otro].titulo}` });
+      return false;
+    });
+    errores.sort((a, b) => a.fila - b.fila);
     const conAccion: OperadorCdaFila[] = filas.map((f) => ({
       ...f,
       accion: yaRegistradas.has(f.cedula) ? 'ACTUALIZAR' : 'NUEVO',
@@ -136,7 +153,7 @@ export class OperadoresCdaService {
         };
         return this.prisma.operadorCda.upsert({
           where: { cedula: f.cedula },
-          create: { cedula: f.cedula, ...datos },
+          create: { cedula: f.cedula, grupo, ...datos },
           update: datos,
         });
       }),
@@ -192,10 +209,12 @@ function datosEditables(d: EditarOperadorCdaRequest) {
   };
 }
 
-function mensajeCedulaRepetida(activo: boolean): string {
-  return activo
-    ? 'Ya existe un operador con esa cédula'
-    : 'Ya existe un operador oculto con esa cédula: actívelo desde "Mostrar ocultos"';
+function mensajeCedulaRepetida(existente: { activo: boolean; grupo: GrupoCda }, grupo: GrupoCda): string {
+  if (existente.grupo !== grupo) return `Esa cédula ya está registrada en ${TEXTOS_GRUPO[existente.grupo].titulo}`;
+  const quien = TEXTOS_GRUPO[grupo].singular;
+  return existente.activo
+    ? `Ya existe un ${quien} con esa cédula`
+    : `Ya existe un ${quien} oculto con esa cédula: actívelo desde "Mostrar ocultos"`;
 }
 
 /** Corta textos largos y la cantidad de errores para no devolver respuestas enormes. */
@@ -249,6 +268,7 @@ function validarFilas(leidas: FilaLeida[]): {
 
 export function toOperadorCdaDto(o: {
   id: string;
+  grupo: GrupoCda;
   numero: number | null;
   apellidosNombres: string;
   cedula: string;
@@ -262,6 +282,7 @@ export function toOperadorCdaDto(o: {
 }): OperadorCda {
   return {
     id: o.id,
+    grupo: o.grupo,
     numero: o.numero,
     apellidosNombres: o.apellidosNombres,
     cedula: o.cedula,

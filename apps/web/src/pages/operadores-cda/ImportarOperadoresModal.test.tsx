@@ -50,11 +50,11 @@ describe('ImportarOperadoresModal', () => {
     expect(await screen.findByText('PÉREZ LÓPEZ ANA')).toBeInTheDocument();
     expect(screen.getByText('Actualizar')).toBeInTheDocument();
     expect(postMock).toHaveBeenCalledTimes(1);
-    expect(postMock.mock.calls[0][0]).toBe('/operadores-cda/importar');
+    expect(postMock.mock.calls[0][0]).toBe('/operadores-cda/importar?grupo=OPERADOR');
 
     await userEvent.click(screen.getByRole('button', { name: 'Importar 2 operador(es)' }));
 
-    expect(postMock.mock.calls[1][0]).toBe('/operadores-cda/importar?aplicar=true');
+    expect(postMock.mock.calls[1][0]).toBe('/operadores-cda/importar?grupo=OPERADOR&aplicar=true');
     expect(sileo.success).toHaveBeenCalledWith({ title: 'Importación lista: 1 nuevo(s), 1 actualizado(s).' });
     expect(onClose).toHaveBeenCalled();
   });

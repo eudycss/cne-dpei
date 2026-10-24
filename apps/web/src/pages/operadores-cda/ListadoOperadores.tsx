@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import { motion, useReducedMotion } from 'motion/react';
-import type { OperadorCda } from '@cne/shared-types';
+import type { GrupoCda, OperadorCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
@@ -10,6 +10,7 @@ import { cambiarActivoOperadorCda, getOperadoresCda } from '../../lib/queries/op
 import { useFotoOperadorUrl } from './useFotoOperador';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
+import { useGrupoCda } from './grupo';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { OperadorFormModal } from './OperadorFormModal';
@@ -20,10 +21,10 @@ import { cargoCorto, iniciales, mensajeError, normalizar, partirNombre } from '.
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
  * actas. No se tocan las fotos ya descifradas (cada una cuesta CPU en la API).
  */
-function refrescarOperadores(qc: QueryClient) {
+function refrescarOperadores(qc: QueryClient, grupo: GrupoCda) {
   return Promise.all([
-    qc.invalidateQueries({ queryKey: ['operadores-cda'], exact: true }),
-    qc.invalidateQueries({ queryKey: ['operadores-cda', 'con-ocultos'], exact: true }),
+    qc.invalidateQueries({ queryKey: ['operadores-cda', grupo], exact: true }),
+    qc.invalidateQueries({ queryKey: ['operadores-cda', grupo, 'con-ocultos'], exact: true }),
     qc.invalidateQueries({ queryKey: ['asistencia-cda'] }),
     qc.invalidateQueries({ queryKey: ['actas-cda'] }),
   ]);
@@ -36,6 +37,7 @@ function refrescarOperadores(qc: QueryClient) {
 export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');
   const [importando, setImportando] = useState(false);
   const [carnets, setCarnets] = useState(false);
@@ -47,7 +49,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const verOcultos = isAdmin && conOcultos;
   const reducirMovimiento = useReducedMotion();
   const qc = useQueryClient();
-  const refrescar = () => refrescarOperadores(qc);
+  const refrescar = () => refrescarOperadores(qc, grupo);
   const chipRef = useRef<HTMLButtonElement>(null);
   const agregarRef = useRef<HTMLButtonElement>(null);
   // Ocultar o reactivar cambia los botones de la tarjeta: el que tenía el foco
@@ -56,18 +58,18 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     refrescar().then(() => (chipRef.current?.isConnected ? chipRef.current : agregarRef.current)?.focus());
 
   const { data, isLoading, error } = useQuery({
-    queryKey: verOcultos ? ['operadores-cda', 'con-ocultos'] : ['operadores-cda'],
-    queryFn: () => getOperadoresCda(verOcultos),
+    queryKey: verOcultos ? ['operadores-cda', grupo, 'con-ocultos'] : ['operadores-cda', grupo],
+    queryFn: () => getOperadoresCda(verOcultos, grupo),
     // Al alternar "Mostrar ocultos" la lista (y el foco en el botón) se queda mientras carga.
     placeholderData: keepPreviousData,
   });
   const reactivar = useMutation({
     mutationFn: (o: OperadorCda) => cambiarActivoOperadorCda(o.id, true),
     onSuccess: (o) => {
-      sileo.success({ title: 'Operador reactivado', description: o.apellidosNombres });
+      sileo.success({ title: `${Singular} reactivado`, description: o.apellidosNombres });
       refrescarYEnfocar();
     },
-    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo reactivar al operador') }),
+    onError: (e) => sileo.error({ title: mensajeError(e, `No se pudo reactivar al ${singular}`) }),
   });
 
   const visibles = useMemo(() => {
@@ -95,7 +97,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
             Carnets QR
           </button>
           <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
-            Agregar operador
+            Agregar {singular}
           </button>
         </AccionesEncabezado>
       )}
@@ -103,17 +105,18 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       {isLoading && <Cargando />}
       {error && (
         <div className="banner error" role="alert">
-          No se pudo cargar la lista de operadores.
+          No se pudo cargar la lista de {plural}.
         </div>
       )}
 
       {data && data.length === 0 && !verOcultos && (
         <div className="ocda-vacio">
-          <p style={{ margin: 0 }}>Aún no hay operadores registrados.</p>
+          <p style={{ margin: 0 }}>Aún no hay {plural} registrados.</p>
           {isAdmin && (
             <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-              Use <strong>Importar Excel</strong> con el archivo de talento humano (20. OPERADORES CDA.xlsx) o{' '}
-              <strong>Agregar operador</strong> para registrar a alguien a mano.
+              Use <strong>Importar Excel</strong> con el archivo de talento humano
+              {grupo === 'OPERADOR' ? ' (20. OPERADORES CDA.xlsx)' : ''} o <strong>Agregar {singular}</strong> para
+              registrar a alguien a mano.
             </p>
           )}
         </div>
@@ -127,7 +130,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 value={busqueda}
                 onChange={setBusqueda}
                 placeholder="Buscar por nombre o cédula…"
-                ariaLabel="Buscar operador por nombre o cédula"
+                ariaLabel={`Buscar ${singular} por nombre o cédula`}
               />
             </span>
             {isAdmin && (
@@ -142,12 +145,12 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               </button>
             )}
             <p className="muted" role="status" style={{ margin: 0 }}>
-              {visibles.length} de {data.length} operadores · {conFoto} con foto
+              {visibles.length} de {data.length} {plural} · {conFoto} con foto
               {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
             </p>
           </div>
 
-          <ul className="ocda-grid" aria-label="Operadores CDA">
+          <ul className="ocda-grid" aria-label={titulo}>
             {visibles.map((o, i) => (
               <motion.li
                 key={o.id}
@@ -173,7 +176,11 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               </motion.li>
             ))}
           </ul>
-          {visibles.length === 0 && <p className="muted">Ningún operador coincide con “{busqueda}”.</p>}
+          {visibles.length === 0 && (
+            <p className="muted">
+              Ningún {singular} coincide con “{busqueda}”.
+            </p>
+          )}
         </>
       )}
 

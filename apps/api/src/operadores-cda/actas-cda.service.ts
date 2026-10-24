@@ -13,8 +13,10 @@ import type {
   EstadoActaCda,
   EstadoPrenda,
   GenerarActasCdaResult,
+  GrupoCda,
   PersonaEntregaCda,
 } from '@cne/shared-types';
+import { TEXTOS_GRUPO } from './grupo-cda';
 
 import { PrismaService } from '../db/prisma.service';
 import { toOperadorCdaDto } from './operadores-cda.service';
@@ -38,7 +40,7 @@ export interface ArchivoActa {
   contenido: Buffer;
 }
 
-type OperadorBasico = { id: string; apellidosNombres: string; cedula: string };
+type OperadorBasico = { id: string; apellidosNombres: string; cedula: string; grupo: GrupoCda };
 
 // Fila de actas_entrega_cda. Se declara aquí (no se importa de @prisma/client)
 // porque el CI no genera el cliente de Prisma, como en el resto de la API.
@@ -71,9 +73,9 @@ export class ActasCdaService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async lista(): Promise<ActaCdaFila[]> {
+  async lista(grupo: GrupoCda = 'OPERADOR'): Promise<ActaCdaFila[]> {
     const operadores = await this.prisma.operadorCda.findMany({
-      where: { activo: true },
+      where: { activo: true, grupo },
       orderBy: { apellidosNombres: 'asc' },
       include: { actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1 } },
     });
@@ -254,6 +256,7 @@ function aDatos(o: OperadorBasico, a: ActaDb): DatosActaCda {
     entregaCargo: a.entregaCargo,
     operadorNombre: o.apellidosNombres,
     operadorCedula: o.cedula,
+    operadorCargo: TEXTOS_GRUPO[o.grupo].cargo,
     estadoPeto: a.estadoPeto,
     estadoCredencial: a.estadoCredencial,
     estadoCordon: a.estadoCordon,

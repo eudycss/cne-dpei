@@ -8,13 +8,14 @@ export interface Pestana<T extends string> {
 
 /**
  * Pestañas (patrón WAI-ARIA Tabs, activación automática). La pestaña activa
- * vive en `?tab=` para poder enlazarla; la primera de la lista no la escribe.
- * Solo se monta el panel activo.
+ * vive en `?tab=` (o en `parametro`, para anidar dos grupos de pestañas) para
+ * poder enlazarla; la de por defecto no lo escribe. Solo se monta el panel activo.
  */
 export function Pestanas<T extends string>({
   pestanas,
   porDefecto,
   etiqueta,
+  parametro = 'tab',
   children,
 }: {
   pestanas: readonly Pestana<T>[];
@@ -22,16 +23,27 @@ export function Pestanas<T extends string>({
   porDefecto: T;
   /** Nombre accesible del grupo de pestañas. */
   etiqueta: string;
+  /** Parámetro de la URL donde se guarda la pestaña activa. */
+  parametro?: string;
   children: (activa: T) => ReactNode;
 }) {
   const [params, setParams] = useSearchParams();
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
-  const pedida = params.get('tab');
+  const pedida = params.get(parametro);
   const activa = pestanas.find((p) => p.id === pedida)?.id ?? porDefecto;
 
   function seleccionar(indice: number) {
     const { id } = pestanas[indice];
-    setParams(id === porDefecto ? {} : { tab: id }, { replace: true });
+    // Conserva los demás parámetros (p. ej. la pestaña del otro nivel).
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (id === porDefecto) p.delete(parametro);
+        else p.set(parametro, id);
+        return p;
+      },
+      { replace: true },
+    );
     tabsRef.current[indice]?.focus();
   }
 

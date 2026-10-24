@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ConsultaQrCda, OperadorCda } from '@cne/shared-types';
 
 import { EscanearQrModal } from './EscanearQrModal';
+import { GrupoCdaContext } from './grupo';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -25,6 +26,7 @@ const TOKEN = `CDA1${'ABCDEFGHJKLMN'.repeat(2)}`;
 
 const ANA: OperadorCda = {
   id: 'a',
+  grupo: 'OPERADOR',
   numero: 1,
   apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
   cedula: '1710034065',
@@ -46,11 +48,13 @@ const consulta = (over: Partial<ConsultaQrCda> = {}): ConsultaQrCda => ({
   ...over,
 });
 
-function renderModal() {
+function renderModal(grupo: 'OPERADOR' | 'ASISTENTE' = 'OPERADOR') {
   const onMarcado = vi.fn();
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <EscanearQrModal onClose={vi.fn()} onMarcado={onMarcado} />
+      <GrupoCdaContext.Provider value={grupo}>
+        <EscanearQrModal onClose={vi.fn()} onMarcado={onMarcado} />
+      </GrupoCdaContext.Provider>
     </QueryClientProvider>,
   );
   return onMarcado;
@@ -143,10 +147,28 @@ describe('EscanearQrModal', () => {
     enLinea.mockRestore();
   });
 
+  it('un carnet del otro grupo se acepta pero avisa en qué asistencia queda la marca', async () => {
+    postMock.mockResolvedValueOnce({ data: consulta() });
+    renderModal('ASISTENTE');
+    await userEvent.type(campo(), `${TOKEN}{Enter}`);
+    expect(await screen.findByText(/Este carnet es de Operadores CDA/)).toHaveTextContent(
+      'la marca se registrará en la asistencia de operadores',
+    );
+    expect(screen.getByRole('button', { name: 'Registrar entrada' })).toBeInTheDocument();
+  });
+
+  it('un carnet del mismo grupo no muestra el aviso', async () => {
+    postMock.mockResolvedValueOnce({ data: consulta() });
+    renderModal('OPERADOR');
+    await userEvent.type(campo(), `${TOKEN}{Enter}`);
+    await screen.findByRole('button', { name: 'Registrar entrada' });
+    expect(screen.queryByText(/Este carnet es de/)).not.toBeInTheDocument();
+  });
+
   it('un código que no es carnet no llega a la API', async () => {
     renderModal();
     await userEvent.type(campo(), 'KIT-12345{Enter}');
-    expect(screen.getByRole('alert')).toHaveTextContent('Código no reconocido: no es un carnet de operador CDA');
+    expect(screen.getByRole('alert')).toHaveTextContent('Código no reconocido: no es un carnet CDA');
     expect(postMock).not.toHaveBeenCalled();
   });
 
