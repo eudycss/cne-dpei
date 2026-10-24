@@ -13,6 +13,7 @@ interface Props {
 
 export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
   const [form, setForm] = useState({
+    cedula: user.cedula,
     nombres: user.nombres,
     apellidos: user.apellidos,
     email: user.email,
@@ -40,7 +41,10 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    const cedula = form.cedula.trim();
     const parsed = updateUserSchema.safeParse({
+      // Solo se envía si cambió: así una cédula antigua inválida no bloquea editar otros datos
+      cedula: cedula !== user.cedula ? cedula : undefined,
       nombres: form.nombres,
       apellidos: form.apellidos,
       email: form.email,
@@ -75,9 +79,22 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
         aria-labelledby="editar-usuario-titulo"
       >
         <h1 id="editar-usuario-titulo">Editar usuario</h1>
-        <p className="muted" style={{ marginBottom: '1rem' }}>
-          Cédula: <strong>{user.cedula}</strong> (no editable)
-        </p>
+        <div className="field">
+          <label htmlFor="editar-usuario-cedula">Cédula (10 dígitos)</label>
+          <input
+            id="editar-usuario-cedula"
+            value={form.cedula}
+            // Solo dígitos: tolera cédulas pegadas con espacios o guiones
+            onChange={(e) => setForm((f) => ({ ...f, cedula: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+            inputMode="numeric"
+            autoComplete="off"
+            aria-describedby="editar-usuario-cedula-ayuda"
+            required
+          />
+          <small id="editar-usuario-cedula-ayuda" className="muted">
+            Corregirla no afecta sus asignaciones, kits ni actas.
+          </small>
+        </div>
         <div className="field">
           <label htmlFor="editar-usuario-nombres">Nombres</label>
           <input id="editar-usuario-nombres" value={form.nombres} onChange={update('nombres')} required />

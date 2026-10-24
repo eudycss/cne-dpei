@@ -115,6 +115,7 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = z.object({
+  cedula: cedulaSchema.optional(),
   email: emailSchema.optional(),
   nombres: nombreSchema.optional(),
   apellidos: nombreSchema.optional(),
