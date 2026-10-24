@@ -5,6 +5,7 @@ import type {
   AsistenciaCdaFila,
   FormatoReporteCda,
   MarcarAsistenciaCdaMasivaResult,
+  OrigenMarcaCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
@@ -80,7 +81,12 @@ export class AsistenciaCdaService {
     };
   }
 
-  async marcar(operadorId: string, tipo: TipoMarcaAsistenciaCda, usuarioId: string): Promise<AsistenciaCdaFila> {
+  async marcar(
+    operadorId: string,
+    tipo: TipoMarcaAsistenciaCda,
+    usuarioId: string,
+    origen: OrigenMarcaCda = 'MANUAL',
+  ): Promise<AsistenciaCdaFila> {
     const operador = await this.operadorActivo(operadorId);
     // El día sale de la misma hora que se guarda (cerca de medianoche no deben diferir).
     const ahora = new Date();
@@ -94,11 +100,11 @@ export class AsistenciaCdaService {
       tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: null },
-            data: { entradaEn: ahora, entradaPorId: usuarioId },
+            data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: origen },
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: { not: null }, salidaEn: null },
-            data: { salidaEn: ahora, salidaPorId: usuarioId },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: origen },
           });
 
     const actual = await this.prisma.asistenciaCda.findUniqueOrThrow({ where: { id: fila.id }, include: CON_QUIEN_MARCO });
@@ -142,11 +148,11 @@ export class AsistenciaCdaService {
       tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: marca, salidaEn: null },
-            data: { entradaEn: null, entradaPorId: null },
+            data: { entradaEn: null, entradaPorId: null, entradaOrigen: null },
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, salidaEn: marca },
-            data: { salidaEn: null, salidaPorId: null },
+            data: { salidaEn: null, salidaPorId: null, salidaOrigen: null },
           });
     if (count === 0) {
       throw new ConflictException(tipo === 'ENTRADA' && fila.salidaEn ? 'Primero quite la salida de hoy' : MARCA_CAMBIO);
@@ -176,12 +182,12 @@ export class AsistenciaCdaService {
             });
             return tx.asistenciaCda.updateMany({
               where: { fecha, operadorId: { in: activos }, entradaEn: null },
-              data: { entradaEn: ahora, entradaPorId: usuarioId },
+              data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: 'MASIVA' },
             });
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { fecha, operadorId: { in: activos }, entradaEn: { not: null }, salidaEn: null },
-            data: { salidaEn: ahora, salidaPorId: usuarioId },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: 'MASIVA' },
           });
     return { marcados: count, omitidos: activos.length - count, ignorados: unicos.length - activos.length };
   }

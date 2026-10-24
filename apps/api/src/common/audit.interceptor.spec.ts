@@ -221,6 +221,26 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('carnets QR: guarda a quiénes se emitió y las anulaciones', async () => {
+    const emitir = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/credenciales/carnets.pdf',
+      body: { operadorIds: [OTRO, 42] },
+      user: ADMIN,
+    });
+    expect(emitir.data).toMatchObject({
+      accion: 'CREDENCIAL_QR_CDA_EMITIR',
+      entidad: 'credencial_qr_cda',
+      datosDespues: { cantidad: 1, operadorIds: [OTRO] },
+    });
+
+    const revocar = await auditar(
+      { method: 'DELETE', originalUrl: `/operadores-cda/${OTRO}/credencial`, params: { id: OTRO }, body: {}, user: ADMIN },
+      { revocada: true },
+    );
+    expect(revocar.data).toMatchObject({ accion: 'CREDENCIAL_QR_CDA_REVOCAR', entidadId: OTRO });
+  });
+
   it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {
     const crear = await auditar(
       { method: 'POST', originalUrl: `/operadores-cda/${OTRO}/enlace-foto`, params: { id: OTRO }, body: {}, user: ADMIN },

@@ -649,6 +649,28 @@ export const marcarAsistenciaCdaMasivaSchema = z.object({
   operadorIds: z.array(z.string().uuid()).min(1, 'Seleccione al menos un operador').max(500),
 });
 
+// Credencial QR (carnet) de operador CDA.
+
+/**
+ * Token del carnet: "CDA1" + 26 caracteres base32 (A-Z, 2-7) = 128 bits. Solo
+ * mayúsculas y dígitos: un lector USB "teclea" igual con distribución de
+ * teclado US o latinoamericana (los "-", "_" o "." cambian de tecla). Se
+ * aceptan minúsculas (Bloq Mayús) y espacios alrededor.
+ */
+export const tokenCredencialQrCdaSchema = z
+  .string({ invalid_type_error: 'Código inválido' })
+  .trim()
+  .toUpperCase()
+  .regex(/^CDA1[A-Z2-7]{26}$/, 'Código no reconocido: no es un carnet de operador CDA');
+
+export const consultarQrCdaSchema = z.object({ token: tokenCredencialQrCdaSchema }).strict();
+
+export const marcarQrCdaSchema = z.object({ token: tokenCredencialQrCdaSchema, tipo: tipoMarcaAsistenciaCdaSchema }).strict();
+
+export const emitirCarnetsCdaSchema = z
+  .object({ operadorIds: z.array(z.string().uuid()).min(1, 'Seleccione al menos un operador').max(200) })
+  .strict();
+
 /** Día en formato AAAA-MM-DD (calendario de Ecuador). */
 export const diaAsistenciaSchema = z
   .string()

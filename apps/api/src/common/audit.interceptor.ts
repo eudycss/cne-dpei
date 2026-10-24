@@ -99,6 +99,25 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Carnets QR: a quiénes se emitió (anula sus carnets anteriores) y las anulaciones.
+  // El token nunca pasa por aquí: va solo dentro del PDF.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/credenciales\/carnets\.pdf$/,
+    accion: 'CREDENCIAL_QR_CDA_EMITIR',
+    entidad: 'credencial_qr_cda',
+    resumen: (_res, req) => {
+      const ids = (req.body as { operadorIds?: unknown } | undefined)?.operadorIds;
+      const operadorIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string').map((x) => x.slice(0, 40)).slice(0, 200) : [];
+      return { cantidad: operadorIds.length, operadorIds };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/operadores-cda\/[^/]+\/credencial$/,
+    accion: 'CREDENCIAL_QR_CDA_REVOCAR',
+    entidad: 'operador_cda',
+  },
   // Descarga cédulas de todos los operadores: queda el rango pedido.
   {
     method: 'GET',

@@ -860,6 +860,50 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-opcion input { margin-top: 0.2rem; inline-size: 1rem; block-size: 1rem; accent-color: var(--f-cian); flex-shrink: 0; }
 .ocda-opcion:has(input:checked) { border-color: var(--f-cian); background: var(--f-cian-suave); }
 .ocda-opcion:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+/* Emisión de carnets QR. */
+.ocda-carnets-lista {
+  margin: 0; padding: 0.4rem; border: 1px solid var(--f-border-subtle); border-radius: 14px;
+  max-height: min(48vh, 420px); overflow-y: auto; display: grid; gap: 0.15rem;
+}
+.ocda-carnets-fila { display: flex; align-items: center; gap: 0.6rem; min-height: 44px; padding: 0 0.5rem; border-radius: 10px; }
+.ocda-carnets-fila:hover { background: var(--f-bg-elevated); }
+.ocda-carnets-fila label { flex: 1; display: flex; align-items: center; gap: 0.6rem; cursor: pointer; color: var(--f-text); font-size: 0.88rem; }
+.ocda-carnets-fila input { inline-size: 1.05rem; block-size: 1.05rem; accent-color: var(--f-cian); flex-shrink: 0; }
+.ocda-carnets-fila .ocda-btn-texto.peligro { margin-left: 0; }
+/* Escaneo del carnet QR. */
+.ocda-qr-lector { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.8rem; color: var(--f-text-muted); }
+.ocda-qr-lector input {
+  min-height: 52px; padding: 0 0.9rem; border-radius: 12px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-base); color: var(--f-text); font: inherit; font-size: 1.05rem; letter-spacing: 0.06em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: uppercase;
+}
+.ocda-qr-lector input:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
+.ocda-qr-camara { position: relative; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; }
+.ocda-qr-camara video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ocda-qr-camara p { position: absolute; inset: auto 0 0.6rem; text-align: center; color: #fff; margin: 0; }
+.ocda-qr-ultima {
+  margin: 0; padding: 0.55rem 0.8rem; border-radius: 12px; font-size: 0.85rem;
+  background: var(--f-exito-suave); color: var(--f-text); border: 1px solid var(--f-exito);
+}
+.ocda-qr-confirmar { display: grid; gap: 0.8rem; }
+.ocda-qr-persona { display: flex; gap: 1rem; align-items: flex-start; }
+.ocda-qr-persona p { margin: 0.1rem 0; }
+.ocda-qr-foto {
+  flex-shrink: 0; width: 120px; height: 150px; border-radius: 14px; overflow: hidden; display: grid; place-items: center;
+  background: var(--f-bg-elevated); border: 1px solid var(--f-border-subtle); font-size: 2rem; font-weight: 700; color: var(--f-text-muted);
+}
+.ocda-qr-foto img { width: 100%; height: 100%; object-fit: cover; }
+.ocda-qr-nombre { font-size: 1.15rem; font-weight: 700; color: var(--f-text); }
+.ocda-qr-pregunta { margin: 0; font-weight: 600; color: var(--f-text); }
+.ocda-qr-verificar {
+  display: flex; align-items: center; gap: 0.6rem; min-height: 44px; padding: 0 0.8rem; cursor: pointer;
+  border: 1px solid var(--f-borde-control); border-radius: 12px; color: var(--f-text); font-size: 0.9rem;
+}
+.ocda-qr-verificar input { inline-size: 1.1rem; block-size: 1.1rem; accent-color: var(--f-cian); }
+.ocda-qr-verificar:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+@media (max-width: 480px) {
+  .ocda-qr-persona { flex-direction: column; align-items: center; text-align: center; }
+}
 
 .ocda-vacio { padding: 1.25rem; border: 1px dashed var(--f-cian); background: var(--f-cian-suave); border-radius: 16px; }
 

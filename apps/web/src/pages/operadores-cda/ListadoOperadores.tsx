@@ -6,8 +6,10 @@ import type { OperadorCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
-import { cambiarActivoOperadorCda, getFotoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
+import { cambiarActivoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
+import { useFotoOperadorUrl } from './useFotoOperador';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
+import { CarnetsQrModal } from './CarnetsQrModal';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { OperadorFormModal } from './OperadorFormModal';
@@ -36,6 +38,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const [busqueda, setBusqueda] = useState('');
   const [importando, setImportando] = useState(false);
+  const [carnets, setCarnets] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
   // null = cerrado; 'nuevo' = agregar; un operador = editarlo.
   const [formulario, setFormulario] = useState<OperadorCda | 'nuevo' | null>(null);
@@ -82,6 +85,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         <AccionesEncabezado destino={acciones}>
           <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
             Importar Excel
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={!data?.some((o) => o.activo)}
+            onClick={() => setCarnets(true)}
+          >
+            Carnets QR
           </button>
           <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
             Agregar operador
@@ -167,6 +178,9 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       )}
 
       {importando && <ImportarOperadoresModal onClose={() => setImportando(false)} />}
+      {carnets && data && (
+        <CarnetsQrModal operadores={data.filter((o) => o.activo)} onClose={() => setCarnets(false)} />
+      )}
       {enlacePara && <EnlaceFotoModal operador={enlacePara} onClose={() => setEnlacePara(null)} />}
       {formulario && (
         <OperadorFormModal
@@ -199,20 +213,7 @@ function useVisible<T extends Element>() {
  */
 function AvatarOperador({ operador: o }: { operador: OperadorCda }) {
   const { ref, visible } = useVisible<HTMLSpanElement>();
-  const { data } = useQuery({
-    queryKey: ['operadores-cda', o.id, 'foto'],
-    queryFn: () => getFotoOperadorCda(o.id),
-    enabled: o.tieneFoto && visible,
-    staleTime: Infinity,
-    retry: false,
-  });
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!data) return setUrl(null);
-    const u = URL.createObjectURL(data);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [data]);
+  const url = useFotoOperadorUrl(o, visible);
 
   return (
     <span ref={ref} className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">

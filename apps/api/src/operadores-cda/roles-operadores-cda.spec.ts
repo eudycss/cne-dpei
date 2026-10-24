@@ -5,6 +5,7 @@ import { OperadoresCdaController } from './operadores-cda.controller';
 import { FotoCdaController, FotoCdaPublicoController } from './foto-cda.controller';
 import { ActasCdaController } from './actas-cda.controller';
 import { AtrasosCdaController } from './atrasos-cda.controller';
+import { CredencialQrCdaController } from './credencial-qr-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -51,6 +52,14 @@ describe('RBAC de Operadores CDA', () => {
 
   it.each(['config', 'reporte', 'exportar'])('atrasos.%s: los mismos tres roles', (metodo) => {
     expect(rolesDe(AtrasosCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+  });
+
+  it.each(['consultar', 'marcar'])('escanear carnet (%s): los mismos tres roles', (metodo) => {
+    expect(rolesDe(CredencialQrCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+  });
+
+  it.each(['vigentes', 'carnets', 'revocar'])('emitir, ver o anular carnets (%s): solo administrador', (metodo) => {
+    expect(rolesDe(CredencialQrCdaController, metodo)).toEqual(['ADMINISTRADOR']);
   });
 
   it('cambiar la hora oficial de entrada: solo administrador', () => {

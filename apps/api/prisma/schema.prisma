@@ -160,6 +160,7 @@ model Usuario {
   asistenciasCdaEntrada AsistenciaCda[]  @relation("AsistenciaCdaEntradaPor")
   asistenciasCdaSalida  AsistenciaCda[]  @relation("AsistenciaCdaSalidaPor")
   enlacesFotoCda        EnlaceFotoCda[]  @relation("EnlaceFotoCdaCreadoPor")
+  credencialesQrCda     CredencialQrCda[] @relation("CredencialQrCdaEmitidaPor")
   actasCdaEntregadas    ActaEntregaCda[] @relation("ActaEntregaCdaEntregaPor")
   actasCdaCreadas       ActaEntregaCda[] @relation("ActaEntregaCdaCreadoPor")
 
@@ -701,8 +702,9 @@ model OperadorCda {
   actualizadoEn    DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   asistencias AsistenciaCda[]
-  enlacesFoto EnlaceFotoCda[]
-  actas       ActaEntregaCda[]
+  enlacesFoto  EnlaceFotoCda[]
+  actas        ActaEntregaCda[]
+  credenciales CredencialQrCda[]
 
   @@map("operadores_cda")
 }
@@ -717,6 +719,9 @@ model AsistenciaCda {
   entradaPorId  String?   @map("entrada_por_id") @db.Uuid
   salidaEn      DateTime? @map("salida_en") @db.Timestamptz(6)
   salidaPorId   String?   @map("salida_por_id") @db.Uuid
+  /// Cómo se registró cada marca: MANUAL (check), MASIVA o QR. Null en marcas anteriores a la columna.
+  entradaOrigen String?   @map("entrada_origen") @db.VarChar(10)
+  salidaOrigen  String?   @map("salida_origen") @db.VarChar(10)
   creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
@@ -765,6 +770,26 @@ model EnlaceFotoCda {
 
   @@index([operadorId], map: "idx_enlaces_foto_cda_operador")
   @@map("enlaces_foto_cda")
+}
+
+/// Credencial QR del operador (carnet) para registrar entrada y salida.
+/// Solo se guarda el SHA-256 del token: reimprimir es emitir otra y la anterior
+/// queda revocada. Una sola vigente por operador (índice único parcial en SQL).
+model CredencialQrCda {
+  id               String    @id @default(uuid()) @db.Uuid
+  operadorId       String    @map("operador_id") @db.Uuid
+  tokenHash        String    @unique @map("token_hash") @db.VarChar(64)
+  emitidaEn        DateTime  @default(now()) @map("emitida_en") @db.Timestamptz(6)
+  emitidaPorId     String?   @map("emitida_por_id") @db.Uuid
+  revocadaEn       DateTime? @map("revocada_en") @db.Timestamptz(6)
+  /// REEMITIDA (se imprimió otra) o REVOCADA (anulada a mano).
+  motivoRevocacion String?   @map("motivo_revocacion") @db.VarChar(20)
+
+  operador   OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  emitidaPor Usuario?    @relation("CredencialQrCdaEmitidaPor", fields: [emitidaPorId], references: [id])
+
+  @@index([operadorId], map: "idx_credenciales_qr_cda_operador")
+  @@map("credenciales_qr_cda")
 }
 
 /// Acta de entrega de peto, credencial y cordón. Quien entrega se copia

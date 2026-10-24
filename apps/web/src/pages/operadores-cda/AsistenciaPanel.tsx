@@ -14,6 +14,7 @@ import {
 } from '../../lib/queries/operadores-cda';
 import { CheckMarca } from './CheckMarca';
 import { ExportarReporteModal } from './ExportarReporteModal';
+import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
 import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
 
@@ -47,6 +48,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [masiva, setMasiva] = useState<TipoMarcaAsistenciaCda | null>(null);
   const [exportando, setExportando] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
   const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
   const clave = ['asistencia-cda', fecha];
 
@@ -135,6 +137,9 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
         </button>
         {esHoy && data && (
           <>
+            <button type="button" className="btn secondary" onClick={() => setEscaneando(true)}>
+              Escanear carnet
+            </button>
             <button
               type="button"
               className="btn secondary"
@@ -317,6 +322,18 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           filas={masiva === 'ENTRADA' ? pendientesEntrada : pendientesSalida}
           onClose={() => setMasiva(null)}
           onHecho={refrescar}
+        />
+      )}
+
+      {escaneando && (
+        <EscanearQrModal
+          onClose={() => setEscaneando(false)}
+          onMarcado={(fila) => {
+            qc.setQueryData<AsistenciaCdaDia>(clave, (d) =>
+              d && { ...d, filas: d.filas.map((f) => (f.operador.id === fila.operador.id ? fila : f)) },
+            );
+            refrescar();
+          }}
         />
       )}
 

@@ -1059,6 +1059,43 @@ export interface ImportOperadoresCdaResult {
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
 
+/** Cómo se registró una marca: check individual, "marcar a pendientes" o carnet QR. */
+export type OrigenMarcaCda = 'MANUAL' | 'MASIVA' | 'QR';
+
+/** Qué toca registrar al escanear el carnet hoy. */
+export type SiguienteMarcaQrCda = 'ENTRADA' | 'SALIDA' | 'COMPLETO';
+
+/** Resultado de escanear un carnet (todavía sin marcar: se confirma viendo la foto). */
+export interface ConsultaQrCda {
+  operador: OperadorCda;
+  siguiente: SiguienteMarcaQrCda;
+  /** ISO 8601 */
+  entradaEn: string | null;
+  salidaEn: string | null;
+  /** ISO: antes de esta hora no se acepta la salida por QR (evita el doble escaneo). */
+  salidaDesde: string | null;
+}
+
+export interface ConsultarQrCdaRequest {
+  token: string;
+}
+
+export interface MarcarQrCdaRequest {
+  token: string;
+  tipo: TipoMarcaAsistenciaCda;
+}
+
+export interface EmitirCarnetsCdaRequest {
+  operadorIds: string[];
+}
+
+/** Carnet vigente de un operador (sin el token: solo se imprime al emitirlo). */
+export interface CredencialQrCdaVigente {
+  operadorId: string;
+  /** ISO 8601 */
+  emitidaEn: string;
+}
+
 /** Asistencia de un operador en un día (marcas en null = pendientes). */
 export interface AsistenciaCdaFila {
   operador: OperadorCda;

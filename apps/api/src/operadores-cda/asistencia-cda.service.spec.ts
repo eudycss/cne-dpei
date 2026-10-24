@@ -99,7 +99,7 @@ describe('AsistenciaCdaService', () => {
       expect(prisma.asistenciaCda.upsert.mock.calls[0][0].where).toEqual({ operadorId_fecha: { operadorId: OP, fecha: HOY } });
       expect(prisma.asistenciaCda.updateMany).toHaveBeenCalledWith({
         where: { id: 'a1', entradaEn: null },
-        data: { entradaEn: AHORA, entradaPorId: USR },
+        data: { entradaEn: AHORA, entradaPorId: USR, entradaOrigen: 'MANUAL' },
       });
       expect(r).toMatchObject({ entradaPor: 'Ana Técnica', entradaEn: AHORA.toISOString() });
     });
@@ -144,7 +144,7 @@ describe('AsistenciaCdaService', () => {
       });
       expect(prisma.asistenciaCda.updateMany).toHaveBeenCalledWith({
         where: { id: 'a1', salidaEn: AHORA },
-        data: { salidaEn: null, salidaPorId: null },
+        data: { salidaEn: null, salidaPorId: null, salidaOrigen: null },
       });
     });
 
@@ -190,6 +190,7 @@ describe('AsistenciaCdaService', () => {
         operadorId: { in: [OP] },
         entradaEn: null,
       });
+      expect(prisma.asistenciaCda.updateMany.mock.calls[0][0].data).toMatchObject({ entradaOrigen: 'MASIVA' });
       // 'inactivo' no es un operador activo: se cuenta aparte.
       expect(r).toEqual({ marcados: 1, omitidos: 0, ignorados: 1 });
     });

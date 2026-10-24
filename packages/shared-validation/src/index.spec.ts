@@ -11,6 +11,9 @@ import {
   rangoAsistenciaSchema,
   modoReporteCdaSchema,
   diasDelRango,
+  tokenCredencialQrCdaSchema,
+  marcarQrCdaSchema,
+  emitirCarnetsCdaSchema,
   MAX_DIAS_REPORTE_PDF,
   isValidCedulaEcuatoriana,
   llegadaDpiSchema,
@@ -347,6 +350,19 @@ describe('asistencia CDA', () => {
     expect(ok('2026-10-02', '2026-10-01')).toBe(false);
     expect(ok('2026-06-04', '2026-10-01')).toBe(true); // 120 días
     expect(ok('2026-06-03', '2026-10-01')).toBe(false); // 121 días
+  });
+
+  it('token del carnet QR: CDA1 + 26 en base32; tolera minúsculas y espacios', () => {
+    const token = `CDA1${'A2B3C4D5E6F7G'.repeat(2)}`;
+    expect(tokenCredencialQrCdaSchema.parse(token)).toBe(token);
+    expect(tokenCredencialQrCdaSchema.parse(`  ${token.toLowerCase()}\n`)).toBe(token);
+    expect(tokenCredencialQrCdaSchema.safeParse(token.slice(0, -1)).success).toBe(false);
+    // 0, 1, 8 y 9 no existen en base32; tampoco otros prefijos (p. ej. un QR de kit).
+    expect(tokenCredencialQrCdaSchema.safeParse(`CDA1${'0'.repeat(26)}`).success).toBe(false);
+    expect(tokenCredencialQrCdaSchema.safeParse(`KIT1${'A'.repeat(26)}`).success).toBe(false);
+    expect(marcarQrCdaSchema.safeParse({ token, tipo: 'SALIDA' }).success).toBe(true);
+    expect(marcarQrCdaSchema.safeParse({ token, tipo: 'SALIDA', operadorId: 'x' }).success).toBe(false);
+    expect(emitirCarnetsCdaSchema.safeParse({ operadorIds: [] }).success).toBe(false);
   });
 
   it('cuenta los días del rango con ambos extremos', () => {

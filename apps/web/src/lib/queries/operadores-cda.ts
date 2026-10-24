@@ -3,6 +3,8 @@ import type {
   ActaEntregaCda,
   AsistenciaCdaDia,
   ConfigAsistenciaCda,
+  ConsultaQrCda,
+  CredencialQrCdaVigente,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
   GenerarActasCdaRequest,
@@ -96,6 +98,32 @@ export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFoto
 export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
   return data;
+}
+
+// Carnet QR: escanear (consultar y luego confirmar la marca) y, solo el administrador, emitir o anular.
+
+export async function consultarQrCda(token: string): Promise<ConsultaQrCda> {
+  const { data } = await api.post<ConsultaQrCda>('/operadores-cda/asistencia/qr/consultar', { token });
+  return data;
+}
+
+export async function marcarQrCda(token: string, tipo: TipoMarcaAsistenciaCda): Promise<AsistenciaCdaFila> {
+  const { data } = await api.post<AsistenciaCdaFila>('/operadores-cda/asistencia/qr', { token, tipo });
+  return data;
+}
+
+export async function getCredencialesVigentesCda(): Promise<CredencialQrCdaVigente[]> {
+  const { data } = await api.get<CredencialQrCdaVigente[]>('/operadores-cda/credenciales');
+  return data;
+}
+
+/** Emite carnets nuevos (anula los anteriores) y trae el PDF para imprimir. */
+export function pedirCarnetsCda(operadorIds: string[]) {
+  return api.post<Blob>('/operadores-cda/credenciales/carnets.pdf', { operadorIds }, { responseType: 'blob' });
+}
+
+export async function anularCredencialCda(operadorId: string): Promise<void> {
+  await api.delete(`/operadores-cda/${operadorId}/credencial`);
 }
 
 /** URL que se envía al operador. El token va en el fragmento (#): no llega a ningún servidor ni log. */
