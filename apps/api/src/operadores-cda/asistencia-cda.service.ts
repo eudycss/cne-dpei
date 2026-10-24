@@ -1,15 +1,27 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
 import { diaAsistenciaSchema } from '@cne/shared-validation';
 import type {
   AsistenciaCdaDia,
   AsistenciaCdaFila,
+  FormatoReporteCda,
   MarcarAsistenciaCdaMasivaResult,
+  OrigenMarcaCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
+import {
+  type ArchivoReporte,
+  type Celda,
+  type ColumnaReporte,
+  type TablaReporte,
+  agruparPorDia,
+  diaCorto,
+  diaLargo,
+  generarReporte,
+  parsearModo,
+} from './reporte-cda';
 
 const MAX_DIAS_EXPORTAR = 120;
 const MARCA_CAMBIO = 'La marca cambió (otro técnico la modificó): no se quitó';
@@ -18,6 +30,19 @@ const CON_QUIEN_MARCO = {
   entradaPor: { select: { nombres: true, apellidos: true } },
   salidaPor: { select: { nombres: true, apellidos: true } },
 } as const;
+
+/** Columnas del reporte; en el general va además "Fecha" al inicio. */
+const COLUMNAS: ColumnaReporte[] = [
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Entrada', ancho: 9 },
+  { titulo: 'Registró entrada', ancho: 28 },
+  { titulo: 'Salida', ancho: 9 },
+  { titulo: 'Registró salida', ancho: 28 },
+  { titulo: 'Estado', ancho: 14 },
+];
+
+type FilaExportada = { fecha: string; celdas: Celda[]; conEntrada: boolean };
 
 type Persona = { nombres: string; apellidos: string } | null;
 const nombre = (p: Persona) => (p ? `${p.nombres} ${p.apellidos}` : null);
@@ -56,7 +81,12 @@ export class AsistenciaCdaService {
     };
   }
 
-  async marcar(operadorId: string, tipo: TipoMarcaAsistenciaCda, usuarioId: string): Promise<AsistenciaCdaFila> {
+  async marcar(
+    operadorId: string,
+    tipo: TipoMarcaAsistenciaCda,
+    usuarioId: string,
+    origen: OrigenMarcaCda = 'MANUAL',
+  ): Promise<AsistenciaCdaFila> {
     const operador = await this.operadorActivo(operadorId);
     // El día sale de la misma hora que se guarda (cerca de medianoche no deben diferir).
     const ahora = new Date();
@@ -70,11 +100,11 @@ export class AsistenciaCdaService {
       tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: null },
-            data: { entradaEn: ahora, entradaPorId: usuarioId },
+            data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: origen },
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: { not: null }, salidaEn: null },
-            data: { salidaEn: ahora, salidaPorId: usuarioId },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: origen },
           });
 
     const actual = await this.prisma.asistenciaCda.findUniqueOrThrow({ where: { id: fila.id }, include: CON_QUIEN_MARCO });
@@ -118,11 +148,11 @@ export class AsistenciaCdaService {
       tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: marca, salidaEn: null },
-            data: { entradaEn: null, entradaPorId: null },
+            data: { entradaEn: null, entradaPorId: null, entradaOrigen: null },
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, salidaEn: marca },
-            data: { salidaEn: null, salidaPorId: null },
+            data: { salidaEn: null, salidaPorId: null, salidaOrigen: null },
           });
     if (count === 0) {
       throw new ConflictException(tipo === 'ENTRADA' && fila.salidaEn ? 'Primero quite la salida de hoy' : MARCA_CAMBIO);
@@ -152,18 +182,27 @@ export class AsistenciaCdaService {
             });
             return tx.asistenciaCda.updateMany({
               where: { fecha, operadorId: { in: activos }, entradaEn: null },
-              data: { entradaEn: ahora, entradaPorId: usuarioId },
+              data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: 'MASIVA' },
             });
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { fecha, operadorId: { in: activos }, entradaEn: { not: null }, salidaEn: null },
-            data: { salidaEn: ahora, salidaPorId: usuarioId },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: 'MASIVA' },
           });
     return { marcados: count, omitidos: activos.length - count, ignorados: unicos.length - activos.length };
   }
 
-  /** Excel con una fila por operador y día (desde su fecha de inicio). */
-  async exportar(desdeParam?: string, hastaParam?: string): Promise<Buffer> {
+  /**
+   * Excel o PDF con una fila por operador y día (desde su fecha de inicio):
+   * todo en una tabla (GENERAL) o una hoja/sección por día (POR_DIA).
+   */
+  async exportar(
+    desdeParam: string | undefined,
+    hastaParam: string | undefined,
+    modoParam: unknown,
+    formato: FormatoReporteCda,
+  ): Promise<ArchivoReporte> {
+    const modo = parsearModo(modoParam);
     const hoy = diaEcuador();
     const hasta = hastaParam ? parsearDia(hastaParam) : hoy;
     if (hasta > hoy) throw new BadRequestException('La fecha final no puede ser futura');
@@ -194,37 +233,56 @@ export class AsistenciaCdaService {
       asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a]),
     );
 
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Asistencia');
-    ws.columns = [
-      { header: 'Fecha', key: 'fecha', width: 12 },
-      { header: 'Apellidos y nombres', key: 'nombre', width: 40 },
-      { header: 'Cédula', key: 'cedula', width: 13 },
-      { header: 'Entrada', key: 'entrada', width: 9 },
-      { header: 'Registró entrada', key: 'entradaPor', width: 28 },
-      { header: 'Salida', key: 'salida', width: 9 },
-      { header: 'Registró salida', key: 'salidaPor', width: 28 },
-      { header: 'Estado', key: 'estado', width: 14 },
-    ];
-    ws.getRow(1).font = { bold: true };
-    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    const filas: FilaExportada[] = [];
     for (const dia of dias) {
       for (const o of operadores) {
         if (o.fechaInicio && diaDeFechaDb(o.fechaInicio) > dia) continue;
         const a = porClave.get(clave(o.id, dia));
-        ws.addRow({
+        filas.push({
           fecha: dia,
-          nombre: o.apellidosNombres,
-          cedula: o.cedula,
-          entrada: a?.entradaEn ? horaEcuador(a.entradaEn) : '',
-          entradaPor: nombre(a?.entradaPor ?? null) ?? '',
-          salida: a?.salidaEn ? horaEcuador(a.salidaEn) : '',
-          salidaPor: nombre(a?.salidaPor ?? null) ?? '',
-          estado: a?.salidaEn ? 'Completa' : a?.entradaEn ? 'Falta salida' : 'Sin registro',
+          celdas: [
+            o.apellidosNombres,
+            o.cedula,
+            a?.entradaEn ? horaEcuador(a.entradaEn) : '',
+            nombre(a?.entradaPor ?? null) ?? '',
+            a?.salidaEn ? horaEcuador(a.salidaEn) : '',
+            nombre(a?.salidaPor ?? null) ?? '',
+            a?.salidaEn ? 'Completa' : a?.entradaEn ? 'Falta salida' : 'Sin registro',
+          ],
+          conEntrada: !!a?.entradaEn,
         });
       }
     }
-    return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+
+    const tablas: TablaReporte[] =
+      modo === 'GENERAL'
+        ? [
+            {
+              hoja: 'Asistencia',
+              titulo: 'Detalle por operador y día',
+              columnas: [{ titulo: 'Fecha', ancho: 12 }, ...COLUMNAS],
+              filas: filas.map((f) => [f.fecha, ...f.celdas]),
+            },
+          ]
+        : [...agruparPorDia(filas)].map(([dia, delDia]) => ({
+            hoja: dia,
+            titulo: `${diaLargo(dia)} · ${delDia.filter((f) => f.conEntrada).length} de ${delDia.length} con entrada`,
+            columnas: COLUMNAS,
+            filas: delDia.map((f) => f.celdas),
+          }));
+
+    return generarReporte(
+      {
+        titulo: 'Reporte de asistencia — Operadores CDA',
+        detalle: `Del ${diaCorto(desde)} al ${diaCorto(hasta)} · hora de Ecuador`,
+        archivo: 'asistencia_operadores_cda',
+        desde,
+        hasta,
+        modo,
+        tablas,
+      },
+      formato,
+    );
   }
 
   private async operadorActivo(id: string) {

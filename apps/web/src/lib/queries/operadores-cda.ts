@@ -2,6 +2,9 @@ import type {
   ActaCdaFila,
   ActaEntregaCda,
   AsistenciaCdaDia,
+  ConfigAsistenciaCda,
+  ConsultaQrCda,
+  CredencialQrCdaVigente,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
   GenerarActasCdaRequest,
@@ -10,9 +13,12 @@ import type {
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
+  FormatoReporteCda,
+  ModoReporteCda,
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
+  ReporteAtrasosCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
@@ -82,19 +88,6 @@ export async function marcarAsistenciaCdaMasiva(
   return data;
 }
 
-/** Descarga el Excel de asistencia desde el primer día hasta `hasta`. */
-export async function descargarAsistenciaCda(hasta: string): Promise<void> {
-  const res = await api.get(`/operadores-cda/asistencia/exportar.xlsx?hasta=${encodeURIComponent(hasta)}`, {
-    responseType: 'blob',
-  });
-  const url = URL.createObjectURL(res.data);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `asistencia_operadores_cda_${hasta}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 /** Genera el enlace de foto (anula el anterior). El token solo llega esta vez. */
 export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFotoCdaCreado> {
   const { data } = await api.post<EnlaceFotoCdaCreado>(`/operadores-cda/${operadorId}/enlace-foto`);
@@ -105,6 +98,32 @@ export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFoto
 export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
   return data;
+}
+
+// Carnet QR: escanear (consultar y luego confirmar la marca) y, solo el administrador, emitir o anular.
+
+export async function consultarQrCda(token: string): Promise<ConsultaQrCda> {
+  const { data } = await api.post<ConsultaQrCda>('/operadores-cda/asistencia/qr/consultar', { token });
+  return data;
+}
+
+export async function marcarQrCda(token: string, tipo: TipoMarcaAsistenciaCda): Promise<AsistenciaCdaFila> {
+  const { data } = await api.post<AsistenciaCdaFila>('/operadores-cda/asistencia/qr', { token, tipo });
+  return data;
+}
+
+export async function getCredencialesVigentesCda(): Promise<CredencialQrCdaVigente[]> {
+  const { data } = await api.get<CredencialQrCdaVigente[]>('/operadores-cda/credenciales');
+  return data;
+}
+
+/** Emite carnets nuevos (anula los anteriores) y trae el PDF para imprimir. */
+export function pedirCarnetsCda(operadorIds: string[]) {
+  return api.post<Blob>('/operadores-cda/credenciales/carnets.pdf', { operadorIds }, { responseType: 'blob' });
+}
+
+export async function anularCredencialCda(operadorId: string): Promise<void> {
+  await api.delete(`/operadores-cda/${operadorId}/credencial`);
 }
 
 /** URL que se envía al operador. El token va en el fragmento (#): no llega a ningún servidor ni log. */
@@ -182,4 +201,49 @@ export async function descargarActaCda(operadorId: string, formato: 'docx' | 'pd
 export async function descargarActasCdaZip(operadorIds: string[]): Promise<void> {
   const res = await api.post<Blob>('/operadores-cda/actas/zip', { operadorIds }, { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'actas-entrega-operadores-cda.zip'));
+}
+
+// Reporte de atrasos: hora oficial de entrada + minutos de gracia.
+
+export async function getConfigAsistenciaCda(): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.get<ConfigAsistenciaCda>('/operadores-cda/asistencia/config');
+  return data;
+}
+
+export async function guardarConfigAsistenciaCda(body: ConfigAsistenciaCda): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.put<ConfigAsistenciaCda>('/operadores-cda/asistencia/config', body);
+  return data;
+}
+
+const rango = (desde: string, hasta: string) =>
+  `desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
+
+export async function getAtrasosCda(desde: string, hasta: string): Promise<ReporteAtrasosCda> {
+  const { data } = await api.get<ReporteAtrasosCda>(`/operadores-cda/asistencia/atrasos?${rango(desde, hasta)}`);
+  return data;
+}
+
+// Reportes de asistencia y de atrasos en Excel o PDF: todo junto o una hoja/sección por día.
+
+export type ReporteCda = 'asistencia' | 'atrasos';
+
+export interface OpcionesReporteCda {
+  desde: string;
+  hasta: string;
+  modo: ModoReporteCda;
+  formato: FormatoReporteCda;
+}
+
+const RUTA_REPORTE: Record<ReporteCda, string> = { asistencia: 'exportar', atrasos: 'atrasos' };
+
+/** Mismo nombre que pone la API (respaldo si no llega Content-Disposition). */
+export function nombreReporteCda(reporte: ReporteCda, o: OpcionesReporteCda): string {
+  return `${reporte}_operadores_cda_${o.desde}_${o.hasta}${o.modo === 'POR_DIA' ? '_por_dia' : ''}.${o.formato}`;
+}
+
+export function pedirReporteCda(reporte: ReporteCda, o: OpcionesReporteCda) {
+  return api.get<Blob>(
+    `/operadores-cda/asistencia/${RUTA_REPORTE[reporte]}.${o.formato}?${rango(o.desde, o.hasta)}&modo=${o.modo}`,
+    { responseType: 'blob' },
+  );
 }

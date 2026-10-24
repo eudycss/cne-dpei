@@ -60,7 +60,7 @@ describe('OperadoresCdaPage', () => {
     await screen.findByRole('button', { name: 'Importar Excel' });
     await userEvent.click(screen.getByRole('tab', { name: 'Asistencia' }));
     expect(screen.queryByRole('button', { name: 'Importar Excel' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Exportar Excel' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Exportar' })).toBeInTheDocument();
   });
 });
 

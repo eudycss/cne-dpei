@@ -649,11 +649,77 @@ export const marcarAsistenciaCdaMasivaSchema = z.object({
   operadorIds: z.array(z.string().uuid()).min(1, 'Seleccione al menos un operador').max(500),
 });
 
+// Credencial QR (carnet) de operador CDA.
+
+/**
+ * Token del carnet: "CDA1" + 26 caracteres base32 (A-Z, 2-7) = 128 bits. Solo
+ * mayúsculas y dígitos: un lector USB "teclea" igual con distribución de
+ * teclado US o latinoamericana (los "-", "_" o "." cambian de tecla). Se
+ * aceptan minúsculas (Bloq Mayús) y espacios alrededor.
+ */
+export const tokenCredencialQrCdaSchema = z
+  .string({ invalid_type_error: 'Código inválido' })
+  .trim()
+  .toUpperCase()
+  .regex(/^CDA1[A-Z2-7]{26}$/, 'Código no reconocido: no es un carnet de operador CDA');
+
+export const consultarQrCdaSchema = z.object({ token: tokenCredencialQrCdaSchema }).strict();
+
+export const marcarQrCdaSchema = z.object({ token: tokenCredencialQrCdaSchema, tipo: tipoMarcaAsistenciaCdaSchema }).strict();
+
+export const emitirCarnetsCdaSchema = z
+  .object({ operadorIds: z.array(z.string().uuid()).min(1, 'Seleccione al menos un operador').max(200) })
+  .strict();
+
 /** Día en formato AAAA-MM-DD (calendario de Ecuador). */
 export const diaAsistenciaSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
+
+/** Máximo de días del reporte de atrasos (igual que el Excel de asistencia). */
+export const MAX_DIAS_REPORTE_ASISTENCIA = 120;
+
+// Hora oficial de entrada (Ecuador) y minutos de gracia: hasta hora + gracia es puntual.
+export const configAsistenciaCdaSchema = z
+  .object({
+    horaEntrada: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (use HH:MM, 00:00 a 23:59)'),
+    minutosGracia: z
+      .number({ invalid_type_error: 'Ingrese los minutos de gracia' })
+      .int('Use minutos enteros')
+      .min(0, 'Mínimo 0 minutos')
+      .max(120, 'Máximo 120 minutos'),
+  })
+  .strict();
+export type ConfigAsistenciaCdaInput = z.infer<typeof configAsistenciaCdaSchema>;
+
+export const rangoAsistenciaSchema = z
+  .object({ desde: diaAsistenciaSchema, hasta: diaAsistenciaSchema })
+  .refine((r) => r.desde <= r.hasta, { message: 'La fecha inicial es posterior a la final', path: ['desde'] })
+  .refine(
+    (r) =>
+      (Date.parse(`${r.hasta}T00:00:00Z`) - Date.parse(`${r.desde}T00:00:00Z`)) / 86_400_000 <
+      MAX_DIAS_REPORTE_ASISTENCIA,
+    { message: `El rango es demasiado largo (máximo ${MAX_DIAS_REPORTE_ASISTENCIA} días)`, path: ['hasta'] },
+  );
+export type RangoAsistenciaInput = z.infer<typeof rangoAsistenciaSchema>;
+
+/**
+ * El PDF cuesta mucha más CPU que el Excel (Render: 0.1 vCPU) y más de un mes
+ * no se imprime: para rangos largos, Excel.
+ */
+export const MAX_DIAS_REPORTE_PDF = 31;
+
+export function diasDelRango(desde: string, hasta: string): number {
+  return (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000 + 1;
+}
+
+export const MENSAJE_MAX_DIAS_PDF = `En PDF el rango máximo es de ${MAX_DIAS_REPORTE_PDF} días; para más, use Excel`;
+
+/** Sin `modo` (enlaces viejos), el reporte sale general. */
+export const modoReporteCdaSchema = z
+  .enum(['GENERAL', 'POR_DIA'], { errorMap: () => ({ message: 'Modo de reporte inválido (GENERAL o POR_DIA)' }) })
+  .default('GENERAL');
 
 // Enlace de foto de operador CDA (página pública).
 

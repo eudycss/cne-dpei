@@ -203,7 +203,42 @@ describe('AuditInterceptor', () => {
       body: {},
       user: ADMIN,
     });
-    expect(exportar.data).toMatchObject({ accion: 'ASISTENCIA_CDA_EXPORTAR', datosDespues: { desde: null, hasta: '2026-10-22' } });
+    expect(exportar.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_EXPORTAR',
+      datosDespues: { desde: null, hasta: '2026-10-22', modo: 'GENERAL', formato: 'xlsx' },
+    });
+
+    const pdf = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA',
+      query: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(pdf.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
+      datosDespues: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', formato: 'pdf' },
+    });
+  });
+
+  it('carnets QR: guarda a quiénes se emitió y las anulaciones', async () => {
+    const emitir = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/credenciales/carnets.pdf',
+      body: { operadorIds: [OTRO, 42] },
+      user: ADMIN,
+    });
+    expect(emitir.data).toMatchObject({
+      accion: 'CREDENCIAL_QR_CDA_EMITIR',
+      entidad: 'credencial_qr_cda',
+      datosDespues: { cantidad: 1, operadorIds: [OTRO] },
+    });
+
+    const revocar = await auditar(
+      { method: 'DELETE', originalUrl: `/operadores-cda/${OTRO}/credencial`, params: { id: OTRO }, body: {}, user: ADMIN },
+      { revocada: true },
+    );
+    expect(revocar.data).toMatchObject({ accion: 'CREDENCIAL_QR_CDA_REVOCAR', entidadId: OTRO });
   });
 
   it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {

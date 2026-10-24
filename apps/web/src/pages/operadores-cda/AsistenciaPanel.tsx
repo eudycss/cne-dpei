@@ -7,13 +7,14 @@ import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
 import {
-  descargarAsistenciaCda,
   getAsistenciaCda,
   marcarAsistenciaCda,
   marcarAsistenciaCdaMasiva,
   quitarAsistenciaCda,
 } from '../../lib/queries/operadores-cda';
 import { CheckMarca } from './CheckMarca';
+import { ExportarReporteModal } from './ExportarReporteModal';
+import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
 import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
 
@@ -46,6 +47,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [masiva, setMasiva] = useState<TipoMarcaAsistenciaCda | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
   const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
   const clave = ['asistencia-cda', fecha];
 
@@ -121,14 +124,6 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
     }
   }
 
-  async function exportar() {
-    try {
-      await descargarAsistenciaCda(fecha);
-    } catch (e) {
-      sileo.error({ title: mensajeError(e, 'No se pudo generar el Excel') });
-    }
-  }
-
   const total = filas.length;
   const presentes = total - conteo('sin-entrada');
   const conFoto = filas.filter((f) => f.operador.tieneFoto).length;
@@ -137,11 +132,14 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   return (
     <>
       <AccionesEncabezado destino={acciones}>
-        <button type="button" className="btn secondary" onClick={exportar}>
-          Exportar Excel
+        <button type="button" className="btn secondary" onClick={() => setExportando(true)}>
+          Exportar
         </button>
         {esHoy && data && (
           <>
+            <button type="button" className="btn secondary" onClick={() => setEscaneando(true)}>
+              Escanear carnet
+            </button>
             <button
               type="button"
               className="btn secondary"
@@ -324,6 +322,27 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           filas={masiva === 'ENTRADA' ? pendientesEntrada : pendientesSalida}
           onClose={() => setMasiva(null)}
           onHecho={refrescar}
+        />
+      )}
+
+      {escaneando && (
+        <EscanearQrModal
+          onClose={() => setEscaneando(false)}
+          onMarcado={(fila) => {
+            qc.setQueryData<AsistenciaCdaDia>(clave, (d) =>
+              d && { ...d, filas: d.filas.map((f) => (f.operador.id === fila.operador.id ? fila : f)) },
+            );
+            refrescar();
+          }}
+        />
+      )}
+
+      {exportando && (
+        <ExportarReporteModal
+          reporte="asistencia"
+          desdeInicial={`${fecha.slice(0, 8)}01`}
+          hastaInicial={fecha}
+          onClose={() => setExportando(false)}
         />
       )}
     </>

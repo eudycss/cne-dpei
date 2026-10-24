@@ -3,10 +3,12 @@ import { Pestanas } from '../../components/Pestanas';
 import { ListadoOperadores } from './ListadoOperadores';
 import { AsistenciaPanel } from './AsistenciaPanel';
 import { ActasPanel } from './ActasPanel';
+import { AtrasosPanel } from './AtrasosPanel';
 
 const PESTANAS = [
   { id: 'listado', etiqueta: 'Listado' },
   { id: 'asistencia', etiqueta: 'Asistencia' },
+  { id: 'atrasos', etiqueta: 'Atrasos' },
   { id: 'actas', etiqueta: 'Actas de entrega' },
 ] as const;
 
@@ -25,7 +27,7 @@ export function OperadoresCdaPage() {
           <p className="ocda-ruta">Personal / Operadores CDA</p>
           <h2 className="ocda-titulo">Operadores CDA</h2>
           <p className="ocda-subtitulo">
-            Asistencia, fotos y actas de entrega del personal de los Centros de Digitalización de Actas.
+            Asistencia, atrasos, fotos y actas de entrega del personal de los Centros de Digitalización de Actas.
           </p>
         </div>
         <div className="ocda-acciones" ref={setAcciones} />
@@ -34,6 +36,8 @@ export function OperadoresCdaPage() {
         {(activa) =>
           activa === 'listado' ? (
             <ListadoOperadores acciones={acciones} />
+          ) : activa === 'atrasos' ? (
+            <AtrasosPanel acciones={acciones} />
           ) : activa === 'actas' ? (
             <ActasPanel acciones={acciones} />
           ) : (
