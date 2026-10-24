@@ -212,16 +212,12 @@ function Confirmar({
   const [ahora] = useState(() => Date.now());
   const salidaEnEspera = siguiente === 'SALIDA' && salidaDesde !== null && Date.parse(salidaDesde) > ahora;
   const puedeMarcar = siguiente !== 'COMPLETO' && !salidaEnEspera;
-  // Sin foto el QR solo no basta (podría ser una foto del carnet de otro): se pide constancia de la cédula.
-  const pideCedula = puedeMarcar && !o.tieneFoto;
-  const [cedulaVerificada, setCedulaVerificada] = useState(false);
   const cancelarRef = useRef<HTMLButtonElement>(null);
-  const verificarRef = useRef<HTMLInputElement>(null);
   const confirmarRef = useRef<HTMLButtonElement>(null);
-  // Foco al control que toca usar: confirmar, la casilla de la cédula o, sin nada que marcar, "Escanear otro".
+  // Foco al control que toca usar: confirmar o, sin nada que marcar, "Escanear otro".
   useEffect(() => {
-    (pideCedula ? verificarRef : puedeMarcar ? confirmarRef : cancelarRef).current?.focus();
-  }, [pideCedula, puedeMarcar]);
+    (puedeMarcar ? confirmarRef : cancelarRef).current?.focus();
+  }, [puedeMarcar]);
 
   return (
     <div className="ocda-qr-confirmar">
@@ -260,17 +256,6 @@ function Confirmar({
           La salida con el carnet se acepta desde las {horaEcuador(salidaDesde)} (evita marcarla por un segundo escaneo).
         </div>
       )}
-      {pideCedula && (
-        <label className="ocda-qr-verificar">
-          <input
-            ref={verificarRef}
-            type="checkbox"
-            checked={cedulaVerificada}
-            onChange={(e) => setCedulaVerificada(e.target.checked)}
-          />
-          Verifiqué la cédula de identidad de la persona
-        </label>
-      )}
 
       <div className="ocda-modal-acciones">
         <button
@@ -287,7 +272,7 @@ function Confirmar({
             type="button"
             className="btn"
             ref={confirmarRef}
-            disabled={registrando || sinConexion || !puedeMarcar || (pideCedula && !cedulaVerificada)}
+            disabled={registrando || sinConexion || !puedeMarcar}
             onClick={() => onConfirmar(siguiente)}
           >
             {registrando ? 'Registrando…' : `Registrar ${ETIQUETA[siguiente]}`}
