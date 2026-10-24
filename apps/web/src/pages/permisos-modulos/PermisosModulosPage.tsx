@@ -16,6 +16,7 @@ type Borrador = Record<RolConfigurable, ModuloWebId[]>;
 
 const SECCIONES: SeccionModulo[] = ['Preparación', 'Operación', 'Personal', 'Informes'];
 const NOTA_TECHO_ID = 'nota-modulo-no-disponible';
+const PENDIENTES_ID = 'modulos-cambios-pendientes';
 
 function borradorVacio(): Borrador {
   return { TECNICO_SUPERVISOR: [], LECTOR: [], ASISTENTE_TRANSVERSAL: [] };
@@ -35,9 +36,14 @@ const mismos = (a: readonly string[], b: readonly string[]) =>
 /** El administrador elige qué módulos de la web ve cada rol. */
 export function PermisosModulosPage() {
   const qc = useQueryClient();
-  const { data, isLoading, isError } = useQuery({ queryKey: ['permisos-modulos'], queryFn: getPermisosModulos });
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['permisos-modulos'], queryFn: getPermisosModulos });
   const [borrador, setBorrador] = useState<Borrador>(borradorVacio);
   const [anuncio, setAnuncio] = useState('');
+  // Se vacía antes de escribir: el lector de pantalla repite el aviso aunque el texto sea el mismo.
+  const anunciar = (texto: string) => {
+    setAnuncio('');
+    setTimeout(() => setAnuncio(texto), 50);
+  };
 
   const guardado: Borrador = borradorVacio();
   for (const r of data?.roles ?? []) {
@@ -59,13 +65,15 @@ export function PermisosModulosPage() {
       qc.invalidateQueries({ queryKey: ['permisos-modulos'] });
       qc.invalidateQueries({ queryKey: MIS_MODULOS_KEY });
       sileo.success({ title: 'Módulos por rol guardados' });
-      setAnuncio('Módulos por rol guardados');
+      anunciar('Módulos por rol guardados');
     },
     onError: (e: any) => {
       qc.invalidateQueries({ queryKey: ['permisos-modulos'] });
-      const mensaje = e?.response?.data?.message ?? 'No se pudieron guardar los módulos por rol';
+      // La validación del servidor puede devolver una lista de mensajes.
+      const m = e?.response?.data?.message;
+      const mensaje = (Array.isArray(m) ? m.join(', ') : m) || 'No se pudieron guardar los módulos por rol';
       sileo.error({ title: mensaje });
-      setAnuncio(mensaje);
+      anunciar(mensaje);
     },
   });
 
@@ -92,7 +100,12 @@ export function PermisosModulosPage() {
           Cargando…
         </p>
       ) : isError ? (
-        <p role="alert">No se pudo cargar la configuración de módulos.</p>
+        <div role="alert">
+          <p>No se pudo cargar la configuración de módulos.</p>
+          <button type="button" className="btn secondary" onClick={() => refetch()}>
+            Reintentar
+          </button>
+        </div>
       ) : (
         <>
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
@@ -112,7 +125,7 @@ export function PermisosModulosPage() {
                 {SECCIONES.map((seccion) => (
                   <Fragment key={seccion}>
                     <tr>
-                      <th scope="colgroup" colSpan={ROLES_CONFIGURABLES.length + 1} className="muted" style={{ fontSize: '0.8rem' }}>
+                      <th scope="rowgroup" colSpan={ROLES_CONFIGURABLES.length + 1} className="muted" style={{ fontSize: '0.8rem' }}>
                         {seccion}
                       </th>
                     </tr>
@@ -153,6 +166,7 @@ export function PermisosModulosPage() {
               type="button"
               className="btn primary"
               disabled={rolesCambiados.length === 0 || guardar.isPending}
+              aria-describedby={PENDIENTES_ID}
               onClick={() => guardar.mutate()}
             >
               {guardar.isPending ? 'Guardando…' : 'Guardar cambios'}
@@ -163,12 +177,17 @@ export function PermisosModulosPage() {
               disabled={guardar.isPending}
               onClick={() => {
                 setBorrador(borradorDeFabrica());
-                setAnuncio('Valores de fábrica restaurados. Falta guardar los cambios.');
+                anunciar('Valores de fábrica restaurados. Falta guardar los cambios.');
               }}
             >
               Restaurar valores de fábrica
             </button>
           </div>
+          <p id={PENDIENTES_ID} className="muted" style={{ fontSize: '0.8rem' }}>
+            {rolesCambiados.length === 0
+              ? 'No hay cambios por guardar.'
+              : `Cambios sin guardar en: ${rolesCambiados.map(etiquetaRol).join(', ')}.`}
+          </p>
         </>
       )}
     </>

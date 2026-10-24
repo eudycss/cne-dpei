@@ -54,7 +54,7 @@ export const MODULOS_WEB: readonly ModuloWeb[] = [
   { id: 'alertas', etiqueta: 'Alertas', seccion: 'Operación', ruta: '/alertas', rolesPermitidos: ['TECNICO_SUPERVISOR'], rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
   {
     id: 'operadores-cda',
-    etiqueta: 'Operadores CDA',
+    etiqueta: 'CDAs (Operadores y Asistentes)',
     seccion: 'Personal',
     ruta: '/operadores-cda',
     rolesPermitidos: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],

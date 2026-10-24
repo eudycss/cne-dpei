@@ -23,7 +23,7 @@ describe('catálogo de módulos web', () => {
     expect(modulosPorDefecto(['ADMINISTRADOR'])).toEqual([...MODULO_WEB_IDS]);
   });
 
-  it('el asistente transversal solo ve Operadores CDA y Cadena de custodia de fábrica', () => {
+  it('el asistente transversal solo ve CDAs y Cadena de custodia de fábrica', () => {
     expect(modulosPorDefecto(['ASISTENTE_TRANSVERSAL'])).toEqual(['operadores-cda', 'cadena-custodia']);
   });
 

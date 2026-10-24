@@ -81,7 +81,7 @@ describe('PermisosModulosPage', () => {
     await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
     await user.click(screen.getByRole('button', { name: 'Restaurar valores de fábrica' }));
     expect(casilla('Incidencias para Técnico supervisor')).toBeChecked();
-    expect(casilla('Operadores CDA para Asistente Electoral Transversal')).toBeChecked();
+    expect(casilla('CDAs (Operadores y Asistentes) para Asistente Electoral Transversal')).toBeChecked();
   });
 
   it('avisa el error del servidor al guardar', async () => {
@@ -93,5 +93,34 @@ describe('PermisosModulosPage', () => {
     await waitFor(() =>
       expect(sileo.error).toHaveBeenCalledWith({ title: 'Módulos no disponibles para este rol: alertas' }),
     );
+  });
+
+  it('si el servidor devuelve una lista de mensajes, los une en uno', async () => {
+    putMock.mockRejectedValueOnce({ response: { data: { message: ['modulos inválido', 'falta rol'] } } });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Reportes para Lector' }));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'modulos inválido, falta rol' }));
+  });
+
+  it('dice por qué "Guardar" está deshabilitado y qué roles tienen cambios pendientes', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const guardar = await screen.findByRole('button', { name: 'Guardar cambios' });
+    expect(guardar).toBeDisabled();
+    expect(guardar).toHaveAccessibleDescription('No hay cambios por guardar.');
+    await user.click(casilla('Reportes para Lector'));
+    expect(guardar).toBeEnabled();
+    expect(guardar).toHaveAccessibleDescription('Cambios sin guardar en: Lector.');
+  });
+
+  it('si no carga la configuración, permite reintentar', async () => {
+    getMock.mockRejectedValueOnce(new Error('caído'));
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar la configuración de módulos.');
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' })).toBeChecked();
   });
 });

@@ -225,8 +225,20 @@ const AUDIT_TABLE: Array<{
   },
   { method: 'POST', pathRegex: /^\/operadores-cda\/[^/]+\/acta\/firmar$/, accion: 'ACTA_CDA_FIRMAR', entidad: 'operador_cda' },
   { method: 'POST', pathRegex: /^\/operadores-cda\/[^/]+\/acta\/reabrir$/, accion: 'ACTA_CDA_REABRIR', entidad: 'operador_cda' },
+  // Módulos de la web por rol: qué quedó visible (la respuesta, ya recortada al techo del rol).
+  {
+    method: 'PUT',
+    pathRegex: /^\/permisos-modulos\/[^/]+$/,
+    accion: 'MODULOS_ROL_UPDATE',
+    entidad: 'rol_modulos',
+    entidadId: (req) => (typeof req.params?.rol === 'string' ? req.params.rol.slice(0, 60) : undefined),
+    resumen: (res) => {
+      const modulos = (res as { modulos?: unknown } | null)?.modulos;
+      return { modulos: Array.isArray(modulos) ? modulos.filter((m): m is string => typeof m === 'string').slice(0, 50) : [] };
+    },
+  },
   // Fase 2 — eventos electorales
-  { method: 'POST',  pathRegex: /^\/eventos$/,               accion: 'EVENTO_CREATE', entidad: 'evento' },
+  { method: 'POST',  pathRegex: /^\/eventos$/,              accion: 'EVENTO_CREATE', entidad: 'evento' },
   { method: 'PATCH', pathRegex: /^\/eventos\/[^/]+$/,        accion: 'EVENTO_UPDATE', entidad: 'evento', campos: ['tipo', 'fechaJornada'] },
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/activate$/, accion: 'EVENTO_ACTIVATE', entidad: 'evento' },
   { method: 'POST',  pathRegex: /^\/eventos\/[^/]+\/reopen$/, accion: 'EVENTO_REOPEN', entidad: 'evento', campos: ['justificacion'] },

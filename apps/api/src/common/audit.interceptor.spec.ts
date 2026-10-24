@@ -336,6 +336,26 @@ describe('AuditInterceptor', () => {
     expect(ocultar.data).toMatchObject({ accion: 'OPERADOR_CDA_ACTIVO', entidadId: OTRO, datosDespues: { activo: false } });
   });
 
+  it('módulos por rol: guarda el rol y los módulos que quedaron visibles (los de la respuesta)', async () => {
+    const { data } = await auditar(
+      {
+        method: 'PUT',
+        originalUrl: '/permisos-modulos/LECTOR',
+        params: { rol: 'LECTOR' },
+        body: { modulos: ['inicio', 'alertas'] },
+        user: ADMIN,
+      },
+      { rol: 'LECTOR', modulos: ['inicio'] },
+    );
+    expect(data).toMatchObject({
+      usuarioId: ADMIN.sub,
+      accion: 'MODULOS_ROL_UPDATE',
+      entidad: 'rol_modulos',
+      entidadId: 'LECTOR',
+      datosDespues: { modulos: ['inicio'] },
+    });
+  });
+
   it('si la bitácora falla, la respuesta sale igual; y las rutas no auditadas no escriben', async () => {
     const falla = jest.fn().mockRejectedValue(new Error('db caída'));
     const { respuesta } = await auditar(
