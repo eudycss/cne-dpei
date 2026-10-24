@@ -105,7 +105,7 @@ export class AtrasosCdaService {
       }),
     ]);
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
-    const entradas = new Map(asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a.entradaEn]));
+    const entradas = new Map<string, Date | null>(asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a.entradaEn]));
 
     const filas: FilaAtrasoCda[] = [];
     const resumen: ResumenAtrasoOperadorCda[] = [];
