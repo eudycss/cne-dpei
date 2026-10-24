@@ -83,6 +83,7 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
+  cedula?: string;
   email?: string;
   nombres?: string;
   apellidos?: string;

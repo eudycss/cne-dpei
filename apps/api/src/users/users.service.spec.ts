@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ZodError } from 'zod';
 
 import { UsersService } from './users.service';
 import { PrismaService } from '../db/prisma.service';
@@ -131,6 +132,60 @@ describe('UsersService', () => {
       );
       expect(prisma.usuario.findUnique).toHaveBeenLastCalledWith({ where: { email: nuevoEmail } });
       expect(prisma.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('permite cambiar la cédula si está libre', async () => {
+      const nuevaCedula = '1710034065';
+      prisma.usuario.findUnique
+        .mockResolvedValueOnce(userRow({ id })) // existing
+        .mockResolvedValueOnce(null); // cédula nueva libre
+      prisma.usuario.update.mockResolvedValue(userRow({ id, cedula: nuevaCedula }));
+
+      const result = await service.update(id, { cedula: nuevaCedula } as any);
+
+      expect(result.cedula).toBe(nuevaCedula);
+      expect(prisma.usuario.findUnique).toHaveBeenLastCalledWith({ where: { cedula: nuevaCedula } });
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id }, data: expect.objectContaining({ cedula: nuevaCedula }) }),
+      );
+    });
+
+    it('lanza ConflictException si la cédula nueva ya pertenece a otro usuario', async () => {
+      const nuevaCedula = '1710034065';
+      prisma.usuario.findUnique
+        .mockResolvedValueOnce(userRow({ id })) // existing
+        .mockResolvedValueOnce(userRow({ cedula: nuevaCedula })); // ocupada
+
+      await expect(service.update(id, { cedula: nuevaCedula } as any)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('responde 409 si otra edición ocupó la cédula entre el chequeo y el update (P2002)', async () => {
+      prisma.usuario.findUnique
+        .mockResolvedValueOnce(userRow({ id })) // existing
+        .mockResolvedValueOnce(null); // parecía libre
+      prisma.usuario.update.mockRejectedValueOnce({ code: 'P2002' });
+
+      await expect(service.update(id, { cedula: '1710034065' } as any)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('rechaza una cédula con dígito verificador inválido', async () => {
+      await expect(service.update(id, { cedula: '1710034066' } as any)).rejects.toThrow(ZodError);
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('no consulta unicidad si la cédula no cambió', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id }));
+      prisma.usuario.update.mockResolvedValue(userRow({ id }));
+
+      await service.update(id, { cedula: validInput.cedula } as any);
+
+      expect(prisma.usuario.findUnique).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.update).toHaveBeenCalled();
     });
   });
 

@@ -53,6 +53,20 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data)).not.toMatch(/ana@cne|0991234567/);
   });
 
+  it('al cambiar la cédula de un usuario queda que se cambió, pero no el valor', async () => {
+    const { data } = await auditar({
+      method: 'PATCH',
+      originalUrl: `/users/${OTRO}`,
+      params: { id: OTRO },
+      body: { cedula: '1710034065', nombres: 'Ana' },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({ usuarioId: ADMIN.sub, accion: 'USER_UPDATE', entidadId: OTRO });
+    expect(data.datosDespues).toEqual({ campos: ['cedula', 'nombres'] });
+    expect(JSON.stringify(data)).not.toMatch(/1710034065/);
+  });
+
   it('crear un usuario o militar no guarda cédula, email ni teléfono; el id sale de la respuesta', async () => {
     const { data } = await auditar(
       {
