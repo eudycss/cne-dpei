@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { ProtectedRoute } from '../auth/ProtectedRoute';
 import { esSoloAsistente } from '../lib/roles';
 import { PreparacionPage } from './inicio/PreparacionPage';
 
@@ -7,5 +8,9 @@ import { PreparacionPage } from './inicio/PreparacionPage';
 export function Inicio() {
   const { user } = useAuth();
   if (esSoloAsistente(user?.roles)) return <Navigate to="/reportes/cadena-custodia" replace />;
-  return <PreparacionPage />;
+  return (
+    <ProtectedRoute modulo="inicio">
+      <PreparacionPage />
+    </ProtectedRoute>
+  );
 }

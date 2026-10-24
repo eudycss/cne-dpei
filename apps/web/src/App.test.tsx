@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
@@ -77,76 +77,87 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     apiGetMock.mockResolvedValue({ data: { items: [], total: 0, noLeidas: 0 } });
   });
 
-  it('LECTOR entra a /users (dentro de su alcance)', () => {
+  it('LECTOR entra a /users (dentro de su alcance)', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/users');
-    expect(screen.getByText('página: usuarios')).toBeInTheDocument();
+    expect(await screen.findByText('página: usuarios')).toBeInTheDocument();
   });
 
-  it('LECTOR recibe "Acceso denegado" en /alertas (fuera de su alcance)', () => {
+  it('LECTOR recibe "Acceso denegado" en /alertas (fuera de su alcance)', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/alertas');
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
     expect(screen.queryByText('página: alertas')).not.toBeInTheDocument();
   });
 
-  it('LECTOR entra a /reportes/no-cda (agregado junto con ADMINISTRADOR)', () => {
+  it('LECTOR entra a /reportes/no-cda (agregado junto con ADMINISTRADOR)', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/reportes/no-cda');
-    expect(screen.getByText('página: reportes')).toBeInTheDocument();
+    expect(await screen.findByText('página: reportes')).toBeInTheDocument();
   });
 
-  it('LECTOR recibe "Acceso denegado" en /users/new (alta de usuario, solo ADMINISTRADOR)', () => {
+  it('LECTOR recibe "Acceso denegado" en /users/new (alta de usuario, solo ADMINISTRADOR)', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/users/new');
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
   });
 
-  it('TECNICO_SUPERVISOR sigue entrando a /alertas (no se le quitó acceso)', () => {
+  it('TECNICO_SUPERVISOR sigue entrando a /alertas (no se le quitó acceso)', async () => {
     setSessionUser(['TECNICO_SUPERVISOR']);
     renderAppAt('/alertas');
-    expect(screen.getByText('página: alertas')).toBeInTheDocument();
+    expect(await screen.findByText('página: alertas')).toBeInTheDocument();
   });
 
-  it('ASISTENTE_TRANSVERSAL entra a la web y su inicio es la cadena de custodia', () => {
+  it('ASISTENTE_TRANSVERSAL entra a la web y su inicio es la cadena de custodia', async () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderAppAt('/');
-    expect(screen.getByText('página: cadena de custodia')).toBeInTheDocument();
+    expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
   });
 
-  it('ASISTENTE_TRANSVERSAL recibe "Acceso denegado" en páginas de administración', () => {
+  it('ASISTENTE_TRANSVERSAL recibe "Acceso denegado" en páginas de administración', async () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderAppAt('/reportes/no-cda');
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
   });
 
-  it('TECNICO_SUPERVISOR no ve la cadena de custodia; LECTOR sí', () => {
-    setSessionUser(['TECNICO_SUPERVISOR']);
-    const { unmount } = renderAppAt('/reportes/cadena-custodia');
-    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
-    unmount();
+  it('cadena de custodia: LECTOR la ve de fábrica; TECNICO_SUPERVISOR solo si el admin se la activa', async () => {
     setSessionUser(['LECTOR']);
+    const lector = renderAppAt('/reportes/cadena-custodia');
+    expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
+    lector.unmount();
+
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    const deFabrica = renderAppAt('/reportes/cadena-custodia');
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/permisos-modulos/mios'));
+    expect(screen.queryByText('página: cadena de custodia')).not.toBeInTheDocument();
+    deFabrica.unmount();
+
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url === '/permisos-modulos/mios' ? { modulos: ['cadena-custodia'] } : { items: [], total: 0, noLeidas: 0 },
+      }),
+    );
     renderAppAt('/reportes/cadena-custodia');
-    expect(screen.getByText('página: cadena de custodia')).toBeInTheDocument();
+    expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
   });
 
-  it('/enlaces lleva al ADMINISTRADOR a la pestaña Enlaces de Recintos (marcadores viejos siguen sirviendo)', () => {
+  it('/enlaces lleva al ADMINISTRADOR a la pestaña Enlaces de Recintos (marcadores viejos siguen sirviendo)', async () => {
     setSessionUser(['ADMINISTRADOR']);
     renderAppAt('/enlaces');
     expect(screen.getByRole('tab', { name: 'Enlaces' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('página: enlaces')).toBeInTheDocument();
+    expect(await screen.findByText('página: enlaces')).toBeInTheDocument();
   });
 
-  it('/enlaces muestra a LECTOR solo el listado de recintos', () => {
+  it('/enlaces muestra a LECTOR solo el listado de recintos', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/enlaces');
-    expect(screen.getByText('página: recintos')).toBeInTheDocument();
+    expect(await screen.findByText('página: recintos')).toBeInTheDocument();
     expect(screen.queryByText('página: enlaces')).not.toBeInTheDocument();
   });
 
-  it('ADMINISTRADOR entra tanto a /alertas como a /reportes/no-cda', () => {
+  it('ADMINISTRADOR entra tanto a /alertas como a /reportes/no-cda', async () => {
     setSessionUser(['ADMINISTRADOR']);
     renderAppAt('/alertas');
-    expect(screen.getByText('página: alertas')).toBeInTheDocument();
+    expect(await screen.findByText('página: alertas')).toBeInTheDocument();
   });
 });

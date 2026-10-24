@@ -274,13 +274,15 @@ describe('generarActasPdf', () => {
 });
 
 describe('CustodiaController — informe', () => {
-  it('el informe y las actas también los puede leer el LECTOR', () => {
+  it('el informe y las actas los lee cualquier rol web al que el admin le active el módulo', () => {
+    // El techo son los roles web; ModuloGuard (ver modulo.guard.spec) exige además el módulo activo.
     const reflector = new Reflector();
     for (const m of ['informe', 'actas', 'actaKit'] as const) {
       expect(reflector.get(ROLES_KEY, CustodiaController.prototype[m])).toEqual([
         'ASISTENTE_TRANSVERSAL',
         'ADMINISTRADOR',
         'LECTOR',
+        'TECNICO_SUPERVISOR',
       ]);
     }
   });

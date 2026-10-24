@@ -1270,3 +1270,18 @@ export interface GenerarActasCdaResult {
   /** Ids que no corresponden a un operador activo. */
   ignorados: number;
 }
+
+// ---- Módulos de la web por rol (los ids y el catálogo viven en @cne/shared-validation) ----
+
+export interface ModulosRol {
+  rol: RoleName;
+  modulos: string[];
+}
+
+export interface PermisosModulosResponse {
+  roles: ModulosRol[];
+}
+
+export interface MisModulosResponse {
+  modulos: string[];
+}

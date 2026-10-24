@@ -26,6 +26,7 @@ import { IncidenciasModule } from './incidencias/incidencias.module';
 import { AlertasModule } from './alertas/alertas.module';
 import { EnlacesModule } from './enlaces/enlaces.module';
 import { CustodiaModule } from './custodia/custodia.module';
+import { PermisosModulosModule } from './permisos-modulos/permisos-modulos.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { CustodiaModule } from './custodia/custodia.module';
     AlertasModule,
     EnlacesModule,
     CustodiaModule,
+    PermisosModulosModule,
   ],
   controllers: [AppController],
   providers: [

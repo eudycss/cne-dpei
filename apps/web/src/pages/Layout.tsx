@@ -12,12 +12,14 @@ import {
   TriangleAlert,
   PackageCheck,
   IdCard,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
-import { esSoloAsistente, etiquetaRol } from '../lib/roles';
+import { etiquetaRol } from '../lib/roles';
+import { useModulos } from '../lib/useModulos';
 import { PASOS_PREPARACION } from '../lib/flujo';
 
 /** Grupo del menú con título visible, anunciado como grupo por lectores de pantalla. */
@@ -35,19 +37,13 @@ export function Layout() {
   const { theme, toggle } = useTheme();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
-  const puedeVerAlertas =
-    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
-  const puedeVerReportes =
-    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR') ?? false;
-  const puedeVerCustodia =
-    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR' || r === 'ASISTENTE_TRANSVERSAL') ?? false;
-  // El asistente transversal solo usa la cadena de custodia en la web; el resto
-  // de páginas consulta endpoints que no le corresponden.
-  const soloAsistente = esSoloAsistente(user?.roles);
-  const puedeVerInformes = puedeVerCustodia || puedeVerReportes || !soloAsistente;
-  const puedeVerOperadoresCda =
-    user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR' || r === 'ASISTENTE_TRANSVERSAL') ??
-    false;
+  const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  // Qué módulos ve cada rol lo decide el administrador (Administración > Módulos por rol).
+  const { puedeVer } = useModulos();
+  const pasosVisibles = PASOS_PREPARACION.filter((p) => puedeVer(p.modulo));
+  const verPreparacion = puedeVer('inicio') || pasosVisibles.length > 0;
+  const verOperacion = puedeVer('monitoreo') || puedeVer('incidencias') || puedeVer('alertas');
+  const verInformes = puedeVer('cadena-custodia') || puedeVer('reportes') || puedeVer('powerbi-cdas');
 
   return (
     <>
@@ -58,39 +54,45 @@ export function Layout() {
             <h1>CNE Imbabura</h1>
           </div>
           <nav className="sidebar-nav" aria-label="Menú principal">
-            {!soloAsistente && (
-              <>
-                <SeccionMenu id="menu-preparacion" titulo="Preparación">
+            {verPreparacion && (
+              <SeccionMenu id="menu-preparacion" titulo="Preparación">
+                {puedeVer('inicio') && (
                   <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
                     <ListChecks size={16} aria-hidden="true" />
                     <span>Estado de la preparación</span>
                   </NavLink>
-                  {PASOS_PREPARACION.map(({ id, ruta, etiqueta, icono: Icono }) => (
-                    <NavLink key={id} to={ruta} className={({ isActive }) => (isActive ? 'active' : '')}>
-                      <Icono size={16} aria-hidden="true" />
-                      <span>{etiqueta}</span>
-                    </NavLink>
-                  ))}
-                </SeccionMenu>
-                <SeccionMenu id="menu-operacion" titulo="Operación">
+                )}
+                {pasosVisibles.map(({ id, ruta, etiqueta, icono: Icono }) => (
+                  <NavLink key={id} to={ruta} className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <Icono size={16} aria-hidden="true" />
+                    <span>{etiqueta}</span>
+                  </NavLink>
+                ))}
+              </SeccionMenu>
+            )}
+            {verOperacion && (
+              <SeccionMenu id="menu-operacion" titulo="Operación">
+                {puedeVer('monitoreo') && (
                   <NavLink to="/operadores" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <MapPinned size={16} aria-hidden="true" />
                     <span>Monitoreo</span>
                   </NavLink>
+                )}
+                {puedeVer('incidencias') && (
                   <NavLink to="/incidencias" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <TriangleAlert size={16} aria-hidden="true" />
                     <span>Incidencias</span>
                   </NavLink>
-                  {puedeVerAlertas && (
-                    <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
-                      <Siren size={16} aria-hidden="true" />
-                      <span>Alertas</span>
-                    </NavLink>
-                  )}
-                </SeccionMenu>
-              </>
+                )}
+                {puedeVer('alertas') && (
+                  <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <Siren size={16} aria-hidden="true" />
+                    <span>Alertas</span>
+                  </NavLink>
+                )}
+              </SeccionMenu>
             )}
-            {puedeVerOperadoresCda && (
+            {puedeVer('operadores-cda') && (
               <SeccionMenu id="menu-personal" titulo="Personal">
                 <NavLink to="/operadores-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
                   <IdCard size={16} aria-hidden="true" />
@@ -98,26 +100,34 @@ export function Layout() {
                 </NavLink>
               </SeccionMenu>
             )}
-            {puedeVerInformes && (
+            {verInformes && (
               <SeccionMenu id="menu-informes" titulo="Informes">
-                {puedeVerCustodia && (
+                {puedeVer('cadena-custodia') && (
                   <NavLink to="/reportes/cadena-custodia" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <PackageCheck size={16} aria-hidden="true" />
                     <span>Cadena de custodia</span>
                   </NavLink>
                 )}
-                {puedeVerReportes && (
+                {puedeVer('reportes') && (
                   <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <FileChartColumn size={16} aria-hidden="true" />
                     <span>Reportes</span>
                   </NavLink>
                 )}
-                {!soloAsistente && (
+                {puedeVer('powerbi-cdas') && (
                   <NavLink to="/reportes/cdas" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <ChartColumn size={16} aria-hidden="true" />
                     <span>Power BI CDAS</span>
                   </NavLink>
                 )}
+              </SeccionMenu>
+            )}
+            {esAdmin && (
+              <SeccionMenu id="menu-administracion" titulo="Administración">
+                <NavLink to="/configuracion/modulos" className={({ isActive }) => (isActive ? 'active' : '')}>
+                  <SlidersHorizontal size={16} aria-hidden="true" />
+                  <span>Módulos por rol</span>
+                </NavLink>
               </SeccionMenu>
             )}
           </nav>

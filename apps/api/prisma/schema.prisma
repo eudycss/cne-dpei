@@ -172,8 +172,21 @@ model Rol {
   nombre String @unique @db.VarChar(40)
 
   usuarios UsuarioRol[]
+  modulos  RolModulo[]
 
   @@map("roles")
+}
+
+/// Módulo de la web visible para un rol (existe la fila = se muestra). Lo edita
+/// el administrador; el catálogo y el techo por rol están en @cne/shared-validation.
+model RolModulo {
+  rolId  String @map("rol_id") @db.Uuid
+  modulo String @db.VarChar(40)
+
+  rol Rol @relation(fields: [rolId], references: [id], onDelete: Cascade)
+
+  @@id([rolId, modulo])
+  @@map("rol_modulos")
 }
 
 model UsuarioRol {
