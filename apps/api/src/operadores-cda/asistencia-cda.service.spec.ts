@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 
 import { AsistenciaCdaService } from './asistencia-cda.service';
 import { PrismaService } from '../db/prisma.service';
+import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -207,7 +208,14 @@ describe('AsistenciaCdaService', () => {
   });
 
   describe('exportar', () => {
-    it('una fila por operador y día desde su fecha de inicio, con horas de Ecuador y estado', async () => {
+    const leerExcel = async (contenido: Buffer) => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(contenido as any);
+      return wb;
+    };
+    const datos = (ws: ExcelJS.Worksheet) => ws.getSheetValues().slice(FILA_ENCABEZADOS_EXCEL + 1) as unknown[][];
+
+    const conDosOperadores = () => {
       prisma.operadorCda.findMany.mockResolvedValueOnce([
         operador(),
         operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000', fechaInicio: new Date('2026-10-22T00:00:00Z') }),
@@ -222,12 +230,23 @@ describe('AsistenciaCdaService', () => {
           salidaPor: ANA_TECNICA,
         },
       ]);
+    };
 
-      const buf = await service.exportar(undefined, '2026-10-22');
+    it('general: una fila por operador y día desde su fecha de inicio, con horas de Ecuador y estado', async () => {
+      conDosOperadores();
 
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf as any);
-      const filas = wb.worksheets[0].getSheetValues().slice(2) as unknown[][];
+      const archivo = await service.exportar(undefined, '2026-10-22', undefined, 'xlsx');
+
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-20_2026-10-22.xlsx');
+      const wb = await leerExcel(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Asistencia']);
+      const ws = wb.worksheets[0];
+      expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Operadores CDA');
+      expect(String(ws.getCell('A7').value)).toContain('Del 20/10/2026 al 22/10/2026');
+      expect(ws.getRow(FILA_ENCABEZADOS_EXCEL).values).toEqual([
+        undefined, 'Fecha', 'Apellidos y nombres', 'Cédula', 'Entrada', 'Registró entrada', 'Salida', 'Registró salida', 'Estado',
+      ]);
+      const filas = datos(ws);
       // Ana desde el 20 (3 días) + Juan solo el 22 = 4 filas.
       expect(filas).toHaveLength(4);
       expect(filas[1]).toEqual([
@@ -237,26 +256,71 @@ describe('AsistenciaCdaService', () => {
       expect(filas.map((f) => f[1])).toEqual(['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-22']);
     });
 
-    it('rechaza rangos invertidos, demasiado largos o con fecha final futura', async () => {
+    it('lleva el logo de las Elecciones 2027 en cada hoja', async () => {
+      conDosOperadores();
+
+      const wb = await leerExcel((await service.exportar(undefined, '2026-10-22', 'POR_DIA', 'xlsx')).contenido);
+
+      expect(wb.model.media).toHaveLength(1);
+      for (const ws of wb.worksheets) expect(ws.getImages()).toHaveLength(1);
+    });
+
+    it('por día: una hoja por día, sin columna de fecha y con cuántos registraron entrada', async () => {
+      conDosOperadores();
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-22', 'POR_DIA', 'xlsx');
+
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-21_2026-10-22_por_dia.xlsx');
+      const wb = await leerExcel(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['2026-10-21', '2026-10-22']);
+      const [dia21, dia22] = wb.worksheets;
+      expect(dia21.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · 1 de 1 con entrada');
+      expect(datos(dia21)).toEqual([
+        [undefined, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa'],
+      ]);
+      expect(dia22.getCell('A6').value).toBe('jueves, 22 de octubre de 2026 · 0 de 2 con entrada');
+      expect(datos(dia22).map((f) => f[1])).toEqual(['PÉREZ LÓPEZ ANA MARÍA', 'RUIZ MORA JUAN']);
+    });
+
+    it('PDF: devuelve un PDF con su nombre y tipo', async () => {
+      conDosOperadores();
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-22', 'POR_DIA', 'pdf');
+
+      expect(archivo.tipo).toBe('application/pdf');
+      expect(archivo.nombre).toBe('asistencia_operadores_cda_2026-10-21_2026-10-22_por_dia.pdf');
+      expect(archivo.contenido.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('sin operadores activos igual genera un archivo válido', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+
+      const wb = await leerExcel((await service.exportar('2026-10-22', '2026-10-22', 'POR_DIA', 'xlsx')).contenido);
+
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Reporte']);
+    });
+
+    it('rechaza rangos invertidos, demasiado largos, con fecha final futura o un modo desconocido', async () => {
       prisma.operadorCda.findMany.mockResolvedValue([]);
-      await expect(service.exportar('2026-10-22', '2026-10-20')).rejects.toThrow('posterior');
-      await expect(service.exportar('2026-01-01', '2026-10-20')).rejects.toThrow('demasiado largo');
-      await expect(service.exportar(undefined, '2026-10-23')).rejects.toThrow('no puede ser futura');
+      prisma.asistenciaCda.findMany.mockResolvedValue([]);
+      await expect(service.exportar('2026-10-22', '2026-10-20', undefined, 'xlsx')).rejects.toThrow('posterior');
+      await expect(service.exportar('2026-01-01', '2026-10-20', undefined, 'xlsx')).rejects.toThrow('demasiado largo');
+      await expect(service.exportar(undefined, '2026-10-23', undefined, 'xlsx')).rejects.toThrow('no puede ser futura');
+      await expect(service.exportar(undefined, '2026-10-22', 'DIARIO', 'pdf')).rejects.toThrow(BadRequestException);
     });
 
     it('sin "desde" y con operadores de hace más de 120 días, exporta solo los últimos 120 días', async () => {
       prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ fechaInicio: new Date('2026-01-05T00:00:00Z') })]);
       prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
 
-      const buf = await service.exportar(undefined, '2026-10-22');
+      const archivo = await service.exportar(undefined, '2026-10-22', undefined, 'xlsx');
 
       expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.fecha).toEqual({
         gte: new Date('2026-06-25T00:00:00Z'),
         lte: new Date('2026-10-22T00:00:00Z'),
       });
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf as any);
-      expect(wb.worksheets[0].rowCount).toBe(121);
+      expect(datos((await leerExcel(archivo.contenido)).worksheets[0])).toHaveLength(120);
     });
   });
 });

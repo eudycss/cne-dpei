@@ -9,6 +9,9 @@ import {
   configAlertasSchema,
   configAsistenciaCdaSchema,
   rangoAsistenciaSchema,
+  modoReporteCdaSchema,
+  diasDelRango,
+  MAX_DIAS_REPORTE_PDF,
   isValidCedulaEcuatoriana,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
@@ -344,6 +347,19 @@ describe('asistencia CDA', () => {
     expect(ok('2026-10-02', '2026-10-01')).toBe(false);
     expect(ok('2026-06-04', '2026-10-01')).toBe(true); // 120 días
     expect(ok('2026-06-03', '2026-10-01')).toBe(false); // 121 días
+  });
+
+  it('cuenta los días del rango con ambos extremos', () => {
+    expect(diasDelRango('2026-10-01', '2026-10-01')).toBe(1);
+    expect(diasDelRango('2026-10-01', '2026-10-31')).toBe(MAX_DIAS_REPORTE_PDF);
+    expect(diasDelRango('2026-02-27', '2026-03-02')).toBe(4);
+  });
+
+  it('el modo del reporte es GENERAL o POR_DIA, y GENERAL si no viene', () => {
+    expect(modoReporteCdaSchema.parse(undefined)).toBe('GENERAL');
+    expect(modoReporteCdaSchema.parse('POR_DIA')).toBe('POR_DIA');
+    expect(modoReporteCdaSchema.safeParse('por_dia').success).toBe(false);
+    expect(modoReporteCdaSchema.safeParse(['GENERAL']).success).toBe(false);
   });
 });
 

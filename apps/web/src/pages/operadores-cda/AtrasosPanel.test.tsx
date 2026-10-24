@@ -103,7 +103,7 @@ describe('AtrasosPanel', () => {
     getMock.mockClear();
     fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '2099-01-01' } });
     expect(await screen.findByRole('alert')).toHaveTextContent('La fecha inicial es posterior a la final');
-    expect(screen.getByRole('button', { name: 'Exportar Excel' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeDisabled();
     expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('2099-01-01'));
   });
 

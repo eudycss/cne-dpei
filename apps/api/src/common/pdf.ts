@@ -16,19 +16,22 @@ export const LINEA = '#9ca3af';
 // sobre blanco: pdfkit lo incrusta sin decodificar transparencias. Se pasa por
 // ruta para que pdfkit lo incruste una sola vez y lo reutilice en cada página.
 // Si falta, el PDF sale sin logo en vez de fallar.
-const RUTA_LOGO = join(__dirname, '..', 'assets', 'logo-elecciones-2027.jpg');
-const hayLogo = existsSync(RUTA_LOGO);
+// También lo usan los Excel de reportes (ExcelJS lo lee por ruta).
+export const RUTA_LOGO = join(__dirname, '..', 'assets', 'logo-elecciones-2027.jpg');
+export const hayLogo = existsSync(RUTA_LOGO);
 const ALTO_LOGO = 70;
 
 /**
  * Crea un documento A4 y la promesa que se resuelve con el PDF al llamar
  * `doc.end()`. La orientación vale también para las páginas que agrega
- * `asegurarEspacio`.
+ * `asegurarEspacio`. Con `paginar` las páginas quedan en memoria hasta el
+ * final para poder escribir el pie con `piePaginas`.
  */
 export function nuevoPdf(
   layout: 'portrait' | 'landscape' = 'portrait',
+  { paginar = false }: { paginar?: boolean } = {},
 ): { doc: PDFKit.PDFDocument; terminado: Promise<Buffer> } {
-  const doc = new PDFDocument({ size: 'A4', layout, margin: MARGEN, autoFirstPage: false });
+  const doc = new PDFDocument({ size: 'A4', layout, margin: MARGEN, autoFirstPage: false, bufferPages: paginar });
   const chunks: Buffer[] = [];
   const terminado = new Promise<Buffer>((resolve, reject) => {
     doc.on('data', (c: Buffer) => chunks.push(c));
@@ -96,7 +99,13 @@ export function tabla(
     doc.font(negrita ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
     const alto =
       Math.max(...celdas.map((c, i) => doc.heightOfString(c, { width: anchos[i] - pad * 2 }))) + pad * 2;
+    const pagina = doc.page;
     asegurarEspacio(doc, alto);
+    // En página nueva se repiten los encabezados (si no, las columnas quedan sin título).
+    if (!negrita && doc.page !== pagina) {
+      dibujarFila(encabezados, true);
+      doc.font('Helvetica').fontSize(8.5);
+    }
     const y = doc.y;
     let x = MARGEN;
     celdas.forEach((c, i) => {
@@ -111,6 +120,27 @@ export function tabla(
   dibujarFila(encabezados, true);
   for (const f of filas) dibujarFila(f, false);
   doc.moveDown(0.3);
+}
+
+/**
+ * "texto · Página n de N" al pie de cada página. Requiere `nuevoPdf(…, { paginar: true })`
+ * y se llama justo antes de `doc.end()`.
+ */
+export function piePaginas(doc: PDFKit.PDFDocument, texto: string): void {
+  const { start, count } = doc.bufferedPageRange();
+  for (let i = 0; i < count; i++) {
+    doc.switchToPage(start + i);
+    // Sin margen inferior: si no, escribir por debajo de él abre una página nueva.
+    const inferior = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.font('Helvetica').fontSize(7.5).fillColor(GRIS)
+      .text(`${texto} · Página ${i + 1} de ${count}`, MARGEN, doc.page.height - MARGEN / 2 - 6, {
+        width: doc.page.width - MARGEN * 2,
+        align: 'center',
+        lineBreak: false,
+      });
+    doc.page.margins.bottom = inferior;
+  }
 }
 
 export function enviarPdf(res: Response, pdf: Buffer, archivo: string): void {

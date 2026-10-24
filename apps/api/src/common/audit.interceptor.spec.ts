@@ -203,7 +203,22 @@ describe('AuditInterceptor', () => {
       body: {},
       user: ADMIN,
     });
-    expect(exportar.data).toMatchObject({ accion: 'ASISTENCIA_CDA_EXPORTAR', datosDespues: { desde: null, hasta: '2026-10-22' } });
+    expect(exportar.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_EXPORTAR',
+      datosDespues: { desde: null, hasta: '2026-10-22', modo: 'GENERAL', formato: 'xlsx' },
+    });
+
+    const pdf = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA',
+      query: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(pdf.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
+      datosDespues: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', formato: 'pdf' },
+    });
   });
 
   it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {

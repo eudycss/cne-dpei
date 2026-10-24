@@ -11,6 +11,8 @@ import type {
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
+  FormatoReporteCda,
+  ModoReporteCda,
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
@@ -82,19 +84,6 @@ export async function marcarAsistenciaCdaMasiva(
     operadorIds,
   });
   return data;
-}
-
-/** Descarga el Excel de asistencia desde el primer día hasta `hasta`. */
-export async function descargarAsistenciaCda(hasta: string): Promise<void> {
-  const res = await api.get(`/operadores-cda/asistencia/exportar.xlsx?hasta=${encodeURIComponent(hasta)}`, {
-    responseType: 'blob',
-  });
-  const url = URL.createObjectURL(res.data);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `asistencia_operadores_cda_${hasta}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /** Genera el enlace de foto (anula el anterior). El token solo llega esta vez. */
@@ -206,9 +195,27 @@ export async function getAtrasosCda(desde: string, hasta: string): Promise<Repor
   return data;
 }
 
-export async function descargarAtrasosCda(desde: string, hasta: string): Promise<void> {
-  const res = await api.get<Blob>(`/operadores-cda/asistencia/atrasos.xlsx?${rango(desde, hasta)}`, {
-    responseType: 'blob',
-  });
-  guardar(res.data, `atrasos_operadores_cda_${desde}_${hasta}.xlsx`);
+// Reportes de asistencia y de atrasos en Excel o PDF: todo junto o una hoja/sección por día.
+
+export type ReporteCda = 'asistencia' | 'atrasos';
+
+export interface OpcionesReporteCda {
+  desde: string;
+  hasta: string;
+  modo: ModoReporteCda;
+  formato: FormatoReporteCda;
+}
+
+const RUTA_REPORTE: Record<ReporteCda, string> = { asistencia: 'exportar', atrasos: 'atrasos' };
+
+/** Mismo nombre que pone la API (respaldo si no llega Content-Disposition). */
+export function nombreReporteCda(reporte: ReporteCda, o: OpcionesReporteCda): string {
+  return `${reporte}_operadores_cda_${o.desde}_${o.hasta}${o.modo === 'POR_DIA' ? '_por_dia' : ''}.${o.formato}`;
+}
+
+export function pedirReporteCda(reporte: ReporteCda, o: OpcionesReporteCda) {
+  return api.get<Blob>(
+    `/operadores-cda/asistencia/${RUTA_REPORTE[reporte]}.${o.formato}?${rango(o.desde, o.hasta)}&modo=${o.modo}`,
+    { responseType: 'blob' },
+  );
 }

@@ -846,6 +846,20 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   margin: 0; padding: 0.9rem; border: 1px solid var(--f-border-subtle); border-radius: 14px;
 }
 .ocda-form-prendas legend { padding: 0 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--f-text); }
+/* Opciones como tarjetas (radios nativos): exportar reportes. */
+.ocda-opciones {
+  display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 0; padding: 0.9rem; border: 1px solid var(--f-border-subtle); border-radius: 14px;
+}
+.ocda-opciones legend { padding: 0 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--f-text); }
+.ocda-opcion {
+  display: flex; align-items: flex-start; gap: 0.6rem; min-height: 44px; padding: 0.7rem 0.8rem; cursor: pointer;
+  border: 1px solid var(--f-borde-control); border-radius: 12px; background: var(--f-bg-base); color: var(--f-text);
+}
+.ocda-opcion > span { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.88rem; }
+.ocda-opcion input { margin-top: 0.2rem; inline-size: 1rem; block-size: 1rem; accent-color: var(--f-cian); flex-shrink: 0; }
+.ocda-opcion:has(input:checked) { border-color: var(--f-cian); background: var(--f-cian-suave); }
+.ocda-opcion:has(input:focus-visible) { box-shadow: var(--focus-ring); }
 
 .ocda-vacio { padding: 1.25rem; border: 1px dashed var(--f-cian); background: var(--f-cian-suave); border-radius: 16px; }
 

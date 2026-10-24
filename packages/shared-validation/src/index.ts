@@ -682,6 +682,23 @@ export const rangoAsistenciaSchema = z
   );
 export type RangoAsistenciaInput = z.infer<typeof rangoAsistenciaSchema>;
 
+/**
+ * El PDF cuesta mucha más CPU que el Excel (Render: 0.1 vCPU) y más de un mes
+ * no se imprime: para rangos largos, Excel.
+ */
+export const MAX_DIAS_REPORTE_PDF = 31;
+
+export function diasDelRango(desde: string, hasta: string): number {
+  return (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000 + 1;
+}
+
+export const MENSAJE_MAX_DIAS_PDF = `En PDF el rango máximo es de ${MAX_DIAS_REPORTE_PDF} días; para más, use Excel`;
+
+/** Sin `modo` (enlaces viejos), el reporte sale general. */
+export const modoReporteCdaSchema = z
+  .enum(['GENERAL', 'POR_DIA'], { errorMap: () => ({ message: 'Modo de reporte inválido (GENERAL o POR_DIA)' }) })
+  .default('GENERAL');
+
 // Enlace de foto de operador CDA (página pública).
 
 /** Versión del aviso de consentimiento LOPDP que acepta el operador. Cambiarla si cambia el texto. */

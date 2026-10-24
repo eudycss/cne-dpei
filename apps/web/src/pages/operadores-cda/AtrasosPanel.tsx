@@ -8,13 +8,13 @@ import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
 import {
-  descargarAtrasosCda,
   getAtrasosCda,
   getConfigAsistenciaCda,
   guardarConfigAsistenciaCda,
 } from '../../lib/queries/operadores-cda';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { Campo } from './Campo';
+import { ExportarReporteModal } from './ExportarReporteModal';
 import { Kpi } from './Kpi';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
 
@@ -51,6 +51,7 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [busqueda, setBusqueda] = useState('');
   const [configurando, setConfigurando] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   const rango = rangoAsistenciaSchema.safeParse({ desde, hasta });
   const errorRango = rango.success ? null : rango.error.issues[0]?.message ?? 'Rango inválido';
@@ -73,14 +74,6 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
   const filas = (data?.filas ?? []).filter((f) => (filtro === 'todos' || f.estado === filtro) && coincide(f));
   const conteo = (f: Filtro) => (data?.filas ?? []).filter((x) => f === 'todos' || x.estado === f).length;
 
-  async function exportar() {
-    try {
-      await descargarAtrasosCda(desde, hasta);
-    } catch (e) {
-      sileo.error({ title: mensajeError(e, 'No se pudo generar el Excel') });
-    }
-  }
-
   const t = data?.totales;
   const evaluados = t ? t.puntuales + t.atrasos + t.faltas : 0;
   const pct = (n: number) => (evaluados > 0 ? Math.round((n / evaluados) * 100) : 0);
@@ -93,8 +86,8 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
             Hora de entrada
           </button>
         )}
-        <button type="button" className="btn" onClick={exportar} disabled={!rango.success}>
-          Exportar Excel
+        <button type="button" className="btn" onClick={() => setExportando(true)} disabled={!rango.success}>
+          Exportar
         </button>
       </AccionesEncabezado>
 
@@ -284,6 +277,15 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
 
       {configurando && config.data && (
         <ConfigHoraModal actual={config.data} onClose={() => setConfigurando(false)} />
+      )}
+
+      {exportando && (
+        <ExportarReporteModal
+          reporte="atrasos"
+          desdeInicial={desde}
+          hastaInicial={hasta}
+          onClose={() => setExportando(false)}
+        />
       )}
     </>
   );

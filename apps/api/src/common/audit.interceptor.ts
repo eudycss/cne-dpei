@@ -9,6 +9,15 @@ import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
 import { PrismaService } from '../db/prisma.service';
 
+/** Descargas de reportes de operadores CDA: rango, modo y formato pedidos (nada personal). */
+function resumenDescargaReporte(req: Request): Record<string, unknown> {
+  const q = (req.query ?? {}) as Record<string, unknown>;
+  const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const modo = q.modo === 'POR_DIA' ? 'POR_DIA' : 'GENERAL';
+  const formato = (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx';
+  return { desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
+}
+
 /**
  * Mapeo: método+ruta -> { accion, entidad }
  * Preparación de HU17. Las HU posteriores extenderán esta tabla.
@@ -93,17 +102,13 @@ const AUDIT_TABLE: Array<{
   // Descarga cédulas de todos los operadores: queda el rango pedido.
   {
     method: 'GET',
-    pathRegex: /^\/operadores-cda\/asistencia\/exportar\.xlsx$/,
+    pathRegex: /^\/operadores-cda\/asistencia\/exportar\.(xlsx|pdf)$/,
     accion: 'ASISTENCIA_CDA_EXPORTAR',
     entidad: 'asistencia_cda',
-    resumen: (_res, req) => {
-      const q = (req.query ?? {}) as Record<string, unknown>;
-      const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-      return { desde: dia(q.desde), hasta: dia(q.hasta) };
-    },
+    resumen: (_res, req) => resumenDescargaReporte(req),
   },
   // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
-  // y la descarga del Excel (lleva cédulas), con el rango pedido.
+  // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.
   {
     method: 'PUT',
     pathRegex: /^\/operadores-cda\/asistencia\/config$/,
@@ -113,14 +118,10 @@ const AUDIT_TABLE: Array<{
   },
   {
     method: 'GET',
-    pathRegex: /^\/operadores-cda\/asistencia\/atrasos\.xlsx$/,
+    pathRegex: /^\/operadores-cda\/asistencia\/atrasos\.(xlsx|pdf)$/,
     accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
     entidad: 'asistencia_cda',
-    resumen: (_res, req) => {
-      const q = (req.query ?? {}) as Record<string, unknown>;
-      const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-      return { desde: dia(q.desde), hasta: dia(q.hasta) };
-    },
+    resumen: (_res, req) => resumenDescargaReporte(req),
   },
   // Enlace de foto: solo la vigencia (nunca el token). La subida es pública: el
   // operador sale de req.operadorCdaId (lo pone el controller) y queda la versión

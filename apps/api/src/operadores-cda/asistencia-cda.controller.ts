@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import {
   marcarAsistenciaCdaMasivaSchema,
@@ -13,6 +14,7 @@ import type {
 } from '@cne/shared-types';
 
 import { AsistenciaCdaService } from './asistencia-cda.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -39,12 +41,17 @@ export class AsistenciaCdaController {
   }
 
   @Get('asistencia/exportar.xlsx')
-  @ApiOperation({ summary: 'Excel de asistencia por operador y día (desde/hasta AAAA-MM-DD)' })
-  async exportar(@Res() res: Response, @Query('desde') desde?: unknown, @Query('hasta') hasta?: unknown) {
-    const buf = await this.asistencia.exportar(texto(desde), texto(hasta));
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=asistencia_operadores_cda.xlsx');
-    res.send(buf);
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
+  async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
+    enviarReporte(res, await this.asistencia.exportar(texto(q.desde), texto(q.hasta), q.modo, 'xlsx'));
+  }
+
+  @Get('asistencia/exportar.pdf')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
+  async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {
+    enviarReporte(res, await this.asistencia.exportar(texto(q.desde), texto(q.hasta), q.modo, 'pdf'));
   }
 
   @Post('asistencia/masiva')

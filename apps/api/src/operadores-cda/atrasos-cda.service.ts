@@ -1,16 +1,27 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
 import { rangoAsistenciaSchema } from '@cne/shared-validation';
 import type {
   ConfigAsistenciaCda,
   EstadoPuntualidad,
   FilaAtrasoCda,
+  FormatoReporteCda,
   ReporteAtrasosCda,
   ResumenAtrasoOperadorCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import { CONFIG_ASISTENCIA_POR_DEFECTO, clasificarEntrada } from './puntualidad';
+import {
+  type ArchivoReporte,
+  type Celda,
+  type ColumnaReporte,
+  type TablaReporte,
+  agruparPorDia,
+  diaCorto,
+  diaLargo,
+  generarReporte,
+  parsearModo,
+} from './reporte-cda';
 
 const CONFIG_ID = 1;
 
@@ -20,6 +31,38 @@ const ETIQUETA: Record<EstadoPuntualidad, string> = {
   FALTA: 'Falta',
   PENDIENTE: 'Pendiente',
 };
+
+const COLUMNAS_RESUMEN: ColumnaReporte[] = [
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Puntuales', ancho: 11 },
+  { titulo: 'Atrasos', ancho: 10 },
+  { titulo: 'Faltas', ancho: 9 },
+  { titulo: 'Min. de atraso', ancho: 15 },
+];
+
+/** En el detalle general va además "Fecha" al inicio. */
+const COLUMNAS_DETALLE: ColumnaReporte[] = [
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Hora oficial', ancho: 12 },
+  { titulo: 'Entrada', ancho: 9 },
+  { titulo: 'Min. de atraso', ancho: 15 },
+  { titulo: 'Estado', ancho: 11 },
+];
+
+/** "3 puntuales · 1 atraso · 0 faltas" (+ pendientes si los hay). */
+function conteoDelDia(filas: FilaAtrasoCda[]): string {
+  const n = (e: EstadoPuntualidad) => filas.filter((f) => f.estado === e).length;
+  const plural = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+  const partes = [
+    plural(n('PUNTUAL'), 'puntual', 'puntuales'),
+    plural(n('ATRASO'), 'atraso', 'atrasos'),
+    plural(n('FALTA'), 'falta', 'faltas'),
+  ];
+  if (n('PENDIENTE') > 0) partes.push(plural(n('PENDIENTE'), 'pendiente', 'pendientes'));
+  return partes.join(' · ');
+}
 
 /**
  * Reporte de atrasos de los operadores CDA a partir de la marca de entrada y
@@ -107,40 +150,58 @@ export class AtrasosCdaService {
     return { desde, hasta, config, totales, resumen, filas };
   }
 
-  /** Excel con el resumen por operador y el detalle por día. */
-  async exportar(desde: unknown, hasta: unknown): Promise<Buffer> {
+  /**
+   * Excel o PDF con el resumen por operador y el detalle: en una tabla
+   * (GENERAL) o una hoja/sección por día (POR_DIA).
+   */
+  async exportar(desde: unknown, hasta: unknown, modoParam: unknown, formato: FormatoReporteCda): Promise<ArchivoReporte> {
+    const modo = parsearModo(modoParam);
     const rep = await this.reporte(desde, hasta);
-    const regla = `Hora de entrada ${rep.config.horaEntrada} · gracia ${rep.config.minutosGracia} min · del ${rep.desde} al ${rep.hasta}`;
-    const wb = new ExcelJS.Workbook();
+    const celdas = (f: FilaAtrasoCda): Celda[] => [
+      f.apellidosNombres,
+      f.cedula,
+      rep.config.horaEntrada,
+      f.entrada ?? '',
+      f.estado === 'ATRASO' ? f.minutosAtraso : '',
+      ETIQUETA[f.estado],
+    ];
 
-    const res = wb.addWorksheet('Resumen');
-    res.addRow([regla]).font = { italic: true };
-    res.addRow(['Apellidos y nombres', 'Cédula', 'Puntuales', 'Atrasos', 'Faltas', 'Min. de atraso']).font = { bold: true };
-    for (const r of rep.resumen) {
-      res.addRow([r.apellidosNombres, r.cedula, r.puntuales, r.atrasos, r.faltas, r.minutosAtraso]);
-    }
-    res.columns.forEach((c, i) => (c.width = [40, 13, 11, 10, 9, 15][i]));
-    res.views = [{ state: 'frozen', ySplit: 2 }];
-
-    const det = wb.addWorksheet('Detalle');
-    det.addRow([regla]).font = { italic: true };
-    det.addRow(['Fecha', 'Apellidos y nombres', 'Cédula', 'Hora oficial', 'Entrada', 'Min. de atraso', 'Estado']).font = {
-      bold: true,
+    const resumen: TablaReporte = {
+      hoja: 'Resumen',
+      titulo: 'Resumen por operador',
+      columnas: COLUMNAS_RESUMEN,
+      filas: rep.resumen.map((r) => [r.apellidosNombres, r.cedula, r.puntuales, r.atrasos, r.faltas, r.minutosAtraso]),
     };
-    for (const f of rep.filas) {
-      det.addRow([
-        f.fecha,
-        f.apellidosNombres,
-        f.cedula,
-        rep.config.horaEntrada,
-        f.entrada ?? '',
-        f.estado === 'ATRASO' ? f.minutosAtraso : '',
-        ETIQUETA[f.estado],
-      ]);
-    }
-    det.columns.forEach((c, i) => (c.width = [12, 40, 13, 12, 9, 15, 11][i]));
-    det.views = [{ state: 'frozen', ySplit: 2 }];
+    const detalle: TablaReporte[] =
+      modo === 'GENERAL'
+        ? [
+            {
+              hoja: 'Detalle',
+              titulo: 'Detalle por operador y día',
+              columnas: [{ titulo: 'Fecha', ancho: 12 }, ...COLUMNAS_DETALLE],
+              filas: rep.filas.map((f) => [f.fecha, ...celdas(f)]),
+            },
+          ]
+        : [...agruparPorDia(rep.filas)].map(([dia, delDia]) => ({
+            hoja: dia,
+            titulo: `${diaLargo(dia)} · ${conteoDelDia(delDia)}`,
+            columnas: COLUMNAS_DETALLE,
+            filas: delDia.map(celdas),
+          }));
 
-    return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+    return generarReporte(
+      {
+        titulo: 'Reporte de atrasos — Operadores CDA',
+        detalle:
+          `Hora de entrada ${rep.config.horaEntrada} · gracia ${rep.config.minutosGracia} min · ` +
+          `del ${diaCorto(rep.desde)} al ${diaCorto(rep.hasta)}`,
+        archivo: 'atrasos_operadores_cda',
+        desde: rep.desde,
+        hasta: rep.hasta,
+        modo,
+        tablas: [resumen, ...detalle],
+      },
+      formato,
+    );
   }
 }

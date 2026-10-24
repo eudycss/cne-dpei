@@ -1120,6 +1120,10 @@ export interface ReporteAtrasosCda {
   filas: FilaAtrasoCda[];
 }
 
+/** Reportes de asistencia y atrasos: todo en una tabla o una hoja/sección por día. */
+export type ModoReporteCda = 'GENERAL' | 'POR_DIA';
+export type FormatoReporteCda = 'xlsx' | 'pdf';
+
 export interface MarcarAsistenciaCdaRequest {
   tipo: TipoMarcaAsistenciaCda;
 }

@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 
 import { AtrasosCdaService } from './atrasos-cda.service';
 import { PrismaService } from '../db/prisma.service';
+import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
 
 // 22-oct-2026 08:05 en Ecuador: hoy aún está dentro de la gracia.
 const AHORA = new Date('2026-10-22T13:05:00Z');
@@ -119,23 +120,64 @@ describe('AtrasosCdaService', () => {
     });
   });
 
-  it('el Excel trae la regla, el resumen y el detalle', async () => {
-    prisma.operadorCda.findMany.mockResolvedValue([operador('1', 'ANDRADE ANA')]);
-    prisma.asistenciaCda.findMany.mockResolvedValue([
-      { operadorId: '1', fecha: fecha('2026-10-21'), entradaEn: ec('2026-10-21', '08:25') },
-    ]);
+  describe('exportar', () => {
+    const DATOS = FILA_ENCABEZADOS_EXCEL + 1;
+    const leer = async (contenido: Buffer) => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(contenido as never);
+      return wb;
+    };
 
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load((await service.exportar('2026-10-20', '2026-10-21')) as never);
+    beforeEach(() => {
+      prisma.operadorCda.findMany.mockResolvedValue([operador('1', 'ANDRADE ANA')]);
+      prisma.asistenciaCda.findMany.mockResolvedValue([
+        { operadorId: '1', fecha: fecha('2026-10-21'), entradaEn: ec('2026-10-21', '08:25') },
+      ]);
+    });
 
-    const resumen = wb.getWorksheet('Resumen')!;
-    expect(String(resumen.getCell('A1').value)).toContain('Hora de entrada 08:00 · gracia 10 min');
-    expect(resumen.getRow(3).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', 0, 1, 1, 25]);
+    it('general: el Excel trae logo, la regla, el resumen y el detalle', async () => {
+      const archivo = await service.exportar('2026-10-20', '2026-10-21', 'GENERAL', 'xlsx');
 
-    const detalle = wb.getWorksheet('Detalle')!;
-    expect(detalle.getRow(3).values).toEqual([undefined, '2026-10-20', 'ANDRADE ANA', '1700000001', '08:00', '', '', 'Falta']);
-    expect(detalle.getRow(4).values).toEqual([
-      undefined, '2026-10-21', 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso',
-    ]);
+      expect(archivo.nombre).toBe('atrasos_operadores_cda_2026-10-20_2026-10-21.xlsx');
+      const wb = await leer(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen', 'Detalle']);
+      expect(wb.model.media).toHaveLength(1);
+
+      const resumen = wb.getWorksheet('Resumen')!;
+      expect(resumen.getImages()).toHaveLength(1);
+      expect(String(resumen.getCell('A7').value)).toContain('Hora de entrada 08:00 · gracia 10 min · del 20/10/2026 al 21/10/2026');
+      expect(resumen.getRow(DATOS).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', 0, 1, 1, 25]);
+
+      const detalle = wb.getWorksheet('Detalle')!;
+      expect(detalle.getRow(DATOS).values).toEqual([undefined, '2026-10-20', 'ANDRADE ANA', '1700000001', '08:00', '', '', 'Falta']);
+      expect(detalle.getRow(DATOS + 1).values).toEqual([
+        undefined, '2026-10-21', 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso',
+      ]);
+    });
+
+    it('por día: el resumen y luego una hoja por día con su conteo', async () => {
+      const archivo = await service.exportar('2026-10-20', '2026-10-22', 'POR_DIA', 'xlsx');
+
+      expect(archivo.nombre).toBe('atrasos_operadores_cda_2026-10-20_2026-10-22_por_dia.xlsx');
+      const wb = await leer(archivo.contenido);
+      expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen', '2026-10-20', '2026-10-21', '2026-10-22']);
+      const dia21 = wb.getWorksheet('2026-10-21')!;
+      expect(dia21.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · 0 puntuales · 1 atraso · 0 faltas');
+      expect(dia21.getRow(DATOS).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso']);
+      // Hoy (22) dentro de la gracia: aparece el pendiente.
+      expect(wb.getWorksheet('2026-10-22')!.getCell('A6').value).toContain('1 pendiente');
+    });
+
+    it('PDF: general y por día', async () => {
+      for (const modo of ['GENERAL', 'POR_DIA']) {
+        const archivo = await service.exportar('2026-10-20', '2026-10-21', modo, 'pdf');
+        expect(archivo.tipo).toBe('application/pdf');
+        expect(archivo.contenido.subarray(0, 5).toString()).toBe('%PDF-');
+      }
+    });
+
+    it('rechaza un modo desconocido', async () => {
+      await expect(service.exportar('2026-10-20', '2026-10-21', 'MENSUAL', 'xlsx')).rejects.toThrow(BadRequestException);
+    });
   });
 });

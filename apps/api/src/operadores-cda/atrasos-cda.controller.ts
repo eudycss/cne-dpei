@@ -6,6 +6,7 @@ import { configAsistenciaCdaSchema } from '@cne/shared-validation';
 import type { ConfigAsistenciaCda } from '@cne/shared-types';
 
 import { AtrasosCdaService } from './atrasos-cda.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -13,9 +14,6 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 /** Solo texto: un parámetro repetido (?desde=a&desde=b) llega como arreglo. */
 const texto = (v: unknown) => (typeof v === 'string' ? v : undefined);
-
-// Armar el Excel cuesta CPU (Render: 0.1 vCPU); mismo límite que las descargas de actas.
-const LIMITE_EXCEL = { default: { limit: 30, ttl: 60_000 } };
 
 // Ven el reporte los mismos roles que toman asistencia; la hora oficial solo la cambia el administrador.
 @ApiTags('operadores-cda')
@@ -46,12 +44,16 @@ export class AtrasosCdaController {
   }
 
   @Get('atrasos.xlsx')
-  @Throttle(LIMITE_EXCEL)
-  @ApiOperation({ summary: 'Excel del reporte de atrasos (desde/hasta AAAA-MM-DD)' })
-  async exportar(@Res() res: Response, @Query('desde') desde?: unknown, @Query('hasta') hasta?: unknown) {
-    const buf = await this.atrasos.exportar(texto(desde), texto(hasta));
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=atrasos_operadores_cda.xlsx');
-    res.send(buf);
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
+  async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
+    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'xlsx'));
+  }
+
+  @Get('atrasos.pdf')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
+  async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {
+    enviarReporte(res, await this.atrasos.exportar(texto(q.desde), texto(q.hasta), q.modo, 'pdf'));
   }
 }
