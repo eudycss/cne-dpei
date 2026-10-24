@@ -61,7 +61,7 @@ describe('AtrasosPanel', () => {
     const hoy = hoyEcuador();
     await screen.findByText(/es atraso/);
     expect(getMock).toHaveBeenCalledWith(
-      `/operadores-cda/asistencia/atrasos?desde=${hoy.slice(0, 8)}01&hasta=${hoy}`,
+      `/operadores-cda/asistencia/atrasos?desde=${hoy.slice(0, 8)}01&hasta=${hoy}&grupo=OPERADOR`,
     );
     expect(screen.getByRole('status')).toHaveTextContent(
       'Hora de entrada 08:00 · gracia de 10 min: entrada hasta las 08:10 es puntual; desde las 08:11 es atraso',
@@ -112,7 +112,7 @@ describe('AtrasosPanel', () => {
     renderPanel();
     await screen.findByText(/es atraso/);
     expect(screen.queryByRole('button', { name: 'Hora de entrada' })).not.toBeInTheDocument();
-    expect(getMock).not.toHaveBeenCalledWith('/operadores-cda/asistencia/config');
+    expect(getMock).not.toHaveBeenCalledWith('/operadores-cda/asistencia/config?grupo=OPERADOR');
   });
 
   it('el administrador cambia la hora y la gracia; valida antes de enviar', async () => {
@@ -137,7 +137,7 @@ describe('AtrasosPanel', () => {
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() =>
-      expect(putMock).toHaveBeenCalledWith('/operadores-cda/asistencia/config', { horaEntrada: '07:30', minutosGracia: 5 }),
+      expect(putMock).toHaveBeenCalledWith('/operadores-cda/asistencia/config?grupo=OPERADOR', { horaEntrada: '07:30', minutosGracia: 5 }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(sileo.success).toHaveBeenCalledWith({ title: 'Hora de entrada: 07:30 con 5 min de gracia' });

@@ -14,6 +14,7 @@ import type {
   EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
   FormatoReporteCda,
+  GrupoCda,
   ModoReporteCda,
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
@@ -25,8 +26,10 @@ import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
 import { api } from '../api';
 
 /** `incluirInactivos`: también los ocultos (la API solo lo respeta al administrador). */
-export async function getOperadoresCda(incluirInactivos = false): Promise<OperadorCda[]> {
-  const { data } = await api.get<OperadorCda[]>(`/operadores-cda${incluirInactivos ? '?incluirInactivos=true' : ''}`);
+export async function getOperadoresCda(incluirInactivos = false, grupo: GrupoCda = 'OPERADOR'): Promise<OperadorCda[]> {
+  const { data } = await api.get<OperadorCda[]>(
+    `/operadores-cda?grupo=${grupo}${incluirInactivos ? '&incluirInactivos=true' : ''}`,
+  );
   return data;
 }
 
@@ -47,19 +50,25 @@ export async function cambiarActivoOperadorCda(id: string, activo: boolean): Pro
 }
 
 /** Sin `aplicar` solo devuelve la vista previa; con `aplicar` guarda. */
-export async function importarOperadoresCda(file: File, aplicar: boolean): Promise<ImportOperadoresCdaResult> {
+export async function importarOperadoresCda(
+  file: File,
+  aplicar: boolean,
+  grupo: GrupoCda = 'OPERADOR',
+): Promise<ImportOperadoresCdaResult> {
   const fd = new FormData();
   fd.append('file', file);
   const { data } = await api.post<ImportOperadoresCdaResult>(
-    `/operadores-cda/importar${aplicar ? '?aplicar=true' : ''}`,
+    `/operadores-cda/importar?grupo=${grupo}${aplicar ? '&aplicar=true' : ''}`,
     fd,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data;
 }
 
-export async function getAsistenciaCda(fecha: string): Promise<AsistenciaCdaDia> {
-  const { data } = await api.get<AsistenciaCdaDia>(`/operadores-cda/asistencia?fecha=${encodeURIComponent(fecha)}`);
+export async function getAsistenciaCda(fecha: string, grupo: GrupoCda = 'OPERADOR'): Promise<AsistenciaCdaDia> {
+  const { data } = await api.get<AsistenciaCdaDia>(
+    `/operadores-cda/asistencia?fecha=${encodeURIComponent(fecha)}&grupo=${grupo}`,
+  );
   return data;
 }
 
@@ -149,8 +158,8 @@ export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
 
 // Actas de entrega de indumentaria y credencial.
 
-export async function getActasCda(): Promise<ActaCdaFila[]> {
-  const { data } = await api.get<ActaCdaFila[]>('/operadores-cda/actas');
+export async function getActasCda(grupo: GrupoCda = 'OPERADOR'): Promise<ActaCdaFila[]> {
+  const { data } = await api.get<ActaCdaFila[]>(`/operadores-cda/actas?grupo=${grupo}`);
   return data;
 }
 
@@ -200,26 +209,32 @@ export async function descargarActaCda(operadorId: string, formato: 'docx' | 'pd
 /** ZIP con el Word y el PDF de los operadores elegidos que ya tienen acta. */
 export async function descargarActasCdaZip(operadorIds: string[]): Promise<void> {
   const res = await api.post<Blob>('/operadores-cda/actas/zip', { operadorIds }, { responseType: 'blob' });
-  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'actas-entrega-operadores-cda.zip'));
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'actas-entrega-cda.zip'));
 }
 
 // Reporte de atrasos: hora oficial de entrada + minutos de gracia.
 
-export async function getConfigAsistenciaCda(): Promise<ConfigAsistenciaCda> {
-  const { data } = await api.get<ConfigAsistenciaCda>('/operadores-cda/asistencia/config');
+/** Cada grupo tiene su propia hora de entrada y gracia. */
+export async function getConfigAsistenciaCda(grupo: GrupoCda = 'OPERADOR'): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.get<ConfigAsistenciaCda>(`/operadores-cda/asistencia/config?grupo=${grupo}`);
   return data;
 }
 
-export async function guardarConfigAsistenciaCda(body: ConfigAsistenciaCda): Promise<ConfigAsistenciaCda> {
-  const { data } = await api.put<ConfigAsistenciaCda>('/operadores-cda/asistencia/config', body);
+export async function guardarConfigAsistenciaCda(
+  body: ConfigAsistenciaCda,
+  grupo: GrupoCda = 'OPERADOR',
+): Promise<ConfigAsistenciaCda> {
+  const { data } = await api.put<ConfigAsistenciaCda>(`/operadores-cda/asistencia/config?grupo=${grupo}`, body);
   return data;
 }
 
 const rango = (desde: string, hasta: string) =>
   `desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
 
-export async function getAtrasosCda(desde: string, hasta: string): Promise<ReporteAtrasosCda> {
-  const { data } = await api.get<ReporteAtrasosCda>(`/operadores-cda/asistencia/atrasos?${rango(desde, hasta)}`);
+export async function getAtrasosCda(desde: string, hasta: string, grupo: GrupoCda = 'OPERADOR'): Promise<ReporteAtrasosCda> {
+  const { data } = await api.get<ReporteAtrasosCda>(
+    `/operadores-cda/asistencia/atrasos?${rango(desde, hasta)}&grupo=${grupo}`,
+  );
   return data;
 }
 
@@ -232,18 +247,23 @@ export interface OpcionesReporteCda {
   hasta: string;
   modo: ModoReporteCda;
   formato: FormatoReporteCda;
+  /** Por defecto OPERADOR: un archivo por grupo. */
+  grupo?: GrupoCda;
 }
+
+const ARCHIVO_GRUPO: Record<GrupoCda, string> = { OPERADOR: 'operadores_cda', ASISTENTE: 'asistentes_cda' };
 
 const RUTA_REPORTE: Record<ReporteCda, string> = { asistencia: 'exportar', atrasos: 'atrasos' };
 
 /** Mismo nombre que pone la API (respaldo si no llega Content-Disposition). */
 export function nombreReporteCda(reporte: ReporteCda, o: OpcionesReporteCda): string {
-  return `${reporte}_operadores_cda_${o.desde}_${o.hasta}${o.modo === 'POR_DIA' ? '_por_dia' : ''}.${o.formato}`;
+  const archivo = ARCHIVO_GRUPO[o.grupo ?? 'OPERADOR'];
+  return `${reporte}_${archivo}_${o.desde}_${o.hasta}${o.modo === 'POR_DIA' ? '_por_dia' : ''}.${o.formato}`;
 }
 
 export function pedirReporteCda(reporte: ReporteCda, o: OpcionesReporteCda) {
   return api.get<Blob>(
-    `/operadores-cda/asistencia/${RUTA_REPORTE[reporte]}.${o.formato}?${rango(o.desde, o.hasta)}&modo=${o.modo}`,
+    `/operadores-cda/asistencia/${RUTA_REPORTE[reporte]}.${o.formato}?${rango(o.desde, o.hasta)}&modo=${o.modo}&grupo=${o.grupo ?? 'OPERADOR'}`,
     { responseType: 'blob' },
   );
 }

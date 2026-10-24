@@ -12,6 +12,7 @@ import {
   getActasCda,
   reabrirActaCda,
 } from '../../lib/queries/operadores-cda';
+import { useGrupoCda } from './grupo';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { GenerarActasModal } from './GenerarActasModal';
 import { Kpi } from './Kpi';
@@ -45,13 +46,14 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
   const qc = useQueryClient();
   const { user } = useAuth();
   const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const { grupo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [elegidos, setElegidos] = useState<ReadonlySet<string>>(new Set<string>());
   const [generando, setGenerando] = useState<ActaCdaFila[] | null>(null);
   const [bajando, setBajando] = useState<string | null>(null);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ['actas-cda'], queryFn: getActasCda });
+  const { data, isLoading, error } = useQuery({ queryKey: ['actas-cda', grupo], queryFn: () => getActasCda(grupo) });
   const refrescar = () => qc.invalidateQueries({ queryKey: ['actas-cda'] });
 
   const filas = data ?? [];
@@ -140,7 +142,7 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
             value={busqueda}
             onChange={setBusqueda}
             placeholder="Buscar por nombre o cédula…"
-            ariaLabel="Buscar operador por nombre o cédula"
+            ariaLabel={`Buscar ${singular} por nombre o cédula`}
           />
         </span>
         <div className="ocda-filtros" role="group" aria-label="Filtrar por estado del acta" style={{ margin: 0 }}>
@@ -165,13 +167,13 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
           {mensajeError(error, 'No se pudieron cargar las actas.')}
         </div>
       )}
-      {data && filas.length === 0 && <p className="muted">Aún no hay operadores. Impórtelos desde la pestaña Listado.</p>}
+      {data && filas.length === 0 && <p className="muted">Aún no hay {plural}. Impórtelos desde la pestaña Listado.</p>}
 
       {data && filas.length > 0 && (
         <div className="ocda-tabla" tabIndex={0} role="region" aria-label="Actas de entrega">
           <table>
             <caption className="sr-only">
-              Actas de entrega: {visibles.length} operador(es) con el filtro actual, {elegidasFilas.length} elegido(s)
+              Actas de entrega: {visibles.length} {singular}(es) con el filtro actual, {elegidasFilas.length} elegido(s)
             </caption>
             <thead>
               <tr>
@@ -181,10 +183,10 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
                     className="ocda-casilla"
                     checked={todosVisibles}
                     onChange={alternarTodos}
-                    aria-label="Elegir todos los operadores mostrados"
+                    aria-label={`Elegir todos los ${plural} mostrados`}
                   />
                 </th>
-                <th scope="col">Operador</th>
+                <th scope="col">{Singular}</th>
                 <th scope="col">Cédula</th>
                 <th scope="col">Entrega</th>
                 <th scope="col">Estado</th>
@@ -292,9 +294,9 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
               })}
             </tbody>
           </table>
-          {visibles.length === 0 && <p className="ocda-pie">Ningún operador con este filtro.</p>}
+          {visibles.length === 0 && <p className="ocda-pie">Ningún {singular} con este filtro.</p>}
           <p className="ocda-pie">
-            Mostrando {visibles.length} de {total} operadores · Elija varios para generar o descargar en lote
+            Mostrando {visibles.length} de {total} {plural} · Elija varios para generar o descargar en lote
           </p>
         </div>
       )}

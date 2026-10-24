@@ -35,7 +35,7 @@ describe('ExportarReporteModal', () => {
 
     await waitFor(() =>
       expect(getMock).toHaveBeenCalledWith(
-        '/operadores-cda/asistencia/exportar.xlsx?desde=2026-10-01&hasta=2026-10-22&modo=GENERAL',
+        '/operadores-cda/asistencia/exportar.xlsx?desde=2026-10-01&hasta=2026-10-22&modo=GENERAL&grupo=OPERADOR',
         { responseType: 'blob' },
       ),
     );
@@ -50,7 +50,7 @@ describe('ExportarReporteModal', () => {
 
     await waitFor(() =>
       expect(getMock).toHaveBeenCalledWith(
-        '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA',
+        '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA&grupo=OPERADOR',
         { responseType: 'blob' },
       ),
     );

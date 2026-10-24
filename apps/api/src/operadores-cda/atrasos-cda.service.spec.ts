@@ -45,17 +45,27 @@ describe('AtrasosCdaService', () => {
       expect(await service.getConfig()).toEqual({ horaEntrada: '08:00', minutosGracia: 10 });
     });
 
-    it('guarda en el singleton id 1', async () => {
-      prisma.configAsistenciaCda.upsert.mockResolvedValueOnce({ id: 1, horaEntrada: '07:30', minutosGracia: 5 });
+    it('guarda en la fila del grupo (por defecto OPERADOR)', async () => {
+      prisma.configAsistenciaCda.upsert.mockResolvedValueOnce({ grupo: 'OPERADOR', horaEntrada: '07:30', minutosGracia: 5 });
       expect(await service.guardarConfig({ horaEntrada: '07:30', minutosGracia: 5 })).toEqual({
         horaEntrada: '07:30',
         minutosGracia: 5,
       });
       expect(prisma.configAsistenciaCda.upsert).toHaveBeenCalledWith({
-        where: { id: 1 },
-        create: { id: 1, horaEntrada: '07:30', minutosGracia: 5 },
+        where: { grupo: 'OPERADOR' },
+        create: { grupo: 'OPERADOR', horaEntrada: '07:30', minutosGracia: 5 },
         update: { horaEntrada: '07:30', minutosGracia: 5 },
       });
+    });
+
+    it('los asistentes tienen su propia hora: se lee y se guarda en su fila', async () => {
+      prisma.configAsistenciaCda.findUnique.mockResolvedValueOnce({ grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 });
+      expect(await service.getConfig('ASISTENTE')).toEqual({ horaEntrada: '09:00', minutosGracia: 15 });
+      expect(prisma.configAsistenciaCda.findUnique).toHaveBeenCalledWith({ where: { grupo: 'ASISTENTE' } });
+
+      prisma.configAsistenciaCda.upsert.mockResolvedValueOnce({ grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 });
+      await service.guardarConfig({ horaEntrada: '09:00', minutosGracia: 15 }, 'ASISTENTE');
+      expect(prisma.configAsistenciaCda.upsert.mock.calls[0][0].where).toEqual({ grupo: 'ASISTENTE' });
     });
   });
 
@@ -102,7 +112,22 @@ describe('AtrasosCdaService', () => {
       expect(r.totales).toEqual({ puntuales: 2, atrasos: 2, faltas: 1, pendientes: 3, minutosAtraso: 71 });
       expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({
         fecha: { gte: fecha('2026-10-20'), lte: fecha('2026-10-22') },
+        operador: { grupo: 'OPERADOR' },
       });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
+    });
+
+    it('asistentes: solo su grupo y con su propia hora', async () => {
+      prisma.configAsistenciaCda.findUnique.mockResolvedValueOnce({ grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 0 });
+      prisma.operadorCda.findMany.mockResolvedValueOnce([]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+
+      const r = await service.reporte('2026-10-20', '2026-10-20', 'ASISTENTE');
+
+      expect(r.config.horaEntrada).toBe('09:00');
+      expect(prisma.configAsistenciaCda.findUnique).toHaveBeenCalledWith({ where: { grupo: 'ASISTENTE' } });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operador).toEqual({ grupo: 'ASISTENTE' });
     });
 
     it('usa la hora y la gracia configuradas', async () => {

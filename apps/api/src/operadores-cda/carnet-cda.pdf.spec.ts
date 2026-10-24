@@ -1,6 +1,9 @@
+import PDFDocument from 'pdfkit';
+
 import { carnetsPdf } from './carnet-cda.pdf';
 
 const carnet = (i: number) => ({
+  grupo: 'OPERADOR CDA',
   nombre: `OPERADOR ${i}`,
   cargo: 'OPERADOR CDA',
   token: `CDA1${'A'.repeat(26)}`,
@@ -14,6 +17,15 @@ describe('carnetsPdf', () => {
     const paginas = pdf.match(/\/MediaBox \[[^\]]+\]/g)!;
     expect(paginas).toHaveLength(2);
     for (const p of paginas) expect(p).toBe('/MediaBox [0 0 595.28 841.89]');
+  });
+
+  it('el encabezado del carnet dice el grupo (OPERADOR CDA o ASISTENTE CDA)', async () => {
+    const texto = jest.spyOn(PDFDocument.prototype, 'text');
+    await carnetsPdf([carnet(1), { ...carnet(2), grupo: 'ASISTENTE CDA' }], new Date());
+    const textos = texto.mock.calls.map((c) => c[0]);
+    expect(textos).toContain('OPERADOR CDA');
+    expect(textos).toContain('ASISTENTE CDA');
+    texto.mockRestore();
   });
 
   it('una foto dañada no impide generar el carnet', async () => {

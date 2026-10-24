@@ -9,13 +9,18 @@ import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
 import { PrismaService } from '../db/prisma.service';
 
-/** Descargas de reportes de operadores CDA: rango, modo y formato pedidos (nada personal). */
+/** Grupo del personal CDA (?grupo=); ausente = OPERADOR, como en la API. */
+function grupoCda(req: Request): 'OPERADOR' | 'ASISTENTE' {
+  return req.query?.grupo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
+}
+
+/** Descargas de reportes de operadores CDA: grupo, rango, modo y formato pedidos (nada personal). */
 function resumenDescargaReporte(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
   const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
   const modo = q.modo === 'POR_DIA' ? 'POR_DIA' : 'GENERAL';
   const formato = (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx';
-  return { desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
+  return { grupo: grupoCda(req), desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
 }
 
 /**
@@ -57,9 +62,9 @@ const AUDIT_TABLE: Array<{
     accion: 'OPERADORES_CDA_IMPORT',
     entidad: 'operador_cda',
     cuando: (req) => req.query?.aplicar === 'true',
-    resumen: (res) => {
+    resumen: (res, req) => {
       const r = (res ?? {}) as { nuevos?: unknown; actualizados?: unknown };
-      return { nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
+      return { grupo: grupoCda(req), nuevos: Number(r.nuevos) || 0, actualizados: Number(r.actualizados) || 0 };
     },
   },
   // CRUD manual: nombres, cédulas y teléfonos son datos personales, así que solo
@@ -133,7 +138,11 @@ const AUDIT_TABLE: Array<{
     pathRegex: /^\/operadores-cda\/asistencia\/config$/,
     accion: 'ASISTENCIA_CDA_CONFIG',
     entidad: 'config_asistencia_cda',
-    campos: ['horaEntrada', 'minutosGracia'],
+    // Cada grupo tiene su hora: sin el grupo no se sabría a quién se le cambió.
+    resumen: (res, req) => {
+      const c = (res ?? {}) as { horaEntrada?: unknown; minutosGracia?: unknown };
+      return { grupo: grupoCda(req), horaEntrada: c.horaEntrada, minutosGracia: c.minutosGracia };
+    },
   },
   {
     method: 'GET',

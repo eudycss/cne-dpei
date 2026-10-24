@@ -14,6 +14,7 @@ const TOKEN = `CDA1${'ABCDEFGHJKLMN'.repeat(2)}`;
 
 const operador = (over: Record<string, unknown> = {}) => ({
   id: OP,
+  grupo: 'OPERADOR',
   numero: 1,
   apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
   cedula: '1710034065',

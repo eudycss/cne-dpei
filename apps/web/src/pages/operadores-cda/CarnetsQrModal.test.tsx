@@ -62,7 +62,7 @@ describe('CarnetsQrModal', () => {
         responseType: 'blob',
       }),
     );
-    expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/^carnets_operadores_cda_\d{4}-\d{2}-\d{2}\.pdf$/));
+    expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/^carnets_cda_\d{4}-\d{2}-\d{2}\.pdf$/));
   });
 
   it('avisa que reimprimir anula el carnet anterior', async () => {

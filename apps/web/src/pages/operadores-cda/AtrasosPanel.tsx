@@ -12,6 +12,7 @@ import {
   getConfigAsistenciaCda,
   guardarConfigAsistenciaCda,
 } from '../../lib/queries/operadores-cda';
+import { useGrupoCda } from './grupo';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { Campo } from './Campo';
 import { ExportarReporteModal } from './ExportarReporteModal';
@@ -44,6 +45,7 @@ const FILTROS: { id: Filtro; etiqueta: string }[] = [
 export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const { grupo, plural, singular, Singular } = useGrupoCda();
   const hoy = hoyEcuador();
   const [desde, setDesde] = useState(`${hoy.slice(0, 8)}01`);
   const [hasta, setHasta] = useState(hoy);
@@ -57,10 +59,15 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
   const errorRango = rango.success ? null : rango.error.issues[0]?.message ?? 'Rango inválido';
 
   // Aparte del reporte: el administrador puede cambiarla aunque el rango sea inválido.
-  const config = useQuery({ queryKey: ['asistencia-cda-config'], queryFn: getConfigAsistenciaCda, enabled: isAdmin });
+  // Cada grupo tiene su propia hora de entrada y gracia.
+  const config = useQuery({
+    queryKey: ['asistencia-cda-config', grupo],
+    queryFn: () => getConfigAsistenciaCda(grupo),
+    enabled: isAdmin,
+  });
   const { data, isLoading, error } = useQuery({
-    queryKey: ['atrasos-cda', desde, hasta],
-    queryFn: () => getAtrasosCda(desde, hasta),
+    queryKey: ['atrasos-cda', grupo, desde, hasta],
+    queryFn: () => getAtrasosCda(desde, hasta, grupo),
     enabled: rango.success,
   });
 
@@ -140,7 +147,7 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
             value={busqueda}
             onChange={setBusqueda}
             placeholder="Buscar por nombre o cédula…"
-            ariaLabel="Buscar operador por nombre o cédula"
+            ariaLabel={`Buscar ${singular} por nombre o cédula`}
           />
         </span>
         <label className="ocda-fecha">
@@ -168,7 +175,7 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
           {(['resumen', 'detalle'] as const).map((v) => (
             <button key={v} type="button" className="ocda-chip" aria-pressed={vista === v} onClick={() => setVista(v)}>
               {vista === v && <span aria-hidden="true">✓ </span>}
-              {v === 'resumen' ? 'Por operador' : 'Detalle por día'}
+              {v === 'resumen' ? `Por ${singular}` : 'Detalle por día'}
             </button>
           ))}
         </div>
@@ -208,18 +215,18 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
         </div>
       )}
       {data && data.resumen.length === 0 && (
-        <p className="muted">Aún no hay operadores. Impórtelos desde la pestaña Listado.</p>
+        <p className="muted">Aún no hay {plural}. Impórtelos desde la pestaña Listado.</p>
       )}
 
       {data && data.resumen.length > 0 && vista === 'resumen' && (
-        <div className="ocda-tabla" tabIndex={0} role="region" aria-label="Atrasos por operador">
+        <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Atrasos por ${singular}`}>
           <table>
             <caption className="sr-only">
-              Atrasos por operador del {data.desde} al {data.hasta}, ordenados de más a menos atrasos
+              Atrasos por {singular} del {data.desde} al {data.hasta}, ordenados de más a menos atrasos
             </caption>
             <thead>
               <tr>
-                <th scope="col">Operador</th>
+                <th scope="col">{Singular}</th>
                 <th scope="col">Cédula</th>
                 <th scope="col">Puntuales</th>
                 <th scope="col">Atrasos</th>
@@ -240,9 +247,9 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
               ))}
             </tbody>
           </table>
-          {resumen.length === 0 && <p className="ocda-pie">Ningún operador coincide con la búsqueda.</p>}
+          {resumen.length === 0 && <p className="ocda-pie">Ningún {singular} coincide con la búsqueda.</p>}
           <p className="ocda-pie">
-            {resumen.length} de {data.resumen.length} operadores · del {data.desde} al {data.hasta}
+            {resumen.length} de {data.resumen.length} {plural} · del {data.desde} al {data.hasta}
           </p>
         </div>
       )}
@@ -256,7 +263,7 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
             <thead>
               <tr>
                 <th scope="col">Fecha</th>
-                <th scope="col">Operador</th>
+                <th scope="col">{Singular}</th>
                 <th scope="col">Entrada</th>
                 <th scope="col">Min. de atraso</th>
                 <th scope="col">Estado</th>
@@ -318,15 +325,16 @@ function sumarMinutos(horaEntrada: string, minutos: number): string {
 
 function ConfigHoraModal({ actual, onClose }: { actual: ConfigAsistenciaCda; onClose: () => void }) {
   const qc = useQueryClient();
+  const { grupo, titulo } = useGrupoCda();
   const [hora, setHora] = useState(actual.horaEntrada);
   const [gracia, setGracia] = useState(String(actual.minutosGracia));
   const [errores, setErrores] = useState<{ hora?: string; gracia?: string }>({});
 
   const guardar = useMutation({
-    mutationFn: guardarConfigAsistenciaCda,
+    mutationFn: (c: ConfigAsistenciaCda) => guardarConfigAsistenciaCda(c, grupo),
     onSuccess: (c) => {
-      qc.setQueryData(['asistencia-cda-config'], c);
-      void qc.invalidateQueries({ queryKey: ['atrasos-cda'] });
+      qc.setQueryData(['asistencia-cda-config', grupo], c);
+      void qc.invalidateQueries({ queryKey: ['atrasos-cda', grupo] });
       sileo.success({ title: `Hora de entrada: ${c.horaEntrada} con ${c.minutosGracia} min de gracia` });
       onClose();
     },
@@ -355,7 +363,7 @@ function ConfigHoraModal({ actual, onClose }: { actual: ConfigAsistenciaCda; onC
         <div className="ocda-modal-cabecera">
           <div>
             <h2 id="cfg-hora-titulo">Hora de entrada</h2>
-            <p className="muted">Se aplica a todos los operadores CDA y a todos los días del reporte.</p>
+            <p className="muted">Se aplica a todos los {titulo} y a todos los días del reporte.</p>
           </div>
           <button type="button" className="ocda-modal-cerrar" onClick={onClose} aria-label="Cerrar">
             ×

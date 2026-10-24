@@ -5,10 +5,12 @@ import type {
   EstadoPuntualidad,
   FilaAtrasoCda,
   FormatoReporteCda,
+  GrupoCda,
   ReporteAtrasosCda,
   ResumenAtrasoOperadorCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { TEXTOS_GRUPO } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import { CONFIG_ASISTENCIA_POR_DEFECTO, clasificarEntrada } from './puntualidad';
 import {
@@ -22,8 +24,6 @@ import {
   generarReporte,
   parsearModo,
 } from './reporte-cda';
-
-const CONFIG_ID = 1;
 
 const ETIQUETA: Record<EstadoPuntualidad, string> = {
   PUNTUAL: 'Puntual',
@@ -73,23 +73,24 @@ function conteoDelDia(filas: FilaAtrasoCda[]): string {
 export class AtrasosCdaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getConfig(): Promise<ConfigAsistenciaCda> {
-    const c = await this.prisma.configAsistenciaCda.findUnique({ where: { id: CONFIG_ID } });
+  /** Cada grupo tiene su propia hora y gracia; sin fila, los valores por defecto. */
+  async getConfig(grupo: GrupoCda = 'OPERADOR'): Promise<ConfigAsistenciaCda> {
+    const c = await this.prisma.configAsistenciaCda.findUnique({ where: { grupo } });
     return c ? { horaEntrada: c.horaEntrada, minutosGracia: c.minutosGracia } : { ...CONFIG_ASISTENCIA_POR_DEFECTO };
   }
 
-  async guardarConfig(config: ConfigAsistenciaCda): Promise<ConfigAsistenciaCda> {
+  async guardarConfig(config: ConfigAsistenciaCda, grupo: GrupoCda = 'OPERADOR'): Promise<ConfigAsistenciaCda> {
     const { horaEntrada, minutosGracia } = config;
     const c = await this.prisma.configAsistenciaCda.upsert({
-      where: { id: CONFIG_ID },
-      create: { id: CONFIG_ID, horaEntrada, minutosGracia },
+      where: { grupo },
+      create: { grupo, horaEntrada, minutosGracia },
       update: { horaEntrada, minutosGracia },
     });
     return { horaEntrada: c.horaEntrada, minutosGracia: c.minutosGracia };
   }
 
   /** Un día por operador activo desde su fecha de inicio; hoy cuenta, el futuro no. */
-  async reporte(desdeParam: unknown, hastaParam: unknown): Promise<ReporteAtrasosCda> {
+  async reporte(desdeParam: unknown, hastaParam: unknown, grupo: GrupoCda = 'OPERADOR'): Promise<ReporteAtrasosCda> {
     const rango = rangoAsistenciaSchema.safeParse({ desde: desdeParam, hasta: hastaParam });
     if (!rango.success) throw new BadRequestException(rango.error.issues[0]?.message ?? 'Rango inválido');
     const { desde, hasta } = rango.data;
@@ -97,10 +98,10 @@ export class AtrasosCdaService {
     if (hasta > diaEcuador(ahora)) throw new BadRequestException('La fecha final no puede ser futura');
 
     const [config, operadores, asistencias] = await Promise.all([
-      this.getConfig(),
-      this.prisma.operadorCda.findMany({ where: { activo: true }, orderBy: { apellidosNombres: 'asc' } }),
+      this.getConfig(grupo),
+      this.prisma.operadorCda.findMany({ where: { activo: true, grupo }, orderBy: { apellidosNombres: 'asc' } }),
       this.prisma.asistenciaCda.findMany({
-        where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) } },
+        where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operador: { grupo } },
         select: { operadorId: true, fecha: true, entradaEn: true },
       }),
     ]);
@@ -154,9 +155,16 @@ export class AtrasosCdaService {
    * Excel o PDF con el resumen por operador y el detalle: en una tabla
    * (GENERAL) o una hoja/sección por día (POR_DIA).
    */
-  async exportar(desde: unknown, hasta: unknown, modoParam: unknown, formato: FormatoReporteCda): Promise<ArchivoReporte> {
+  async exportar(
+    desde: unknown,
+    hasta: unknown,
+    modoParam: unknown,
+    formato: FormatoReporteCda,
+    grupo: GrupoCda = 'OPERADOR',
+  ): Promise<ArchivoReporte> {
     const modo = parsearModo(modoParam);
-    const rep = await this.reporte(desde, hasta);
+    const rep = await this.reporte(desde, hasta, grupo);
+    const textos = TEXTOS_GRUPO[grupo];
     const celdas = (f: FilaAtrasoCda): Celda[] => [
       f.apellidosNombres,
       f.cedula,
@@ -168,7 +176,7 @@ export class AtrasosCdaService {
 
     const resumen: TablaReporte = {
       hoja: 'Resumen',
-      titulo: 'Resumen por operador',
+      titulo: `Resumen por ${textos.singular}`,
       columnas: COLUMNAS_RESUMEN,
       filas: rep.resumen.map((r) => [r.apellidosNombres, r.cedula, r.puntuales, r.atrasos, r.faltas, r.minutosAtraso]),
     };
@@ -177,7 +185,7 @@ export class AtrasosCdaService {
         ? [
             {
               hoja: 'Detalle',
-              titulo: 'Detalle por operador y día',
+              titulo: `Detalle por ${textos.singular} y día`,
               columnas: [{ titulo: 'Fecha', ancho: 12 }, ...COLUMNAS_DETALLE],
               filas: rep.filas.map((f) => [f.fecha, ...celdas(f)]),
             },
@@ -191,11 +199,11 @@ export class AtrasosCdaService {
 
     return generarReporte(
       {
-        titulo: 'Reporte de atrasos — Operadores CDA',
+        titulo: `Reporte de atrasos — ${textos.titulo}`,
         detalle:
           `Hora de entrada ${rep.config.horaEntrada} · gracia ${rep.config.minutosGracia} min · ` +
           `del ${diaCorto(rep.desde)} al ${diaCorto(rep.hasta)}`,
-        archivo: 'atrasos_operadores_cda',
+        archivo: `atrasos_${textos.archivo}`,
         desde: rep.desde,
         hasta: rep.hasta,
         modo,

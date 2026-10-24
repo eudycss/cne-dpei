@@ -14,6 +14,7 @@ const HOY = new Date('2026-10-22T00:00:00Z');
 
 const operador = (over: Record<string, unknown> = {}) => ({
   id: OP,
+  grupo: 'OPERADOR',
   numero: 1,
   apellidosNombres: 'PÉREZ LÓPEZ ANA MARÍA',
   cedula: '1710034065',
@@ -68,7 +69,8 @@ describe('AsistenciaCdaService', () => {
 
       expect(r.fecha).toBe('2026-10-22');
       expect(r.esHoy).toBe(true);
-      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY, operador: { grupo: 'OPERADOR' } });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
       expect(r.filas[0]).toMatchObject({ entradaEn: '2026-10-22T13:05:00.000Z', entradaPor: 'Ana Técnica', salidaEn: null });
       expect(r.filas[1]).toMatchObject({ entradaEn: null, entradaPor: null });
     });
@@ -209,14 +211,14 @@ describe('AsistenciaCdaService', () => {
   });
 
   describe('contadoresDelDia', () => {
-    it('cuenta como "Operadores" a los que asistieron (con entrada) sobre el total del día', () => {
+    it('cuenta como asistieron a los que tienen entrada, sobre el total del día', () => {
       const f = (conEntrada: boolean, conSalida: boolean) => ({ conEntrada, conSalida });
       expect(contadoresDelDia([f(true, true), f(true, false), f(false, false)])).toEqual({
-        operadores: '2/3',
+        asistieron: '2/3',
         entrada: '2/3',
         salida: '1/3',
       });
-      expect(contadoresDelDia([])).toEqual({ operadores: '0/0', entrada: '0/0', salida: '0/0' });
+      expect(contadoresDelDia([])).toEqual({ asistieron: '0/0', entrada: '0/0', salida: '0/0' });
     });
   });
 
@@ -308,6 +310,20 @@ describe('AsistenciaCdaService', () => {
       expect(filas.slice(0, 2).map((f) => f[8])).toEqual(['Sin salida', 'Faltó']);
       expect(ws.getCell(FILA_ENCABEZADOS_EXCEL + 1, 2).fill).toBeUndefined();
       expect(filas[5]).toEqual([undefined, 2, 'RUIZ MORA JUAN', '1002003000', '']);
+    });
+
+    it('asistentes: solo su grupo, con su título, su archivo y "Asistentes X/N"', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ grupo: 'ASISTENTE' })]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+
+      const archivo = await service.exportar('2026-10-21', '2026-10-21', 'POR_DIA', 'xlsx', 'ASISTENTE');
+
+      expect(archivo.nombre).toBe('asistencia_asistentes_cda_2026-10-21_2026-10-21_por_dia.xlsx');
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operador).toEqual({ grupo: 'ASISTENTE' });
+      const ws = (await leerExcel(archivo.contenido)).worksheets[0];
+      expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Asistentes CDA');
+      expect(ws.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Asistentes 0/1 · Entrada 0/1 · Salida 0/1');
     });
 
     it('lleva el logo de las Elecciones 2027 en cada hoja', async () => {

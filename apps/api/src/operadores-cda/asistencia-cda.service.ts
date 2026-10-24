@@ -4,11 +4,13 @@ import type {
   AsistenciaCdaDia,
   AsistenciaCdaFila,
   FormatoReporteCda,
+  GrupoCda,
   MarcarAsistenciaCdaMasivaResult,
   OrigenMarcaCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { TEXTOS_GRUPO } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import {
@@ -54,10 +56,10 @@ const COLUMNAS_FALTARON: ColumnaReporte[] = [
   { titulo: 'Teléfono', ancho: 14 },
 ];
 
-const COLUMNAS_RESUMEN_DIA: ColumnaReporte[] = [
+const columnasResumenDia = (grupo: GrupoCda): ColumnaReporte[] => [
   FECHA,
   { titulo: 'Día', ancho: 34 },
-  { titulo: 'Operadores', ancho: 13 },
+  { titulo: TEXTOS_GRUPO[grupo].contador, ancho: 13 },
   { titulo: 'Entrada', ancho: 11 },
   { titulo: 'Salida', ancho: 11 },
 ];
@@ -72,23 +74,24 @@ type FilaExportada = {
 };
 
 /**
- * "Operadores 60/64 · Entrada 60/64 · Salida 58/64". "Operadores" cuenta a
- * los que asistieron, es decir, los que registraron entrada.
+ * "Operadores 60/64 · Entrada 60/64 · Salida 58/64". El primero (Operadores o
+ * Asistentes) cuenta a los que asistieron, es decir, los que registraron
+ * entrada: por decisión del usuario coincide siempre con "Entrada".
  */
 export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida'>[]): {
-  operadores: string;
+  asistieron: string;
   entrada: string;
   salida: string;
 } {
   const total = filas.length;
   const entrada = filas.filter((f) => f.conEntrada).length;
   const salida = filas.filter((f) => f.conSalida).length;
-  return { operadores: `${entrada}/${total}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
+  return { asistieron: `${entrada}/${total}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
 }
 
-function textoContadores(filas: FilaExportada[]): string {
+function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
   const c = contadoresDelDia(filas);
-  return `Operadores ${c.operadores} · Entrada ${c.entrada} · Salida ${c.salida}`;
+  return `${TEXTOS_GRUPO[grupo].contador} ${c.asistieron} · Entrada ${c.entrada} · Salida ${c.salida}`;
 }
 
 const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
@@ -112,13 +115,16 @@ const nombre = (p: Persona) => (p ? `${p.nombres} ${p.apellidos}` : null);
 export class AsistenciaCdaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async dia(fecha?: string): Promise<AsistenciaCdaDia> {
+  async dia(fecha?: string, grupo: GrupoCda = 'OPERADOR'): Promise<AsistenciaCdaDia> {
     const hoy = diaEcuador();
     const dia = fecha ? parsearDia(fecha) : hoy;
     if (dia > hoy) throw new BadRequestException('No se puede consultar la asistencia de un día futuro');
     const [operadores, asistencias] = await Promise.all([
-      this.prisma.operadorCda.findMany({ where: { activo: true }, orderBy: { apellidosNombres: 'asc' } }),
-      this.prisma.asistenciaCda.findMany({ where: { fecha: fechaDb(dia) }, include: CON_QUIEN_MARCO }),
+      this.prisma.operadorCda.findMany({ where: { activo: true, grupo }, orderBy: { apellidosNombres: 'asc' } }),
+      this.prisma.asistenciaCda.findMany({
+        where: { fecha: fechaDb(dia), operador: { grupo } },
+        include: CON_QUIEN_MARCO,
+      }),
     ]);
     const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
     return {
@@ -257,13 +263,14 @@ export class AsistenciaCdaService {
     hastaParam: string | undefined,
     modoParam: unknown,
     formato: FormatoReporteCda,
+    grupo: GrupoCda = 'OPERADOR',
   ): Promise<ArchivoReporte> {
     const modo = parsearModo(modoParam);
     const hoy = diaEcuador();
     const hasta = hastaParam ? parsearDia(hastaParam) : hoy;
     if (hasta > hoy) throw new BadRequestException('La fecha final no puede ser futura');
     const operadores = await this.prisma.operadorCda.findMany({
-      where: { activo: true },
+      where: { activo: true, grupo },
       orderBy: { apellidosNombres: 'asc' },
     });
     const primerInicio = operadores
@@ -281,7 +288,7 @@ export class AsistenciaCdaService {
     }
 
     const asistencias = await this.prisma.asistenciaCda.findMany({
-      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) } },
+      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operador: { grupo } },
       include: CON_QUIEN_MARCO,
     });
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
@@ -327,15 +334,15 @@ export class AsistenciaCdaService {
             {
               hoja: 'Resumen por día',
               titulo: 'Resumen por día',
-              columnas: COLUMNAS_RESUMEN_DIA,
+              columnas: columnasResumenDia(grupo),
               filas: [...porDia].map(([dia, delDia]) => {
                 const c = contadoresDelDia(delDia);
-                return [dia, diaLargo(dia), c.operadores, c.entrada, c.salida];
+                return [dia, diaLargo(dia), c.asistieron, c.entrada, c.salida];
               }),
             },
             {
               hoja: 'Asistencia',
-              titulo: 'Detalle por operador y día',
+              titulo: `Detalle por ${TEXTOS_GRUPO[grupo].singular} y día`,
               columnas: [FECHA, ...COLUMNAS],
               filas: filas.map((f) => [f.fecha, ...f.celdas]),
               resaltadas: indicesSinEntrada(filas),
@@ -351,7 +358,7 @@ export class AsistenciaCdaService {
             const faltaron = delDia.filter((f) => !f.conEntrada);
             return {
               hoja: dia,
-              titulo: `${diaLargo(dia)} · ${textoContadores(delDia)}`,
+              titulo: `${diaLargo(dia)} · ${textoContadores(delDia, grupo)}`,
               columnas: COLUMNAS,
               filas: delDia.map((f) => f.celdas),
               resaltadas: indicesSinEntrada(delDia),
@@ -365,9 +372,9 @@ export class AsistenciaCdaService {
 
     return generarReporte(
       {
-        titulo: 'Reporte de asistencia — Operadores CDA',
+        titulo: `Reporte de asistencia — ${TEXTOS_GRUPO[grupo].titulo}`,
         detalle: `Del ${diaCorto(desde)} al ${diaCorto(hasta)} · hora de Ecuador`,
-        archivo: 'asistencia_operadores_cda',
+        archivo: `asistencia_${TEXTOS_GRUPO[grupo].archivo}`,
         desde,
         hasta,
         modo,

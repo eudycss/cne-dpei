@@ -34,6 +34,8 @@ export interface DatosActaCda {
   entregaCargo: string;
   operadorNombre: string;
   operadorCedula: string;
+  /** "OPERADOR CDA" o "ASISTENTE CDA". */
+  operadorCargo: string;
   estadoPeto: EstadoPrenda;
   estadoCredencial: EstadoPrenda;
   estadoCordon: EstadoPrenda;
@@ -55,6 +57,7 @@ export function camposPlantilla(d: DatosActaCda): Record<string, string> {
     entregaCargo: d.entregaCargo.toUpperCase(),
     operadorNombre: d.operadorNombre.toUpperCase(),
     operadorCedula: d.operadorCedula,
+    operadorCargo: d.operadorCargo,
     estadoPeto: d.estadoPeto,
     estadoCredencial: d.estadoCredencial,
     estadoCordon: d.estadoCordon,
@@ -70,7 +73,7 @@ function partesTextoActa(d: DatosActaCda): [string, string, string] {
     `En la ciudad de ${c.lugar} a los ${c.dia} días del mes de ${c.mes} del ${c.anio}, ` +
       `el Ing. ${c.entregaNombre} con C.I. ${c.entregaCedula} ${c.entregaCargo}; realiza la `,
     'Entrega de indumentaria y credencial',
-    `; al Sr./Srta. ${c.operadorNombre} con C.I. ${c.operadorCedula} OPERADOR CDA`,
+    `; al Sr./Srta. ${c.operadorNombre} con C.I. ${c.operadorCedula} ${c.operadorCargo}`,
   ];
 }
 
@@ -165,7 +168,7 @@ function dibujarActa(doc: PDFKit.PDFDocument, d: DatosActaCda): void {
   // Recuadro de firmas de dos columnas. Con textos muy largos sube para no partir el acta en dos páginas.
   const firmas: [string, string, string][] = [
     ['Entrega conforme:', `Ing. ${c.entregaNombre}`, c.entregaCargo],
-    ['Recibe conforme:', c.operadorNombre, 'OPERADOR CDA'],
+    ['Recibe conforme:', c.operadorNombre, c.operadorCargo],
   ];
   const altoRecuadro = Math.max(...firmas.map(([, nombre, cargo]) => altoFirma(doc, mitad, nombre, cargo)));
   const y0 = Math.min(doc.y + 80, doc.page.height - ABAJO - altoRecuadro);

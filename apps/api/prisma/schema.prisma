@@ -685,8 +685,17 @@ enum EstadoActaCda {
 /// Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial"). El nombre
 /// llega en una sola columna "APELLIDOS NOMBRES" y no se puede partir con
 /// seguridad (hay apellidos compuestos), por eso se guarda entero.
+/// Operadores CDA o Asistentes CDA: misma gestión, listas separadas.
+enum GrupoCda {
+  OPERADOR
+  ASISTENTE
+
+  @@map("grupo_cda")
+}
+
 model OperadorCda {
   id               String    @id @default(uuid()) @db.Uuid
+  grupo            GrupoCda  @default(OPERADOR)
   numero           Int?
   apellidosNombres String    @map("apellidos_nombres") @db.VarChar(200)
   cedula           String    @unique @db.VarChar(10)
@@ -706,6 +715,7 @@ model OperadorCda {
   actas        ActaEntregaCda[]
   credenciales CredencialQrCda[]
 
+  @@index([grupo, activo])
   @@map("operadores_cda")
 }
 
@@ -738,7 +748,8 @@ model AsistenciaCda {
 /// de gracia. Entrada hasta hora + gracia = puntual; después, atraso. Quién lo
 /// cambió queda en la bitácora (ASISTENCIA_CDA_CONFIG).
 model ConfigAsistenciaCda {
-  id            Int      @id @default(1)
+  /// Una fila por grupo (hora y gracia propias).
+  grupo         GrupoCda @id
   /// "HH:MM" en hora de Ecuador.
   horaEntrada   String   @default("08:00") @map("hora_entrada") @db.VarChar(5)
   minutosGracia Int      @default(10) @map("minutos_gracia")

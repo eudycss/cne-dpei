@@ -4,6 +4,7 @@ import type { OperadorCda } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { cambiarActivoOperadorCda } from '../../lib/queries/operadores-cda';
 import { mensajeError } from './utils';
+import { useGrupoCda } from './grupo';
 
 /**
  * Confirma la baja lógica. Se avisa lo que no tiene vuelta atrás: el cron de
@@ -18,14 +19,15 @@ export function OcultarOperadorModal({
   onClose: () => void;
   onHecho: () => void;
 }) {
+  const { singular, Singular } = useGrupoCda();
   const ocultar = useMutation({
     mutationFn: () => cambiarActivoOperadorCda(o.id, false),
     onSuccess: () => {
-      sileo.success({ title: 'Operador oculto', description: o.apellidosNombres });
+      sileo.success({ title: `${Singular} oculto`, description: o.apellidosNombres });
       onHecho();
       onClose();
     },
-    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo ocultar al operador') }),
+    onError: (e) => sileo.error({ title: mensajeError(e, `No se pudo ocultar al ${singular}`) }),
   });
 
   return (
@@ -33,7 +35,7 @@ export function OcultarOperadorModal({
       <div className="ocda-modal" aria-busy={ocultar.isPending}>
         <div className="ocda-modal-cabecera">
           <div>
-            <h2 id="ocultar-operador-titulo">¿Ocultar a este operador?</h2>
+            <h2 id="ocultar-operador-titulo">¿Ocultar a este {singular}?</h2>
             <p className="muted">{o.apellidosNombres}</p>
           </div>
           <button type="button" className="ocda-modal-cerrar" onClick={onClose} aria-label="Cerrar">

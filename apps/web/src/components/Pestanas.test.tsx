@@ -35,6 +35,21 @@ describe('Pestanas', () => {
     expect(screen.getByTestId('busqueda')).toHaveTextContent('');
   });
 
+  it('con otro parámetro se anida: cada nivel guarda lo suyo y conserva lo del otro', async () => {
+    render(
+      <MemoryRouter initialEntries={['/?tab=uno']}>
+        <Pestanas pestanas={PESTANAS} porDefecto="dos" etiqueta="Grupos" parametro="grupo">
+          {() => <p>Contenido</p>}
+        </Pestanas>
+        <Ubicacion />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole('tab', { name: 'Tres' }));
+    expect(screen.getByTestId('busqueda')).toHaveTextContent('?tab=uno&grupo=tres');
+    await userEvent.click(screen.getByRole('tab', { name: 'Dos' }));
+    expect(screen.getByTestId('busqueda')).toHaveTextContent('?tab=uno');
+  });
+
   it('un ?tab= inválido cae en la pestaña por defecto', () => {
     renderPestanas('/?tab=nada');
     expect(screen.getByRole('tab', { name: 'Dos' })).toHaveAttribute('aria-selected', 'true');

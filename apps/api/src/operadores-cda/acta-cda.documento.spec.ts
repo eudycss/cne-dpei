@@ -20,6 +20,7 @@ const DATOS: DatosActaCda = {
   entregaCargo: 'Asistente Electoral Transversal',
   operadorNombre: 'Pérez López Juan & Hijos <x>',
   operadorCedula: '1001001005',
+  operadorCargo: 'OPERADOR CDA',
   estadoPeto: 'BUENO',
   estadoCredencial: 'NUEVO',
   estadoCordon: 'REGULAR',
@@ -43,6 +44,15 @@ describe('acta de entrega CDA (documento)', () => {
         'ASISTENTE ELECTORAL TRANSVERSAL; realiza la Entrega de indumentaria y credencial; al Sr./Srta. ' +
         'PÉREZ LÓPEZ JUAN & HIJOS <X> con C.I. 1001001005 OPERADOR CDA',
     );
+  });
+
+  it('un asistente CDA recibe como "ASISTENTE CDA" en el texto y en las firmas, en Word y en PDF', async () => {
+    const asistente = { ...DATOS, operadorCargo: 'ASISTENTE CDA' };
+    expect(textoActaCda(asistente)).toMatch(/con C.I. 1001001005 ASISTENTE CDA$/);
+    const texto = textoDocx(generarWordActaCda(asistente));
+    expect(texto.match(/ASISTENTE CDA/g)).toHaveLength(2);
+    expect(texto).not.toContain('OPERADOR CDA');
+    expect((await generarPdfActasCda([asistente])).subarray(0, 5).toString()).toBe('%PDF-');
   });
 
   it('el Word sale de la plantilla con todos los campos llenos y el XML escapado', () => {

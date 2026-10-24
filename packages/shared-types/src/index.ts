@@ -1005,8 +1005,12 @@ export interface FilaInformeCustodia {
 }
 
 // --- Operadores CDA (personal de los Centros de Digitalización de Actas) ---
+/** El personal de los CDA se divide en dos grupos con la misma gestión. */
+export type GrupoCda = 'OPERADOR' | 'ASISTENTE';
+
 export interface OperadorCda {
   id: string;
+  grupo: GrupoCda;
   numero: number | null;
   apellidosNombres: string;
   cedula: string;
@@ -1043,10 +1047,12 @@ export interface CrearOperadorCdaRequest {
   unidad?: string;
   /** AAAA-MM-DD */
   fechaInicio?: string;
+  /** Por defecto OPERADOR. */
+  grupo?: GrupoCda;
 }
 
-/** Edición: todo menos la cédula. Un opcional ausente se guarda vacío. */
-export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula'>;
+/** Edición: todo menos la cédula y el grupo. Un opcional ausente se guarda vacío. */
+export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula' | 'grupo'>;
 
 export interface ImportOperadoresCdaResult {
   /** true = solo vista previa, no se guardó nada. */

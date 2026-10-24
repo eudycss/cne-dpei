@@ -96,7 +96,7 @@ export default function App() {
         {/* Monitoreo de operadores en retorno (HU6) */}
         <Route path="/operadores" element={<MonitoreoPage />} />
 
-        {/* Operadores CDA: personal de los CDA (asistencia, foto y actas) */}
+        {/* CDAs: Operadores y Asistentes CDA (asistencia, foto y actas) */}
         <Route
           path="/operadores-cda"
           element={

@@ -29,6 +29,7 @@ import {
   crearOperadorCdaSchema,
   editarOperadorCdaSchema,
   cambiarActivoOperadorCdaSchema,
+  grupoCdaQuerySchema,
   marcarAsistenciaCdaSchema,
   marcarAsistenciaCdaMasivaSchema,
   generarActasCdaSchema,
@@ -301,10 +302,23 @@ describe('CRUD de operadores CDA', () => {
     expect(crearOperadorCdaSchema.safeParse({ ...alta, activo: false }).success).toBe(false);
   });
 
-  it('edición: no permite cambiar la cédula', () => {
+  it('edición: no permite cambiar la cédula ni el grupo', () => {
     const { cedula: _c, ...sinCedula } = alta;
     expect(editarOperadorCdaSchema.safeParse(sinCedula).success).toBe(true);
     expect(editarOperadorCdaSchema.safeParse(alta).success).toBe(false);
+    expect(editarOperadorCdaSchema.safeParse({ ...sinCedula, grupo: 'ASISTENTE' }).success).toBe(false);
+  });
+
+  it('alta: grupo opcional, solo OPERADOR o ASISTENTE', () => {
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'ASISTENTE' }).success).toBe(true);
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'TECNICO' }).success).toBe(false);
+  });
+
+  it('?grupo=: ausente es OPERADOR y rechaza otros valores', () => {
+    expect(grupoCdaQuerySchema.parse(undefined)).toBe('OPERADOR');
+    expect(grupoCdaQuerySchema.parse('ASISTENTE')).toBe('ASISTENTE');
+    expect(grupoCdaQuerySchema.safeParse('asistente').success).toBe(false);
+    expect(grupoCdaQuerySchema.safeParse(['ASISTENTE', 'OPERADOR']).success).toBe(false);
   });
 
   it('activo: solo booleano', () => {

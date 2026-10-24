@@ -628,13 +628,25 @@ export const operadorCdaFilaSchema = z.object({
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
 
+/** Operadores CDA o Asistentes CDA. */
+export const grupoCdaSchema = z.enum(['OPERADOR', 'ASISTENTE'], {
+  errorMap: () => ({ message: 'Grupo inválido (OPERADOR o ASISTENTE)' }),
+});
+
+/** Para ?grupo= en la URL: ausente = OPERADOR (lo que había antes de los asistentes). */
+export const grupoCdaQuerySchema = grupoCdaSchema.default('OPERADOR');
+
 // Alta manual: los mismos campos que una fila del Excel, sin el N° de la hoja.
-export const crearOperadorCdaSchema = operadorCdaFilaSchema.omit({ numero: true }).strict();
+export const crearOperadorCdaSchema = operadorCdaFilaSchema
+  .omit({ numero: true })
+  .extend({ grupo: grupoCdaSchema.optional() })
+  .strict();
 export type CrearOperadorCdaInput = z.infer<typeof crearOperadorCdaSchema>;
 
-// Edición: la cédula no cambia (es la llave con la que el Excel reimporta).
+// Edición: la cédula no cambia (es la llave con la que el Excel reimporta) y
+// el grupo tampoco (una persona está en un solo grupo).
 // Un campo opcional ausente o vacío se guarda vacío: el formulario manda todo.
-export const editarOperadorCdaSchema = crearOperadorCdaSchema.omit({ cedula: true }).strict();
+export const editarOperadorCdaSchema = crearOperadorCdaSchema.omit({ cedula: true, grupo: true }).strict();
 export type EditarOperadorCdaInput = z.infer<typeof editarOperadorCdaSchema>;
 
 export const cambiarActivoOperadorCdaSchema = z.object({ activo: z.boolean() }).strict();
@@ -661,7 +673,7 @@ export const tokenCredencialQrCdaSchema = z
   .string({ invalid_type_error: 'Código inválido' })
   .trim()
   .toUpperCase()
-  .regex(/^CDA1[A-Z2-7]{26}$/, 'Código no reconocido: no es un carnet de operador CDA');
+  .regex(/^CDA1[A-Z2-7]{26}$/, 'Código no reconocido: no es un carnet CDA');
 
 export const consultarQrCdaSchema = z.object({ token: tokenCredencialQrCdaSchema }).strict();
 

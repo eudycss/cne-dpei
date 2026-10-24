@@ -167,7 +167,11 @@ describe('AuditInterceptor', () => {
       { method: 'POST', originalUrl: '/operadores-cda/importar?aplicar=true', query: { aplicar: 'true' }, body: {}, user: ADMIN },
       res,
     );
-    expect(data).toMatchObject({ accion: 'OPERADORES_CDA_IMPORT', entidad: 'operador_cda', datosDespues: { nuevos: 3, actualizados: 53 } });
+    expect(data).toMatchObject({
+      accion: 'OPERADORES_CDA_IMPORT',
+      entidad: 'operador_cda',
+      datosDespues: { grupo: 'OPERADOR', nuevos: 3, actualizados: 53 },
+    });
     expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
   });
 
@@ -205,20 +209,45 @@ describe('AuditInterceptor', () => {
     });
     expect(exportar.data).toMatchObject({
       accion: 'ASISTENCIA_CDA_EXPORTAR',
-      datosDespues: { desde: null, hasta: '2026-10-22', modo: 'GENERAL', formato: 'xlsx' },
+      datosDespues: { grupo: 'OPERADOR', desde: null, hasta: '2026-10-22', modo: 'GENERAL', formato: 'xlsx' },
     });
 
     const pdf = await auditar({
       method: 'GET',
-      originalUrl: '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA',
-      query: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA' },
+      originalUrl: '/operadores-cda/asistencia/atrasos.pdf?desde=2026-10-01&hasta=2026-10-22&modo=POR_DIA&grupo=ASISTENTE',
+      query: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', grupo: 'ASISTENTE' },
       body: {},
       user: ADMIN,
     });
     expect(pdf.data).toMatchObject({
       accion: 'ASISTENCIA_CDA_ATRASOS_EXPORTAR',
-      datosDespues: { desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', formato: 'pdf' },
+      datosDespues: { grupo: 'ASISTENTE', desde: '2026-10-01', hasta: '2026-10-22', modo: 'POR_DIA', formato: 'pdf' },
     });
+  });
+
+  it('hora oficial de entrada: queda a qué grupo se le cambió y los valores guardados', async () => {
+    const { data } = await auditar(
+      {
+        method: 'PUT',
+        originalUrl: '/operadores-cda/asistencia/config?grupo=ASISTENTE',
+        query: { grupo: 'ASISTENTE' },
+        body: { horaEntrada: '09:00', minutosGracia: 15 },
+        user: ADMIN,
+      },
+      { horaEntrada: '09:00', minutosGracia: 15 },
+    );
+    expect(data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_CONFIG',
+      entidad: 'config_asistencia_cda',
+      datosDespues: { grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 },
+    });
+
+    // Un grupo desconocido no se copia tal cual a la bitácora (la API ya respondió 400).
+    const sinGrupo = await auditar(
+      { method: 'PUT', originalUrl: '/operadores-cda/asistencia/config', query: { grupo: '<x>' }, body: {}, user: ADMIN },
+      { horaEntrada: '08:00', minutosGracia: 10 },
+    );
+    expect(sinGrupo.data.datosDespues.grupo).toBe('OPERADOR');
   });
 
   it('carnets QR: guarda a quiénes se emitió y las anulaciones', async () => {
