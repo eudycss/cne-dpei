@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { KitsModule } from '../kits/kits.module';
+import { PermisosModulosModule } from '../permisos-modulos/permisos-modulos.module';
 import { CustodiaController } from './custodia.controller';
 import { CustodiaService } from './custodia.service';
 import { InformeCustodiaService } from './informe-custodia.service';
 
 @Module({
-  imports: [KitsModule],
+  imports: [KitsModule, PermisosModulosModule],
   controllers: [CustodiaController],
   providers: [CustodiaService, InformeCustodiaService],
 })

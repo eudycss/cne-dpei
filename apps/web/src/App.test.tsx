@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
@@ -120,12 +120,23 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
   });
 
-  it('TECNICO_SUPERVISOR no ve la cadena de custodia; LECTOR sí', async () => {
-    setSessionUser(['TECNICO_SUPERVISOR']);
-    const { unmount } = renderAppAt('/reportes/cadena-custodia');
-    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
-    unmount();
+  it('cadena de custodia: LECTOR la ve de fábrica; TECNICO_SUPERVISOR solo si el admin se la activa', async () => {
     setSessionUser(['LECTOR']);
+    const lector = renderAppAt('/reportes/cadena-custodia');
+    expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
+    lector.unmount();
+
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    const deFabrica = renderAppAt('/reportes/cadena-custodia');
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/permisos-modulos/mios'));
+    expect(screen.queryByText('página: cadena de custodia')).not.toBeInTheDocument();
+    deFabrica.unmount();
+
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url === '/permisos-modulos/mios' ? { modulos: ['cadena-custodia'] } : { items: [], total: 0, noLeidas: 0 },
+      }),
+    );
     renderAppAt('/reportes/cadena-custodia');
     expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
   });

@@ -34,6 +34,7 @@ import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { CustodiaService } from './custodia.service';
 import { FiltrosInforme, InformeCustodiaService } from './informe-custodia.service';
 
@@ -106,10 +107,12 @@ export class CustodiaController {
     return this.custodia.buscarOperadores(textoBusqueda(buscar));
   }
 
-  // ─── Informe y actas (lectura: también el LECTOR) ─────────────────────────
+  // ─── Informe y actas (lectura): los roles a los que el admin les active el módulo ───
 
   @Get('informe')
-  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Informe consolidado de cadena de custodia (una fila por kit del evento activo)' })
   informe(
     @Res({ passthrough: true }) res: Response,
@@ -122,7 +125,9 @@ export class CustodiaController {
   }
 
   @Get('actas')
-  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Actas de cadena de custodia de los kits filtrados (un PDF, una página por kit)' })
   async actas(
     @Res() res: Response,
@@ -133,7 +138,9 @@ export class CustodiaController {
   }
 
   @Get('kits/:kitId/acta')
-  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Acta de cadena de custodia de un kit (PDF)' })
   async actaKit(@Res() res: Response, @Param('kitId', ParseUUIDPipe) kitId: string) {
     enviarPdf(res, await this.informes.actaKit(kitId), 'acta-custodia.pdf');

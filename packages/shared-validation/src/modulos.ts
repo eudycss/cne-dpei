@@ -65,7 +65,8 @@ export const MODULOS_WEB: readonly ModuloWeb[] = [
     etiqueta: 'Cadena de custodia',
     seccion: 'Informes',
     ruta: '/reportes/cadena-custodia',
-    rolesPermitidos: ['LECTOR', 'ASISTENTE_TRANSVERSAL'],
+    // El API exige además que el módulo esté activo para el rol (ModuloGuard).
+    rolesPermitidos: ROLES_CONFIGURABLES,
     rolesPorDefecto: ['LECTOR', 'ASISTENTE_TRANSVERSAL'],
   },
   { id: 'reportes', etiqueta: 'Reportes', seccion: 'Informes', ruta: '/reportes/no-cda', rolesPermitidos: ['LECTOR'], rolesPorDefecto: ['LECTOR'] },

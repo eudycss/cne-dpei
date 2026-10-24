@@ -187,11 +187,11 @@ export default function App() {
           }
         />
 
-        {/* Cadena de custodia de kits (acta por kit) */}
+        {/* Cadena de custodia de kits (acta por kit): la ve el rol al que el admin se la active */}
         <Route
           path="/reportes/cadena-custodia"
           element={
-            <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']} modulo="cadena-custodia">
+            <ProtectedRoute modulo="cadena-custodia">
               <CadenaCustodiaPage />
             </ProtectedRoute>
           }

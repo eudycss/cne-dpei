@@ -272,4 +272,17 @@ describe('Layout — módulos configurados por el administrador', () => {
     renderLayout();
     expect(screen.queryByRole('link', { name: 'Módulos por rol' })).not.toBeInTheDocument();
   });
+
+  it('si el administrador le activa Cadena de custodia y Power BI al técnico supervisor, los ve en Informes', async () => {
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    responderModulos(['cadena-custodia', 'powerbi-cdas']);
+    renderLayout();
+    const informes = await screen.findByRole('group', { name: 'Informes' });
+    await waitFor(() =>
+      expect(within(informes).getAllByRole('link').map((l) => l.textContent)).toEqual([
+        'Cadena de custodia',
+        'Power BI CDAS',
+      ]),
+    );
+  });
 });
