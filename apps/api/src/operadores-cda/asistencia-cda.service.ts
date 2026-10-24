@@ -31,8 +31,12 @@ const CON_QUIEN_MARCO = {
   salidaPor: { select: { nombres: true, apellidos: true } },
 } as const;
 
+const N: ColumnaReporte = { titulo: 'N.º', ancho: 6 };
+const FECHA: ColumnaReporte = { titulo: 'Fecha', ancho: 12 };
+
 /** Columnas del reporte; en el general va además "Fecha" al inicio. */
 const COLUMNAS: ColumnaReporte[] = [
+  N,
   { titulo: 'Apellidos y nombres', ancho: 40 },
   { titulo: 'Cédula', ancho: 13 },
   { titulo: 'Entrada', ancho: 9 },
@@ -42,7 +46,59 @@ const COLUMNAS: ColumnaReporte[] = [
   { titulo: 'Estado', ancho: 14 },
 ];
 
-type FilaExportada = { fecha: string; celdas: Celda[]; conEntrada: boolean };
+/** Quienes no registraron entrada; el N.º es el de la tabla del día. */
+const COLUMNAS_FALTARON: ColumnaReporte[] = [
+  N,
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Teléfono', ancho: 14 },
+];
+
+const COLUMNAS_RESUMEN_DIA: ColumnaReporte[] = [
+  FECHA,
+  { titulo: 'Día', ancho: 34 },
+  { titulo: 'Operadores', ancho: 13 },
+  { titulo: 'Entrada', ancho: 11 },
+  { titulo: 'Salida', ancho: 11 },
+];
+
+type FilaExportada = {
+  fecha: string;
+  /** Empieza con el N.º: la posición en la lista del día (1, 2, 3…). */
+  celdas: Celda[];
+  conEntrada: boolean;
+  conSalida: boolean;
+  faltante: Celda[];
+};
+
+/**
+ * "Operadores 60/64 · Entrada 60/64 · Salida 58/64". "Operadores" cuenta a
+ * los que asistieron, es decir, los que registraron entrada.
+ */
+export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida'>[]): {
+  operadores: string;
+  entrada: string;
+  salida: string;
+} {
+  const total = filas.length;
+  const entrada = filas.filter((f) => f.conEntrada).length;
+  const salida = filas.filter((f) => f.conSalida).length;
+  return { operadores: `${entrada}/${total}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
+}
+
+function textoContadores(filas: FilaExportada[]): string {
+  const c = contadoresDelDia(filas);
+  return `Operadores ${c.operadores} · Entrada ${c.entrada} · Salida ${c.salida}`;
+}
+
+const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
+
+/** Hoy todavía pueden llegar: "Sin entrada"; un día pasado sin entrada es "Faltó". */
+function estado(entrada: boolean, salida: boolean, esHoy: boolean): string {
+  if (salida) return 'Completa';
+  if (entrada) return 'Sin salida';
+  return esHoy ? 'Sin entrada' : 'Faltó';
+}
 
 type Persona = { nombres: string; apellidos: string } | null;
 const nombre = (p: Persona) => (p ? `${p.nombres} ${p.apellidos}` : null);
@@ -235,41 +291,77 @@ export class AsistenciaCdaService {
 
     const filas: FilaExportada[] = [];
     for (const dia of dias) {
+      let numero = 0;
       for (const o of operadores) {
         if (o.fechaInicio && diaDeFechaDb(o.fechaInicio) > dia) continue;
         const a = porClave.get(clave(o.id, dia));
+        const conEntrada = !!a?.entradaEn;
+        const conSalida = !!a?.salidaEn;
+        numero++;
         filas.push({
           fecha: dia,
           celdas: [
+            numero,
             o.apellidosNombres,
             o.cedula,
             a?.entradaEn ? horaEcuador(a.entradaEn) : '',
             nombre(a?.entradaPor ?? null) ?? '',
             a?.salidaEn ? horaEcuador(a.salidaEn) : '',
             nombre(a?.salidaPor ?? null) ?? '',
-            a?.salidaEn ? 'Completa' : a?.entradaEn ? 'Falta salida' : 'Sin registro',
+            estado(conEntrada, conSalida, dia === hoy),
           ],
-          conEntrada: !!a?.entradaEn,
+          conEntrada,
+          conSalida,
+          faltante: [numero, o.apellidosNombres, o.cedula, o.telefono ?? ''],
         });
       }
     }
+    const porDia = agruparPorDia(filas);
+    const indicesSinEntrada = (lista: FilaExportada[]) =>
+      lista.flatMap((f, i) => (f.conEntrada ? [] : [i]));
+    const sinEntrada = filas.filter((f) => !f.conEntrada);
 
     const tablas: TablaReporte[] =
       modo === 'GENERAL'
         ? [
             {
+              hoja: 'Resumen por día',
+              titulo: 'Resumen por día',
+              columnas: COLUMNAS_RESUMEN_DIA,
+              filas: [...porDia].map(([dia, delDia]) => {
+                const c = contadoresDelDia(delDia);
+                return [dia, diaLargo(dia), c.operadores, c.entrada, c.salida];
+              }),
+            },
+            {
               hoja: 'Asistencia',
               titulo: 'Detalle por operador y día',
-              columnas: [{ titulo: 'Fecha', ancho: 12 }, ...COLUMNAS],
+              columnas: [FECHA, ...COLUMNAS],
               filas: filas.map((f) => [f.fecha, ...f.celdas]),
+              resaltadas: indicesSinEntrada(filas),
+            },
+            {
+              hoja: 'Faltaron',
+              titulo: tituloFaltaron(sinEntrada.length),
+              columnas: [FECHA, ...COLUMNAS_FALTARON],
+              filas: sinEntrada.map((f) => [f.fecha, ...f.faltante]),
             },
           ]
-        : [...agruparPorDia(filas)].map(([dia, delDia]) => ({
-            hoja: dia,
-            titulo: `${diaLargo(dia)} · ${delDia.filter((f) => f.conEntrada).length} de ${delDia.length} con entrada`,
-            columnas: COLUMNAS,
-            filas: delDia.map((f) => f.celdas),
-          }));
+        : [...porDia].map(([dia, delDia]) => {
+            const faltaron = delDia.filter((f) => !f.conEntrada);
+            return {
+              hoja: dia,
+              titulo: `${diaLargo(dia)} · ${textoContadores(delDia)}`,
+              columnas: COLUMNAS,
+              filas: delDia.map((f) => f.celdas),
+              resaltadas: indicesSinEntrada(delDia),
+              anexo: {
+                titulo: tituloFaltaron(faltaron.length),
+                columnas: COLUMNAS_FALTARON,
+                filas: faltaron.map((f) => f.faltante),
+              },
+            };
+          });
 
     return generarReporte(
       {

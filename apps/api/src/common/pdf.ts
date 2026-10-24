@@ -11,6 +11,7 @@ export const ANCHO = 595.28 - MARGEN * 2; // A4 vertical
 export const ANCHO_HORIZONTAL = 841.89 - MARGEN * 2; // A4 horizontal
 export const GRIS = '#6b7280';
 export const LINEA = '#9ca3af';
+export const FONDO_RESALTADO = '#fee2e2';
 
 // Logo de las Elecciones 2027 (src/assets, copiado a dist por nest-cli). JPEG
 // sobre blanco: pdfkit lo incrusta sin decodificar transparencias. Se pasa por
@@ -92,10 +93,12 @@ export function tabla(
   proporciones: number[],
   filas: string[][],
   ancho = ANCHO,
+  /** Índices de `filas` que van con fondo rojo claro (p. ej. quienes faltaron). */
+  resaltadas: ReadonlySet<number> = new Set(),
 ): void {
   const anchos = proporciones.map((p) => p * ancho);
   const pad = 4;
-  const dibujarFila = (celdas: string[], negrita: boolean) => {
+  const dibujarFila = (celdas: string[], negrita: boolean, resaltada = false) => {
     doc.font(negrita ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
     const alto =
       Math.max(...celdas.map((c, i) => doc.heightOfString(c, { width: anchos[i] - pad * 2 }))) + pad * 2;
@@ -110,6 +113,7 @@ export function tabla(
     let x = MARGEN;
     celdas.forEach((c, i) => {
       if (negrita) doc.rect(x, y, anchos[i], alto).fillAndStroke('#f3f4f6', LINEA).fillColor('#000');
+      else if (resaltada) doc.rect(x, y, anchos[i], alto).fillAndStroke(FONDO_RESALTADO, LINEA).fillColor('#000');
       else doc.rect(x, y, anchos[i], alto).stroke(LINEA);
       doc.text(c, x + pad, y + pad, { width: anchos[i] - pad * 2 });
       x += anchos[i];
@@ -118,7 +122,7 @@ export function tabla(
     doc.y = y + alto;
   };
   dibujarFila(encabezados, true);
-  for (const f of filas) dibujarFila(f, false);
+  filas.forEach((f, i) => dibujarFila(f, false, resaltadas.has(i)));
   doc.moveDown(0.3);
 }
 

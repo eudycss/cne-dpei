@@ -84,6 +84,40 @@ describe('reporte-cda', () => {
     expect(texto.match(/\/Type \/Page\b/g)).toHaveLength(2);
   });
 
+  it('PDF: pinta las filas resaltadas y dibuja el anexo con su título bajo la tabla', async () => {
+    const { doc, terminado } = nuevoPdf('landscape', { paginar: true });
+    const relleno = jest.spyOn(doc, 'fillAndStroke');
+    doc.addPage();
+    tabla(doc, ['Nombre'], [1], [['ANA'], ['BRUNO'], ['CARLA']], ANCHO_HORIZONTAL, new Set([1]));
+    doc.end();
+    await terminado;
+    // Encabezado (gris) + una fila resaltada (roja).
+    expect(relleno.mock.calls.map((c) => c[0])).toEqual(['#f3f4f6', '#fee2e2']);
+
+    const conAnexo = {
+      ...base,
+      tablas: [{ ...base.tablas[0], resaltadas: [1], anexo: { titulo: 'Faltaron: 1', columnas: base.tablas[0].columnas, filas: [['BRUNO', '']] } }],
+    };
+    const a = await generarReporte(conAnexo, 'pdf');
+    expect(a.contenido.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('Excel: filas resaltadas en rojo claro y anexo debajo, tras una fila en blanco', async () => {
+    const conAnexo = {
+      ...base,
+      tablas: [{ ...base.tablas[0], resaltadas: [1], anexo: { titulo: 'Faltaron: 1', columnas: base.tablas[0].columnas, filas: [['BRUNO', '']] } }],
+    };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await generarReporte(conAnexo, 'xlsx')).contenido as never);
+    const ws = wb.worksheets[0];
+    const fondo = (fila: number, col: number) => (ws.getCell(fila, col).fill as ExcelJS.FillPattern | undefined)?.fgColor?.argb;
+    expect(fondo(FILA_ENCABEZADOS_EXCEL + 1, 1)).toBeUndefined();
+    expect([1, 2].map((c) => fondo(FILA_ENCABEZADOS_EXCEL + 2, c))).toEqual(['FFFEE2E2', 'FFFEE2E2']);
+    expect(ws.getCell(FILA_ENCABEZADOS_EXCEL + 4, 1).value).toBe('Faltaron: 1');
+    expect(ws.getRow(FILA_ENCABEZADOS_EXCEL + 5).values).toEqual([undefined, 'Nombre', 'Minutos']);
+    expect(ws.getRow(FILA_ENCABEZADOS_EXCEL + 6).values).toEqual([undefined, 'BRUNO', '']);
+  });
+
   it('PDF: más de 31 días se rechaza (Excel no tiene ese tope)', async () => {
     const largo = { ...base, desde: '2026-09-01', hasta: '2026-10-02' };
     await expect(generarReporte(largo, 'pdf')).rejects.toThrow('En PDF el rango máximo es de 31 días');
