@@ -65,9 +65,9 @@ const LUIS = operador(ID.l, 'VEGA TAPIA LUIS ALBERTO', '1002003000');
 const MARIA = operador(ID.m, 'CHÁVEZ MORA MARÍA JOSÉ', '0102030400');
 
 const FILAS: ActaCdaFila[] = [
-  { operador: ANA, acta: acta(ID.a, 'GENERADA') },
-  { operador: LUIS, acta: null },
-  { operador: MARIA, acta: acta(ID.m, 'FIRMADA') },
+  { operador: ANA, acta: acta(ID.a, 'GENERADA'), actaOtroCargo: null },
+  { operador: LUIS, acta: null, actaOtroCargo: null },
+  { operador: MARIA, acta: acta(ID.m, 'FIRMADA'), actaOtroCargo: null },
 ];
 
 const PERSONAS: PersonaEntregaCda[] = [
@@ -94,6 +94,19 @@ describe('ActasPanel', () => {
     getMock.mockImplementation((url: string) =>
       Promise.resolve({ data: url === '/operadores-cda/actas/entregan' ? PERSONAS : FILAS }),
     );
+  });
+
+  it('quien cambió de cargo sale sin acta y con la nota del cargo de su acta anterior', async () => {
+    getMock.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.startsWith('/operadores-cda/actas') ? [{ operador: LUIS, acta: null, actaOtroCargo: 'ASISTENTE CDA' }] : [],
+      }),
+    );
+    renderPanel();
+    await screen.findByText('VEGA TAPIA LUIS ALBERTO');
+    const fila = filaDe('VEGA');
+    expect(within(fila).getByText('Sin acta')).toBeInTheDocument();
+    expect(within(fila).getByText('Cambió de cargo: su acta anterior dice ASISTENTE CDA')).toBeInTheDocument();
   });
 
   it('muestra el estado de cada acta, los indicadores y filtra', async () => {

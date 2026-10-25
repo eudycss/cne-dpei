@@ -244,6 +244,12 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
                       <span className={`ocda-estado ${a?.estado === 'FIRMADA' ? 'ok' : a ? 'pendiente' : 'vacio'}`}>
                         {a?.estado === 'FIRMADA' ? 'Firmada' : a ? 'Por firmar' : 'Sin acta'}
                       </span>
+                      {f.actaOtroCargo && (
+                        // Cambió de cargo: su acta anterior se conserva, pero dice el otro cargo.
+                        <span className="ocda-persona-cargo" style={{ display: 'block', marginTop: '0.25rem' }}>
+                          Cambió de cargo: su acta anterior dice {f.actaOtroCargo}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <div className="ocda-fila-acciones">

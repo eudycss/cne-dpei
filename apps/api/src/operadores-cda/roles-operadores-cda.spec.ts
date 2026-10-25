@@ -27,7 +27,7 @@ describe('RBAC de Operadores CDA', () => {
     expect(rolesDe(OperadoresCdaController, 'importar')).toEqual(['ADMINISTRADOR']);
   });
 
-  it.each(['crear', 'editar', 'cambiarActivo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {
+  it.each(['crear', 'editar', 'cambiarActivo', 'cambiarCargo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {
     expect(rolesDe(OperadoresCdaController, metodo)).toEqual(['ADMINISTRADOR']);
   });
 

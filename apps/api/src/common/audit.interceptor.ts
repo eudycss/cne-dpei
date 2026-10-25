@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
-import { grupoCdaQuerySchema } from '@cne/shared-validation';
+import { grupoCdaQuerySchema, grupoCdaSchema } from '@cne/shared-validation';
 import type { GrupoCda } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 
@@ -75,6 +75,18 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/operadores-cda$/,          accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+$/,   accion: 'OPERADOR_CDA_UPDATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/activo$/, accion: 'OPERADOR_CDA_ACTIVO', entidad: 'operador_cda', campos: ['activo'] },
+  // Cambio de cargo: de qué cargo a cuál (sin datos personales).
+  {
+    method: 'PATCH',
+    pathRegex: /^\/operadores-cda\/[^/]+\/cargo$/,
+    accion: 'OPERADOR_CDA_CARGO',
+    entidad: 'operador_cda',
+    resumen: (res) => {
+      const r = (res ?? {}) as { grupoAnterior?: unknown; operador?: { grupo?: unknown } };
+      const valido = (v: unknown) => (grupoCdaSchema.safeParse(v).success ? v : null);
+      return { grupoAnterior: valido(r.grupoAnterior), grupoNuevo: valido(r.operador?.grupo) };
+    },
+  },
   // Asistencia: cada marca ya guarda quién y a qué hora; aquí quedan el marcado
   // masivo (con conteos) y las correcciones (quitar una marca).
   {

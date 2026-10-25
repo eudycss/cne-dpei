@@ -239,6 +239,26 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('cambio de cargo: queda de qué cargo a cuál, sin datos personales', async () => {
+    const { data } = await auditar(
+      {
+        method: 'PATCH',
+        originalUrl: '/operadores-cda/o1/cargo',
+        params: { id: 'o1' },
+        body: { grupo: 'OPERADOR' },
+        user: ADMIN,
+      },
+      { grupoAnterior: 'ASISTENTE', operador: { id: 'o1', grupo: 'OPERADOR', apellidosNombres: 'RUIZ MORA JUAN' } },
+    );
+    expect(data).toMatchObject({
+      accion: 'OPERADOR_CDA_CARGO',
+      entidad: 'operador_cda',
+      entidadId: 'o1',
+      datosDespues: { grupoAnterior: 'ASISTENTE', grupoNuevo: 'OPERADOR' },
+    });
+    expect(JSON.stringify(data)).not.toContain('RUIZ');
+  });
+
   it('hora oficial de entrada: queda a qué grupo se le cambió y los valores guardados', async () => {
     const { data } = await auditar(
       {

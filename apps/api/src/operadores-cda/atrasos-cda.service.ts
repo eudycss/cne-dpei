@@ -12,6 +12,7 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { TEXTOS_GRUPO } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
+import { enTramos, personalDelCargo } from './periodos-cargo';
 import { CONFIG_ASISTENCIA_POR_DEFECTO, clasificarEntrada } from './puntualidad';
 import {
   type ArchivoReporte,
@@ -97,21 +98,21 @@ export class AtrasosCdaService {
     const ahora = new Date();
     if (hasta > diaEcuador(ahora)) throw new BadRequestException('La fecha final no puede ser futura');
 
-    const [config, operadores, asistencias] = await Promise.all([
-      this.getConfig(grupo),
-      this.prisma.operadorCda.findMany({ where: { activo: true, grupo }, orderBy: { apellidosNombres: 'asc' } }),
-      this.prisma.asistenciaCda.findMany({
-        where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operador: { grupo } },
-        select: { operadorId: true, fecha: true, entradaEn: true },
-      }),
-    ]);
+    const [config, personal] = await Promise.all([this.getConfig(grupo), personalDelCargo(this.prisma, grupo)]);
+    const asistencias = await this.prisma.asistenciaCda.findMany({
+      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: personal.map((p) => p.operador.id) } },
+      select: { operadorId: true, fecha: true, entradaEn: true },
+    });
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
     const entradas = new Map<string, Date | null>(asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a.entradaEn]));
 
     const filas: FilaAtrasoCda[] = [];
     const resumen: ResumenAtrasoOperadorCda[] = [];
     const totales = { puntuales: 0, atrasos: 0, faltas: 0, pendientes: 0, minutosAtraso: 0 };
-    for (const o of operadores) {
+    const dias = diasEntre(desde, hasta);
+    for (const { operador: o, tramos } of personal) {
+      // Estuvo en este cargo, pero no en estas fechas: no es parte del reporte.
+      if (o.grupo !== grupo && !dias.some((d) => enTramos(tramos, d))) continue;
       const r: ResumenAtrasoOperadorCda = {
         operadorId: o.id,
         apellidosNombres: o.apellidosNombres,
@@ -122,8 +123,10 @@ export class AtrasosCdaService {
         minutosAtraso: 0,
       };
       const inicio = o.fechaInicio ? diaDeFechaDb(o.fechaInicio) : null;
-      for (const dia of diasEntre(desde, hasta)) {
+      for (const dia of dias) {
         if (inicio && inicio > dia) continue;
+        // Los días en otro cargo (antes o después de un cambio) no cuentan aquí, ni como falta.
+        if (!enTramos(tramos, dia)) continue;
         const entradaEn = entradas.get(clave(o.id, dia)) ?? null;
         const { estado, minutosAtraso } = clasificarEntrada(entradaEn, dia, config, ahora);
         filas.push({

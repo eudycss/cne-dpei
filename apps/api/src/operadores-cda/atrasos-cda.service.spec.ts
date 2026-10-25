@@ -17,6 +17,8 @@ const operador = (id: string, apellidosNombres: string, fechaInicio: string | nu
   cedula: `17${id.padStart(8, '0')}`,
   fechaInicio: fechaInicio ? fecha(fechaInicio) : null,
   activo: true,
+  grupo: 'OPERADOR',
+  cambiosCargo: [] as unknown[],
 });
 
 describe('AtrasosCdaService', () => {
@@ -112,9 +114,30 @@ describe('AtrasosCdaService', () => {
       expect(r.totales).toEqual({ puntuales: 2, atrasos: 2, faltas: 1, pendientes: 3, minutosAtraso: 71 });
       expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({
         fecha: { gte: fecha('2026-10-20'), lte: fecha('2026-10-22') },
-        operador: { grupo: 'OPERADOR' },
+        operadorId: { in: ['1', '2', '3'] },
       });
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
+      // Su cargo actual o uno anterior (cambió de cargo): la asistencia vieja queda en el cargo de antes.
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        activo: true,
+        OR: [{ grupo: 'OPERADOR' }, { cambiosCargo: { some: { OR: [{ grupoAnterior: 'OPERADOR' }, { grupoNuevo: 'OPERADOR' }] } } }],
+      });
+    });
+
+    it('cambio de cargo: los días antes del cambio cuentan en el cargo anterior, no como faltas aquí', async () => {
+      // Ana pasó de Asistentes a Operadores desde el 21: en Operadores solo cuentan el 21 y el 22.
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        { ...operador('1', 'ANDRADE ANA'), cambiosCargo: [{ grupoAnterior: 'ASISTENTE', grupoNuevo: 'OPERADOR', desde: fecha('2026-10-21'), creadoEn: AHORA }] },
+      ]);
+      const operadores = await service.reporte('2026-10-20', '2026-10-22');
+      expect(operadores.filas.map((f) => f.fecha)).toEqual(['2026-10-21', '2026-10-22']);
+      expect(operadores.resumen[0]).toMatchObject({ atrasos: 1, faltas: 0 });
+
+      // Y en Asistentes queda solo el 20, aunque hoy ya no sea asistente.
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        { ...operador('1', 'ANDRADE ANA'), cambiosCargo: [{ grupoAnterior: 'ASISTENTE', grupoNuevo: 'OPERADOR', desde: fecha('2026-10-21'), creadoEn: AHORA }] },
+      ]);
+      const asistentes = await service.reporte('2026-10-20', '2026-10-22', 'ASISTENTE');
+      expect(asistentes.filas.map((f) => [f.fecha, f.estado])).toEqual([['2026-10-20', 'PUNTUAL']]);
     });
 
     it('asistentes: solo su grupo y con su propia hora', async () => {
@@ -126,8 +149,11 @@ describe('AtrasosCdaService', () => {
 
       expect(r.config.horaEntrada).toBe('09:00');
       expect(prisma.configAsistenciaCda.findUnique).toHaveBeenCalledWith({ where: { grupo: 'ASISTENTE' } });
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
-      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operador).toEqual({ grupo: 'ASISTENTE' });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        activo: true,
+        OR: [{ grupo: 'ASISTENTE' }, { cambiosCargo: { some: { OR: [{ grupoAnterior: 'ASISTENTE' }, { grupoNuevo: 'ASISTENTE' }] } } }],
+      });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operadorId).toEqual({ in: [] });
     });
 
     it('usa la hora y la gracia configuradas', async () => {

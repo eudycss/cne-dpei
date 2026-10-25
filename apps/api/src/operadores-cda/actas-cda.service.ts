@@ -56,6 +56,8 @@ interface ActaDb {
   estadoPeto: EstadoPrenda;
   estadoCredencial: EstadoPrenda;
   estadoCordon: EstadoPrenda;
+  /** Cargo con el que se generó. */
+  grupo: GrupoCda;
   estado: EstadoActaCda;
   firmadaEn: Date | null;
   actualizadoEn: Date;
@@ -79,10 +81,16 @@ export class ActasCdaService {
       orderBy: { apellidosNombres: 'asc' },
       include: { actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1 } },
     });
-    return operadores.map((o) => ({
-      operador: toOperadorCdaDto(o),
-      acta: o.actas[0] ? toActaDto(o.actas[0]) : null,
-    }));
+    return operadores.map((o) => {
+      const ultima = o.actas[0];
+      // Si cambió de cargo, su acta dice el cargo anterior: aquí queda pendiente de una nueva.
+      const delCargo = ultima && ultima.grupo === o.grupo;
+      return {
+        operador: toOperadorCdaDto(o),
+        acta: delCargo ? toActaDto(ultima) : null,
+        actaOtroCargo: ultima && !delCargo ? TEXTOS_GRUPO[ultima.grupo].cargo : null,
+      };
+    });
   }
 
   async personasEntrega(): Promise<PersonaEntregaCda[]> {
@@ -112,7 +120,11 @@ export class ActasCdaService {
     const ids = [...new Set<string>(body.operadorIds)];
     const operadores = await this.prisma.operadorCda.findMany({
       where: { id: { in: ids }, activo: true },
-      select: { id: true, actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1, select: { id: true, estado: true } } },
+      select: {
+        id: true,
+        grupo: true,
+        actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1, select: { id: true, estado: true, grupo: true } },
+      },
     });
     const datos = {
       entregaPorId: body.entregaUsuarioId ?? null,
@@ -135,8 +147,9 @@ export class ActasCdaService {
     await this.prisma.$transaction(async (tx) => {
       for (const o of operadores) {
         const vigente = o.actas[0];
-        if (!vigente) {
-          await tx.actaEntregaCda.create({ data: { ...datos, operadorId: o.id, creadoPorId: usuarioId } });
+        // Sin acta, o con la de un cargo anterior (que se conserva como documento): una nueva.
+        if (!vigente || vigente.grupo !== o.grupo) {
+          await tx.actaEntregaCda.create({ data: { ...datos, grupo: o.grupo, operadorId: o.id, creadoPorId: usuarioId } });
           resultado.generadas++;
           continue;
         }
@@ -219,9 +232,13 @@ export class ActasCdaService {
     const vigente = await this.prisma.actaEntregaCda.findFirst({
       where: { operadorId, operador: { activo: true } },
       orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
-      select: { id: true },
+      select: { id: true, grupo: true, operador: { select: { grupo: true } } },
     });
     if (!vigente) throw new NotFoundException('El operador aún no tiene acta generada');
+    // Cambió de cargo: su acta anterior queda como documento; primero se genera la del cargo actual.
+    if (vigente.grupo !== vigente.operador.grupo) {
+      throw new NotFoundException('Aún no tiene acta en su cargo actual: genérela primero');
+    }
     const { count } = await this.prisma.actaEntregaCda.updateMany({
       where: { id: vigente.id, estado: desde },
       data: { estado: hacia, firmadaEn: hacia === 'FIRMADA' ? new Date() : null },
@@ -247,7 +264,7 @@ export class ActasCdaService {
   }
 }
 
-function aDatos(o: OperadorBasico, a: ActaDb): DatosActaCda {
+export function aDatos(o: OperadorBasico, a: ActaDb): DatosActaCda {
   return {
     lugar: a.lugar,
     fecha: diaDeFechaDb(a.fecha),
@@ -256,7 +273,8 @@ function aDatos(o: OperadorBasico, a: ActaDb): DatosActaCda {
     entregaCargo: a.entregaCargo,
     operadorNombre: o.apellidosNombres,
     operadorCedula: o.cedula,
-    operadorCargo: TEXTOS_GRUPO[o.grupo].cargo,
+    // El cargo con que se generó: un acta firmada no cambia si la persona cambia de cargo.
+    operadorCargo: TEXTOS_GRUPO[a.grupo].cargo,
     estadoPeto: a.estadoPeto,
     estadoCredencial: a.estadoCredencial,
     estadoCordon: a.estadoCordon,

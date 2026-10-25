@@ -2,6 +2,7 @@ import type {
   ActaCdaFila,
   ActaEntregaCda,
   AsistenciaCdaDia,
+  CambiarCargoOperadorCdaResult,
   ConfigAsistenciaCda,
   ConsultaQrCda,
   CredencialQrCdaVigente,
@@ -40,6 +41,12 @@ export async function crearOperadorCda(body: CrearOperadorCdaRequest): Promise<O
 
 export async function editarOperadorCda(id: string, body: EditarOperadorCdaRequest): Promise<OperadorCda> {
   const { data } = await api.patch<OperadorCda>(`/operadores-cda/${id}`, body);
+  return data;
+}
+
+/** Pasa a la persona a otro cargo CDA desde hoy (solo administrador). */
+export async function cambiarCargoOperadorCda(id: string, grupo: GrupoCda): Promise<CambiarCargoOperadorCdaResult> {
+  const { data } = await api.patch<CambiarCargoOperadorCdaResult>(`/operadores-cda/${id}/cargo`, { grupo });
   return data;
 }
 

@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import PizZip from 'pizzip';
 import type { GenerarActasCdaRequest } from '@cne/shared-types';
 
-import { ActasCdaService } from './actas-cda.service';
+import { ActasCdaService, aDatos } from './actas-cda.service';
 import { PrismaService } from '../db/prisma.service';
 
 const OP = '11111111-2222-4333-8444-555555555555';
@@ -39,6 +39,7 @@ const acta = (over: Record<string, unknown> = {}) => ({
   estadoPeto: 'BUENO',
   estadoCredencial: 'NUEVO',
   estadoCordon: 'BUENO',
+  grupo: 'OPERADOR',
   estado: 'GENERADA',
   firmadaEn: null,
   creadoPorId: USR,
@@ -91,7 +92,15 @@ describe('ActasCdaService', () => {
     const r = await service.lista();
     expect(r[0].acta).toMatchObject({ estado: 'GENERADA', fecha: '2026-10-22', entregaUsuarioId: ENTREGA });
     expect(r[1].acta).toBeNull();
+    expect(r[0].actaOtroCargo).toBeNull();
     expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
+  });
+
+  it('lista: quien cambió de cargo queda pendiente de una nueva acta (la anterior dice su cargo de antes)', async () => {
+    prisma.operadorCda.findMany.mockResolvedValue([{ ...operador(), actas: [acta({ grupo: 'ASISTENTE', estado: 'FIRMADA' })] }]);
+    const [f] = await service.lista();
+    expect(f.acta).toBeNull();
+    expect(f.actaOtroCargo).toBe('ASISTENTE CDA');
   });
 
   it('lista de asistentes: filtra por su grupo', async () => {
@@ -115,13 +124,30 @@ describe('ActasCdaService', () => {
     expect(r[1].cargoSugerido).toBe('Asistente Electoral Transversal');
   });
 
+  it('no se firma ni se reabre el acta de un cargo anterior: primero la del cargo actual', async () => {
+    prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'vieja', grupo: 'ASISTENTE', operador: { grupo: 'OPERADOR' } });
+    await expect(service.firmar(OP)).rejects.toThrow('Aún no tiene acta en su cargo actual');
+    await expect(service.reabrir(OP)).rejects.toThrow(NotFoundException);
+    expect(prisma.actaEntregaCda.updateMany).not.toHaveBeenCalled();
+  });
+
   describe('generar', () => {
+    it('quien cambió de cargo recibe un acta nueva con su cargo; la anterior (aunque firmada) no se toca', async () => {
+      prisma.operadorCda.findMany.mockResolvedValue([
+        { id: OP, grupo: 'OPERADOR', actas: [{ id: 'vieja', estado: 'FIRMADA', grupo: 'ASISTENTE' }] },
+      ]);
+      const r = await service.generar({ ...PEDIDO, operadorIds: [OP] }, USR);
+      expect(r).toMatchObject({ generadas: 1, actualizadas: 0, omitidasFirmadas: 0 });
+      expect(prisma.actaEntregaCda.create.mock.calls[0][0].data).toMatchObject({ operadorId: OP, grupo: 'OPERADOR' });
+      expect(prisma.actaEntregaCda.updateMany).not.toHaveBeenCalled();
+    });
+
     it('crea las nuevas, corrige las generadas y no toca las firmadas', async () => {
       const OP3 = '33333333-2222-4333-8444-555555555555';
       prisma.operadorCda.findMany.mockResolvedValue([
-        { id: OP, actas: [] },
-        { id: OP2, actas: [{ id: 'g', estado: 'GENERADA' }] },
-        { id: OP3, actas: [{ id: 'f', estado: 'FIRMADA' }] },
+        { id: OP, grupo: 'OPERADOR', actas: [] },
+        { id: OP2, grupo: 'OPERADOR', actas: [{ id: 'g', estado: 'GENERADA', grupo: 'OPERADOR' }] },
+        { id: OP3, grupo: 'OPERADOR', actas: [{ id: 'f', estado: 'FIRMADA', grupo: 'OPERADOR' }] },
       ]);
       prisma.actaEntregaCda.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
 
@@ -156,7 +182,7 @@ describe('ActasCdaService', () => {
 
   describe('firmar y reabrir', () => {
     it('firma la vigente si está generada', async () => {
-      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1' });
+      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1', grupo: 'OPERADOR', operador: { grupo: 'OPERADOR' } });
       prisma.actaEntregaCda.updateMany.mockResolvedValue({ count: 1 });
       prisma.actaEntregaCda.findUniqueOrThrow.mockResolvedValue(
         acta({ estado: 'FIRMADA', firmadaEn: new Date('2026-10-22T20:00:00Z') }),
@@ -169,13 +195,13 @@ describe('ActasCdaService', () => {
     });
 
     it('no firma dos veces', async () => {
-      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1' });
+      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1', grupo: 'OPERADOR', operador: { grupo: 'OPERADOR' } });
       prisma.actaEntregaCda.updateMany.mockResolvedValue({ count: 0 });
       await expect(service.firmar(OP)).rejects.toThrow(ConflictException);
     });
 
     it('reabrir vuelve a GENERADA y borra la fecha de firma', async () => {
-      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1' });
+      prisma.actaEntregaCda.findFirst.mockResolvedValue({ id: 'acta-1', grupo: 'OPERADOR', operador: { grupo: 'OPERADOR' } });
       prisma.actaEntregaCda.updateMany.mockResolvedValue({ count: 1 });
       prisma.actaEntregaCda.findUniqueOrThrow.mockResolvedValue(acta());
       await service.reabrir(OP);
@@ -200,6 +226,11 @@ describe('ActasCdaService', () => {
       const p = await service.pdf(OP);
       expect(p.nombre).toBe('acta-perez-lopez-ana-maria-4065.pdf');
       expect(p.contenido.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('el documento dice el cargo con que se generó el acta, aunque la persona cambie de cargo', () => {
+      const d = aDatos(operador({ grupo: 'OPERADOR' }) as never, acta({ grupo: 'ASISTENTE' }) as never);
+      expect(d.operadorCargo).toBe('ASISTENTE CDA');
     });
 
     it('sin acta generada: 404', async () => {

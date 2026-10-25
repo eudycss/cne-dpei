@@ -33,7 +33,8 @@ export function Campo({
         'aria-describedby': describe || undefined,
       })}
       {ayuda && (
-        <span id={`${id}-ayuda`} className="ocda-form-ayuda">
+        // aria-live: si la ayuda cambia (p. ej. el aviso al elegir otro cargo CDA), el lector de pantalla la anuncia.
+        <span id={`${id}-ayuda`} className="ocda-form-ayuda" aria-live="polite">
           {ayuda}
         </span>
       )}

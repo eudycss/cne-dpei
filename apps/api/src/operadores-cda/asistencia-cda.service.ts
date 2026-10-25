@@ -13,6 +13,7 @@ import { PrismaService } from '../db/prisma.service';
 import { TEXTOS_GRUPO } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
+import { enTramos, personalDelCargo } from './periodos-cargo';
 import {
   type ArchivoReporte,
   type Celda,
@@ -119,13 +120,14 @@ export class AsistenciaCdaService {
     const hoy = diaEcuador();
     const dia = fecha ? parsearDia(fecha) : hoy;
     if (dia > hoy) throw new BadRequestException('No se puede consultar la asistencia de un día futuro');
-    const [operadores, asistencias] = await Promise.all([
-      this.prisma.operadorCda.findMany({ where: { activo: true, grupo }, orderBy: { apellidosNombres: 'asc' } }),
-      this.prisma.asistenciaCda.findMany({
-        where: { fecha: fechaDb(dia), operador: { grupo } },
-        include: CON_QUIEN_MARCO,
-      }),
-    ]);
+    // Quien cambió de cargo sale en el cargo que tenía ese día.
+    const operadores = (await personalDelCargo(this.prisma, grupo))
+      .filter((p) => enTramos(p.tramos, dia))
+      .map((p) => p.operador);
+    const asistencias = await this.prisma.asistenciaCda.findMany({
+      where: { fecha: fechaDb(dia), operadorId: { in: operadores.map((o) => o.id) } },
+      include: CON_QUIEN_MARCO,
+    });
     const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
     return {
       fecha: dia,
@@ -269,10 +271,8 @@ export class AsistenciaCdaService {
     const hoy = diaEcuador();
     const hasta = hastaParam ? parsearDia(hastaParam) : hoy;
     if (hasta > hoy) throw new BadRequestException('La fecha final no puede ser futura');
-    const operadores = await this.prisma.operadorCda.findMany({
-      where: { activo: true, grupo },
-      orderBy: { apellidosNombres: 'asc' },
-    });
+    const personal = await personalDelCargo(this.prisma, grupo);
+    const operadores = personal.map((p) => p.operador);
     const primerInicio = operadores
       .map((o) => (o.fechaInicio ? diaDeFechaDb(o.fechaInicio) : null))
       .filter((d): d is string => !!d)
@@ -288,7 +288,7 @@ export class AsistenciaCdaService {
     }
 
     const asistencias = await this.prisma.asistenciaCda.findMany({
-      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operador: { grupo } },
+      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: operadores.map((o) => o.id) } },
       include: CON_QUIEN_MARCO,
     });
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
@@ -299,8 +299,10 @@ export class AsistenciaCdaService {
     const filas: FilaExportada[] = [];
     for (const dia of dias) {
       let numero = 0;
-      for (const o of operadores) {
+      for (const { operador: o, tramos } of personal) {
         if (o.fechaInicio && diaDeFechaDb(o.fechaInicio) > dia) continue;
+        // Antes o después de un cambio de cargo, ese día cuenta en el otro cargo.
+        if (!enTramos(tramos, dia)) continue;
         const a = porClave.get(clave(o.id, dia));
         const conEntrada = !!a?.entradaEn;
         const conSalida = !!a?.salidaEn;

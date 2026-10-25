@@ -670,6 +670,9 @@ export type EditarOperadorCdaInput = z.infer<typeof editarOperadorCdaSchema>;
 
 export const cambiarActivoOperadorCdaSchema = z.object({ activo: z.boolean() }).strict();
 
+/** Pasar a una persona a otro cargo CDA (rige desde hoy). */
+export const cambiarCargoOperadorCdaSchema = z.object({ grupo: grupoCdaSchema }).strict();
+
 export const tipoMarcaAsistenciaCdaSchema = z.enum(['ENTRADA', 'SALIDA']);
 export type TipoMarcaAsistenciaCdaInput = z.infer<typeof tipoMarcaAsistenciaCdaSchema>;
 

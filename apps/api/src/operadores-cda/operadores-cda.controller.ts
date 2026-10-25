@@ -15,10 +15,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   cambiarActivoOperadorCdaSchema,
+  cambiarCargoOperadorCdaSchema,
   crearOperadorCdaSchema,
   editarOperadorCdaSchema,
 } from '@cne/shared-validation';
-import type { CrearOperadorCdaRequest, EditarOperadorCdaRequest } from '@cne/shared-types';
+import type { CambiarCargoOperadorCdaRequest, CrearOperadorCdaRequest, EditarOperadorCdaRequest } from '@cne/shared-types';
 
 import { OperadoresCdaService } from './operadores-cda.service';
 import { parsearGrupo } from './grupo-cda';
@@ -86,6 +87,21 @@ export class OperadoresCdaController {
     @Body(new ZodValidationPipe(cambiarActivoOperadorCdaSchema)) body: { activo: boolean },
   ) {
     return this.operadores.cambiarActivo(id, body.activo);
+  }
+
+  @Patch(':id/cargo')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({
+    summary: 'Pasa a la persona a otro cargo CDA desde hoy',
+    description:
+      'Su asistencia anterior queda en el cargo de antes. Responde si tiene carnet o acta, que dicen el cargo anterior.',
+  })
+  cambiarCargo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(cambiarCargoOperadorCdaSchema)) body: CambiarCargoOperadorCdaRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.operadores.cambiarCargo(id, body.grupo, user.sub);
   }
 
   @Post('importar')
