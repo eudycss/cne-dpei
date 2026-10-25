@@ -73,6 +73,7 @@ describe('ActasCdaService', () => {
       findUniqueOrThrow: jest.fn(),
     },
     $transaction: jest.fn(),
+    $queryRaw: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -132,6 +133,43 @@ describe('ActasCdaService', () => {
   });
 
   describe('generar', () => {
+    it('bloquea a las personas y lee su cargo dentro de la transacción (un cambio de cargo simultáneo espera)', async () => {
+      const orden: string[] = [];
+      const tx = {
+        $queryRaw: jest.fn(async () => orden.push('bloqueo')),
+        operadorCda: {
+          findMany: jest.fn(async () => {
+            orden.push('lectura');
+            return [{ id: OP, grupo: 'OPERADOR', actas: [] }];
+          }),
+        },
+        actaEntregaCda: { create: jest.fn(), updateMany: jest.fn() },
+      };
+      prisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => {
+        orden.push('inicio');
+        const r = await fn(tx);
+        orden.push('fin');
+        return r;
+      });
+      const r = await service.generar({ ...PEDIDO, operadorIds: [OP, OP2, OP] }, USR);
+
+      expect(orden).toEqual(['inicio', 'bloqueo', 'lectura', 'fin']);
+      // Nada se lee fuera de la transacción.
+      expect(prisma.operadorCda.findMany).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      const [sql, ids] = tx.$queryRaw.mock.calls[0] as unknown as [string[], string[]];
+      expect(sql.join('?')).toMatch(/operadores_cda[\s\S]*ORDER BY id[\s\S]*FOR NO KEY UPDATE/);
+      expect(ids).toEqual([OP, OP2]);
+      expect(r).toMatchObject({ generadas: 1, ignorados: 1 });
+      expect(tx.actaEntregaCda.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('si el bloqueo falla, el error sube y no se crea ninguna acta', async () => {
+      prisma.$queryRaw.mockRejectedValue(new Error('deadlock detected'));
+      await expect(service.generar({ ...PEDIDO, operadorIds: [OP] }, USR)).rejects.toThrow('deadlock detected');
+      expect(prisma.actaEntregaCda.create).not.toHaveBeenCalled();
+    });
+
     it('quien cambió de cargo recibe un acta nueva con su cargo; la anterior (aunque firmada) no se toca', async () => {
       prisma.operadorCda.findMany.mockResolvedValue([
         { id: OP, grupo: 'OPERADOR', actas: [{ id: 'vieja', estado: 'FIRMADA', grupo: 'ASISTENTE' }] },

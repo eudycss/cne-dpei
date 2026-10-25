@@ -118,14 +118,6 @@ export class ActasCdaService {
     if (body.entregaUsuarioId) await this.verificarQuienEntrega(body.entregaUsuarioId, body.entregaCedula);
 
     const ids = [...new Set<string>(body.operadorIds)];
-    const operadores = await this.prisma.operadorCda.findMany({
-      where: { id: { in: ids }, activo: true },
-      select: {
-        id: true,
-        grupo: true,
-        actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1, select: { id: true, estado: true, grupo: true } },
-      },
-    });
     const datos = {
       entregaPorId: body.entregaUsuarioId ?? null,
       entregaNombre: body.entregaNombre,
@@ -138,13 +130,22 @@ export class ActasCdaService {
       estadoCordon: body.estadoCordon,
     };
 
-    const resultado: GenerarActasCdaResult = {
-      generadas: 0,
-      actualizadas: 0,
-      omitidasFirmadas: 0,
-      ignorados: ids.length - operadores.length,
-    };
+    const resultado: GenerarActasCdaResult = { generadas: 0, actualizadas: 0, omitidasFirmadas: 0, ignorados: 0 };
     await this.prisma.$transaction(async (tx) => {
+      // Bloquea a estas personas hasta terminar: un cambio de cargo simultáneo espera, y el cargo
+      // que se lee aquí abajo es el vigente (sin esto, el acta podía salir con el cargo anterior).
+      // ORDER BY id: dos generaciones simultáneas bloquean en el mismo orden y no se traban.
+      // NO KEY UPDATE choca con el UPDATE de grupo, pero no con las inserciones de asistencias o carnets.
+      await tx.$queryRaw`SELECT id FROM operadores_cda WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR NO KEY UPDATE`;
+      const operadores = await tx.operadorCda.findMany({
+        where: { id: { in: ids }, activo: true },
+        select: {
+          id: true,
+          grupo: true,
+          actas: { orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }], take: 1, select: { id: true, estado: true, grupo: true } },
+        },
+      });
+      resultado.ignorados = ids.length - operadores.length;
       for (const o of operadores) {
         const vigente = o.actas[0];
         // Sin acta, o con la de un cargo anterior (que se conserva como documento): una nueva.
@@ -161,7 +162,7 @@ export class ActasCdaService {
         if (count) resultado.actualizadas++;
         else resultado.omitidasFirmadas++;
       }
-    });
+    }, { timeout: 20_000, maxWait: 5_000 }); // hasta 100 actas en un lote, más la espera del bloqueo
     return resultado;
   }
 

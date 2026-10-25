@@ -120,6 +120,7 @@ export class OperadoresCdaService {
 
     const editado = await this.prisma.$transaction(async (tx) => {
       // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
+      // Este UPDATE espera al bloqueo de ActasCdaService.generar: así ningún acta sale con el cargo anterior.
       const { count } = await tx.operadorCda.updateMany({ where: { id, grupo: o.grupo }, data: { grupo } });
       if (!count) throw new ConflictException('Otro usuario acaba de cambiarle el cargo: recargue la lista');
       await tx.cambioCargoCda.create({
