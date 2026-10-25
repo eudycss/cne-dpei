@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { PERMISO_IDS } from '@cne/shared-validation';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { OperadorCda, RoleName } from '@cne/shared-types';
@@ -11,6 +12,12 @@ import { sileo } from 'sileo';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
+
+// Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
+const permisos = { actuales: new Set<string>(PERMISO_IDS) };
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
+}));
 let roles: RoleName[] = ['ADMINISTRADOR'];
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles } }) }));
 
@@ -44,6 +51,7 @@ function renderPagina() {
 describe('ListadoOperadores', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
     roles = ['ADMINISTRADOR'];
   });
 
@@ -96,11 +104,32 @@ describe('ListadoOperadores', () => {
     await screen.findByRole('list', { name: 'Operadores CDA' });
     expect(screen.queryByRole('button', { name: 'Importar Excel' })).not.toBeInTheDocument();
   });
+
+  it('un asistente con la acción de emitir ve "Carnets QR" pero no importar ni agregar', async () => {
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.getByRole('button', { name: 'Carnets QR' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar Excel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agregar/ })).not.toBeInTheDocument();
+  });
+
+  it('sin la acción de emitir no ve "Carnets QR"; sin la de fotos, no ve el enlace de foto', async () => {
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.asistencia.marcar']);
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.queryByRole('button', { name: 'Carnets QR' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enlace de foto/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
     roles = ['ADMINISTRADOR'];
   });
 

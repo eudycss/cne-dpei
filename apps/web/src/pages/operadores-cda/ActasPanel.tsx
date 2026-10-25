@@ -14,6 +14,7 @@ import {
 } from '../../lib/queries/operadores-cda';
 import { useGrupoCda } from './grupo';
 import { AccionesEncabezado } from './AccionesEncabezado';
+import { useModulos } from '../../lib/useModulos';
 import { GenerarActasModal } from './GenerarActasModal';
 import { Kpi } from './Kpi';
 import { cargoCorto, iniciales, normalizar } from './utils';
@@ -46,6 +47,7 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
   const qc = useQueryClient();
   const { user } = useAuth();
   const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const puedeActas = useModulos().puede('cda.actas.gestionar');
   const { grupo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
@@ -111,22 +113,26 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
   return (
     <>
       <AccionesEncabezado destino={acciones}>
-        <button
-          type="button"
-          className="btn secondary"
-          disabled={conActa.length === 0 || bajando !== null}
-          onClick={() => void bajar('zip', () => descargarActasCdaZip(conActa.map((f) => f.operador.id)))}
-        >
-          {bajando === 'zip' ? 'Preparando ZIP…' : `Descargar ZIP (${conActa.length})`}
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={elegidasFilas.length === 0}
-          onClick={() => setGenerando(elegidasFilas)}
-        >
-          Generar actas ({elegidasFilas.length})
-        </button>
+        {puedeActas && (
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={conActa.length === 0 || bajando !== null}
+              onClick={() => void bajar('zip', () => descargarActasCdaZip(conActa.map((f) => f.operador.id)))}
+            >
+              {bajando === 'zip' ? 'Preparando ZIP…' : `Descargar ZIP (${conActa.length})`}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={elegidasFilas.length === 0}
+              onClick={() => setGenerando(elegidasFilas)}
+            >
+              Generar actas ({elegidasFilas.length})
+            </button>
+          </>
+        )}
       </AccionesEncabezado>
 
       {data && (
@@ -241,12 +247,13 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
                     </td>
                     <td>
                       <div className="ocda-fila-acciones">
-                        {!a && (
+                        {!puedeActas && <span className="muted">Solo consulta</span>}
+                        {puedeActas && !a && (
                           <button type="button" className="btn secondary ocda-btn-chico" onClick={() => setGenerando([f])}>
                             Generar<span className="sr-only"> acta de {o.apellidosNombres}</span>
                           </button>
                         )}
-                        {a && (
+                        {puedeActas && a && (
                           <>
                             {(['docx', 'pdf'] as const).map((formato) => (
                               <button

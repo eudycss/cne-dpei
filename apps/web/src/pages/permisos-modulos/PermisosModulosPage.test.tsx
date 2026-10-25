@@ -17,9 +17,13 @@ const putMock = api.put as unknown as ReturnType<typeof vi.fn>;
 
 const MATRIZ = {
   roles: [
-    { rol: 'TECNICO_SUPERVISOR', modulos: ['kits', 'alertas'] },
-    { rol: 'LECTOR', modulos: ['kits', 'reportes'] },
-    { rol: 'ASISTENTE_TRANSVERSAL', modulos: ['cadena-custodia'] },
+    { rol: 'TECNICO_SUPERVISOR', modulos: ['kits', 'alertas'], permisos: [] },
+    { rol: 'LECTOR', modulos: ['kits', 'reportes'], permisos: [] },
+    {
+      rol: 'ASISTENTE_TRANSVERSAL',
+      modulos: ['cadena-custodia', 'operadores-cda'],
+      permisos: ['cda.asistencia.marcar', 'cda.asistencia.qr'],
+    },
   ],
 };
 
@@ -38,8 +42,8 @@ describe('PermisosModulosPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getMock.mockResolvedValue({ data: MATRIZ });
-    putMock.mockImplementation((url: string, body: { modulos: string[] }) =>
-      Promise.resolve({ data: { rol: url.split('/').pop(), modulos: body.modulos } }),
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
     );
   });
 
@@ -71,6 +75,7 @@ describe('PermisosModulosPage', () => {
     await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
     expect(putMock).toHaveBeenCalledWith('/permisos-modulos/TECNICO_SUPERVISOR', {
       modulos: ['kits', 'incidencias'],
+      permisos: [],
     });
     expect(sileo.success).toHaveBeenCalled();
   });
@@ -93,6 +98,67 @@ describe('PermisosModulosPage', () => {
     await waitFor(() =>
       expect(sileo.error).toHaveBeenCalledWith({ title: 'Módulos no disponibles para este rol: alertas' }),
     );
+  });
+
+  it('si falla un rol, guarda los demás y conserva en pantalla los cambios del que falló', async () => {
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      url.endsWith('/LECTOR')
+        ? Promise.reject({ response: { data: { message: 'Sin conexión con la base' } } })
+        : Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Reportes para Lector' }));
+    await user.click(casilla('Incidencias para Técnico supervisor'));
+    // Al recargar, el servidor tiene lo nuevo del técnico y lo viejo del lector.
+    getMock.mockResolvedValue({
+      data: {
+        roles: MATRIZ.roles.map((r) =>
+          r.rol === 'TECNICO_SUPERVISOR' ? { ...r, modulos: ['kits', 'incidencias', 'alertas'] } : r,
+        ),
+      },
+    });
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(sileo.error).toHaveBeenCalledWith({
+        title:
+          'Se guardó Técnico supervisor. No se pudo guardar: Lector (Sin conexión con la base). Sus cambios siguen en pantalla para reintentar.',
+      }),
+    );
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(casilla('Reportes para Lector')).not.toBeChecked();
+    expect(casilla('Incidencias para Técnico supervisor')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toHaveAccessibleDescription(
+      'Cambios sin guardar en: Lector.',
+    );
+  });
+
+  it('si fallan varios roles, da el motivo de cada uno (en plural) por la región de alerta, y reintentar los guarda', async () => {
+    putMock.mockImplementation((url: string) =>
+      Promise.reject({ response: { data: { message: url.endsWith('/LECTOR') ? 'Motivo A' : 'Motivo B' } } }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Reportes para Lector' }));
+    await user.click(casilla('Incidencias para Técnico supervisor'));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    const mensaje =
+      'No se pudieron guardar: Técnico supervisor (Motivo B); Lector (Motivo A). Sus cambios siguen en pantalla para reintentar.';
+    await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: mensaje }));
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => a.textContent === mensaje)).toBe(true));
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(casilla('Reportes para Lector')).not.toBeChecked();
+    expect(casilla('Incidencias para Técnico supervisor')).toBeChecked();
+
+    // Reintento: ahora el servidor responde y manda lo guardado.
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(sileo.success).toHaveBeenCalled());
+    expect(putMock).toHaveBeenCalledTimes(4);
   });
 
   it('si el servidor devuelve una lista de mensajes, los une en uno', async () => {
@@ -119,8 +185,56 @@ describe('PermisosModulosPage', () => {
     getMock.mockRejectedValueOnce(new Error('caído'));
     const user = userEvent.setup();
     renderPage();
-    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar la configuración de módulos.');
+    expect(await screen.findByText('No se pudo cargar la configuración de módulos.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' })).toBeChecked();
+  });
+  describe('acciones dentro de cada módulo', () => {
+    const AET = 'Asistente Electoral Transversal';
+    const accion = (texto: string, rol = AET) => casilla(`CDAs (Operadores y Asistentes): ${texto}, para ${rol}`);
+
+    it('marca las acciones que tiene cada rol (el asistente toma asistencia pero no emite carnets)', async () => {
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      expect(accion('Marcar o quitar asistencia a mano')).toBeChecked();
+      expect(accion('Marcar asistencia escaneando el carnet')).toBeChecked();
+      expect(accion('Emitir o anular carnets QR')).not.toBeChecked();
+    });
+
+    it('sin el módulo, sus acciones quedan deshabilitadas y se explica por qué', async () => {
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      const tec = accion('Emitir o anular carnets QR', 'Técnico supervisor');
+      expect(tec).toBeDisabled();
+      expect(tec).toHaveAccessibleDescription(/solo se pueden dar si el rol ve el módulo/);
+      // El lector nunca puede tener acciones de CDAs (techo del servidor).
+      expect(accion('Exportar asistencia y atrasos', 'Lector')).toHaveAccessibleDescription(/no están disponibles/);
+    });
+
+    it('al quitar el módulo, sus acciones se deshabilitan y no se guardan', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('checkbox', { name: `CDAs (Operadores y Asistentes) para ${AET}` }));
+      expect(accion('Marcar o quitar asistencia a mano')).toBeDisabled();
+      expect(accion('Marcar o quitar asistencia a mano')).not.toBeChecked();
+      // Al volver a activarlo, las acciones no reaparecen solas.
+      await user.click(casilla(`CDAs (Operadores y Asistentes) para ${AET}`));
+      expect(accion('Marcar o quitar asistencia a mano')).toBeEnabled();
+      expect(accion('Marcar o quitar asistencia a mano')).not.toBeChecked();
+    });
+
+    it('guarda las acciones junto con los módulos del rol', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      await user.click(accion('Marcar o quitar asistencia a mano'));
+      await user.click(accion('Emitir o anular carnets QR'));
+      await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+      await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+      expect(putMock).toHaveBeenCalledWith('/permisos-modulos/ASISTENTE_TRANSVERSAL', {
+        modulos: ['cadena-custodia', 'operadores-cda'],
+        permisos: ['cda.asistencia.qr', 'cda.carnets.emitir'],
+      });
+    });
   });
 });

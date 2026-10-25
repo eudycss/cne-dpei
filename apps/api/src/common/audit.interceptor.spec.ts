@@ -336,23 +336,23 @@ describe('AuditInterceptor', () => {
     expect(ocultar.data).toMatchObject({ accion: 'OPERADOR_CDA_ACTIVO', entidadId: OTRO, datosDespues: { activo: false } });
   });
 
-  it('módulos por rol: guarda el rol y los módulos que quedaron visibles (los de la respuesta)', async () => {
+  it('módulos por rol: guarda el rol, los módulos y las acciones que quedaron (los de la respuesta)', async () => {
     const { data } = await auditar(
       {
         method: 'PUT',
-        originalUrl: '/permisos-modulos/LECTOR',
-        params: { rol: 'LECTOR' },
-        body: { modulos: ['inicio', 'alertas'] },
+        originalUrl: '/permisos-modulos/ASISTENTE_TRANSVERSAL',
+        params: { rol: 'ASISTENTE_TRANSVERSAL' },
+        body: { modulos: ['operadores-cda', 'alertas'], permisos: ['cda.asistencia.qr'] },
         user: ADMIN,
       },
-      { rol: 'LECTOR', modulos: ['inicio'] },
+      { rol: 'ASISTENTE_TRANSVERSAL', modulos: ['operadores-cda'], permisos: ['cda.asistencia.qr'] },
     );
     expect(data).toMatchObject({
       usuarioId: ADMIN.sub,
       accion: 'MODULOS_ROL_UPDATE',
       entidad: 'rol_modulos',
-      entidadId: 'LECTOR',
-      datosDespues: { modulos: ['inicio'] },
+      entidadId: 'ASISTENTE_TRANSVERSAL',
+      datosDespues: { modulos: ['operadores-cda'], permisos: ['cda.asistencia.qr'] },
     });
   });
 

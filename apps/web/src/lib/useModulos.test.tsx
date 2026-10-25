@@ -74,4 +74,32 @@ describe('useModulos', () => {
     expect(result.current.puedeVer('reportes')).toBe(true);
     expect(result.current.puedeVer('operadores-cda')).toBe(true);
   });
+  it('acciones: el administrador puede todo', () => {
+    conRoles(['ADMINISTRADOR']);
+    const { result } = render();
+    expect(result.current.puede('cda.carnets.emitir')).toBe(true);
+  });
+
+  it('acciones: usa las que manda el servidor y descarta ids desconocidos', async () => {
+    conRoles(['ASISTENTE_TRANSVERSAL']);
+    misModulosMock.mockResolvedValue({ modulos: ['operadores-cda'], permisos: ['cda.asistencia.qr', 'cda.inventada'] });
+    const { result } = render();
+    await waitFor(() => expect(result.current.cargando).toBe(false));
+    expect(result.current.puede('cda.asistencia.qr')).toBe(true);
+    expect(result.current.puede('cda.asistencia.marcar')).toBe(false);
+  });
+
+  it('acciones: mientras carga (o con una API vieja sin permisos) usa las de fábrica', async () => {
+    conRoles(['ASISTENTE_TRANSVERSAL']);
+    misModulosMock.mockReturnValue(new Promise(() => {}));
+    const cargando = render();
+    expect(cargando.result.current.puede('cda.asistencia.marcar')).toBe(true);
+    expect(cargando.result.current.puede('cda.carnets.emitir')).toBe(false);
+
+    misModulosMock.mockResolvedValue({ modulos: ['cadena-custodia'] });
+    const vieja = render();
+    await waitFor(() => expect(vieja.result.current.cargando).toBe(false));
+    // Sin el módulo CDAs, tampoco sus acciones de fábrica.
+    expect(vieja.result.current.puede('cda.asistencia.marcar')).toBe(false);
+  });
 });

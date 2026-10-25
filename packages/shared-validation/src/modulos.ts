@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PERMISO_IDS } from './permisos';
 
 // Módulos de la web que el administrador puede mostrar u ocultar por rol.
 // El ADMINISTRADOR siempre ve todos; OPERADOR_CDA no entra a la web.
@@ -101,4 +102,10 @@ export const actualizarModulosRolSchema = z.object({
     .array(z.enum(MODULO_WEB_IDS))
     .max(MODULO_WEB_IDS.length)
     .transform((ids) => Array.from(new Set(ids))),
+  // Opcional: una web vieja que solo manda módulos no borra las acciones.
+  permisos: z
+    .array(z.enum(PERMISO_IDS))
+    .max(PERMISO_IDS.length)
+    .transform((ids) => Array.from(new Set(ids)))
+    .optional(),
 });

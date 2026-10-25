@@ -27,6 +27,7 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
@@ -36,6 +37,8 @@ export class OperadoresCdaController {
   constructor(private readonly operadores: OperadoresCdaService) {}
 
   @Get()
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
   @ApiOperation({
     summary:

@@ -18,6 +18,7 @@ import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
 import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
 import { useGrupoCda } from './grupo';
+import { useModulos } from '../../lib/useModulos';
 
 type Filtro = 'todos' | 'sin-entrada' | 'sin-salida' | 'completos';
 type Marca = { operadorId: string; tipo: TipoMarcaAsistenciaCda };
@@ -44,6 +45,8 @@ function mensajeError(e: unknown, porDefecto: string): string {
 export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const qc = useQueryClient();
   const { grupo, plural, singular, Singular } = useGrupoCda();
+  const { puede } = useModulos();
+  const puedeMarcar = puede('cda.asistencia.marcar');
   const hoy = hoyEcuador();
   const [fecha, setFecha] = useState(hoy);
   const [busqueda, setBusqueda] = useState('');
@@ -118,6 +121,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const pendientesEntrada = visibles.filter((f) => !f.entradaEn);
   const pendientesSalida = visibles.filter((f) => f.entradaEn && !f.salidaEn);
   const esHoy = data?.esHoy ?? fecha === hoy;
+  const motivoBloqueo = !esHoy
+    ? 'Día pasado: solo consulta'
+    : !puedeMarcar
+      ? 'Su rol no tiene permiso para marcar a mano'
+      : undefined;
 
   function confirmarQuitar(f: AsistenciaCdaFila, tipo: TipoMarcaAsistenciaCda) {
     const marcaEn = tipo === 'ENTRADA' ? f.entradaEn : f.salidaEn;
@@ -134,14 +142,18 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   return (
     <>
       <AccionesEncabezado destino={acciones}>
-        <button type="button" className="btn secondary" onClick={() => setExportando(true)}>
-          Exportar
-        </button>
-        {esHoy && data && (
+        {puede('cda.asistencia.exportar') && (
+          <button type="button" className="btn secondary" onClick={() => setExportando(true)}>
+            Exportar
+          </button>
+        )}
+        {esHoy && data && puede('cda.asistencia.qr') && (
+          <button type="button" className="btn secondary" onClick={() => setEscaneando(true)}>
+            Escanear carnet
+          </button>
+        )}
+        {esHoy && data && puedeMarcar && (
           <>
-            <button type="button" className="btn secondary" onClick={() => setEscaneando(true)}>
-              Escanear carnet
-            </button>
             <button
               type="button"
               className="btn secondary"
@@ -285,8 +297,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                         marcaEn={f.entradaEn}
                         por={f.entradaPor}
                         nombre={o.apellidosNombres}
-                        deshabilitado={!esHoy || (!!f.salidaEn && !!f.entradaEn)}
-                        motivo={!esHoy ? 'Día pasado: solo consulta' : f.salidaEn ? 'Quite primero la salida' : undefined}
+                        deshabilitado={!esHoy || !puedeMarcar || (!!f.salidaEn && !!f.entradaEn)}
+                        motivo={motivoBloqueo ?? (f.salidaEn ? 'Quite primero la salida' : undefined)}
                         ocupado={ocupados.has(`${o.id}-ENTRADA`)}
                         onMarcar={() => marcar.mutate({ operadorId: o.id, tipo: 'ENTRADA' })}
                         onQuitar={() => confirmarQuitar(f, 'ENTRADA')}
@@ -298,8 +310,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                         marcaEn={f.salidaEn}
                         por={f.salidaPor}
                         nombre={o.apellidosNombres}
-                        deshabilitado={!esHoy || !f.entradaEn}
-                        motivo={!esHoy ? 'Día pasado: solo consulta' : !f.entradaEn ? 'Primero marque la entrada' : undefined}
+                        deshabilitado={!esHoy || !puedeMarcar || !f.entradaEn}
+                        motivo={motivoBloqueo ?? (!f.entradaEn ? 'Primero marque la entrada' : undefined)}
                         ocupado={ocupados.has(`${o.id}-SALIDA`)}
                         onMarcar={() => marcar.mutate({ operadorId: o.id, tipo: 'SALIDA' })}
                         onQuitar={() => confirmarQuitar(f, 'SALIDA')}
@@ -313,7 +325,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           {visibles.length === 0 && <p className="ocda-pie">Ningún {singular} con este filtro.</p>}
           <p className="ocda-pie">
             Mostrando {visibles.length} de {total} {plural}
-            {esHoy ? ' · Los cambios se guardan automáticamente' : ' · Solo consulta'}
+            {esHoy && puedeMarcar ? ' · Los cambios se guardan automáticamente' : ' · Solo consulta'}
           </p>
         </div>
       )}

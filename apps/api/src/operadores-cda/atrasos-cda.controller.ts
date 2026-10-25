@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 /** Solo texto: un parámetro repetido (?desde=a&desde=b) llega como arreglo. */
 const texto = (v: unknown) => (typeof v === 'string' ? v : undefined);
@@ -26,6 +28,8 @@ export class AtrasosCdaController {
   constructor(private readonly atrasos: AtrasosCdaService) {}
 
   @Get('config')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Hora oficial de entrada y minutos de gracia del grupo (?grupo=OPERADOR|ASISTENTE)' })
   config(@Query('grupo') grupo?: unknown) {
     return this.atrasos.getConfig(parsearGrupo(grupo));
@@ -42,12 +46,16 @@ export class AtrasosCdaController {
   }
 
   @Get('atrasos')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Puntuales, atrasos y faltas por operador y día (desde/hasta AAAA-MM-DD)' })
   reporte(@Query('desde') desde?: unknown, @Query('hasta') hasta?: unknown, @Query('grupo') grupo?: unknown) {
     return this.atrasos.reporte(texto(desde), texto(hasta), parsearGrupo(grupo));
   }
 
   @Get('atrasos.xlsx')
+  @RequierePermiso('cda.asistencia.exportar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'Excel de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
   async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
@@ -55,6 +63,8 @@ export class AtrasosCdaController {
   }
 
   @Get('atrasos.pdf')
+  @RequierePermiso('cda.asistencia.exportar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'PDF de atrasos (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
   async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {

@@ -4,6 +4,7 @@ import { sileo } from 'sileo';
 import { motion, useReducedMotion } from 'motion/react';
 import type { GrupoCda, OperadorCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
+import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { cambiarActivoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
@@ -37,6 +38,8 @@ function refrescarOperadores(qc: QueryClient, grupo: GrupoCda) {
 export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const { puede } = useModulos();
+  const puedeCarnets = puede('cda.carnets.emitir');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');
   const [importando, setImportando] = useState(false);
@@ -83,22 +86,28 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
 
   return (
     <>
-      {isAdmin && (
+      {(isAdmin || puedeCarnets) && (
         <AccionesEncabezado destino={acciones}>
-          <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
-            Importar Excel
-          </button>
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={!data?.some((o) => o.activo)}
-            onClick={() => setCarnets(true)}
-          >
-            Carnets QR
-          </button>
-          <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
-            Agregar {singular}
-          </button>
+          {isAdmin && (
+            <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
+              Importar Excel
+            </button>
+          )}
+          {puedeCarnets && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={!data?.some((o) => o.activo)}
+              onClick={() => setCarnets(true)}
+            >
+              Carnets QR
+            </button>
+          )}
+          {isAdmin && (
+            <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
+              Agregar {singular}
+            </button>
+          )}
         </AccionesEncabezado>
       )}
 
@@ -161,7 +170,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               >
                 <TarjetaOperador
                   operador={o}
-                  onEnlace={() => setEnlacePara(o)}
+                  onEnlace={puede('cda.fotos.enlace') ? () => setEnlacePara(o) : undefined}
                   admin={
                     isAdmin
                       ? {
@@ -237,7 +246,8 @@ function TarjetaOperador({
   admin,
 }: {
   operador: OperadorCda;
-  onEnlace: () => void;
+  /** Sin permiso para crear enlaces de foto, no se muestra el botón. */
+  onEnlace?: () => void;
   /** Solo el administrador agrega, edita u oculta. */
   admin?: AccionesAdmin;
 }) {
@@ -272,14 +282,16 @@ function TarjetaOperador({
             <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
               {o.tieneFoto ? 'Foto cargada' : 'Sin foto'}
             </span>
-            <button
-              type="button"
-              className="btn secondary ocda-btn-chico"
-              onClick={onEnlace}
-              aria-label={`${accion}: ${o.apellidosNombres}`}
-            >
-              {accion}
-            </button>
+            {onEnlace && (
+              <button
+                type="button"
+                className="btn secondary ocda-btn-chico"
+                onClick={onEnlace}
+                aria-label={`${accion}: ${o.apellidosNombres}`}
+              >
+                {accion}
+              </button>
+            )}
           </>
         ) : (
           <span className="ocda-estado vacio">Oculto</span>

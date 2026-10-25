@@ -58,8 +58,13 @@ describe('RBAC de Operadores CDA', () => {
     expect(rolesDe(CredencialQrCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
   });
 
-  it.each(['vigentes', 'carnets', 'revocar'])('emitir, ver o anular carnets (%s): solo administrador', (metodo) => {
-    expect(rolesDe(CredencialQrCdaController, metodo)).toEqual(['ADMINISTRADOR']);
+  // El techo es el de asistencia; quién puede de verdad lo decide la acción
+  // 'cda.carnets.emitir' (de fábrica solo el administrador, ver permiso.guard.spec).
+  it.each(['vigentes', 'carnets', 'revocar'])('emitir, ver o anular carnets (%s): techo de asistencia + acción', (metodo) => {
+    expect(rolesDe(CredencialQrCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+    expect(Reflect.getMetadata('permisoAccion', (CredencialQrCdaController.prototype as any)[metodo])).toEqual([
+      'cda.carnets.emitir',
+    ]);
   });
 
   it('cambiar la hora oficial de entrada: solo administrador', () => {

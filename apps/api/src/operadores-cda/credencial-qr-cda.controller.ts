@@ -13,12 +13,13 @@ import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 import { enviarPdf } from '../common/pdf';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
 
 // Una fila de 100 personas en 10 min son ~20 escaneos por minuto (consulta + marca);
 // el límite deja holgura y frena a quien pruebe códigos.
 const LIMITE_ESCANEO = { default: { limit: 120, ttl: 60_000 } };
 
-// Escanean los mismos roles que toman asistencia; emitir o anular carnets solo el administrador.
+// Escanean y emiten carnets los roles a los que el administrador les dio esa acción (de fábrica, emitir solo él).
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
 @Controller('operadores-cda')
@@ -28,6 +29,8 @@ export class CredencialQrCdaController {
   constructor(private readonly credenciales: CredencialQrCdaService) {}
 
   @Post('asistencia/qr/consultar')
+  @RequierePermiso('cda.asistencia.qr')
+  @UseGuards(PermisoGuard)
   @HttpCode(200)
   @Throttle(LIMITE_ESCANEO)
   @ApiOperation({ summary: 'A quién pertenece un carnet y qué marca toca hoy (no marca nada)' })
@@ -36,6 +39,8 @@ export class CredencialQrCdaController {
   }
 
   @Post('asistencia/qr')
+  @RequierePermiso('cda.asistencia.qr')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_ESCANEO)
   @ApiOperation({ summary: 'Registra la entrada o la salida de hoy confirmada tras escanear el carnet' })
   marcar(
@@ -46,14 +51,16 @@ export class CredencialQrCdaController {
   }
 
   @Get('credenciales')
-  @Roles('ADMINISTRADOR')
+  @RequierePermiso('cda.carnets.emitir')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Carnets vigentes (operador y fecha de emisión, sin token)' })
   vigentes() {
     return this.credenciales.vigentes();
   }
 
   @Post('credenciales/carnets.pdf')
-  @Roles('ADMINISTRADOR')
+  @RequierePermiso('cda.carnets.emitir')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'Emite carnets QR nuevos (anula los anteriores) y devuelve el PDF para imprimir' })
   async carnets(
@@ -65,7 +72,8 @@ export class CredencialQrCdaController {
   }
 
   @Delete(':id/credencial')
-  @Roles('ADMINISTRADOR')
+  @RequierePermiso('cda.carnets.emitir')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Anula el carnet vigente (perdido o robado) sin emitir otro' })
   revocar(@Param('id', ParseUUIDPipe) id: string) {
     return this.credenciales.revocar(id);

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
+import { PERMISO_IDS } from '@cne/shared-validation';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReporteAtrasosCda, RoleName } from '@cne/shared-types';
@@ -11,6 +12,12 @@ import { hoyEcuador } from './utils';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
+
+// Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
+const permisos = { actuales: new Set<string>(PERMISO_IDS) };
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
+}));
 let roles: RoleName[] = ['ADMINISTRADOR'];
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles } }) }));
 
@@ -48,6 +55,7 @@ function renderPanel() {
 describe('AtrasosPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
     roles = ['ADMINISTRADOR'];
     getMock.mockImplementation((url: string) =>
       Promise.resolve({
@@ -141,5 +149,12 @@ describe('AtrasosPanel', () => {
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(sileo.success).toHaveBeenCalledWith({ title: 'Hora de entrada: 07:30 con 5 min de gracia' });
+  });
+
+  it('sin la acción de exportar no aparece "Exportar"', async () => {
+    permisos.actuales = new Set(['cda.asistencia.marcar']);
+    renderPanel();
+    await screen.findByText(/es atraso/);
+    expect(screen.queryByRole('button', { name: 'Exportar' })).not.toBeInTheDocument();
   });
 });

@@ -21,6 +21,8 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 /** Solo texto: un parámetro repetido (?fecha=a&fecha=b) llega como arreglo. */
 const texto = (v: unknown) => (typeof v === 'string' ? v : undefined);
@@ -36,6 +38,8 @@ export class AsistenciaCdaController {
   constructor(private readonly asistencia: AsistenciaCdaService) {}
 
   @Get('asistencia')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({
     summary: 'Asistencia de todos los operadores (o, con ?grupo=ASISTENTE, asistentes) en un día (por defecto hoy, hora de Ecuador)',
   })
@@ -44,6 +48,8 @@ export class AsistenciaCdaController {
   }
 
   @Get('asistencia/exportar.xlsx')
+  @RequierePermiso('cda.asistencia.exportar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'Excel de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
   async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
@@ -51,6 +57,8 @@ export class AsistenciaCdaController {
   }
 
   @Get('asistencia/exportar.pdf')
+  @RequierePermiso('cda.asistencia.exportar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
   @ApiOperation({ summary: 'PDF de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
   async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {
@@ -58,6 +66,8 @@ export class AsistenciaCdaController {
   }
 
   @Post('asistencia/masiva')
+  @RequierePermiso('cda.asistencia.marcar')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Marca entrada o salida de hoy a varios operadores' })
   masiva(
     @CurrentUser() user: AuthenticatedUser,
@@ -67,6 +77,8 @@ export class AsistenciaCdaController {
   }
 
   @Post(':id/asistencia')
+  @RequierePermiso('cda.asistencia.marcar')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Marca la entrada o la salida de hoy de un operador' })
   marcar(
     @CurrentUser() user: AuthenticatedUser,
@@ -77,6 +89,8 @@ export class AsistenciaCdaController {
   }
 
   @Delete(':id/asistencia/:tipo')
+  @RequierePermiso('cda.asistencia.marcar')
+  @UseGuards(PermisoGuard)
   @ApiOperation({
     summary: 'Quita la entrada o la salida de hoy (corrección). ?marcaEn=ISO: solo si sigue siendo esa marca',
   })
