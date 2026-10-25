@@ -51,7 +51,7 @@ describe('CarnetsQrModal', () => {
 
   it('por defecto elige a quienes no tienen carnet y genera su PDF', async () => {
     renderModal();
-    expect(await screen.findByText('Carnet del 20/10/2026')).toBeInTheDocument();
+    expect(await screen.findByText('Carnet del 20/10/2026 10:00')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'ANDRADE ANA' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'VEGA LUIS' })).not.toBeChecked();
 
@@ -67,21 +67,53 @@ describe('CarnetsQrModal', () => {
 
   it('avisa que reimprimir anula el carnet anterior', async () => {
     renderModal();
-    await screen.findByText('Carnet del 20/10/2026');
+    await screen.findByText('Carnet del 20/10/2026 10:00');
     expect(screen.queryByText(/deja de funcionar/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Elegir todos' }));
     expect(screen.getByText(/1 persona elegida ya tiene carnet/)).toHaveTextContent(
-      '1 persona elegida ya tiene carnet: al generar, su carnet anterior deja de funcionar.',
+      '1 persona elegida ya tiene carnet (VEGA LUIS): al generar, su carnet anterior deja de funcionar.',
     );
     // Generar con Luis elegido pide confirmar: sin aceptar, no se emite nada.
     const confirmar = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
     await userEvent.click(screen.getByRole('button', { name: 'Generar 2 carnets' }));
-    expect(confirmar).toHaveBeenCalledWith(expect.stringContaining('1 persona ya tiene carnet'));
+    expect(confirmar).toHaveBeenCalledWith(expect.stringContaining('1 persona ya tiene carnet: VEGA LUIS.'));
     expect(postMock).not.toHaveBeenCalled();
     confirmar.mockRestore();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ninguno' }));
     expect(screen.getByRole('button', { name: 'Generar 0 carnets' })).toBeDisabled();
+  });
+
+  async function todosConCarnet(cuantos: number) {
+    const ops = Array.from({ length: cuantos }, (_, i) => op(`p${i}`, `PERSONA ${i}`));
+    getMock.mockResolvedValue({ data: ops.map((o) => ({ operadorId: o.id, emitidaEn: '2026-10-24T16:16:00Z' })) });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <CarnetsQrModal operadores={ops} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findAllByText('Carnet del 24/10/2026 11:16')).toHaveLength(cuantos);
+    await userEvent.click(screen.getByRole('button', { name: 'Elegir todos' }));
+  }
+
+  it('con muchas personas que ya tienen carnet, el aviso y la confirmación nombran a las 5 primeras y cuentan el resto', async () => {
+    await todosConCarnet(7);
+    expect(screen.getByText(/7 personas elegidas ya tienen carnet/)).toHaveTextContent(
+      '7 personas elegidas ya tienen carnet (PERSONA 0, PERSONA 1, PERSONA 2, PERSONA 3, PERSONA 4 y 2 más)',
+    );
+    const confirmar = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Generar 7 carnets' }));
+    expect(confirmar).toHaveBeenCalledWith(
+      expect.stringContaining('7 personas ya tienen carnet: PERSONA 0, PERSONA 1, PERSONA 2, PERSONA 3, PERSONA 4 y 2 más.'),
+    );
+    confirmar.mockRestore();
+  });
+
+  it('con exactamente 5 personas las nombra a todas, sin "y N más"', async () => {
+    await todosConCarnet(5);
+    expect(screen.getByText(/5 personas elegidas ya tienen carnet/)).toHaveTextContent(
+      '5 personas elegidas ya tienen carnet (PERSONA 0, PERSONA 1, PERSONA 2, PERSONA 3, PERSONA 4):',
+    );
   });
 
   it('anular pide confirmación', async () => {
