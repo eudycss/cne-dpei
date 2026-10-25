@@ -233,8 +233,9 @@ const AUDIT_TABLE: Array<{
     entidad: 'rol_modulos',
     entidadId: (req) => (typeof req.params?.rol === 'string' ? req.params.rol.slice(0, 60) : undefined),
     resumen: (res) => {
-      const modulos = (res as { modulos?: unknown } | null)?.modulos;
-      return { modulos: Array.isArray(modulos) ? modulos.filter((m): m is string => typeof m === 'string').slice(0, 50) : [] };
+      const r = res as { modulos?: unknown; permisos?: unknown } | null;
+      const ids = (v: unknown) => (Array.isArray(v) ? v.filter((m): m is string => typeof m === 'string').slice(0, 50) : []);
+      return { modulos: ids(r?.modulos), permisos: ids(r?.permisos) };
     },
   },
   // Fase 2 — eventos electorales

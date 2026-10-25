@@ -12,6 +12,8 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 // Generar documentos cuesta CPU (Render: 0.1 vCPU). Holgado para el uso normal, corta los abusos.
 const LIMITE_DESCARGA = { default: { limit: 30, ttl: 60_000 } };
@@ -41,18 +43,24 @@ export class ActasCdaController {
   constructor(private readonly actas: ActasCdaService) {}
 
   @Get('actas')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Operadores (o, con ?grupo=ASISTENTE, asistentes) activos con su acta de entrega vigente (o null)' })
   lista(@Query('grupo') grupo?: unknown) {
     return this.actas.lista(parsearGrupo(grupo));
   }
 
   @Get('actas/entregan')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Usuarios que pueden entregar, con el cargo sugerido para el acta' })
   personasEntrega() {
     return this.actas.personasEntrega();
   }
 
   @Post('actas')
+  @RequierePermiso('cda.actas.gestionar')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Genera (o corrige, si no está firmada) el acta de varios operadores' })
   generar(
     @CurrentUser() user: AuthenticatedUser,
@@ -62,6 +70,8 @@ export class ActasCdaController {
   }
 
   @Post('actas/zip')
+  @RequierePermiso('cda.actas.gestionar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_ZIP)
   @HttpCode(200)
   @ApiOperation({ summary: 'ZIP con el Word y el PDF de las actas de los operadores elegidos' })
@@ -77,6 +87,8 @@ export class ActasCdaController {
   }
 
   @Get(':id/acta.docx')
+  @RequierePermiso('cda.actas.gestionar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA)
   @ApiOperation({ summary: 'Acta vigente del operador en Word' })
   async word(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
@@ -84,6 +96,8 @@ export class ActasCdaController {
   }
 
   @Get(':id/acta.pdf')
+  @RequierePermiso('cda.actas.gestionar')
+  @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA)
   @ApiOperation({ summary: 'Acta vigente del operador en PDF' })
   async pdf(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
@@ -91,6 +105,8 @@ export class ActasCdaController {
   }
 
   @Post(':id/acta/firmar')
+  @RequierePermiso('cda.actas.gestionar')
+  @UseGuards(PermisoGuard)
   @HttpCode(200)
   @ApiOperation({ summary: 'Marca el acta vigente como firmada (queda bloqueada)' })
   firmar(@Param('id', ParseUUIDPipe) id: string) {

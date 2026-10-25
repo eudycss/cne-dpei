@@ -173,6 +173,7 @@ model Rol {
 
   usuarios UsuarioRol[]
   modulos  RolModulo[]
+  permisos RolPermiso[]
 
   @@map("roles")
 }
@@ -187,6 +188,17 @@ model RolModulo {
 
   @@id([rolId, modulo])
   @@map("rol_modulos")
+}
+
+/// Acciones dentro de un módulo que el administrador le da a cada rol (ver PERMISOS en shared-validation).
+model RolPermiso {
+  rolId   String @map("rol_id") @db.Uuid
+  permiso String @db.VarChar(40)
+
+  rol Rol @relation(fields: [rolId], references: [id], onDelete: Cascade)
+
+  @@id([rolId, permiso])
+  @@map("rol_permisos")
 }
 
 model UsuarioRol {

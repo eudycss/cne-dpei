@@ -15,6 +15,7 @@ import {
 import { useGrupoCda } from './grupo';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { Campo } from './Campo';
+import { useModulos } from '../../lib/useModulos';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { Kpi } from './Kpi';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
@@ -45,6 +46,7 @@ const FILTROS: { id: Filtro; etiqueta: string }[] = [
 export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const { puede } = useModulos();
   const { grupo, plural, singular, Singular } = useGrupoCda();
   const hoy = hoyEcuador();
   const [desde, setDesde] = useState(`${hoy.slice(0, 8)}01`);
@@ -93,9 +95,11 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
             Hora de entrada
           </button>
         )}
-        <button type="button" className="btn" onClick={() => setExportando(true)} disabled={!rango.success}>
-          Exportar
-        </button>
+        {puede('cda.asistencia.exportar') && (
+          <button type="button" className="btn" onClick={() => setExportando(true)} disabled={!rango.success}>
+            Exportar
+          </button>
+        )}
       </AccionesEncabezado>
 
       {data && (

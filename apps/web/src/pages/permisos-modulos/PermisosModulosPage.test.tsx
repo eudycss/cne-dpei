@@ -17,9 +17,13 @@ const putMock = api.put as unknown as ReturnType<typeof vi.fn>;
 
 const MATRIZ = {
   roles: [
-    { rol: 'TECNICO_SUPERVISOR', modulos: ['kits', 'alertas'] },
-    { rol: 'LECTOR', modulos: ['kits', 'reportes'] },
-    { rol: 'ASISTENTE_TRANSVERSAL', modulos: ['cadena-custodia'] },
+    { rol: 'TECNICO_SUPERVISOR', modulos: ['kits', 'alertas'], permisos: [] },
+    { rol: 'LECTOR', modulos: ['kits', 'reportes'], permisos: [] },
+    {
+      rol: 'ASISTENTE_TRANSVERSAL',
+      modulos: ['cadena-custodia', 'operadores-cda'],
+      permisos: ['cda.asistencia.marcar', 'cda.asistencia.qr'],
+    },
   ],
 };
 
@@ -38,8 +42,8 @@ describe('PermisosModulosPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getMock.mockResolvedValue({ data: MATRIZ });
-    putMock.mockImplementation((url: string, body: { modulos: string[] }) =>
-      Promise.resolve({ data: { rol: url.split('/').pop(), modulos: body.modulos } }),
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
     );
   });
 
@@ -71,6 +75,7 @@ describe('PermisosModulosPage', () => {
     await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
     expect(putMock).toHaveBeenCalledWith('/permisos-modulos/TECNICO_SUPERVISOR', {
       modulos: ['kits', 'incidencias'],
+      permisos: [],
     });
     expect(sileo.success).toHaveBeenCalled();
   });
@@ -122,5 +127,53 @@ describe('PermisosModulosPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar la configuración de módulos.');
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' })).toBeChecked();
+  });
+  describe('acciones dentro de cada módulo', () => {
+    const AET = 'Asistente Electoral Transversal';
+    const accion = (texto: string, rol = AET) => casilla(`CDAs (Operadores y Asistentes): ${texto}, para ${rol}`);
+
+    it('marca las acciones que tiene cada rol (el asistente toma asistencia pero no emite carnets)', async () => {
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      expect(accion('Marcar o quitar asistencia a mano')).toBeChecked();
+      expect(accion('Marcar asistencia escaneando el carnet')).toBeChecked();
+      expect(accion('Emitir o anular carnets QR')).not.toBeChecked();
+    });
+
+    it('sin el módulo, sus acciones quedan deshabilitadas y se explica por qué', async () => {
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      const tec = accion('Emitir o anular carnets QR', 'Técnico supervisor');
+      expect(tec).toBeDisabled();
+      expect(tec).toHaveAccessibleDescription(/solo se pueden dar si el rol ve el módulo/);
+      // El lector nunca puede tener acciones de CDAs (techo del servidor).
+      expect(accion('Exportar asistencia y atrasos', 'Lector')).toHaveAccessibleDescription(/no están disponibles/);
+    });
+
+    it('al quitar el módulo, sus acciones se deshabilitan y no se guardan', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('checkbox', { name: `CDAs (Operadores y Asistentes) para ${AET}` }));
+      expect(accion('Marcar o quitar asistencia a mano')).toBeDisabled();
+      expect(accion('Marcar o quitar asistencia a mano')).not.toBeChecked();
+      // Al volver a activarlo, las acciones no reaparecen solas.
+      await user.click(casilla(`CDAs (Operadores y Asistentes) para ${AET}`));
+      expect(accion('Marcar o quitar asistencia a mano')).toBeEnabled();
+      expect(accion('Marcar o quitar asistencia a mano')).not.toBeChecked();
+    });
+
+    it('guarda las acciones junto con los módulos del rol', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' });
+      await user.click(accion('Marcar o quitar asistencia a mano'));
+      await user.click(accion('Emitir o anular carnets QR'));
+      await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+      await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+      expect(putMock).toHaveBeenCalledWith('/permisos-modulos/ASISTENTE_TRANSVERSAL', {
+        modulos: ['cadena-custodia', 'operadores-cda'],
+        permisos: ['cda.asistencia.qr', 'cda.carnets.emitir'],
+      });
+    });
   });
 });

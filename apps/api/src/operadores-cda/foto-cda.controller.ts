@@ -23,6 +23,8 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
@@ -33,12 +35,16 @@ export class FotoCdaController {
   constructor(private readonly fotos: FotoCdaService) {}
 
   @Post(':id/enlace-foto')
+  @RequierePermiso('cda.fotos.enlace')
+  @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Genera el enlace de foto (48 h, un uso). Anula el enlace anterior del operador' })
   crearEnlace(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.fotos.crearEnlace(id, user.sub);
   }
 
   @Get(':id/foto')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Foto del operador (descifrada; no se guarda en caché)' })
   async foto(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const buf = await this.fotos.foto(id);

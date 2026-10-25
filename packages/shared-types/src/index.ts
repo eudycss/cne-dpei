@@ -1276,6 +1276,8 @@ export interface GenerarActasCdaResult {
 export interface ModulosRol {
   rol: RoleName;
   modulos: string[];
+  /** Acciones dentro de los módulos (ids de PERMISOS). */
+  permisos: string[];
 }
 
 export interface PermisosModulosResponse {
@@ -1284,4 +1286,6 @@ export interface PermisosModulosResponse {
 
 export interface MisModulosResponse {
   modulos: string[];
+  /** Solo las acciones de módulos que el usuario ve. */
+  permisos: string[];
 }

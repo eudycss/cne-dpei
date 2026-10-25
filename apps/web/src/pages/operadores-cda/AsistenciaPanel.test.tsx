@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
+import { PERMISO_IDS } from '@cne/shared-validation';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AsistenciaCdaDia, AsistenciaCdaFila, OperadorCda } from '@cne/shared-types';
@@ -10,6 +11,12 @@ import { sileo } from 'sileo';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn(), action: vi.fn() } }));
+
+// Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
+const permisos = { actuales: new Set<string>(PERMISO_IDS) };
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
+}));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
@@ -74,6 +81,7 @@ const filaDe = (nombre: string) => screen.getByRole('rowheader', { name: new Reg
 describe('AsistenciaPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
     getMock.mockResolvedValue({ data: dia() });
   });
 
@@ -203,5 +211,26 @@ describe('AsistenciaPanel', () => {
     expect(getMock).toHaveBeenLastCalledWith('/operadores-cda/asistencia?fecha=2026-10-21&grupo=OPERADOR');
     expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
     expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('sin la acción de marcar a mano: no hay marcado masivo y los checks explican por qué', async () => {
+    permisos.actuales = new Set(['cda.asistencia.qr']);
+    renderPanel();
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
+    const entrada = within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ });
+    expect(entrada).toHaveAttribute('aria-disabled', 'true');
+    expect(entrada).toHaveAccessibleDescription(/Su rol no tiene permiso para marcar a mano/);
+    // Escanear el carnet es otra acción: sigue disponible.
+    expect(screen.getByRole('button', { name: 'Escanear carnet' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Exportar' })).not.toBeInTheDocument();
+  });
+
+  it('sin la acción de escanear no aparece "Escanear carnet"', async () => {
+    permisos.actuales = new Set(['cda.asistencia.marcar', 'cda.asistencia.exportar']);
+    renderPanel();
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    expect(screen.queryByRole('button', { name: 'Escanear carnet' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
   });
 });

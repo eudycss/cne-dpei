@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { actualizarModulosRolSchema, type ModuloWebId } from '@cne/shared-validation';
+import { actualizarModulosRolSchema, type ModuloWebId, type PermisoId } from '@cne/shared-validation';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
@@ -17,25 +17,25 @@ export class PermisosModulosController {
 
   @Get()
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Ver qué módulos de la web ve cada rol' })
+  @ApiOperation({ summary: 'Ver qué módulos de la web ve cada rol y qué acciones tiene' })
   matriz() {
     return this.permisos.matriz();
   }
 
   // Sin @Roles: cualquier usuario autenticado consulta sus propios módulos.
   @Get('mios')
-  @ApiOperation({ summary: 'Módulos de la web visibles para el usuario actual' })
+  @ApiOperation({ summary: 'Módulos de la web visibles y acciones permitidas para el usuario actual' })
   misModulos(@CurrentUser() user: AuthenticatedUser) {
     return this.permisos.misModulos(user.roles);
   }
 
   @Put(':rol')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Cambiar los módulos de la web que ve un rol' })
+  @ApiOperation({ summary: 'Cambiar los módulos de la web que ve un rol y, si vienen, sus acciones' })
   actualizar(
     @Param('rol') rol: string,
-    @Body(new ZodValidationPipe(actualizarModulosRolSchema)) body: { modulos: ModuloWebId[] },
+    @Body(new ZodValidationPipe(actualizarModulosRolSchema)) body: { modulos: ModuloWebId[]; permisos?: PermisoId[] },
   ) {
-    return this.permisos.actualizar(rol, body.modulos);
+    return this.permisos.actualizar(rol, body.modulos, body.permisos);
   }
 }

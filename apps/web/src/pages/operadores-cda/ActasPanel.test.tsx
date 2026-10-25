@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
+import { PERMISO_IDS } from '@cne/shared-validation';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ActaCdaFila, ActaEntregaCda, OperadorCda, PersonaEntregaCda } from '@cne/shared-types';
@@ -11,6 +12,12 @@ import { sileo } from 'sileo';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
+
+// Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
+const permisos = { actuales: new Set<string>(PERMISO_IDS) };
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
+}));
 const roles = vi.hoisted(() => ({ actuales: ['ADMINISTRADOR'] as string[] }));
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles: roles.actuales } }) }));
 
@@ -83,6 +90,7 @@ describe('ActasPanel', () => {
     getMock.mockReset();
     postMock.mockReset();
     roles.actuales = ['ADMINISTRADOR'];
+    permisos.actuales = new Set(PERMISO_IDS);
     getMock.mockImplementation((url: string) =>
       Promise.resolve({ data: url === '/operadores-cda/actas/entregan' ? PERSONAS : FILAS }),
     );
@@ -242,6 +250,17 @@ describe('ActasPanel', () => {
       expect(dialogo.getByText('Cédula ecuatoriana inválida')).toBeInTheDocument();
       expect(postMock).not.toHaveBeenCalled();
     });
+  });
+
+  it('sin la acción de actas: solo consulta, sin generar, descargar ni firmar', async () => {
+    roles.actuales = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.asistencia.marcar']);
+    renderPanel();
+    await screen.findByText('ANDRADE LÓPEZ ANA MARÍA');
+    expect(screen.queryByRole('button', { name: /Generar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Descargar ZIP/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Marcar firmada/ })).not.toBeInTheDocument();
+    expect(within(filaDe('ANDRADE')).getByText('Solo consulta')).toBeInTheDocument();
   });
 });
 

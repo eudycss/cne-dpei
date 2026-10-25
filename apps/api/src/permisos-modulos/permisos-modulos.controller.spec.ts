@@ -27,7 +27,9 @@ describe('PermisosModulosController', () => {
     const actualizar = jest.fn().mockResolvedValue({});
     const ctrl = new PermisosModulosController({ actualizar } as never);
     ctrl.actualizar('LECTOR', { modulos: ['inicio'] });
-    expect(actualizar).toHaveBeenCalledWith('LECTOR', ['inicio']);
+    expect(actualizar).toHaveBeenCalledWith('LECTOR', ['inicio'], undefined);
+    ctrl.actualizar('ASISTENTE_TRANSVERSAL', { modulos: [], permisos: ['cda.asistencia.qr'] });
+    expect(actualizar).toHaveBeenLastCalledWith('ASISTENTE_TRANSVERSAL', [], ['cda.asistencia.qr']);
   });
 
   it('el cuerpo se valida: rechaza ids fuera del catálogo o sin "modulos", y quita repetidos', () => {
