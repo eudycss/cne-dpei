@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { PERMISO_IDS } from '@cne/shared-validation';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -40,10 +41,19 @@ const operador = (over: Partial<OperadorCda>): OperadorCda => ({
   ...over,
 });
 
-function renderPagina() {
+/** Muestra la URL actual para comprobar que los filtros quedan en ella. */
+function Url() {
+  const { search } = useLocation();
+  return <span data-testid="url">{search}</span>;
+}
+
+function renderPagina(ruta = '/operadores-cda') {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ListadoOperadores />
+      <MemoryRouter initialEntries={[ruta]}>
+        <ListadoOperadores />
+        <Url />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -152,9 +162,12 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     await userEvent.type(within(dialogo).getByLabelText('Cédula'), '1710034066');
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Agregar operador' }));
 
-    expect(within(dialogo).getByRole('alert')).toHaveTextContent('Revise los 2 campos marcados.');
+    expect(within(dialogo).getByRole('alert')).toHaveTextContent('Revise los 3 campos marcados.');
     expect(within(dialogo).getByLabelText('Apellidos y nombres')).toHaveFocus();
     expect(within(dialogo).getByLabelText('Cédula')).toHaveAttribute('aria-invalid', 'true');
+    // La fecha de ingreso es obligatoria al agregar.
+    expect(within(dialogo).getByLabelText('Fecha de ingreso')).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialogo).getByText('Fecha de ingreso requerida')).toBeInTheDocument();
     expect(postMock).not.toHaveBeenCalled();
   });
 
@@ -168,6 +181,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     await userEvent.type(within(dialogo).getByLabelText('Apellidos y nombres'), 'RUIZ MORA JUAN');
     await userEvent.type(within(dialogo).getByLabelText('Cédula'), '1002003000');
     await userEvent.type(within(dialogo).getByLabelText('Teléfono (opcional)'), '0987 111 222');
+    fireEvent.change(within(dialogo).getByLabelText('Fecha de ingreso'), { target: { value: '2026-10-21' } });
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Agregar operador' }));
 
     await waitFor(() =>
@@ -176,6 +190,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
         cedula: '1002003000',
         telefono: '0987111222',
         cargo: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA',
+        fechaInicio: '2026-10-21',
         grupo: 'OPERADOR',
       }),
     );
@@ -190,10 +205,43 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     const dialogo = await screen.findByRole('dialog', { name: 'Agregar operador' });
     await userEvent.type(within(dialogo).getByLabelText('Apellidos y nombres'), 'RUIZ MORA JUAN');
     await userEvent.type(within(dialogo).getByLabelText('Cédula'), '1710034065');
+    fireEvent.change(within(dialogo).getByLabelText('Fecha de ingreso'), { target: { value: '2026-10-21' } });
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Agregar operador' }));
 
     await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'Ya existe un operador con esa cédula' }));
     expect(screen.getByRole('dialog', { name: 'Agregar operador' })).toBeInTheDocument();
+  });
+
+  it('editar: una fecha de ingreso ya registrada no se puede borrar', async () => {
+    getMock.mockResolvedValue({ data: [operador({})] });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    const fecha = within(dialogo).getByLabelText('Fecha de ingreso');
+    fireEvent.change(fecha, { target: { value: '' } });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(fecha).toHaveAttribute('aria-invalid', 'true');
+    expect(fecha).toHaveFocus();
+    expect(within(dialogo).getByText('Fecha de ingreso requerida')).toBeInTheDocument();
+    expect(patchMock).not.toHaveBeenCalled();
+  });
+
+  it('editar: un registro antiguo sin fecha de ingreso se puede guardar igual', async () => {
+    getMock.mockResolvedValue({ data: [operador({ fechaInicio: null })] });
+    patchMock.mockResolvedValueOnce({ data: operador({ fechaInicio: null }) });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    expect(within(dialogo).getByLabelText('Fecha de ingreso (opcional)')).toHaveValue('');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() =>
+      expect(patchMock).toHaveBeenCalledWith('/operadores-cda/o1', {
+        apellidosNombres: 'CHÁVEZ MORA LUCÍA ESTEFANÍA',
+        telefono: '0968333444',
+        cargo: 'OPERADOR CDA',
+      }),
+    );
   });
 
   it('editar: viene lleno, la cédula no se edita ni se manda y un campo borrado se manda vacío', async () => {
@@ -304,5 +352,90 @@ describe('iniciales / normalizar', () => {
     expect(await screen.findByRole('dialog', { name: 'Enlace para subir foto' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Generar enlace' }));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/enlace-foto'));
+  });
+});
+
+describe('ListadoOperadores — fecha de ingreso', () => {
+  const tres = () => [
+    operador({ id: 'a', apellidosNombres: 'ANDRADE LÓPEZ MARÍA', cedula: '1002003000', fechaInicio: '2026-10-01' }),
+    operador({ id: 'b', apellidosNombres: 'BRAVO RUIZ JUAN', cedula: '1710034065', fechaInicio: '2026-10-15' }),
+    operador({ id: 'c', apellidosNombres: 'CEVALLOS MEJÍA ANA', cedula: '0102030405', fechaInicio: null }),
+  ];
+  const nombres = () =>
+    within(screen.getByRole('list', { name: 'Operadores CDA' }))
+      .getAllByRole('listitem')
+      .map((li) => within(li).getByRole('heading').getAttribute('aria-label'));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
+    roles = ['ADMINISTRADOR'];
+    getMock.mockResolvedValue({ data: tres() });
+  });
+
+  it('cada tarjeta muestra la fecha de ingreso (o "Sin fecha")', async () => {
+    renderPagina();
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    const [a, , c] = within(lista).getAllByRole('listitem');
+    expect(within(a).getByText('01/10/2026')).toBeInTheDocument();
+    expect(within(c).getByText('Sin fecha')).toBeInTheDocument();
+  });
+
+  it('filtra por rango de ingreso y lo deja en la URL', async () => {
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    fireEvent.change(screen.getByLabelText('Ingreso desde'), { target: { value: '2026-10-10' } });
+    expect(nombres()).toEqual(['BRAVO RUIZ JUAN']);
+    expect(screen.getByRole('status')).toHaveTextContent('1 de 3 operadores');
+    expect(screen.getByTestId('url')).toHaveTextContent('ingresoDesde=2026-10-10');
+
+    fireEvent.change(screen.getByLabelText('Ingreso desde'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Ingreso hasta'), { target: { value: '2026-10-10' } });
+    expect(nombres()).toEqual(['ANDRADE LÓPEZ MARÍA']);
+  });
+
+  it('"Incluir sin fecha" suma a quienes no tienen fecha de ingreso', async () => {
+    renderPagina('/operadores-cda?ingresoDesde=2026-10-10');
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(nombres()).toEqual(['BRAVO RUIZ JUAN']);
+    await userEvent.click(screen.getByRole('button', { name: 'Incluir sin fecha' }));
+    expect(screen.getByRole('button', { name: 'Incluir sin fecha' })).toHaveAttribute('aria-pressed', 'true');
+    expect(nombres()).toEqual(['BRAVO RUIZ JUAN', 'CEVALLOS MEJÍA ANA']);
+  });
+
+  it('se combina con la búsqueda; "Limpiar filtros" quita todo', async () => {
+    renderPagina('/operadores-cda?ingresoHasta=2026-10-31');
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    await userEvent.type(screen.getByRole('textbox', { name: 'Buscar operador por nombre o cédula' }), 'cevallos');
+    expect(screen.getByText('Ningún operador coincide con los filtros.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+    expect(nombres()).toHaveLength(3);
+    expect(screen.getByTestId('url')).toHaveTextContent(/^$/);
+    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
+  });
+
+  it('una fecha mal escrita en el enlace se ignora (no vacía el listado)', async () => {
+    renderPagina('/operadores-cda?ingresoDesde=zzz&ingresoHasta=abc');
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(nombres()).toHaveLength(3);
+    expect(screen.getByLabelText('Ingreso desde')).toHaveValue('');
+  });
+
+  it('un rango invertido avisa y no filtra', async () => {
+    renderPagina('/operadores-cda?ingresoDesde=2026-10-20&ingresoHasta=2026-10-01');
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.getByRole('alert')).toHaveTextContent('La fecha “desde” es posterior a “hasta”');
+    expect(screen.getByLabelText('Ingreso desde')).toHaveAttribute('aria-invalid', 'true');
+    expect(nombres()).toHaveLength(3);
+  });
+
+  it('ordena por fecha de ingreso, con los que no tienen fecha al final', async () => {
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    await userEvent.selectOptions(screen.getByLabelText('Ordenar'), 'ingreso-reciente');
+    expect(nombres()).toEqual(['BRAVO RUIZ JUAN', 'ANDRADE LÓPEZ MARÍA', 'CEVALLOS MEJÍA ANA']);
+    await userEvent.selectOptions(screen.getByLabelText('Ordenar'), 'ingreso-antiguo');
+    expect(nombres()).toEqual(['ANDRADE LÓPEZ MARÍA', 'BRAVO RUIZ JUAN', 'CEVALLOS MEJÍA ANA']);
   });
 });

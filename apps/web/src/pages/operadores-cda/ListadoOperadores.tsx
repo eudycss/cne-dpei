@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import { motion, useReducedMotion } from 'motion/react';
@@ -16,7 +17,8 @@ import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { OperadorFormModal } from './OperadorFormModal';
 import { OcultarOperadorModal } from './OcultarOperadorModal';
-import { cargoCorto, iniciales, mensajeError, normalizar, partirNombre } from './utils';
+import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
+import { cargoCorto, fechaCorta, iniciales, mensajeError, normalizar, partirNombre } from './utils';
 
 /**
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
@@ -32,8 +34,10 @@ function refrescarOperadores(qc: QueryClient, grupo: GrupoCda) {
 }
 
 /**
- * Personal de los Centros de Digitalización de Actas. Son ~56 personas: se
- * traen todas y se filtra en el navegador, sin pedir a la API en cada tecla.
+ * Personal de los Centros de Digitalización de Actas. Son ~64 personas por
+ * cargo: se traen todas y se filtra en el navegador (nombre, cédula y fecha
+ * de ingreso), sin pedir a la API en cada tecla. El rango de ingreso queda
+ * en la URL para poder compartir la vista.
  */
 export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
@@ -42,6 +46,36 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const puedeCarnets = puede('cda.carnets.emitir');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');
+  const [params, setParams] = useSearchParams();
+  const filtro = {
+    desde: fechaDeUrl(params.get('ingresoDesde')),
+    hasta: fechaDeUrl(params.get('ingresoHasta')),
+    incluirSinFecha: params.get('sinFecha') === '1',
+  };
+  const rangoInvalido = rangoIngresoInvalido(filtro);
+  const conRango = filtro.desde !== '' || filtro.hasta !== '';
+  const [orden, setOrden] = useState<OrdenListado>('lista');
+  const cambiarFiltro = (clave: (typeof FILTROS_INGRESO)[number], valor: string) =>
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (valor) p.set(clave, valor);
+        else p.delete(clave);
+        return p;
+      },
+      { replace: true },
+    );
+  const limpiarFiltros = () => {
+    setBusqueda('');
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        for (const f of FILTROS_INGRESO) p.delete(f);
+        return p;
+      },
+      { replace: true },
+    );
+  };
   const [importando, setImportando] = useState(false);
   const [carnets, setCarnets] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
@@ -75,11 +109,16 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     onError: (e) => sileo.error({ title: mensajeError(e, `No se pudo reactivar al ${singular}`) }),
   });
 
+  const { desde, hasta, incluirSinFecha } = filtro;
   const visibles = useMemo(() => {
     const q = normalizar(busqueda.trim());
-    if (!q) return data ?? [];
-    return (data ?? []).filter((o) => normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q));
-  }, [data, busqueda]);
+    const f = { desde, hasta, incluirSinFecha };
+    const filtrados = (data ?? []).filter(
+      (o) => (!q || normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q)) && cumpleIngreso(o, f),
+    );
+    return ordenarPorIngreso(filtrados, orden);
+  }, [data, busqueda, desde, hasta, incluirSinFecha, orden]);
+  const hayFiltros = busqueda.trim() !== '' || conRango;
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
@@ -142,6 +181,51 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 ariaLabel={`Buscar ${singular} por nombre o cédula`}
               />
             </span>
+            <label className="ocda-fecha">
+              <span>Ingreso desde</span>
+              <input
+                type="date"
+                value={filtro.desde}
+                max={filtro.hasta || undefined}
+                aria-invalid={rangoInvalido || undefined}
+                aria-describedby={rangoInvalido ? 'ingreso-rango-error' : undefined}
+                onChange={(e) => cambiarFiltro('ingresoDesde', e.target.value)}
+              />
+            </label>
+            <label className="ocda-fecha">
+              <span>Ingreso hasta</span>
+              <input
+                type="date"
+                value={filtro.hasta}
+                min={filtro.desde || undefined}
+                aria-invalid={rangoInvalido || undefined}
+                aria-describedby={rangoInvalido ? 'ingreso-rango-error' : undefined}
+                onChange={(e) => cambiarFiltro('ingresoHasta', e.target.value)}
+              />
+            </label>
+            {conRango && (
+              <button
+                type="button"
+                className="ocda-chip"
+                aria-pressed={filtro.incluirSinFecha}
+                onClick={() => cambiarFiltro('sinFecha', filtro.incluirSinFecha ? '' : '1')}
+              >
+                Incluir sin fecha
+              </button>
+            )}
+            <label className="ocda-fecha">
+              <span>Ordenar</span>
+              <select value={orden} onChange={(e) => setOrden(e.target.value as OrdenListado)}>
+                <option value="lista">Como en la lista</option>
+                <option value="ingreso-reciente">Ingreso más reciente</option>
+                <option value="ingreso-antiguo">Ingreso más antiguo</option>
+              </select>
+            </label>
+            {hayFiltros && (
+              <button type="button" className="ocda-btn-texto" onClick={limpiarFiltros}>
+                Limpiar filtros
+              </button>
+            )}
             {isAdmin && (
               <button
                 ref={chipRef}
@@ -158,6 +242,11 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
             </p>
           </div>
+          {rangoInvalido && (
+            <p id="ingreso-rango-error" className="banner error" role="alert">
+              La fecha “desde” es posterior a “hasta”: corrija el rango para filtrar por fecha de ingreso.
+            </p>
+          )}
 
           <ul className="ocda-grid" aria-label={titulo}>
             {visibles.map((o, i) => (
@@ -187,7 +276,9 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
           </ul>
           {visibles.length === 0 && (
             <p className="muted">
-              Ningún {singular} coincide con “{busqueda}”.
+              {conRango && !rangoInvalido
+                ? `Ningún ${singular} coincide con los filtros.`
+                : `Ningún ${singular} coincide con “${busqueda}”.`}
             </p>
           )}
         </>
@@ -274,6 +365,10 @@ function TarjetaOperador({
         <div>
           <dt>Cargo</dt>
           <dd title={o.cargo}>{cargoCorto(o.cargo)}</dd>
+        </div>
+        <div>
+          <dt>Ingreso</dt>
+          <dd className="mono">{o.fechaInicio ? fechaCorta(o.fechaInicio) : 'Sin fecha'}</dd>
         </div>
       </dl>
       <div className="ocda-tarjeta-pie">

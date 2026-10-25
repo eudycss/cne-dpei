@@ -27,6 +27,7 @@ import {
   telefonoSchema,
   operadorCdaFilaSchema,
   crearOperadorCdaSchema,
+  GRUPOS_CDA,
   editarOperadorCdaSchema,
   cambiarActivoOperadorCdaSchema,
   grupoCdaQuerySchema,
@@ -293,13 +294,26 @@ describe('operadorCdaFilaSchema', () => {
 });
 
 describe('CRUD de operadores CDA', () => {
-  const alta = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+  const alta = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA', fechaInicio: '2026-10-20' };
 
   it('alta: valida como una fila del Excel y no acepta campos de más (numero, activo)', () => {
     expect(crearOperadorCdaSchema.safeParse(alta).success).toBe(true);
     expect(crearOperadorCdaSchema.safeParse({ ...alta, cedula: '1710034066' }).success).toBe(false);
     expect(crearOperadorCdaSchema.safeParse({ ...alta, numero: 3 }).success).toBe(false);
     expect(crearOperadorCdaSchema.safeParse({ ...alta, activo: false }).success).toBe(false);
+  });
+
+  it('alta: la fecha de ingreso es obligatoria y debe ser real', () => {
+    const { fechaInicio: _f, ...sinFecha } = alta;
+    const r = crearOperadorCdaSchema.safeParse(sinFecha);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]).toMatchObject({ path: ['fechaInicio'], message: 'Fecha de ingreso requerida' });
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, fechaInicio: '2026-02-31' }).success).toBe(false);
+  });
+
+  it('edición: la fecha de ingreso sigue opcional (registros antiguos sin ella)', () => {
+    const { cedula: _c, fechaInicio: _f, ...sinCedulaNiFecha } = alta;
+    expect(editarOperadorCdaSchema.safeParse(sinCedulaNiFecha).success).toBe(true);
   });
 
   it('edición: no permite cambiar la cédula ni el grupo', () => {
@@ -309,8 +323,9 @@ describe('CRUD de operadores CDA', () => {
     expect(editarOperadorCdaSchema.safeParse({ ...sinCedula, grupo: 'ASISTENTE' }).success).toBe(false);
   });
 
-  it('alta: grupo opcional, solo OPERADOR o ASISTENTE', () => {
-    expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'ASISTENTE' }).success).toBe(true);
+  it('alta: grupo opcional, solo uno de los 8 cargos CDA', () => {
+    expect(GRUPOS_CDA).toHaveLength(8);
+    for (const grupo of GRUPOS_CDA) expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo }).success).toBe(true);
     expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'TECNICO' }).success).toBe(false);
   });
 

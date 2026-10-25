@@ -30,7 +30,7 @@ export class AtrasosCdaController {
   @Get('config')
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)
-  @ApiOperation({ summary: 'Hora oficial de entrada y minutos de gracia del grupo (?grupo=OPERADOR|ASISTENTE)' })
+  @ApiOperation({ summary: 'Hora oficial de entrada y minutos de gracia del grupo (?grupo=<cargo CDA>)' })
   config(@Query('grupo') grupo?: unknown) {
     return this.atrasos.getConfig(parsearGrupo(grupo));
   }

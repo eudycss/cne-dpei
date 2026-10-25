@@ -45,7 +45,7 @@ export class ActasCdaController {
   @Get('actas')
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)
-  @ApiOperation({ summary: 'Operadores (o, con ?grupo=ASISTENTE, asistentes) activos con su acta de entrega vigente (o null)' })
+  @ApiOperation({ summary: 'Operadores (o los del cargo de ?grupo=) activos con su acta de entrega vigente (o null)' })
   lista(@Query('grupo') grupo?: unknown) {
     return this.actas.lista(parsearGrupo(grupo));
   }
