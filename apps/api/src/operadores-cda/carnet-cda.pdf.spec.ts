@@ -28,6 +28,14 @@ describe('carnetsPdf', () => {
     texto.mockRestore();
   });
 
+  it('el carnet lleva fecha Y hora de emisión (Ecuador): dos emisiones del mismo día se distinguen', async () => {
+    const texto = jest.spyOn(PDFDocument.prototype, 'text');
+    await carnetsPdf([carnet(1)], new Date('2026-10-24T16:19:00Z'));
+    const textos = texto.mock.calls.map((c) => String(c[0]));
+    expect(textos).toContain('Emitido 24/10/2026 11:19 · Personal e intransferible');
+    texto.mockRestore();
+  });
+
   it('una foto dañada no impide generar el carnet', async () => {
     const pdf = await carnetsPdf([{ ...carnet(1), foto: Buffer.from('no es un jpeg') }], new Date());
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');

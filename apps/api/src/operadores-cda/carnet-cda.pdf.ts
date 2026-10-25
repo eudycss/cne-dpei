@@ -35,7 +35,8 @@ export interface DatosCarnet {
 
 export async function carnetsPdf(carnets: DatosCarnet[], emitidoEn: Date): Promise<Buffer> {
   const { doc, terminado } = nuevoPdf('portrait');
-  const emitido = fecha(emitidoEn).slice(0, 10);
+  // Con hora: dos carnets de la misma persona emitidos el mismo día deben distinguirse a simple vista.
+  const emitido = fecha(emitidoEn).replace(',', '');
   for (const [i, c] of carnets.entries()) {
     // Las opciones de addPage reemplazan a las del documento: sin size, pdfkit usa Carta.
     if (i % POR_HOJA === 0) doc.addPage({ size: 'A4', layout: 'portrait', margin: 0 });
@@ -77,8 +78,8 @@ function dibujarCarnet(doc: PDFKit.PDFDocument, c: DatosCarnet, x: number, y: nu
 
   qrVectorial(doc, c.token, x + ANCHO - MARGEN_QR - LADO_QR, y + ALTO - MARGEN_QR - LADO_QR - 6);
 
-  doc.font('Helvetica').fontSize(5.3).fillColor(GRIS)
-    .text(`Emitido el ${emitido} · Personal e intransferible`, x + PAD, y + ALTO - PAD - 6, {
+  doc.font('Helvetica').fontSize(6).fillColor(GRIS)
+    .text(`Emitido ${emitido} · Personal e intransferible`, x + PAD, y + ALTO - PAD - 6, {
       width: ANCHO - PAD * 2,
       align: 'left',
       lineBreak: false,

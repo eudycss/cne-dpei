@@ -12,8 +12,26 @@ const CLAVE = ['credenciales-cda'];
 /** Mismo tope que emitirCarnetsCdaSchema (un PDF de 20 hojas). */
 const MAX_CARNETS = 200;
 
-function fechaCorta(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil', day: '2-digit', month: '2-digit', year: 'numeric' });
+/** Fecha y hora (Ecuador): es la misma que va impresa en el carnet, para saber cuál es el vigente. */
+function fechaHora(iso: string): string {
+  return new Date(iso)
+    .toLocaleString('es-EC', {
+      timeZone: 'America/Guayaquil',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+    .replace(',', '');
+}
+
+/** Nombres para el aviso: los primeros y "y N más", para que no crezca sin límite. */
+const NOMBRES_EN_AVISO = 5;
+function listaNombres(nombres: string[]): string {
+  if (nombres.length <= NOMBRES_EN_AVISO) return nombres.join(', ');
+  return `${nombres.slice(0, NOMBRES_EN_AVISO).join(', ')} y ${nombres.length - NOMBRES_EN_AVISO} más`;
 }
 
 /**
@@ -32,7 +50,8 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
   // Por defecto, los que aún no tienen carnet (los primeros en imprimirse).
   const [elegidos, setElegidos] = useState<ReadonlySet<string> | null>(null);
   const seleccion = elegidos ?? new Set(operadores.filter((o) => !emitidoEn.has(o.id)).map((o) => o.id));
-  const reemplazan = operadores.filter((o) => seleccion.has(o.id) && emitidoEn.has(o.id)).length;
+  const reemplazados = operadores.filter((o) => seleccion.has(o.id) && emitidoEn.has(o.id)).map((o) => o.apellidosNombres);
+  const reemplazan = reemplazados.length;
   const { descargando, descargar } = useDescargaPdf('No se pudieron generar los carnets');
 
   const anular = useMutation({
@@ -60,8 +79,11 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
     if (
       reemplazan > 0 &&
       !window.confirm(
-        `${reemplazan === 1 ? '1 persona ya tiene' : `${reemplazan} personas ya tienen`} carnet. ` +
-          'Al generar, su carnet actual deja de registrar asistencia. ¿Continuar?',
+        `${reemplazan === 1 ? '1 persona ya tiene' : `${reemplazan} personas ya tienen`} carnet: ` +
+          `${listaNombres(reemplazados)}.
+
+` +
+          'Al generar, su carnet actual (impreso o en PDF) deja de registrar asistencia y solo sirve el nuevo. ¿Continuar?',
       )
     ) {
       return;
@@ -103,8 +125,8 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
         )}
         {reemplazan > 0 && (
           <div className="banner" role="status">
-            {reemplazan === 1 ? '1 persona elegida ya tiene carnet' : `${reemplazan} personas elegidas ya tienen carnet`}: al
-            generar, su carnet anterior deja de funcionar.
+            {reemplazan === 1 ? '1 persona elegida ya tiene carnet' : `${reemplazan} personas elegidas ya tienen carnet`} (
+            {listaNombres(reemplazados)}): al generar, su carnet anterior deja de funcionar.
           </div>
         )}
 
@@ -134,7 +156,7 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
                   <input type="checkbox" checked={seleccion.has(o.id)} onChange={() => alternar(o.id)} />
                   <span>{o.apellidosNombres}</span>
                 </label>
-                <span className="ocda-form-ayuda">{emitido ? `Carnet del ${fechaCorta(emitido)}` : 'Sin carnet'}</span>
+                <span className="ocda-form-ayuda">{emitido ? `Carnet del ${fechaHora(emitido)}` : 'Sin carnet'}</span>
                 {emitido && (
                   <button
                     type="button"
