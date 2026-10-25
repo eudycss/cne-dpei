@@ -1,13 +1,19 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { CrearOperadorCdaRequest, EditarOperadorCdaRequest, OperadorCda } from '@cne/shared-types';
+import type {
+  CambiarCargoOperadorCdaResult,
+  CrearOperadorCdaRequest,
+  EditarOperadorCdaRequest,
+  GrupoCda,
+  OperadorCda,
+} from '@cne/shared-types';
 import { crearOperadorCdaSchema, editarOperadorCdaSchema } from '@cne/shared-validation';
 import { Modal } from '../../components/Modal';
-import { crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
+import { cambiarCargoOperadorCda, crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
 import { Campo } from './Campo';
-import { useGrupoCda } from './grupo';
-import { mensajeError } from './utils';
+import { GRUPOS, TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { hoyEcuador, mensajeError } from './utils';
 
 /** Orden en pantalla: el foco va al primero con error. */
 const ORDEN_CAMPOS = ['apellidosNombres', 'cedula', 'cargo', 'telefono', 'unidad', 'fechaInicio'] as const;
@@ -25,9 +31,22 @@ function inicial(cargoPorDefecto: string, o?: OperadorCda): Formulario {
   };
 }
 
+/** Lo que conviene hacer después de cambiar de cargo: el carnet y el acta dicen el cargo anterior. */
+function avisarCambioCargo(r: CambiarCargoOperadorCdaResult) {
+  const antes = TEXTOS_GRUPO[r.grupoAnterior].titulo;
+  const ahora = TEXTOS_GRUPO[r.operador.grupo].titulo;
+  const pendientes = [
+    r.carnetVigente && `reemita su carnet QR (el impreso dice el cargo de ${antes})`,
+    r.actaVigente && `genere una nueva acta de entrega en ${ahora}`,
+  ].filter(Boolean);
+  if (pendientes.length === 0) return;
+  sileo.warning({ title: `Pasó a ${ahora}: falta un paso`, description: `Ahora ${pendientes.join(' y ')}.` });
+}
+
 /**
  * Agregar a mano (sin `operador`) o corregir los datos de uno. La cédula solo
- * se escribe al agregar: es la llave con la que el Excel reimporta.
+ * se escribe al agregar: es la llave con la que el Excel reimporta. Al editar,
+ * el administrador puede pasarlo a otro cargo CDA (rige desde hoy).
  */
 export function OperadorFormModal({
   operador,
@@ -40,7 +59,18 @@ export function OperadorFormModal({
 }) {
   const editando = !!operador;
   const { grupo, singular, Singular, cargoPorDefecto } = useGrupoCda();
+  const qc = useQueryClient();
   const [f, setF] = useState<Formulario>(() => inicial(cargoPorDefecto, operador));
+  const grupoOriginal = operador?.grupo ?? grupo;
+  const [grupoNuevo, setGrupoNuevo] = useState<GrupoCda>(grupoOriginal);
+  const cambiaCargo = editando && grupoNuevo !== grupoOriginal;
+
+  function elegirCargo(g: GrupoCda) {
+    // El texto de "Cargo" sigue al cargo CDA si era el de por defecto; si lo escribieron a mano, se respeta.
+    const porDefecto = (x: GrupoCda) => TEXTOS_GRUPO[x].cargoPorDefecto;
+    if (f.cargo === porDefecto(grupoNuevo)) cambiar({ cargo: porDefecto(g) });
+    setGrupoNuevo(g);
+  }
   const [errores, setErrores] = useState<Partial<Record<CampoForm, string>>>({});
   const cambiar = (c: Partial<Formulario>) => setF((prev) => ({ ...prev, ...c }));
   // Obligatoria al agregar y al editar a quien ya la tiene; solo los registros antiguos sin fecha pueden seguir así.
@@ -48,16 +78,34 @@ export function OperadorFormModal({
 
   const guardar = useMutation({
     // Llega ya validado con el esquema que toca: el de edición (sin cédula) o el de alta.
-    mutationFn: (datos: EditarOperadorCdaRequest | CrearOperadorCdaRequest) =>
-      operador
-        ? editarOperadorCda(operador.id, datos)
-        : crearOperadorCda({ ...(datos as CrearOperadorCdaRequest), grupo }),
-    onSuccess: (o) => {
-      sileo.success({ title: editando ? 'Datos actualizados' : `${Singular} agregado`, description: o.apellidosNombres });
+    mutationFn: async (datos: EditarOperadorCdaRequest | CrearOperadorCdaRequest) => {
+      if (!operador) return { o: await crearOperadorCda({ ...(datos as CrearOperadorCdaRequest), grupo }), cambio: null };
+      const o = await editarOperadorCda(operador.id, datos);
+      if (!cambiaCargo) return { o, cambio: null };
+      const cambio = await cambiarCargoOperadorCda(operador.id, grupoNuevo);
+      return { o: cambio.operador, cambio };
+    },
+    onSuccess: ({ o, cambio }) => {
+      sileo.success({
+        title: cambio ? `Pasó a ${TEXTOS_GRUPO[o.grupo].titulo}` : editando ? 'Datos actualizados' : `${Singular} agregado`,
+        description:
+          cambio && cambio.desde !== hoyEcuador()
+            ? `${o.apellidosNombres} · desde mañana (hoy ya marcó entrada)`
+            : o.apellidosNombres,
+      });
+      if (cambio) {
+        avisarCambioCargo(cambio);
+        // Sale de esta lista y entra en la del otro cargo.
+        qc.invalidateQueries({ queryKey: ['operadores-cda'] });
+      }
       onHecho();
       onClose();
     },
-    onError: (e) => sileo.error({ title: mensajeError(e, `No se pudo guardar el ${singular}`) }),
+    onError: (e) => {
+      sileo.error({ title: mensajeError(e, `No se pudo guardar el ${singular}`) });
+      // Si falló el cambio de cargo, los demás datos pueden haberse guardado: se refresca la lista.
+      if (cambiaCargo) qc.invalidateQueries({ queryKey: ['operadores-cda'] });
+    },
   });
 
   function enviar(e: FormEvent) {
@@ -153,6 +201,27 @@ export function OperadorFormModal({
             />,
             { opcional: true, ayuda: 'Celular: 0991234567 o +593991234567.' },
           )}
+          {editando && (
+            <Campo
+              id="operador-grupo"
+              etiqueta="Cargo CDA"
+              ancho
+              requerido={false}
+              ayuda={
+                cambiaCargo
+                  ? `Pasará a ${TEXTOS_GRUPO[grupoNuevo].titulo} desde hoy (desde mañana si ya marcó entrada hoy). Su asistencia anterior queda en ${TEXTOS_GRUPO[grupoOriginal].titulo}.`
+                  : 'Para pasarlo a otro cargo (rige desde hoy).'
+              }
+            >
+              <select value={grupoNuevo} onChange={(e) => elegirCargo(e.target.value as GrupoCda)}>
+                {GRUPOS.map((g) => (
+                  <option key={g} value={g}>
+                    {TEXTOS_GRUPO[g].titulo}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
           {campo('cargo', 'Cargo', <input value={f.cargo} onChange={(e) => cambiar({ cargo: e.target.value })} />, { ancho: true })}
           {campo('unidad', 'Unidad', <input value={f.unidad} onChange={(e) => cambiar({ unidad: e.target.value })} />, {
             ancho: true,
@@ -171,7 +240,13 @@ export function OperadorFormModal({
             Cancelar
           </button>
           <button type="submit" className="btn" disabled={guardar.isPending}>
-            {guardar.isPending ? 'Guardando…' : editando ? 'Guardar cambios' : `Agregar ${singular}`}
+            {guardar.isPending
+              ? 'Guardando…'
+              : cambiaCargo
+                ? `Guardar y pasar a ${TEXTOS_GRUPO[grupoNuevo].titulo}`
+                : editando
+                  ? 'Guardar cambios'
+                  : `Agregar ${singular}`}
           </button>
         </div>
       </form>

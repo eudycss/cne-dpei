@@ -3,6 +3,7 @@ import * as ExcelJS from 'exceljs';
 import { operadorCdaFilaSchema } from '@cne/shared-validation';
 import type {
   BulkUploadRow,
+  CambiarCargoOperadorCdaResult,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
   GrupoCda,
@@ -14,6 +15,7 @@ import { PrismaService } from '../db/prisma.service';
 import { leerFilasOperadoresCda, type FilaLeida } from './excel-operadores-cda';
 import { tamanoDescomprimidoZip } from './zip';
 import { TEXTOS_GRUPO } from './grupo-cda';
+import { diaDeFechaDb, diaEcuador, fechaDb } from './dia-ecuador';
 
 // Un .xlsx es un ZIP: empieza con "PK\x03\x04".
 const FIRMA_ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -87,6 +89,51 @@ export class OperadoresCdaService {
     await this.existe(id);
     const editado = await this.prisma.operadorCda.update({ where: { id }, data: { activo } });
     return toOperadorCdaDto(editado);
+  }
+
+  /**
+   * Pasa a la persona a otro cargo desde hoy (hora de Ecuador), o desde
+   * mañana si hoy ya marcó entrada: esa marca queda en el cargo de antes,
+   * como toda su asistencia anterior (cambios_cargo_cda). El
+   * carnet y el acta no se tocan (dicen el cargo anterior); se informa si
+   * existen para que la web avise.
+   */
+  async cambiarCargo(id: string, grupo: GrupoCda, usuarioId: string): Promise<CambiarCargoOperadorCdaResult> {
+    const o = await this.prisma.operadorCda.findUnique({
+      where: { id },
+      select: {
+        grupo: true,
+        activo: true,
+        _count: { select: { credenciales: { where: { revocadaEn: null } }, actas: true } },
+      },
+    });
+    if (!o) throw new NotFoundException('Operador no encontrado');
+    if (!o.activo) throw new ConflictException('Reactívelo antes de cambiarlo de cargo');
+    if (o.grupo === grupo) throw new BadRequestException(`Ya está en ${TEXTOS_GRUPO[grupo].titulo}`);
+
+    const hoy = diaEcuador();
+    const marcoHoy = await this.prisma.asistenciaCda.findFirst({
+      where: { operadorId: id, fecha: fechaDb(hoy), entradaEn: { not: null } },
+      select: { id: true },
+    });
+    const desde = marcoHoy ? diaDeFechaDb(new Date(fechaDb(hoy).getTime() + 86_400_000)) : hoy;
+
+    const editado = await this.prisma.$transaction(async (tx) => {
+      // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
+      const { count } = await tx.operadorCda.updateMany({ where: { id, grupo: o.grupo }, data: { grupo } });
+      if (!count) throw new ConflictException('Otro usuario acaba de cambiarle el cargo: recargue la lista');
+      await tx.cambioCargoCda.create({
+        data: { operadorId: id, grupoAnterior: o.grupo, grupoNuevo: grupo, desde: fechaDb(desde), hechoPorId: usuarioId },
+      });
+      return tx.operadorCda.findUniqueOrThrow({ where: { id } });
+    });
+    return {
+      operador: toOperadorCdaDto(editado),
+      grupoAnterior: o.grupo,
+      desde,
+      carnetVigente: o._count.credenciales > 0,
+      actaVigente: o._count.actas > 0,
+    };
   }
 
   private async existe(id: string): Promise<void> {

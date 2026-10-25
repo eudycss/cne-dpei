@@ -163,6 +163,7 @@ model Usuario {
   credencialesQrCda     CredencialQrCda[] @relation("CredencialQrCdaEmitidaPor")
   actasCdaEntregadas    ActaEntregaCda[] @relation("ActaEntregaCdaEntregaPor")
   actasCdaCreadas       ActaEntregaCda[] @relation("ActaEntregaCdaCreadoPor")
+  cambiosCargoCda       CambioCargoCda[] @relation("CambioCargoCdaHechoPor")
 
   @@map("usuarios")
 }
@@ -745,6 +746,7 @@ model OperadorCda {
   enlacesFoto  EnlaceFotoCda[]
   actas        ActaEntregaCda[]
   credenciales CredencialQrCda[]
+  cambiosCargo CambioCargoCda[]
 
   @@index([grupo, activo])
   @@map("operadores_cda")
@@ -834,6 +836,27 @@ model CredencialQrCda {
   @@map("credenciales_qr_cda")
 }
 
+/// Historial de cambios de cargo: con él se sabe en qué cargo estaba cada
+/// persona cada día (la asistencia anterior al cambio queda en el cargo de
+/// antes). Rige desde `desde` inclusive.
+model CambioCargoCda {
+  id            String   @id @default(uuid()) @db.Uuid
+  operadorId    String   @map("operador_id") @db.Uuid
+  grupoAnterior GrupoCda @map("grupo_anterior")
+  grupoNuevo    GrupoCda @map("grupo_nuevo")
+  desde         DateTime @db.Date
+  hechoPorId    String?  @map("hecho_por_id") @db.Uuid
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  operador OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+  hechoPor Usuario?    @relation("CambioCargoCdaHechoPor", fields: [hechoPorId], references: [id])
+
+  @@index([operadorId, desde], map: "idx_cambios_cargo_cda_operador")
+  @@index([grupoAnterior], map: "idx_cambios_cargo_cda_anterior")
+  @@index([grupoNuevo], map: "idx_cambios_cargo_cda_nuevo")
+  @@map("cambios_cargo_cda")
+}
+
 /// Acta de entrega de peto, credencial y cordón. Quien entrega se copia
 /// (nombre, cédula, cargo) porque el acta es un documento: no debe cambiar
 /// si luego cambia el usuario.
@@ -849,6 +872,8 @@ model ActaEntregaCda {
   estadoPeto       EstadoPrenda  @map("estado_peto")
   estadoCredencial EstadoPrenda  @map("estado_credencial")
   estadoCordon     EstadoPrenda  @map("estado_cordon")
+  /// Cargo con el que se generó: el documento lo conserva aunque la persona cambie de cargo.
+  grupo            GrupoCda
   estado           EstadoActaCda @default(GENERADA)
   firmadaEn        DateTime?     @map("firmada_en") @db.Timestamptz(6)
   creadoPorId      String?       @map("creado_por_id") @db.Uuid

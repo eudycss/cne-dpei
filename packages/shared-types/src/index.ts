@@ -1068,6 +1068,25 @@ export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula' | 
   fechaInicio?: string;
 };
 
+export interface CambiarCargoOperadorCdaRequest {
+  grupo: GrupoCda;
+}
+
+/**
+ * El cambio rige desde hoy: la asistencia anterior queda en el cargo de antes.
+ * El carnet impreso y el acta dicen el cargo anterior: la web avisa.
+ */
+export interface CambiarCargoOperadorCdaResult {
+  operador: OperadorCda;
+  grupoAnterior: GrupoCda;
+  /** AAAA-MM-DD desde el que rige: hoy, o mañana si ya marcó entrada hoy (esa marca queda en el cargo anterior). */
+  desde: string;
+  /** Tiene un carnet QR sin anular (sigue sirviendo, pero dice el cargo anterior). */
+  carnetVigente: boolean;
+  /** Tenía acta de entrega (queda como documento del cargo anterior). */
+  actaVigente: boolean;
+}
+
 export interface ImportOperadoresCdaResult {
   /** true = solo vista previa, no se guardó nada. */
   vistaPrevia: boolean;
@@ -1250,7 +1269,10 @@ export interface ActaEntregaCda {
 /** Operador con su acta vigente (null = aún no se genera). */
 export interface ActaCdaFila {
   operador: OperadorCda;
+  /** Acta vigente del cargo actual (null si no tiene o si la última es de otro cargo). */
   acta: ActaEntregaCda | null;
+  /** Cargo que dice su última acta cuando es de otro cargo (cambió de cargo); si no, null. */
+  actaOtroCargo: string | null;
 }
 
 /** Quien puede entregar (usuario del sistema), con el cargo que se sugiere en el acta. */

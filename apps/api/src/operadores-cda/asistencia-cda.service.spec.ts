@@ -25,6 +25,7 @@ const operador = (over: Record<string, unknown> = {}) => ({
   fotoKey: null,
   activo: true,
   creadoEn: new Date('2026-10-20T10:00:00Z'),
+  cambiosCargo: [] as unknown[],
   ...over,
 });
 
@@ -69,8 +70,11 @@ describe('AsistenciaCdaService', () => {
 
       expect(r.fecha).toBe('2026-10-22');
       expect(r.esHoy).toBe(true);
-      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY, operador: { grupo: 'OPERADOR' } });
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'OPERADOR' });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: HOY, operadorId: { in: expect.any(Array) } });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        activo: true,
+        OR: [{ grupo: 'OPERADOR' }, { cambiosCargo: { some: { OR: [{ grupoAnterior: 'OPERADOR' }, { grupoNuevo: 'OPERADOR' }] } } }],
+      });
       expect(r.filas[0]).toMatchObject({ entradaEn: '2026-10-22T13:05:00.000Z', entradaPor: 'Ana Técnica', salidaEn: null });
       expect(r.filas[1]).toMatchObject({ entradaEn: null, entradaPor: null });
     });
@@ -319,8 +323,11 @@ describe('AsistenciaCdaService', () => {
       const archivo = await service.exportar('2026-10-21', '2026-10-21', 'POR_DIA', 'xlsx', 'ASISTENTE');
 
       expect(archivo.nombre).toBe('asistencia_asistentes_cda_2026-10-21_2026-10-21_por_dia.xlsx');
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ activo: true, grupo: 'ASISTENTE' });
-      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operador).toEqual({ grupo: 'ASISTENTE' });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        activo: true,
+        OR: [{ grupo: 'ASISTENTE' }, { cambiosCargo: { some: { OR: [{ grupoAnterior: 'ASISTENTE' }, { grupoNuevo: 'ASISTENTE' }] } } }],
+      });
+      expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where.operadorId).toEqual({ in: expect.any(Array) });
       const ws = (await leerExcel(archivo.contenido)).worksheets[0];
       expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Asistentes CDA');
       expect(ws.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Asistentes 0/1 · Entrada 0/1 · Salida 0/1');

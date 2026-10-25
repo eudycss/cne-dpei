@@ -7,12 +7,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { OperadorCda, RoleName } from '@cne/shared-types';
 
 import { ListadoOperadores } from './ListadoOperadores';
-import { iniciales, normalizar } from './utils';
+import { hoyEcuador, iniciales, normalizar } from './utils';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
-vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 
 // Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
 const permisos = { actuales: new Set<string>(PERMISO_IDS) };
@@ -210,6 +210,107 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
 
     await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'Ya existe un operador con esa cédula' }));
     expect(screen.getByRole('dialog', { name: 'Agregar operador' })).toBeInTheDocument();
+  });
+
+  it('editar: pasar a otro cargo avisa desde cuándo, guarda los datos y luego el cargo', async () => {
+    const asistente = operador({ grupo: 'ASISTENTE', cargo: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - ASISTENTES CDA' });
+    getMock.mockResolvedValue({ data: [asistente] });
+    patchMock
+      .mockResolvedValueOnce({ data: asistente })
+      .mockResolvedValueOnce({
+        data: {
+          operador: { ...asistente, grupo: 'OPERADOR' },
+          grupoAnterior: 'ASISTENTE',
+          desde: hoyEcuador(),
+          carnetVigente: true,
+          actaVigente: true,
+        },
+      });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+
+    const cargoCda = within(dialogo).getByRole('combobox', { name: 'Cargo CDA' });
+    expect(cargoCda).toHaveDisplayValue('Asistentes CDA');
+    await userEvent.selectOptions(cargoCda, 'Operadores CDA');
+    expect(cargoCda).toHaveAccessibleDescription(
+      'Pasará a Operadores CDA desde hoy (desde mañana si ya marcó entrada hoy). Su asistencia anterior queda en Asistentes CDA.',
+    );
+    // El cargo por defecto sigue al cargo CDA elegido.
+    expect(within(dialogo).getByLabelText('Cargo')).toHaveValue('ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Operadores CDA' }));
+
+    await waitFor(() => expect(patchMock).toHaveBeenCalledTimes(2));
+    expect(patchMock.mock.calls[0][0]).toBe('/operadores-cda/o1');
+    expect(patchMock.mock.calls[0][1]).toMatchObject({ cargo: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - OPERADORES CDA' });
+    expect(patchMock).toHaveBeenLastCalledWith('/operadores-cda/o1/cargo', { grupo: 'OPERADOR' });
+    expect(sileo.success).toHaveBeenCalledWith(expect.objectContaining({ title: 'Pasó a Operadores CDA' }));
+    expect(sileo.warning).toHaveBeenCalledWith({
+      title: 'Pasó a Operadores CDA: falta un paso',
+      description:
+        'Ahora reemita su carnet QR (el impreso dice el cargo de Asistentes CDA) y genere una nueva acta de entrega en Operadores CDA.',
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('editar: un cargo escrito a mano no se reemplaza al cambiar de cargo CDA; sin carnet ni acta no hay aviso', async () => {
+    getMock.mockResolvedValue({ data: [operador({})] });
+    patchMock
+      .mockResolvedValueOnce({ data: operador({}) })
+      .mockResolvedValueOnce({
+        data: {
+          operador: operador({ grupo: 'SUPERVISOR' }),
+          grupoAnterior: 'OPERADOR',
+          desde: '2999-01-01',
+          carnetVigente: false,
+          actaVigente: false,
+        },
+      });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA' }), 'Supervisores');
+    expect(within(dialogo).getByLabelText('Cargo')).toHaveValue('OPERADOR CDA');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Supervisores' }));
+    await waitFor(() => expect(patchMock).toHaveBeenLastCalledWith('/operadores-cda/o1/cargo', { grupo: 'SUPERVISOR' }));
+    expect(sileo.warning).not.toHaveBeenCalled();
+    // Rige desde otro día (ya marcó entrada hoy): se dice en el aviso.
+    expect(sileo.success).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'CHÁVEZ MORA LUCÍA ESTEFANÍA · desde mañana (hoy ya marcó entrada)' }),
+    );
+  });
+
+  it('editar: si falla el cambio de cargo después de guardar los datos, avisa y refresca la lista', async () => {
+    getMock.mockResolvedValue({ data: [operador({})] });
+    patchMock
+      .mockResolvedValueOnce({ data: operador({}) })
+      .mockRejectedValueOnce({ response: { data: { message: 'Otro usuario acaba de cambiarle el cargo: recargue la lista' } } });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA' }), 'Digitadores');
+    const pedidosAntes = getMock.mock.calls.length;
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Digitadores' }));
+    await waitFor(() =>
+      expect(sileo.error).toHaveBeenCalledWith({ title: 'Otro usuario acaba de cambiarle el cargo: recargue la lista' }),
+    );
+    await waitFor(() => expect(getMock.mock.calls.length).toBeGreaterThan(pedidosAntes));
+    expect(screen.getByRole('dialog', { name: 'Editar operador' })).toBeInTheDocument();
+  });
+
+  it('editar sin cambiar de cargo no llama al cambio de cargo; agregar no muestra "Cargo CDA"', async () => {
+    getMock.mockResolvedValue({ data: [operador({})] });
+    patchMock.mockResolvedValueOnce({ data: operador({}) });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(patchMock).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar operador' }));
+    const alta = await screen.findByRole('dialog', { name: 'Agregar operador' });
+    expect(within(alta).queryByRole('combobox', { name: 'Cargo CDA' })).not.toBeInTheDocument();
   });
 
   it('editar: una fecha de ingreso ya registrada no se puede borrar', async () => {
