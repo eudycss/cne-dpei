@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { MODULO_WEB_IDS, PERMISO_IDS } from '@cne/shared-validation';
 
-import { PermisosModulosService } from './permisos-modulos.service';
+import { MATRIZ_TTL_MS, PermisosModulosService } from './permisos-modulos.service';
 import { PrismaService } from '../db/prisma.service';
 
 describe('PermisosModulosService', () => {
@@ -174,6 +174,66 @@ describe('PermisosModulosService', () => {
     it('404 si el rol no existe en la base', async () => {
       prisma.rol.findUnique.mockResolvedValueOnce(null);
       await expect(service.actualizar('LECTOR', ['kits'])).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+  describe('caché de la matriz', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('los guards no consultan la base en cada request', async () => {
+      prisma.rolModulo.findMany.mockResolvedValue([]);
+      await service.misModulos(['ASISTENTE_TRANSVERSAL']);
+      await service.misModulos(['ASISTENTE_TRANSVERSAL']);
+      await service.matriz();
+      expect(prisma.rolModulo.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('vence a los 10 s', async () => {
+      jest.useFakeTimers();
+      prisma.rolModulo.findMany.mockResolvedValue([]);
+      await service.matriz();
+      jest.advanceTimersByTime(MATRIZ_TTL_MS + 1);
+      await service.matriz();
+      expect(prisma.rolModulo.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('al guardar un cambio se descarta en el acto: quitar una acción rige de inmediato', async () => {
+      prisma.rolModulo.findMany.mockResolvedValue([fila('ASISTENTE_TRANSVERSAL', 'operadores-cda')]);
+      prisma.rolPermiso.findMany.mockResolvedValueOnce([accion('ASISTENTE_TRANSVERSAL', 'cda.asistencia.marcar')]);
+      expect((await service.misModulos(['ASISTENTE_TRANSVERSAL'])).permisos).toEqual(['cda.asistencia.marcar']);
+
+      prisma.rol.findUnique.mockResolvedValueOnce({ id: 'rol-aet' });
+      await service.actualizar('ASISTENTE_TRANSVERSAL', ['operadores-cda'], []);
+      prisma.rolPermiso.findMany.mockResolvedValueOnce([]);
+      expect((await service.misModulos(['ASISTENTE_TRANSVERSAL'])).permisos).toEqual([]);
+    });
+
+    it('dos requests a la vez comparten una sola consulta', async () => {
+      let soltar!: (v: unknown[]) => void;
+      prisma.rolModulo.findMany.mockReturnValueOnce(new Promise((r) => (soltar = r)));
+      const ambos = Promise.all([service.matriz(), service.misModulos(['LECTOR'])]);
+      soltar([]);
+      await ambos;
+      expect(prisma.rolModulo.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('una lectura que empieza durante el guardado no deja la matriz vieja en caché', async () => {
+      prisma.rolModulo.findMany.mockResolvedValue([]);
+      prisma.rol.findUnique.mockResolvedValueOnce({ id: 'rol-aet' });
+      let commit!: () => void;
+      prisma.$transaction.mockReturnValueOnce(new Promise<void>((r) => (commit = r)));
+      const guardando = service.actualizar('ASISTENTE_TRANSVERSAL', ['operadores-cda'], []);
+      await new Promise((r) => setImmediate(r));
+      await service.matriz(); // lee (y cachea) antes del commit
+      commit();
+      await guardando;
+      await service.matriz();
+      expect(prisma.rolModulo.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('un error de la base no queda guardado', async () => {
+      prisma.rolModulo.findMany.mockRejectedValueOnce(new Error('caída')).mockResolvedValueOnce([]);
+      await expect(service.matriz()).rejects.toThrow('caída');
+      await expect(service.matriz()).resolves.toBeDefined();
     });
   });
 });

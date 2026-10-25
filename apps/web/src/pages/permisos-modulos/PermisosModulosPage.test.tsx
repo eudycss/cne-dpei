@@ -100,6 +100,67 @@ describe('PermisosModulosPage', () => {
     );
   });
 
+  it('si falla un rol, guarda los demás y conserva en pantalla los cambios del que falló', async () => {
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      url.endsWith('/LECTOR')
+        ? Promise.reject({ response: { data: { message: 'Sin conexión con la base' } } })
+        : Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Reportes para Lector' }));
+    await user.click(casilla('Incidencias para Técnico supervisor'));
+    // Al recargar, el servidor tiene lo nuevo del técnico y lo viejo del lector.
+    getMock.mockResolvedValue({
+      data: {
+        roles: MATRIZ.roles.map((r) =>
+          r.rol === 'TECNICO_SUPERVISOR' ? { ...r, modulos: ['kits', 'incidencias', 'alertas'] } : r,
+        ),
+      },
+    });
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(sileo.error).toHaveBeenCalledWith({
+        title:
+          'Se guardó Técnico supervisor. No se pudo guardar: Lector (Sin conexión con la base). Sus cambios siguen en pantalla para reintentar.',
+      }),
+    );
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(casilla('Reportes para Lector')).not.toBeChecked();
+    expect(casilla('Incidencias para Técnico supervisor')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toHaveAccessibleDescription(
+      'Cambios sin guardar en: Lector.',
+    );
+  });
+
+  it('si fallan varios roles, da el motivo de cada uno (en plural) por la región de alerta, y reintentar los guarda', async () => {
+    putMock.mockImplementation((url: string) =>
+      Promise.reject({ response: { data: { message: url.endsWith('/LECTOR') ? 'Motivo A' : 'Motivo B' } } }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Reportes para Lector' }));
+    await user.click(casilla('Incidencias para Técnico supervisor'));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    const mensaje =
+      'No se pudieron guardar: Técnico supervisor (Motivo B); Lector (Motivo A). Sus cambios siguen en pantalla para reintentar.';
+    await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: mensaje }));
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => a.textContent === mensaje)).toBe(true));
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(casilla('Reportes para Lector')).not.toBeChecked();
+    expect(casilla('Incidencias para Técnico supervisor')).toBeChecked();
+
+    // Reintento: ahora el servidor responde y manda lo guardado.
+    putMock.mockImplementation((url: string, body: { modulos: string[]; permisos: string[] }) =>
+      Promise.resolve({ data: { rol: url.split('/').pop(), ...body } }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(sileo.success).toHaveBeenCalled());
+    expect(putMock).toHaveBeenCalledTimes(4);
+  });
+
   it('si el servidor devuelve una lista de mensajes, los une en uno', async () => {
     putMock.mockRejectedValueOnce({ response: { data: { message: ['modulos inválido', 'falta rol'] } } });
     const user = userEvent.setup();
@@ -124,7 +185,7 @@ describe('PermisosModulosPage', () => {
     getMock.mockRejectedValueOnce(new Error('caído'));
     const user = userEvent.setup();
     renderPage();
-    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar la configuración de módulos.');
+    expect(await screen.findByText('No se pudo cargar la configuración de módulos.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByRole('checkbox', { name: 'Kits Electorales para Técnico supervisor' })).toBeChecked();
   });

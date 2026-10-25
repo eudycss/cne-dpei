@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import {
@@ -41,6 +41,39 @@ function borradorDeFabrica(): Borrador {
 const mismos = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((id) => b.includes(id));
 
+type Fallido = { rol: RolConfigurable; motivo: string };
+
+/** Algún rol no se pudo guardar; cada uno con el motivo que dio el servidor. */
+class GuardadoParcial extends Error {
+  constructor(
+    readonly fallidos: Fallido[],
+    readonly guardados: RolConfigurable[],
+  ) {
+    super('guardado parcial');
+  }
+}
+
+function mensajeServidor(e: any): string | undefined {
+  // La validación del servidor puede devolver una lista de mensajes.
+  const m = e?.response?.data?.message;
+  return (Array.isArray(m) ? m.join(', ') : m) || undefined;
+}
+
+const SIN_GUARDAR = 'No se pudieron guardar los módulos por rol';
+
+function mensajeGuardadoParcial({ fallidos, guardados }: GuardadoParcial): string {
+  // Un solo rol y nada guardado: basta el motivo del servidor.
+  if (guardados.length === 0 && fallidos.length === 1) return fallidos[0].motivo;
+  const partes: string[] = [];
+  if (guardados.length > 0) {
+    partes.push(`${guardados.length === 1 ? 'Se guardó' : 'Se guardaron'} ${guardados.map(etiquetaRol).join(', ')}.`);
+  }
+  const detalle = fallidos.map((f) => `${etiquetaRol(f.rol)} (${f.motivo})`).join('; ');
+  partes.push(`${fallidos.length === 1 ? 'No se pudo guardar' : 'No se pudieron guardar'}: ${detalle}.`);
+  partes.push('Sus cambios siguen en pantalla para reintentar.');
+  return partes.join(' ');
+}
+
 const alternarId = <T extends string>(lista: T[], id: T) =>
   lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id];
 
@@ -50,10 +83,16 @@ export function PermisosModulosPage() {
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['permisos-modulos'], queryFn: getPermisosModulos });
   const [borrador, setBorrador] = useState<Borrador>(borradorVacio);
   const [anuncio, setAnuncio] = useState('');
+  const [alerta, setAlerta] = useState('');
+  // Roles cuyo guardado falló: al recargar lo del servidor, su borrador no se pisa.
+  const conservar = useRef<ReadonlySet<RolConfigurable>>(new Set());
   // Se vacía antes de escribir: el lector de pantalla repite el aviso aunque el texto sea el mismo.
-  const anunciar = (texto: string) => {
+  // Los errores van a una región role="alert" (asertiva), el resto a role="status".
+  const anunciar = (texto: string, esError = false) => {
+    const fijar = esError ? setAlerta : setAnuncio;
     setAnuncio('');
-    setTimeout(() => setAnuncio(texto), 50);
+    setAlerta('');
+    setTimeout(() => fijar(texto), 50);
   };
 
   const guardado: Borrador = borradorVacio();
@@ -68,7 +107,12 @@ export function PermisosModulosPage() {
 
   // Al llegar (o cambiar) lo guardado en el servidor, la tabla lo refleja.
   useEffect(() => {
-    if (data) setBorrador(guardado);
+    if (!data) return;
+    setBorrador((previo) => {
+      const b = { ...guardado };
+      for (const rol of conservar.current) b[rol] = previo[rol];
+      return b;
+    });
   }, [data]);
 
   const rolesCambiados = ROLES_CONFIGURABLES.filter(
@@ -77,21 +121,34 @@ export function PermisosModulosPage() {
   );
 
   const guardar = useMutation({
-    mutationFn: () =>
-      Promise.all(rolesCambiados.map((rol) => guardarModulosRol(rol, borrador[rol].modulos, borrador[rol].permisos))),
+    mutationFn: async () => {
+      const roles = rolesCambiados;
+      const resultados = await Promise.allSettled(
+        roles.map((rol) => guardarModulosRol(rol, borrador[rol].modulos, borrador[rol].permisos)),
+      );
+      const fallidos: Fallido[] = [];
+      resultados.forEach((r, i) => {
+        if (r.status === 'rejected') fallidos.push({ rol: roles[i], motivo: mensajeServidor(r.reason) ?? SIN_GUARDAR });
+      });
+      if (fallidos.length > 0) {
+        throw new GuardadoParcial(fallidos, roles.filter((rol) => !fallidos.some((f) => f.rol === rol)));
+      }
+    },
     onSuccess: () => {
+      conservar.current = new Set();
       qc.invalidateQueries({ queryKey: ['permisos-modulos'] });
       qc.invalidateQueries({ queryKey: MIS_MODULOS_KEY });
       sileo.success({ title: 'Módulos por rol guardados' });
       anunciar('Módulos por rol guardados');
     },
-    onError: (e: any) => {
+    onError: (e: unknown) => {
+      const parcial = e instanceof GuardadoParcial ? e : null;
+      conservar.current = new Set(parcial ? parcial.fallidos.map((f) => f.rol) : rolesCambiados);
       qc.invalidateQueries({ queryKey: ['permisos-modulos'] });
-      // La validación del servidor puede devolver una lista de mensajes.
-      const m = e?.response?.data?.message;
-      const mensaje = (Array.isArray(m) ? m.join(', ') : m) || 'No se pudieron guardar los módulos por rol';
+      if (parcial?.guardados.length) qc.invalidateQueries({ queryKey: MIS_MODULOS_KEY });
+      const mensaje = parcial ? mensajeGuardadoParcial(parcial) : (mensajeServidor(e) ?? SIN_GUARDAR);
       sileo.error({ title: mensaje });
-      anunciar(mensaje);
+      anunciar(mensaje, true);
     },
   });
 
@@ -119,6 +176,9 @@ export function PermisosModulosPage() {
       </p>
       <p className="sr-only" role="status" aria-live="polite">
         {anuncio}
+      </p>
+      <p className="sr-only" role="alert">
+        {alerta}
       </p>
 
       {isLoading ? (

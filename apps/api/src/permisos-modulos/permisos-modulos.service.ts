@@ -23,11 +23,34 @@ function permisosDentroDelTecho(rol: RolConfigurable, permisos: readonly string[
   return permisosPermitidosParaRol(rol).filter((id) => permisos.includes(id));
 }
 
+/**
+ * Cuánto se reutiliza la matriz leída de la base. Los guards la consultan en
+ * cada request (escanear QR: hasta 120 por minuto); al guardar un cambio se
+ * descarta en el acto, así que solo otra instancia de la API podría tardar
+ * este tiempo en verlo.
+ */
+export const MATRIZ_TTL_MS = 10_000;
+
 @Injectable()
 export class PermisosModulosService {
+  private cache: { valor: Promise<PermisosModulosResponse>; expira: number } | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async matriz(): Promise<PermisosModulosResponse> {
+  /** Compartida entre requests: quien la reciba no debe modificarla. */
+  matriz(): Promise<PermisosModulosResponse> {
+    const ahora = Date.now();
+    if (this.cache && this.cache.expira > ahora) return this.cache.valor;
+    const valor = this.leerMatriz();
+    this.cache = { valor, expira: ahora + MATRIZ_TTL_MS };
+    // Un error de la base no se queda guardado: el siguiente request reintenta.
+    valor.catch(() => {
+      if (this.cache?.valor === valor) this.cache = null;
+    });
+    return valor;
+  }
+
+  private async leerMatriz(): Promise<PermisosModulosResponse> {
     const delRol = { rol: { nombre: { in: [...ROLES_CONFIGURABLES] } } };
     const [filas, acciones] = await Promise.all([
       this.prisma.rolModulo.findMany({ where: delRol, select: { modulo: true, rol: { select: { nombre: true } } } }),
@@ -84,6 +107,7 @@ export class PermisosModulosService {
     const fila = await this.prisma.rol.findUnique({ where: { nombre: rol }, select: { id: true } });
     if (!fila) throw new NotFoundException('Rol no encontrado');
 
+    this.cache = null;
     await this.prisma.$transaction([
       this.prisma.rolModulo.deleteMany({ where: { rolId: fila.id } }),
       this.prisma.rolModulo.createMany({ data: modulos.map((modulo) => ({ rolId: fila.id, modulo })) }),
@@ -94,6 +118,8 @@ export class PermisosModulosService {
           ]
         : []),
     ]);
+    // Otra vez: una lectura que empezó durante la transacción pudo cachear lo viejo.
+    this.cache = null;
     const guardadas =
       permisos ??
       (await this.prisma.rolPermiso.findMany({ where: { rolId: fila.id }, select: { permiso: true } })).map((p) => p.permiso);
