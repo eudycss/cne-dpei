@@ -34,9 +34,18 @@ describe('OperadoresCdaPage', () => {
   it('se llama CDAs y abre en Operadores CDA > Asistencia', async () => {
     renderPagina();
     expect(screen.getByRole('heading', { name: 'CDAs' })).toBeInTheDocument();
-    const grupos = screen.getByRole('tablist', { name: 'Grupos del personal CDA' });
-    expect(within(grupos).getByRole('tab', { name: 'Operadores CDA' })).toHaveAttribute('aria-selected', 'true');
-    expect(within(grupos).getByRole('tab', { name: 'Asistentes CDA' })).toHaveAttribute('aria-selected', 'false');
+    const cargo = screen.getByRole('combobox', { name: 'Cargo' });
+    expect(cargo).toHaveDisplayValue('Operadores CDA');
+    expect(within(cargo).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Operadores CDA',
+      'Asistentes CDA',
+      'Digitadores',
+      'Asistentes de Archivos',
+      'Asistentes de firmas',
+      'Receptores de actas',
+      'Supervisores',
+      'Operadores de escáner CPE',
+    ]);
     expect(screen.getByRole('tab', { name: 'Asistencia' })).toHaveAttribute('aria-selected', 'true');
     await screen.findByText(/Impórtelos desde la pestaña Listado/);
     expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/^\/operadores-cda\/asistencia\?fecha=.*&grupo=OPERADOR$/));
@@ -44,7 +53,7 @@ describe('OperadoresCdaPage', () => {
 
   it('Asistentes CDA tiene las mismas secciones y pide los datos de su grupo', async () => {
     renderPagina();
-    await userEvent.click(screen.getByRole('tab', { name: 'Asistentes CDA' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Cargo' }), 'Asistentes CDA');
     expect(screen.getByRole('tablist', { name: 'Secciones de Asistentes CDA' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Asistencia' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('Aún no hay asistentes. Impórtelos desde la pestaña Listado.')).toBeInTheDocument();
@@ -58,9 +67,25 @@ describe('OperadoresCdaPage', () => {
 
   it('?grupo=asistentes&tab=atrasos abre directo los atrasos de los asistentes', async () => {
     renderPagina('/operadores-cda?grupo=asistentes&tab=atrasos');
-    expect(screen.getByRole('tab', { name: 'Asistentes CDA' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Cargo' })).toHaveDisplayValue('Asistentes CDA');
     expect(screen.getByRole('tab', { name: 'Atrasos' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(getMock).toHaveBeenCalledWith('/operadores-cda/asistencia/config?grupo=ASISTENTE'));
+  });
+
+  it('un cargo nuevo (Supervisores) usa las mismas secciones con sus propios datos y textos', async () => {
+    renderPagina('/operadores-cda?tab=listado');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Cargo' }), 'Supervisores');
+    // Conserva la sección elegida.
+    expect(screen.getByRole('tab', { name: 'Listado' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('Aún no hay supervisores registrados.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar supervisor' })).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=SUPERVISOR');
+  });
+
+  it('?grupo= desconocido abre Operadores CDA', async () => {
+    renderPagina('/operadores-cda?grupo=TECNICO');
+    expect(screen.getByRole('combobox', { name: 'Cargo' })).toHaveDisplayValue('Operadores CDA');
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/&grupo=OPERADOR$/)));
   });
 
   it('abre en Asistencia y cambia de pestaña con clic o con las flechas', async () => {
@@ -79,14 +104,14 @@ describe('OperadoresCdaPage', () => {
     expect(secciones.at(-1)).toHaveAttribute('aria-labelledby', 'pestana-asistencia');
   });
 
-  it('?tab=listado abre directo el listado, con su acción en el encabezado (antes de las pestañas)', async () => {
+  it('?tab=listado abre directo el listado, con su acción en el encabezado (antes del cargo)', async () => {
     renderPagina('/operadores-cda?tab=listado');
     expect(screen.getByRole('tab', { name: 'Listado' })).toHaveAttribute('aria-selected', 'true');
     const importar = await screen.findByRole('button', { name: 'Importar Excel' });
     expect(importar.closest('.ocda-encabezado')).not.toBeNull();
     // El orden de lectura y de tabulación sigue al visual: acciones y luego pestañas.
     expect(
-      importar.compareDocumentPosition(screen.getByRole('tablist', { name: 'Grupos del personal CDA' })) &
+      importar.compareDocumentPosition(screen.getByRole('combobox', { name: 'Cargo' })) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

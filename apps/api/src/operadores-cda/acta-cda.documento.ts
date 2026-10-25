@@ -34,7 +34,7 @@ export interface DatosActaCda {
   entregaCargo: string;
   operadorNombre: string;
   operadorCedula: string;
-  /** "OPERADOR CDA" o "ASISTENTE CDA". */
+  /** el cargo del grupo ("OPERADOR CDA", "SUPERVISOR CDA", …). */
   operadorCargo: string;
   estadoPeto: EstadoPrenda;
   estadoCredencial: EstadoPrenda;

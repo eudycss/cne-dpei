@@ -7,11 +7,14 @@ import {
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { Request } from 'express';
+import { grupoCdaQuerySchema } from '@cne/shared-validation';
+import type { GrupoCda } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 
-/** Grupo del personal CDA (?grupo=); ausente = OPERADOR, como en la API. */
-function grupoCda(req: Request): 'OPERADOR' | 'ASISTENTE' {
-  return req.query?.grupo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
+/** Grupo del personal CDA (?grupo=); ausente o inválido = OPERADOR, como en la API. */
+function grupoCda(req: Request): GrupoCda {
+  const r = grupoCdaQuerySchema.safeParse(req.query?.grupo);
+  return r.success ? r.data : 'OPERADOR';
 }
 
 /** Descargas de reportes de operadores CDA: grupo, rango, modo y formato pedidos (nada personal). */

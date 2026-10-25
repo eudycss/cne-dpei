@@ -607,6 +607,12 @@ function esFechaReal(iso: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(iso) && anio >= 2020 && anio <= 2100;
 }
 
+/** Fecha de ingreso del personal CDA (columna fecha_inicio). */
+const fechaIngresoCdaSchema = z
+  .string({ required_error: 'Fecha de ingreso requerida' })
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
+  .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
+
 // Una fila del Excel de talento humano ya normalizada por la API (encabezados
 // "N°, Apellidos Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial").
 export const operadorCdaFilaSchema = z.object({
@@ -620,34 +626,46 @@ export const operadorCdaFilaSchema = z.object({
   telefono: telefonoSchema,
   cargo: z.string().trim().min(1, 'Cargo requerido').max(160, 'Máximo 160 caracteres'),
   unidad: z.string().trim().max(200, 'Máximo 200 caracteres').optional(),
-  fechaInicio: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
-    .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)')
-    .optional(),
+  fechaInicio: fechaIngresoCdaSchema.optional(),
 });
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
 
-/** Operadores CDA o Asistentes CDA. */
-export const grupoCdaSchema = z.enum(['OPERADOR', 'ASISTENTE'], {
-  errorMap: () => ({ message: 'Grupo inválido (OPERADOR o ASISTENTE)' }),
+/** Cargos del personal CDA (cada uno con su propia gestión). */
+export const GRUPOS_CDA = [
+  'OPERADOR',
+  'ASISTENTE',
+  'DIGITADOR',
+  'ASISTENTE_ARCHIVOS',
+  'ASISTENTE_FIRMAS',
+  'RECEPTOR_ACTAS',
+  'SUPERVISOR',
+  'OPERADOR_ESCANER_CPE',
+] as const;
+
+export const grupoCdaSchema = z.enum(GRUPOS_CDA, {
+  errorMap: () => ({ message: 'Grupo inválido' }),
 });
 
 /** Para ?grupo= en la URL: ausente = OPERADOR (lo que había antes de los asistentes). */
 export const grupoCdaQuerySchema = grupoCdaSchema.default('OPERADOR');
 
 // Alta manual: los mismos campos que una fila del Excel, sin el N° de la hoja.
+// La fecha de ingreso es obligatoria (en el Excel sigue opcional).
 export const crearOperadorCdaSchema = operadorCdaFilaSchema
   .omit({ numero: true })
-  .extend({ grupo: grupoCdaSchema.optional() })
+  .extend({
+    grupo: grupoCdaSchema.optional(),
+    fechaInicio: fechaIngresoCdaSchema,
+  })
   .strict();
 export type CrearOperadorCdaInput = z.infer<typeof crearOperadorCdaSchema>;
 
 // Edición: la cédula no cambia (es la llave con la que el Excel reimporta) y
 // el grupo tampoco (una persona está en un solo grupo).
 // Un campo opcional ausente o vacío se guarda vacío: el formulario manda todo.
-export const editarOperadorCdaSchema = crearOperadorCdaSchema.omit({ cedula: true, grupo: true }).strict();
+// La fecha de ingreso sigue opcional: hay registros antiguos sin ella.
+export const editarOperadorCdaSchema = operadorCdaFilaSchema.omit({ numero: true, cedula: true }).strict();
 export type EditarOperadorCdaInput = z.infer<typeof editarOperadorCdaSchema>;
 
 export const cambiarActivoOperadorCdaSchema = z.object({ activo: z.boolean() }).strict();

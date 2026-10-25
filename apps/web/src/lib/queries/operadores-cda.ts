@@ -251,7 +251,17 @@ export interface OpcionesReporteCda {
   grupo?: GrupoCda;
 }
 
-const ARCHIVO_GRUPO: Record<GrupoCda, string> = { OPERADOR: 'operadores_cda', ASISTENTE: 'asistentes_cda' };
+/** Igual que TEXTOS_GRUPO[].archivo en la API. */
+const ARCHIVO_GRUPO: Record<GrupoCda, string> = {
+  OPERADOR: 'operadores_cda',
+  ASISTENTE: 'asistentes_cda',
+  DIGITADOR: 'digitadores_cda',
+  ASISTENTE_ARCHIVOS: 'asistentes_archivos_cda',
+  ASISTENTE_FIRMAS: 'asistentes_firmas_cda',
+  RECEPTOR_ACTAS: 'receptores_actas_cda',
+  SUPERVISOR: 'supervisores_cda',
+  OPERADOR_ESCANER_CPE: 'operadores_escaner_cpe',
+};
 
 const RUTA_REPORTE: Record<ReporteCda, string> = { asistencia: 'exportar', atrasos: 'atrasos' };
 

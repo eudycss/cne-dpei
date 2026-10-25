@@ -233,7 +233,7 @@ describe('OperadoresCdaService', () => {
       activo: true,
       creadoEn: new Date('2026-10-23T10:00:00Z'),
     };
-    const ALTA = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+    const ALTA = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA', fechaInicio: '2026-10-20' };
 
     it('list con incluirInactivos no filtra por activo', async () => {
       await service.list({ incluirInactivos: true });

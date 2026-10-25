@@ -256,6 +256,19 @@ describe('AuditInterceptor', () => {
       datosDespues: { grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 },
     });
 
+    // Los cargos nuevos quedan con su propio grupo, no como OPERADOR.
+    const supervisores = await auditar(
+      {
+        method: 'PUT',
+        originalUrl: '/operadores-cda/asistencia/config?grupo=SUPERVISOR',
+        query: { grupo: 'SUPERVISOR' },
+        body: {},
+        user: ADMIN,
+      },
+      { horaEntrada: '07:30', minutosGracia: 5 },
+    );
+    expect(supervisores.data).toMatchObject({ datosDespues: { grupo: 'SUPERVISOR' } });
+
     // Un grupo desconocido no se copia tal cual a la bitácora (la API ya respondió 400).
     const sinGrupo = await auditar(
       { method: 'PUT', originalUrl: '/operadores-cda/asistencia/config', query: { grupo: '<x>' }, body: {}, user: ADMIN },

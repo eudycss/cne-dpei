@@ -36,6 +36,12 @@ export function cargoCorto(cargo: string): string {
 
 const ZONA = 'America/Guayaquil';
 
+/** "2026-10-20" -> "20/10/2026" (sin pasar por Date: no se corre de día por zona horaria). */
+export function fechaCorta(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a}`;
+}
+
 /** Hoy (AAAA-MM-DD) en Ecuador, como lo calcula la API. */
 export function hoyEcuador(ahora: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(

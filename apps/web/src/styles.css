@@ -621,6 +621,15 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-fecha input { border: 0; background: transparent; color: var(--f-text); font: inherit; font-size: 0.9rem; min-height: 40px; }
 .ocda-fecha:focus-within { box-shadow: var(--focus-ring); }
 .ocda-fecha input:focus { outline: none; }
+.ocda-fecha select { border: 0; background-color: transparent; color: var(--f-text); font: inherit; font-size: 0.9rem; min-height: 40px; }
+.ocda-fecha select:focus { outline: none; }
+/* Selector de cargo: 8 opciones no caben como pestañas con zoom ni en celular (WCAG 1.4.10). */
+.ocda-cargo { display: inline-flex; flex-direction: column; gap: 0.35rem; margin-top: 1.5rem; font-size: 0.8rem; font-weight: 600; color: var(--f-text-muted); }
+.ocda-cargo select {
+  min-height: 44px; min-width: min(320px, 100%); border-radius: 12px; border: 1px solid var(--f-borde-control);
+  background-color: var(--f-bg-surface); color: var(--f-text); font: inherit; font-size: 0.95rem; font-weight: 600;
+}
+.ocda-cargo select:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
 .ocda-chip {
   min-height: 36px; padding: 0.35rem 0.95rem; border-radius: 999px; font: inherit; font-size: 0.82rem; font-weight: 500;
   border: 1px solid var(--f-border-subtle); background: var(--f-bg-surface); color: var(--f-text-muted); cursor: pointer;

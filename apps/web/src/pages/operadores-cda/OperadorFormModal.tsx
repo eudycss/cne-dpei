@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { EditarOperadorCdaRequest, OperadorCda } from '@cne/shared-types';
+import type { CrearOperadorCdaRequest, EditarOperadorCdaRequest, OperadorCda } from '@cne/shared-types';
 import { crearOperadorCdaSchema, editarOperadorCdaSchema } from '@cne/shared-validation';
 import { Modal } from '../../components/Modal';
 import { crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
@@ -43,12 +43,15 @@ export function OperadorFormModal({
   const [f, setF] = useState<Formulario>(() => inicial(cargoPorDefecto, operador));
   const [errores, setErrores] = useState<Partial<Record<CampoForm, string>>>({});
   const cambiar = (c: Partial<Formulario>) => setF((prev) => ({ ...prev, ...c }));
+  // Obligatoria al agregar y al editar a quien ya la tiene; solo los registros antiguos sin fecha pueden seguir así.
+  const fechaObligatoria = !operador || !!operador.fechaInicio;
 
   const guardar = useMutation({
-    mutationFn: ({ cedula, ...resto }: EditarOperadorCdaRequest & { cedula?: string }) =>
+    // Llega ya validado con el esquema que toca: el de edición (sin cédula) o el de alta.
+    mutationFn: (datos: EditarOperadorCdaRequest | CrearOperadorCdaRequest) =>
       operador
-        ? editarOperadorCda(operador.id, resto)
-        : crearOperadorCda({ ...resto, cedula: cedula ?? '', grupo }),
+        ? editarOperadorCda(operador.id, datos)
+        : crearOperadorCda({ ...(datos as CrearOperadorCdaRequest), grupo }),
     onSuccess: (o) => {
       sileo.success({ title: editando ? 'Datos actualizados' : `${Singular} agregado`, description: o.apellidosNombres });
       onHecho();
@@ -65,6 +68,7 @@ export function OperadorFormModal({
     const r = (editando ? editarOperadorCdaSchema : crearOperadorCdaSchema).safeParse(body);
     const errs: Partial<Record<CampoForm, string>> = {};
     if (!r.success) for (const i of r.error.issues) errs[i.path[0] as CampoForm] ??= i.message;
+    if (fechaObligatoria && !body.fechaInicio) errs.fechaInicio ??= 'Fecha de ingreso requerida';
     setErrores(errs);
     const conError = ORDEN_CAMPOS.find((c) => errs[c]);
     if (conError) {
@@ -156,9 +160,9 @@ export function OperadorFormModal({
           })}
           {campo(
             'fechaInicio',
-            'Fecha de inicio',
+            'Fecha de ingreso',
             <input type="date" value={f.fechaInicio} onChange={(e) => cambiar({ fechaInicio: e.target.value })} />,
-            { opcional: true },
+            { opcional: !fechaObligatoria, ayuda: 'Día en que empieza a trabajar en el CDA.' },
           )}
         </div>
 

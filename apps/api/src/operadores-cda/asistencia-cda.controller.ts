@@ -41,7 +41,7 @@ export class AsistenciaCdaController {
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)
   @ApiOperation({
-    summary: 'Asistencia de todos los operadores (o, con ?grupo=ASISTENTE, asistentes) en un día (por defecto hoy, hora de Ecuador)',
+    summary: 'Asistencia de todos los operadores (o los del cargo de ?grupo=) en un día (por defecto hoy, hora de Ecuador)',
   })
   dia(@Query('fecha') fecha?: unknown, @Query('grupo') grupo?: unknown) {
     return this.asistencia.dia(texto(fecha), parsearGrupo(grupo));

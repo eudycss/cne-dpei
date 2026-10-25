@@ -42,7 +42,7 @@ export class OperadoresCdaController {
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
   @ApiOperation({
     summary:
-      'Operadores (o, con ?grupo=ASISTENTE, asistentes) CDA activos (búsqueda por nombre o cédula). ?incluirInactivos=true: también los ocultos (solo administrador)',
+      'Personal CDA activo del cargo de ?grupo= (por defecto operadores) (búsqueda por nombre o cédula). ?incluirInactivos=true: también los ocultos (solo administrador)',
   })
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -91,7 +91,7 @@ export class OperadoresCdaController {
   @Post('importar')
   @Roles('ADMINISTRADOR')
   @ApiOperation({
-    summary: 'Importa el Excel de operadores (o, con ?grupo=ASISTENTE, asistentes) CDA. Sin ?aplicar=true solo devuelve la vista previa',
+    summary: 'Importa el Excel del personal CDA del cargo de ?grupo= (por defecto operadores). Sin ?aplicar=true solo devuelve la vista previa',
   })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 } }))
