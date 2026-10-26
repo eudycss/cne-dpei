@@ -45,6 +45,13 @@ describe('catálogo de acciones por rol', () => {
     expect(permisosPermitidosParaRol('ASISTENTE_TRANSVERSAL')).toContain('cda.carnets.reimprimir');
   });
 
+  it('corregir días pasados: de fábrica solo el administrador; se le puede dar al técnico, nunca al asistente', () => {
+    expect(permisosPorDefecto(['TECNICO_SUPERVISOR'])).not.toContain('cda.asistencia.corregir');
+    expect(permisosPorDefecto(['ASISTENTE_TRANSVERSAL'])).not.toContain('cda.asistencia.corregir');
+    expect(permisosPermitidosParaRol('TECNICO_SUPERVISOR')).toContain('cda.asistencia.corregir');
+    expect(permisosPermitidosParaRol('ASISTENTE_TRANSVERSAL')).not.toContain('cda.asistencia.corregir');
+  });
+
   it('sin el módulo visible, sus acciones no cuentan', () => {
     expect(permisosConModulo(['cda.asistencia.marcar'], ['kits'])).toEqual([]);
     expect(permisosConModulo(['cda.asistencia.marcar', 'otra'], ['operadores-cda'])).toEqual(['cda.asistencia.marcar']);

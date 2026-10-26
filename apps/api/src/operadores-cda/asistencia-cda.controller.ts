@@ -1,13 +1,15 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import {
+  corregirAsistenciaCdaSchema,
   marcarAsistenciaCdaMasivaSchema,
   marcarAsistenciaCdaSchema,
   tipoMarcaAsistenciaCdaSchema,
 } from '@cne/shared-validation';
 import type {
+  CorregirAsistenciaCdaRequest,
   MarcarAsistenciaCdaMasivaRequest,
   MarcarAsistenciaCdaRequest,
   TipoMarcaAsistenciaCda,
@@ -86,6 +88,21 @@ export class AsistenciaCdaController {
     @Body(new ZodValidationPipe(marcarAsistenciaCdaSchema)) body: MarcarAsistenciaCdaRequest,
   ) {
     return this.asistencia.marcar(id, body.tipo, user.sub);
+  }
+
+  // Días pasados: de fábrica solo el administrador (ver PERMISOS). El AET no pasa por @Roles.
+  @Put(':id/asistencia/:fecha')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @RequierePermiso('cda.asistencia.corregir')
+  @UseGuards(PermisoGuard)
+  @ApiOperation({ summary: 'Corrige la entrada y la salida de un día pasado (horas HH:MM de Ecuador, motivo obligatorio)' })
+  corregir(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fecha') fecha: string,
+    @Body(new ZodValidationPipe(corregirAsistenciaCdaSchema)) body: CorregirAsistenciaCdaRequest,
+  ) {
+    return this.asistencia.corregir(id, fecha, body, user.sub);
   }
 
   @Delete(':id/asistencia/:tipo')

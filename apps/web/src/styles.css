@@ -841,12 +841,16 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-form { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .ocda-form .ancho { grid-column: 1 / -1; }
 .ocda-form-campo { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: var(--f-text-muted); }
-.ocda-form-campo input, .ocda-form-campo select {
+.ocda-form-campo input, .ocda-form-campo select, .ocda-form-campo textarea {
   min-height: 44px; padding: 0 0.8rem; border-radius: 12px; border: 1px solid var(--f-borde-control);
   background: var(--f-bg-base); color: var(--f-text); font: inherit; font-size: 0.9rem;
 }
+.ocda-form-campo textarea { padding: 0.6rem 0.8rem; resize: vertical; }
+.ocda-hora { display: flex; flex-direction: column; gap: 0.4rem; }
+.ocda-sin-marca { align-self: flex-start; min-height: 36px; font-size: 0.8rem; }
+.ocda-sin-marca[aria-pressed='true'] { border-color: var(--f-cian); }
 .ocda-form-campo input[readonly] { color: var(--f-text-muted); }
-.ocda-form-campo input:focus-visible, .ocda-form-campo select:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
+.ocda-form-campo input:focus-visible, .ocda-form-campo select:focus-visible, .ocda-form-campo textarea:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
 .ocda-form-campo [aria-invalid='true'] { border-color: var(--f-error); }
 .ocda-form-error { color: var(--f-error); font-size: 0.78rem; }
 .ocda-form-ayuda { color: var(--f-text-muted); font-size: 0.75rem; }

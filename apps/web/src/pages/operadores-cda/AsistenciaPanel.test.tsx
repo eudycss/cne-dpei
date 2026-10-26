@@ -9,7 +9,7 @@ import { AsistenciaPanel } from './AsistenciaPanel';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
-vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }));
+vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn(), action: vi.fn() } }));
 
 // Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
@@ -21,6 +21,7 @@ vi.mock('../../lib/useModulos', () => ({
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const deleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
+const putMock = api.put as unknown as ReturnType<typeof vi.fn>;
 
 const operador = (id: string, apellidosNombres: string, cedula: string): OperadorCda => ({
   id,
@@ -211,6 +212,120 @@ describe('AsistenciaPanel', () => {
     expect(getMock).toHaveBeenLastCalledWith('/operadores-cda/asistencia?fecha=2026-10-21&grupo=OPERADOR');
     expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
     expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  describe('corregir un día pasado', () => {
+    const PASADO = dia({
+      fecha: '2026-10-21',
+      esHoy: false,
+      filas: [fila(ANA, { entradaEn: '2026-10-21T13:05:00.000Z', entradaPor: 'Técnico Uno' }), fila(LUIS)],
+    });
+
+    async function irAlDiaPasado() {
+      getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValue({ data: PASADO });
+      renderPanel();
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
+      await screen.findByText(/Para cambiar una marca use “Corregir”/);
+    }
+
+    it('hoy no hay botón Corregir (hoy se marca en la lista)', async () => {
+      renderPanel();
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      expect(screen.queryByRole('button', { name: /^Corregir asistencia/ })).not.toBeInTheDocument();
+    });
+
+    it('sin la acción, el día pasado sigue siendo solo consulta', async () => {
+      permisos.actuales = new Set(['cda.asistencia.marcar']);
+      getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValue({ data: PASADO });
+      renderPanel();
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
+      expect(await screen.findByText(/día pasado: solo consulta/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Corregir asistencia/ })).not.toBeInTheDocument();
+    });
+
+    it('trae las horas que había, exige el motivo y no llama a la API si falta', async () => {
+      await irAlDiaPasado();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: 'Corregir asistencia de ANDRADE LÓPEZ ANA MARÍA' }));
+      const dialogo = await screen.findByRole('dialog', { name: 'Corregir asistencia del 21/10/2026' });
+
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveValue('08:05');
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveAccessibleDescription('Antes: 08:05');
+      expect(within(dialogo).getByLabelText('Salida')).toHaveValue('');
+
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      const motivo = within(dialogo).getByLabelText('Motivo de la corrección');
+      expect(motivo).toHaveFocus();
+      expect(motivo).toHaveAttribute('aria-invalid', 'true');
+      expect(motivo).toHaveAccessibleDescription(/no incluya cédulas.*Explique el motivo \(mínimo 10 caracteres\)/);
+      expect(putMock).not.toHaveBeenCalled();
+    });
+
+    it('"Sin entrada" vacía la hora y se manda null', async () => {
+      putMock.mockResolvedValueOnce({ data: { fila: PASADO.filas[1], antes: { entradaEn: null, salidaEn: null } } });
+      await irAlDiaPasado();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sin entrada' }));
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveValue('');
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'No asistió, se marcó por error');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      await waitFor(() =>
+        expect(putMock).toHaveBeenCalledWith('/operadores-cda/a/asistencia/2026-10-21', {
+          entrada: null,
+          salida: null,
+          motivo: 'No asistió, se marcó por error',
+        }),
+      );
+    });
+
+    it('salida antes de la entrada: error en Salida', async () => {
+      await irAlDiaPasado();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      fireEvent.change(within(dialogo).getByLabelText('Salida'), { target: { value: '07:00' } });
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'Error de digitación del técnico');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      expect(within(dialogo).getByLabelText('Salida')).toHaveFocus();
+      expect(within(dialogo).getByText('La salida debe ser posterior a la entrada')).toBeInTheDocument();
+      expect(putMock).not.toHaveBeenCalled();
+    });
+
+    it('guarda la corrección (vacío = sin marca), avisa, cierra y refresca el día', async () => {
+      putMock.mockResolvedValueOnce({ data: { fila: PASADO.filas[1], antes: { entradaEn: null, salidaEn: null } } });
+      await irAlDiaPasado();
+      await userEvent.click(within(filaDe('VEGA')).getByRole('button', { name: 'Corregir asistencia de VEGA TAPIA LUIS ALBERTO' }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      expect(within(dialogo).getByRole('button', { name: 'Sin entrada' })).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.change(within(dialogo).getByLabelText('Entrada'), { target: { value: '08:10' } });
+      expect(within(dialogo).getByRole('button', { name: 'Sin entrada' })).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), '  Vino, pero no se registró su entrada  ');
+      const pedidosAntes = getMock.mock.calls.length;
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+
+      await waitFor(() =>
+        expect(putMock).toHaveBeenCalledWith('/operadores-cda/l/asistencia/2026-10-21', {
+          entrada: '08:10',
+          salida: null,
+          motivo: 'Vino, pero no se registró su entrada',
+        }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(sileo.success).toHaveBeenCalledWith({ title: 'Asistencia corregida', description: 'VEGA TAPIA LUIS ALBERTO · 21/10/2026' });
+      await waitFor(() => expect(getMock.mock.calls.length).toBeGreaterThan(pedidosAntes));
+    });
+
+    it('si la API rechaza, muestra su mensaje y no cierra', async () => {
+      putMock.mockRejectedValueOnce({ response: { data: { message: 'No hay cambios: la asistencia ya está así' } } });
+      await irAlDiaPasado();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'Revisión del reporte semanal');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'No hay cambios: la asistencia ya está así' }));
+      expect(screen.getByRole('dialog', { name: /Corregir asistencia/ })).toBeInTheDocument();
+    });
   });
 
   it('sin la acción de marcar a mano: no hay marcado masivo y los checks explican por qué', async () => {
