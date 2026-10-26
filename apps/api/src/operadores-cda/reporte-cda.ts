@@ -216,6 +216,8 @@ function encabezadosExcel(fila: ExcelJS.Row, columnas: ColumnaReporte[]): void {
   fila.eachCell((c) => {
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
     c.border = { bottom: { style: 'thin', color: { argb: 'FF9CA3AF' } } };
+    // Un título más largo que su columna ("Origen entrada") pasa a dos líneas en vez de cortarse.
+    c.alignment = { wrapText: true, vertical: 'top' };
   });
 }
 

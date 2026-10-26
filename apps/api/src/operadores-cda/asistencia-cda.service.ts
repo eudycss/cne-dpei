@@ -40,12 +40,15 @@ const FECHA: ColumnaReporte = { titulo: 'Fecha', ancho: 12 };
 /** Columnas del reporte; en el general va además "Fecha" al inicio. */
 const COLUMNAS: ColumnaReporte[] = [
   N,
-  { titulo: 'Apellidos y nombres', ancho: 40 },
+  // Con las columnas de origen, la suma de anchos es la misma de antes (147): en el PDF la fecha y la cédula caben en una línea.
+  { titulo: 'Apellidos y nombres', ancho: 36 },
   { titulo: 'Cédula', ancho: 13 },
   { titulo: 'Entrada', ancho: 9 },
-  { titulo: 'Registró entrada', ancho: 28 },
+  { titulo: 'Registró entrada', ancho: 20 },
+  { titulo: 'Origen entrada', ancho: 10 },
   { titulo: 'Salida', ancho: 9 },
-  { titulo: 'Registró salida', ancho: 28 },
+  { titulo: 'Registró salida', ancho: 20 },
+  { titulo: 'Origen salida', ancho: 10 },
   { titulo: 'Estado', ancho: 14 },
 ];
 
@@ -102,6 +105,15 @@ function estado(entrada: boolean, salida: boolean, esHoy: boolean): string {
   if (salida) return 'Completa';
   if (entrada) return 'Sin salida';
   return esHoy ? 'Sin entrada' : 'Faltó';
+}
+
+/** Cómo se registró la marca. Por texto (no por tipo): así una corrección también se lee aunque el tipo cambie. */
+const ORIGENES: Record<string, string> = { MANUAL: 'Manual', MASIVA: 'Masiva', QR: 'QR', CORRECCION: 'Corrección' };
+
+/** Vacío sin marca; "Sin dato" en las marcas de antes de que se guardara el origen. */
+export function textoOrigen(marca: Date | null | undefined, origen: string | null | undefined): string {
+  if (!marca) return '';
+  return (origen && ORIGENES[origen]) || 'Sin dato';
 }
 
 type Persona = { nombres: string; apellidos: string } | null;
@@ -315,8 +327,10 @@ export class AsistenciaCdaService {
             o.cedula,
             a?.entradaEn ? horaEcuador(a.entradaEn) : '',
             nombre(a?.entradaPor ?? null) ?? '',
+            textoOrigen(a?.entradaEn, a?.entradaOrigen),
             a?.salidaEn ? horaEcuador(a.salidaEn) : '',
             nombre(a?.salidaPor ?? null) ?? '',
+            textoOrigen(a?.salidaEn, a?.salidaOrigen),
             estado(conEntrada, conSalida, dia === hoy),
           ],
           conEntrada,
