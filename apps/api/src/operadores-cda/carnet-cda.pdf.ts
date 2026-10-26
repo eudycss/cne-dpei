@@ -31,17 +31,19 @@ export interface DatosCarnet {
   token: string;
   /** JPEG descifrado o null si aún no sube su foto. */
   foto: Buffer | null;
+  /** Al reimprimir va la fecha de emisión original (la impresa identifica al carnet vigente). */
+  emitidoEn?: Date;
 }
 
 export async function carnetsPdf(carnets: DatosCarnet[], emitidoEn: Date): Promise<Buffer> {
   const { doc, terminado } = nuevoPdf('portrait');
   // Con hora: dos carnets de la misma persona emitidos el mismo día deben distinguirse a simple vista.
-  const emitido = fecha(emitidoEn).replace(',', '');
+  const emitido = (d: Date) => fecha(d).replace(',', '');
   for (const [i, c] of carnets.entries()) {
     // Las opciones de addPage reemplazan a las del documento: sin size, pdfkit usa Carta.
     if (i % POR_HOJA === 0) doc.addPage({ size: 'A4', layout: 'portrait', margin: 0 });
     const n = i % POR_HOJA;
-    dibujarCarnet(doc, c, X0 + (n % COLUMNAS) * ANCHO, Y0 + Math.floor(n / COLUMNAS) * ALTO, emitido);
+    dibujarCarnet(doc, c, X0 + (n % COLUMNAS) * ANCHO, Y0 + Math.floor(n / COLUMNAS) * ALTO, emitido(c.emitidoEn ?? emitidoEn));
   }
   doc.end();
   return terminado;

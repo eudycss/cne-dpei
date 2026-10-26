@@ -1133,6 +1133,8 @@ export interface CredencialQrCdaVigente {
   operadorId: string;
   /** ISO 8601 */
   emitidaEn: string;
+  /** Se puede reimprimir sin anularlo (los emitidos antes de esta función no). */
+  reimprimible: boolean;
 }
 
 /** Asistencia de un operador en un día (marcas en null = pendientes). */

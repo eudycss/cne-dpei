@@ -315,6 +315,18 @@ describe('AuditInterceptor', () => {
       { revocada: true },
     );
     expect(revocar.data).toMatchObject({ accion: 'CREDENCIAL_QR_CDA_REVOCAR', entidadId: OTRO });
+
+    const reimprimir = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/credenciales/reimprimir.pdf',
+      body: { operadorIds: [OTRO, { x: 1 }] },
+      user: ADMIN,
+    });
+    expect(reimprimir.data).toMatchObject({
+      accion: 'CREDENCIAL_QR_CDA_REIMPRIMIR',
+      entidad: 'credencial_qr_cda',
+      datosDespues: { cantidad: 1, operadorIds: [OTRO] },
+    });
   });
 
   it('enlace de foto: guarda la vigencia pero nunca el token; la subida pública guarda operador y versión del aviso', async () => {

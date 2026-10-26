@@ -10,12 +10,13 @@ import { ActasCdaService } from './actas-cda.service';
 import { AtrasosCdaController } from './atrasos-cda.controller';
 import { AtrasosCdaService } from './atrasos-cda.service';
 import { CredencialQrCdaController } from './credencial-qr-cda.controller';
+import { CifradoTokenCarnet } from './cifrado-token-carnet';
 import { CredencialQrCdaService } from './credencial-qr-cda.service';
 import { PermisosModulosModule } from '../permisos-modulos/permisos-modulos.module';
 
 @Module({
   imports: [PermisosModulosModule],
   controllers: [AtrasosCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController],
-  providers: [AtrasosCdaService, OperadoresCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService],
+  providers: [AtrasosCdaService, OperadoresCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet],
 })
 export class OperadoresCdaModule {}

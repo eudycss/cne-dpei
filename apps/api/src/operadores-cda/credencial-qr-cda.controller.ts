@@ -51,7 +51,7 @@ export class CredencialQrCdaController {
   }
 
   @Get('credenciales')
-  @RequierePermiso('cda.carnets.emitir')
+  @RequierePermiso('cda.carnets.emitir', 'cda.carnets.reimprimir')
   @UseGuards(PermisoGuard)
   @ApiOperation({ summary: 'Carnets vigentes (operador y fecha de emisión, sin token)' })
   vigentes() {
@@ -69,6 +69,18 @@ export class CredencialQrCdaController {
     @Body(new ZodValidationPipe(emitirCarnetsCdaSchema)) body: EmitirCarnetsCdaRequest,
   ) {
     enviarPdf(res, await this.credenciales.carnetsPdf(body.operadorIds, user.sub), 'carnets_cda.pdf');
+  }
+
+  @Post('credenciales/reimprimir.pdf')
+  @RequierePermiso('cda.carnets.reimprimir')
+  @UseGuards(PermisoGuard)
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Reimprime los carnets vigentes con el mismo código (no anula nada)' })
+  async reimprimir(
+    @Res() res: Response,
+    @Body(new ZodValidationPipe(emitirCarnetsCdaSchema)) body: EmitirCarnetsCdaRequest,
+  ) {
+    enviarPdf(res, await this.credenciales.reimprimirPdf(body.operadorIds), 'carnets_cda.pdf');
   }
 
   @Delete(':id/credencial')

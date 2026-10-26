@@ -72,7 +72,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [AtrasosCdaController, 'exportarPdf', 'cda.asistencia.exportar'],
   [CredencialQrCdaController, 'consultar', 'cda.asistencia.qr'],
   [CredencialQrCdaController, 'marcar', 'cda.asistencia.qr'],
-  [CredencialQrCdaController, 'vigentes', 'cda.carnets.emitir'],
+  [CredencialQrCdaController, 'reimprimir', 'cda.carnets.reimprimir'],
   [CredencialQrCdaController, 'carnets', 'cda.carnets.emitir'],
   [CredencialQrCdaController, 'revocar', 'cda.carnets.emitir'],
   [ActasCdaController, 'generar', 'cda.actas.gestionar'],
@@ -88,6 +88,12 @@ const rolesDe = (controlador: any, metodo: string) =>
   new Reflector().getAllAndOverride<string[]>(ROLES_KEY, [controlador.prototype[metodo], controlador]);
 
 describe('Acciones de CDAs en los endpoints', () => {
+  it('la lista de carnets vigentes la ven quienes emiten o reimprimen', () => {
+    const handler = CredencialQrCdaController.prototype.vigentes;
+    expect(Reflect.getMetadata(PERMISO_KEY, handler)).toEqual(['cda.carnets.emitir', 'cda.carnets.reimprimir']);
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(PermisoGuard);
+  });
+
   it.each(ENDPOINTS.map(([c, m, p]) => [`${c.name}.${m}`, c, m, p] as const))(
     '%s exige su acción con PermisoGuard',
     (_n, controlador, metodo, permiso) => {
