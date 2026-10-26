@@ -26,6 +26,11 @@ export function horaEcuador(momento: Date): string {
   return momento.toLocaleTimeString('es-EC', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
+/** AAAA-MM-DD + "HH:MM" en hora de Ecuador → instante. Ecuador continental es UTC-5 todo el año (sin horario de verano). */
+export function momentoEcuador(dia: string, hora: string): Date {
+  return new Date(`${dia}T${hora}:00-05:00`);
+}
+
 /** Días entre dos AAAA-MM-DD, ambos incluidos. */
 export function diasEntre(desde: string, hasta: string): string[] {
   const dias: string[] = [];

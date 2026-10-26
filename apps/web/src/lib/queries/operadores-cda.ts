@@ -4,6 +4,8 @@ import type {
   AsistenciaCdaDia,
   CambiarCargoOperadorCdaResult,
   ConfigAsistenciaCda,
+  CorregirAsistenciaCdaRequest,
+  CorregirAsistenciaCdaResult,
   ConsultaQrCda,
   CredencialQrCdaVigente,
   CrearOperadorCdaRequest,
@@ -81,6 +83,16 @@ export async function getAsistenciaCda(fecha: string, grupo: GrupoCda = 'OPERADO
 
 export async function marcarAsistenciaCda(operadorId: string, tipo: TipoMarcaAsistenciaCda): Promise<AsistenciaCdaFila> {
   const { data } = await api.post<AsistenciaCdaFila>(`/operadores-cda/${operadorId}/asistencia`, { tipo });
+  return data;
+}
+
+/** Corrige un día pasado (AAAA-MM-DD): horas "HH:MM" de Ecuador o null, con motivo. */
+export async function corregirAsistenciaCda(
+  operadorId: string,
+  fecha: string,
+  body: CorregirAsistenciaCdaRequest,
+): Promise<CorregirAsistenciaCdaResult> {
+  const { data } = await api.put<CorregirAsistenciaCdaResult>(`/operadores-cda/${operadorId}/asistencia/${fecha}`, body);
   return data;
 }
 

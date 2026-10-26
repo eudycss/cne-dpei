@@ -119,6 +119,27 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Corrección de un día pasado: qué había, qué quedó y por qué (la fila solo guarda lo nuevo).
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/[^/]+\/asistencia\/\d{4}-\d{2}-\d{2}$/,
+    accion: 'ASISTENCIA_CDA_CORREGIR',
+    entidad: 'operador_cda',
+    resumen: (res, req) => {
+      const r = (res ?? {}) as {
+        fila?: { entradaEn?: unknown; salidaEn?: unknown };
+        antes?: { entradaEn?: unknown; salidaEn?: unknown };
+      };
+      const iso = (v: unknown) => (typeof v === 'string' ? v.slice(0, 40) : null);
+      const motivo = (req.body as { motivo?: unknown } | undefined)?.motivo;
+      return {
+        fecha: String(req.params?.fecha ?? '').slice(0, 10),
+        antes: { entradaEn: iso(r.antes?.entradaEn), salidaEn: iso(r.antes?.salidaEn) },
+        despues: { entradaEn: iso(r.fila?.entradaEn), salidaEn: iso(r.fila?.salidaEn) },
+        motivo: typeof motivo === 'string' ? motivo.trim().slice(0, 300) : null,
+      };
+    },
+  },
   // Carnets QR: a quiénes se emitió (anula sus carnets anteriores) y las anulaciones.
   // El token nunca pasa por aquí: va solo dentro del PDF.
   {
