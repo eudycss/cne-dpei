@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Test } from '@nestjs/testing';
 import * as ExcelJS from 'exceljs';
 
-import { AsistenciaCdaService, contadoresDelDia } from './asistencia-cda.service';
+import { AsistenciaCdaService, contadoresDelDia, textoOrigen } from './asistencia-cda.service';
 import { PrismaService } from '../db/prisma.service';
 import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
 
@@ -226,6 +226,19 @@ describe('AsistenciaCdaService', () => {
     });
   });
 
+  it('textoOrigen: vacío sin marca, "Sin dato" en marcas viejas y cada origen con su nombre', () => {
+    const m = new Date('2026-10-21T13:00:00Z');
+    expect(textoOrigen(null, 'QR')).toBe('');
+    expect(textoOrigen(m, null)).toBe('Sin dato');
+    expect(textoOrigen(m, 'RARO')).toBe('Sin dato');
+    expect(['MANUAL', 'MASIVA', 'QR', 'CORRECCION'].map((o) => textoOrigen(m, o))).toEqual([
+      'Manual',
+      'Masiva',
+      'QR',
+      'Corrección',
+    ]);
+  });
+
   describe('exportar', () => {
     const leerExcel = async (contenido: Buffer) => {
       const wb = new ExcelJS.Workbook();
@@ -245,8 +258,10 @@ describe('AsistenciaCdaService', () => {
           fecha: new Date('2026-10-21T00:00:00Z'),
           entradaEn: new Date('2026-10-21T13:00:00Z'),
           entradaPor: ANA_TECNICA,
+          entradaOrigen: 'QR',
           salidaEn: new Date('2026-10-21T23:30:00Z'),
           salidaPor: ANA_TECNICA,
+          salidaOrigen: 'CORRECCION',
         },
       ]);
     };
@@ -271,15 +286,15 @@ describe('AsistenciaCdaService', () => {
       expect(ws.getCell('A5').value).toBe('Reporte de asistencia — Operadores CDA');
       expect(String(ws.getCell('A7').value)).toContain('Del 20/10/2026 al 22/10/2026');
       expect(ws.getRow(FILA_ENCABEZADOS_EXCEL).values).toEqual([
-        undefined, 'Fecha', 'N.º', 'Apellidos y nombres', 'Cédula', 'Entrada', 'Registró entrada', 'Salida', 'Registró salida', 'Estado',
+        undefined, 'Fecha', 'N.º', 'Apellidos y nombres', 'Cédula', 'Entrada', 'Registró entrada', 'Origen entrada', 'Salida', 'Registró salida', 'Origen salida', 'Estado',
       ]);
       const filas = datos(ws);
       expect(filas).toHaveLength(4);
       expect(filas[1]).toEqual([
-        undefined, '2026-10-21', 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa',
+        undefined, '2026-10-21', 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', 'QR', '18:30', 'Ana Técnica', 'Corrección', 'Completa',
       ]);
       // El 22 es "hoy" (AHORA): sin entrada todavía no es falta.
-      expect(filas.map((f) => [f[1], f[2], f[9]])).toEqual([
+      expect(filas.map((f) => [f[1], f[2], f[11]])).toEqual([
         ['2026-10-20', 1, 'Faltó'],
         ['2026-10-21', 1, 'Completa'],
         ['2026-10-22', 1, 'Sin entrada'],
@@ -311,7 +326,11 @@ describe('AsistenciaCdaService', () => {
       const ws = wb.worksheets[0];
       expect(ws.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Operadores 1/2 · Entrada 1/2 · Salida 0/2');
       const filas = datos(ws);
-      expect(filas.slice(0, 2).map((f) => f[8])).toEqual(['Sin salida', 'Faltó']);
+      expect(filas.slice(0, 2).map((f) => f[10])).toEqual(['Sin salida', 'Faltó']);
+      // Marca anterior a la columna de origen: "Sin dato"; sin salida: vacío.
+      expect(filas[0].slice(6, 10)).toEqual(['Sin dato', '', '', '']);
+      // Los títulos largos ("Origen entrada") pasan a dos líneas en vez de cortarse.
+      expect(ws.getCell(FILA_ENCABEZADOS_EXCEL, 7).alignment).toMatchObject({ wrapText: true });
       expect(ws.getCell(FILA_ENCABEZADOS_EXCEL + 1, 2).fill).toBeUndefined();
       expect(filas[5]).toEqual([undefined, 2, 'RUIZ MORA JUAN', '1002003000', '']);
     });
@@ -354,7 +373,7 @@ describe('AsistenciaCdaService', () => {
       expect(dia21.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · Operadores 1/1 · Entrada 1/1 · Salida 1/1');
       // La fila del día, una en blanco y el título del anexo sin tabla.
       expect(datos(dia21)).toEqual([
-        [undefined, 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', '18:30', 'Ana Técnica', 'Completa'],
+        [undefined, 1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '08:00', 'Ana Técnica', 'QR', '18:30', 'Ana Técnica', 'Corrección', 'Completa'],
         undefined,
         [undefined, 'Sin registro de entrada / Faltaron: ninguno'],
       ]);
