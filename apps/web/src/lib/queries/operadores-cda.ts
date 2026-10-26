@@ -138,6 +138,11 @@ export function pedirCarnetsCda(operadorIds: string[]) {
   return api.post<Blob>('/operadores-cda/credenciales/carnets.pdf', { operadorIds }, { responseType: 'blob' });
 }
 
+/** Reimprime los carnets vigentes con el mismo código: no anula nada. */
+export function reimprimirCarnetsCda(operadorIds: string[]) {
+  return api.post<Blob>('/operadores-cda/credenciales/reimprimir.pdf', { operadorIds }, { responseType: 'blob' });
+}
+
 export async function anularCredencialCda(operadorId: string): Promise<void> {
   await api.delete(`/operadores-cda/${operadorId}/credencial`);
 }

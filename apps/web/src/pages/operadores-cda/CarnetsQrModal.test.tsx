@@ -13,6 +13,12 @@ vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), delete: vi
 vi.mock('../../lib/queries/custodia', () => ({ guardarArchivo: vi.fn() }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
 
+// Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
+const permisos = { actuales: new Set<string>(['cda.carnets.emitir', 'cda.carnets.reimprimir']) };
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
+}));
+
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const deleteMock = (api as unknown as { delete: ReturnType<typeof vi.fn> }).delete;
@@ -44,6 +50,7 @@ function renderModal() {
 describe('CarnetsQrModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    permisos.actuales = new Set(['cda.carnets.emitir', 'cda.carnets.reimprimir']);
     // Luis ya tiene carnet.
     getMock.mockResolvedValue({ data: [{ operadorId: 'l', emitidaEn: '2026-10-20T15:00:00Z' }] });
     postMock.mockResolvedValue({ data: new Blob(['%PDF']) });
@@ -129,5 +136,60 @@ describe('CarnetsQrModal', () => {
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/operadores-cda/l/credencial'));
     expect(sileo.success).toHaveBeenCalledWith({ title: 'Carnet anulado', description: 'VEGA LUIS' });
     confirmar.mockRestore();
+  });
+
+  describe('reimprimir (mismo código, sin anular)', () => {
+    beforeEach(() => {
+      getMock.mockResolvedValue({ data: [{ operadorId: 'l', emitidaEn: '2026-10-20T15:00:00Z', reimprimible: true }] });
+    });
+
+    it('reimprime al elegido sin pedir confirmación ni anular, y guarda el PDF', async () => {
+      const confirmar = vi.spyOn(window, 'confirm');
+      renderModal();
+      await screen.findByText('Carnet del 20/10/2026 10:00');
+      await userEvent.click(screen.getByRole('button', { name: 'Solo reimprimibles' }));
+      expect(screen.getByRole('checkbox', { name: 'VEGA LUIS' })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'ANDRADE ANA' })).not.toBeChecked();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Reimprimir 1 (mismo código)' }));
+
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith('/operadores-cda/credenciales/reimprimir.pdf', { operadorIds: ['l'] }, {
+          responseType: 'blob',
+        }),
+      );
+      expect(confirmar).not.toHaveBeenCalled();
+      expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), expect.stringMatching(/^carnets_cda_reimpresos_/));
+      confirmar.mockRestore();
+    });
+
+    it('si algún elegido no se puede reimprimir, el botón se desactiva y dice quién y por qué', async () => {
+      getMock.mockResolvedValue({ data: [{ operadorId: 'l', emitidaEn: '2026-10-20T15:00:00Z', reimprimible: false }] });
+      renderModal();
+      expect(await screen.findByText(/no reimprimible \(reemitir una vez\)/)).toBeInTheDocument();
+      // Ana (sin carnet) viene elegida por defecto.
+      const boton = screen.getByRole('button', { name: 'Reimprimir 1 (mismo código)' });
+      expect(boton).toBeDisabled();
+      expect(screen.getByText(/No se puede reimprimir: ANDRADE ANA/)).toBeInTheDocument();
+    });
+
+    it('quien solo puede reimprimir no ve Generar ni Anular, y empieza sin nadie elegido', async () => {
+      permisos.actuales = new Set(['cda.carnets.reimprimir']);
+      renderModal();
+      await screen.findByText('Carnet del 20/10/2026 10:00');
+      expect(screen.queryByRole('button', { name: /^Generar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Anular carnet/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Solo sin carnet' })).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'ANDRADE ANA' })).not.toBeChecked();
+      expect(screen.getByRole('button', { name: 'Reimprimir 0 (mismo código)' })).toBeDisabled();
+    });
+
+    it('quien solo emite no ve Reimprimir', async () => {
+      permisos.actuales = new Set(['cda.carnets.emitir']);
+      renderModal();
+      await screen.findByText('Carnet del 20/10/2026 10:00');
+      expect(screen.queryByRole('button', { name: /^Reimprimir/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Generar 1 carnet' })).toBeInTheDocument();
+    });
   });
 });

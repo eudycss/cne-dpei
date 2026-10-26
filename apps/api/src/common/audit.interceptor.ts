@@ -132,6 +132,18 @@ const AUDIT_TABLE: Array<{
       return { cantidad: operadorIds.length, operadorIds };
     },
   },
+  // Reimprimir: el mismo código queda en otro papel (no anula nada). A quiénes.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/credenciales\/reimprimir\.pdf$/,
+    accion: 'CREDENCIAL_QR_CDA_REIMPRIMIR',
+    entidad: 'credencial_qr_cda',
+    resumen: (_res, req) => {
+      const ids = (req.body as { operadorIds?: unknown } | undefined)?.operadorIds;
+      const operadorIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string').map((x) => x.slice(0, 40)).slice(0, 200) : [];
+      return { cantidad: operadorIds.length, operadorIds };
+    },
+  },
   {
     method: 'DELETE',
     pathRegex: /^\/operadores-cda\/[^/]+\/credencial$/,

@@ -9,6 +9,7 @@ export const PERMISO_IDS = [
   'cda.actas.gestionar',
   'cda.fotos.enlace',
   'cda.carnets.emitir',
+  'cda.carnets.reimprimir',
 ] as const;
 export type PermisoId = (typeof PERMISO_IDS)[number];
 
@@ -32,6 +33,8 @@ export const PERMISOS: readonly PermisoAccion[] = [
   { id: 'cda.fotos.enlace', modulo: 'operadores-cda', etiqueta: 'Crear enlaces para subir fotos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   // Emitir un carnet anula el anterior: de fábrica, solo el administrador.
   { id: 'cda.carnets.emitir', modulo: 'operadores-cda', etiqueta: 'Emitir o anular carnets QR', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
+  // Reimprimir no anula: el mismo código queda en dos papeles. De fábrica, solo el administrador.
+  { id: 'cda.carnets.reimprimir', modulo: 'operadores-cda', etiqueta: 'Reimprimir carnets QR vigentes (sin anularlos)', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
 ];
 
 export function esPermisoId(v: unknown): v is PermisoId {

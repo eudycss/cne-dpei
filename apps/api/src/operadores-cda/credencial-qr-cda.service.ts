@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import type {
   AsistenciaCdaFila,
@@ -11,6 +11,7 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { carnetsPdf } from './carnet-cda.pdf';
+import { CifradoTokenCarnet } from './cifrado-token-carnet';
 import { AsistenciaCdaService } from './asistencia-cda.service';
 import { diaEcuador, fechaDb, horaEcuador } from './dia-ecuador';
 import { hashToken } from './foto-cda.service';
@@ -53,11 +54,14 @@ interface CredencialEmitida {
   token: string;
   /** Clave de la foto en Storage (para el carnet). */
   fotoKey: string | null;
+  /** Solo al reimprimir: la fecha de emisión original. */
+  emitidaEn?: Date;
 }
 
 /**
- * Carnet QR de los operadores CDA. En la BD solo queda el SHA-256 del token:
- * el token existe en claro únicamente dentro del PDF que se imprime al emitir.
+ * Carnet QR de los operadores CDA. En la BD queda el SHA-256 del token (para
+ * reconocerlo) y, si hay CARNET_TOKEN_KEY, el token cifrado (para reimprimirlo
+ * sin anularlo); en claro solo existe dentro del PDF que se imprime.
  * Escanear no marca nada: `consultar` devuelve a quién pertenece (con su foto
  * para confirmar que es la persona) y `marcar` registra con el mismo servicio
  * que el check manual.
@@ -70,6 +74,7 @@ export class CredencialQrCdaService {
     private readonly prisma: PrismaService,
     private readonly asistencia: AsistenciaCdaService,
     private readonly storage: StorageService,
+    private readonly cifrado: CifradoTokenCarnet,
   ) {}
 
   /**
@@ -87,26 +92,79 @@ export class CredencialQrCdaService {
       token: generarTokenCredencial(),
       fotoKey: o.fotoKey,
     }));
+    const pdf = await this.armarPdf(emitidas);
+    // Se guarda solo con el PDF listo: si algo falla antes, los carnets vigentes
+    // siguen sirviendo (si no, quedarían anulados y los nuevos sin imprimir).
+    await this.guardar(emitidas, usuarioId);
+    return pdf;
+  }
 
+  /**
+   * Vuelve a imprimir el carnet vigente de cada uno, con el mismo código y su
+   * fecha de emisión: nada se anula. El nombre, el cargo y la foto son los de
+   * hoy (sirve tras un cambio de cargo). Si alguno no se puede, no sale ninguno.
+   */
+  async reimprimirPdf(operadorIds: string[]): Promise<Buffer> {
+    if (!this.cifrado.disponible) {
+      throw new ServiceUnavailableException('Reimprimir carnets no está configurado en el servidor');
+    }
+    const ids = [...new Set(operadorIds)];
+    const operadores = await this.prisma.operadorCda.findMany({
+      where: { id: { in: ids }, activo: true },
+      orderBy: { apellidosNombres: 'asc' },
+      include: { credenciales: { where: { revocadaEn: null }, take: 1 } },
+    });
+    if (operadores.length === 0) throw new NotFoundException('Ninguna de las personas elegidas está activa');
+    if (operadores.length < ids.length) {
+      throw new NotFoundException(
+        `${ids.length - operadores.length} de las personas elegidas ya no está activa: recargue la lista`,
+      );
+    }
+
+    const emitidas: CredencialEmitida[] = [];
+    const sinCarnet: string[] = [];
+    const noReimprimibles: string[] = [];
+    for (const o of operadores) {
+      const c = o.credenciales[0];
+      if (!c) {
+        sinCarnet.push(o.apellidosNombres);
+        continue;
+      }
+      const token = c.tokenCifrado ? this.cifrado.descifrar(c.tokenCifrado, o.id) : null;
+      // Además del cifrado autenticado, el token tiene que ser el del hash vigente.
+      if (!token || hashToken(token) !== c.tokenHash) {
+        noReimprimibles.push(o.apellidosNombres);
+        continue;
+      }
+      emitidas.push({ operador: toOperadorCdaDto(o), token, fotoKey: o.fotoKey, emitidaEn: c.emitidaEn });
+    }
+    if (sinCarnet.length) throw new ConflictException(`Sin carnet vigente (emítalo primero): ${sinCarnet.join(', ')}`);
+    if (noReimprimibles.length) {
+      throw new ConflictException(
+        `Estos carnets no se pueden reimprimir (son de antes de esta función o de otra clave del servidor); ` +
+          `emítalos de nuevo una última vez: ${noReimprimibles.join(', ')}`,
+      );
+    }
+    return this.armarPdf(emitidas);
+  }
+
+  private async armarPdf(emitidas: CredencialEmitida[]): Promise<Buffer> {
     const fotos: (Buffer | null)[] = [];
     for (let i = 0; i < emitidas.length; i += FOTOS_EN_PARALELO) {
       const lote = emitidas.slice(i, i + FOTOS_EN_PARALELO);
       fotos.push(...(await Promise.all(lote.map((e) => this.fotoOpcional(e)))));
     }
-    const pdf = await carnetsPdf(
+    return carnetsPdf(
       emitidas.map((e, i) => ({
         grupo: TEXTOS_GRUPO[e.operador.grupo].cargo,
         nombre: e.operador.apellidosNombres,
         cargo: e.operador.cargo.split(' - ')[0],
         token: e.token,
         foto: fotos[i],
+        emitidoEn: e.emitidaEn,
       })),
       new Date(),
     );
-    // Se guarda solo con el PDF listo: si algo falla antes, los carnets vigentes
-    // siguen sirviendo (si no, quedarían anulados y los nuevos sin imprimir).
-    await this.guardar(emitidas, usuarioId);
-    return pdf;
   }
 
   private async fotoOpcional(e: CredencialEmitida): Promise<Buffer | null> {
@@ -132,6 +190,7 @@ export class CredencialQrCdaService {
           data: emitidas.map((e) => ({
             operadorId: e.operador.id,
             tokenHash: hashToken(e.token),
+            tokenCifrado: this.cifrado.cifrar(e.token, e.operador.id),
             emitidaEn: ahora,
             emitidaPorId: usuarioId,
           })),
@@ -149,9 +208,14 @@ export class CredencialQrCdaService {
   async vigentes(): Promise<CredencialQrCdaVigente[]> {
     const filas = await this.prisma.credencialQrCda.findMany({
       where: { revocadaEn: null },
-      select: { operadorId: true, emitidaEn: true },
+      select: { operadorId: true, emitidaEn: true, tokenCifrado: true },
     });
-    return filas.map((f) => ({ operadorId: f.operadorId, emitidaEn: f.emitidaEn.toISOString() }));
+    const reimprimir = this.cifrado.disponible;
+    return filas.map((f) => ({
+      operadorId: f.operadorId,
+      emitidaEn: f.emitidaEn.toISOString(),
+      reimprimible: reimprimir && f.tokenCifrado !== null,
+    }));
   }
 
   /** Anula el carnet vigente (perdido o robado) sin emitir otro. */

@@ -1,9 +1,10 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { tokenCredencialQrCdaSchema } from '@cne/shared-validation';
 
 import { CredencialQrCdaService, MIN_MINUTOS_SALIDA_QR, generarTokenCredencial } from './credencial-qr-cda.service';
 import { hashToken } from './foto-cda.service';
 import * as carnetPdf from './carnet-cda.pdf';
+import { CifradoTokenCarnet } from './cifrado-token-carnet';
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -37,13 +38,15 @@ describe('CredencialQrCdaService', () => {
   };
   const asistencia = { marcar: jest.fn() };
   const storage = { readDecrypted: jest.fn() };
+  const cifrado = new CifradoTokenCarnet({ get: () => 'c'.repeat(64) } as never);
+  const sinClave = new CifradoTokenCarnet({ get: () => undefined } as never);
   let service: CredencialQrCdaService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers({ now: AHORA, doNotFake: ['nextTick', 'setImmediate'] });
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma));
-    service = new CredencialQrCdaService(prisma as never, asistencia as never, storage as never);
+    service = new CredencialQrCdaService(prisma as never, asistencia as never, storage as never, cifrado);
   });
 
   afterEach(() => jest.useRealTimers());
@@ -71,7 +74,15 @@ describe('CredencialQrCdaService', () => {
         data: { revocadaEn: AHORA, motivoRevocacion: 'REEMITIDA' },
       });
       const [guardado] = prisma.credencialQrCda.createMany.mock.calls[0][0].data;
-      expect(guardado).toEqual({ operadorId: OP, tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), emitidaEn: AHORA, emitidaPorId: USR });
+      expect(guardado).toEqual({
+        operadorId: OP,
+        tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        tokenCifrado: expect.stringMatching(/^v1:/),
+        emitidaEn: AHORA,
+        emitidaPorId: USR,
+      });
+      // El cifrado guardado es el mismo token del hash (el que va impreso).
+      expect(hashToken(cifrado.descifrar(guardado.tokenCifrado, OP)!)).toBe(guardado.tokenHash);
     });
 
     it('si el PDF falla, no se anula ni se guarda nada (los carnets vigentes siguen sirviendo)', async () => {
@@ -106,6 +117,81 @@ describe('CredencialQrCdaService', () => {
       expect(storage.readDecrypted).toHaveBeenCalledTimes(1);
       expect(prisma.credencialQrCda.createMany.mock.calls[0][0].data).toHaveLength(2);
     });
+  });
+
+  describe('reimprimirPdf (sin anular)', () => {
+    const vigente = (over: Record<string, unknown> = {}) => ({
+      tokenHash: hashToken(TOKEN),
+      tokenCifrado: cifrado.cifrar(TOKEN, OP),
+      emitidaEn: new Date('2026-10-20T15:00:00Z'),
+      ...over,
+    });
+
+    it('reimprime con el mismo código y la fecha de emisión original, sin anular ni guardar nada', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ fotoKey: null, credenciales: [vigente()] })]);
+      const espia = jest.spyOn(carnetPdf, 'carnetsPdf');
+
+      const pdf = await service.reimprimirPdf([OP, OP]);
+
+      expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      expect(prisma.operadorCda.findMany.mock.calls[0][0]).toMatchObject({
+        where: { id: { in: [OP] }, activo: true },
+        include: { credenciales: { where: { revocadaEn: null }, take: 1 } },
+      });
+      expect(espia.mock.calls[0][0][0]).toMatchObject({ token: TOKEN, emitidoEn: new Date('2026-10-20T15:00:00Z') });
+      expect(prisma.credencialQrCda.updateMany).not.toHaveBeenCalled();
+      expect(prisma.credencialQrCda.createMany).not.toHaveBeenCalled();
+      espia.mockRestore();
+    });
+
+    it('un carnet emitido antes (sin cifrado), de otra clave o que no coincide con el hash: 409 y no sale ninguno', async () => {
+      const otraClave = new CifradoTokenCarnet({ get: () => 'd'.repeat(64) } as never);
+      const casos = [
+        vigente({ tokenCifrado: null }),
+        vigente({ tokenCifrado: otraClave.cifrar(TOKEN, OP) }),
+        vigente({ tokenHash: hashToken('CDA1OTRO') }),
+      ];
+      for (const c of casos) {
+        prisma.operadorCda.findMany.mockResolvedValueOnce([
+          operador({ id: 'o2', apellidosNombres: 'BUENO', credenciales: [vigente({ tokenCifrado: cifrado.cifrar(TOKEN, 'o2') })] }),
+          operador({ credenciales: [c] }),
+        ]);
+        // Solo se nombra al que no se puede; el otro sí se podía, pero no sale nadie.
+        await expect(service.reimprimirPdf([OP, 'o2'])).rejects.toThrow(/una última vez: PÉREZ LÓPEZ ANA MARÍA$/);
+      }
+    });
+
+    it('si alguno de los pedidos ya no está activo, no sale ninguno (404)', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ credenciales: [vigente()] })]);
+      await expect(service.reimprimirPdf([OP, 'oculto'])).rejects.toThrow('1 de las personas elegidas ya no está activa');
+    });
+
+    it('sin carnet vigente: 409; nadie activo: 404', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador({ credenciales: [] })]);
+      await expect(service.reimprimirPdf([OP])).rejects.toThrow('Sin carnet vigente (emítalo primero): PÉREZ');
+      prisma.operadorCda.findMany.mockResolvedValueOnce([]);
+      await expect(service.reimprimirPdf([OP])).rejects.toThrow(NotFoundException);
+    });
+
+    it('sin CARNET_TOKEN_KEY en el servidor: 503 sin tocar la BD', async () => {
+      const s = new CredencialQrCdaService(prisma as never, asistencia as never, storage as never, sinClave);
+      await expect(s.reimprimirPdf([OP])).rejects.toThrow(ServiceUnavailableException);
+      expect(prisma.operadorCda.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('vigentes dice cuáles se pueden reimprimir (sin clave, ninguno)', async () => {
+    const filas = [
+      { operadorId: OP, emitidaEn: new Date('2026-10-20T15:00:00Z'), tokenCifrado: 'v1:x' },
+      { operadorId: 'o2', emitidaEn: new Date('2026-10-19T15:00:00Z'), tokenCifrado: null },
+    ];
+    prisma.credencialQrCda.findMany.mockResolvedValue(filas);
+    expect(await service.vigentes()).toEqual([
+      { operadorId: OP, emitidaEn: '2026-10-20T15:00:00.000Z', reimprimible: true },
+      { operadorId: 'o2', emitidaEn: '2026-10-19T15:00:00.000Z', reimprimible: false },
+    ]);
+    const s = new CredencialQrCdaService(prisma as never, asistencia as never, storage as never, sinClave);
+    expect((await s.vigentes()).map((v) => v.reimprimible)).toEqual([false, false]);
   });
 
   describe('consultar', () => {

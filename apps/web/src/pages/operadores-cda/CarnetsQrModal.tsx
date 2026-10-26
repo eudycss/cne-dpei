@@ -4,7 +4,13 @@ import { sileo } from 'sileo';
 import type { OperadorCda } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
-import { anularCredencialCda, getCredencialesVigentesCda, pedirCarnetsCda } from '../../lib/queries/operadores-cda';
+import {
+  anularCredencialCda,
+  getCredencialesVigentesCda,
+  pedirCarnetsCda,
+  reimprimirCarnetsCda,
+} from '../../lib/queries/operadores-cda';
+import { useModulos } from '../../lib/useModulos';
 import { hoyEcuador, mensajeError } from './utils';
 import { useGrupoCda } from './grupo';
 
@@ -35,22 +41,35 @@ function listaNombres(nombres: string[]): string {
 }
 
 /**
- * Emisión de carnets QR (solo administrador). Generar el PDF emite carnets
- * nuevos: el código anterior de esas personas deja de servir, por eso se
- * avisa cuántos ya tenían uno. "Anular" es para un carnet perdido.
+ * Carnets QR. Generar el PDF emite carnets nuevos: el código anterior de esas
+ * personas deja de servir, por eso se avisa cuántos ya tenían uno. "Anular" es
+ * para un carnet perdido. Reimprimir (acción aparte) vuelve a imprimir el
+ * carnet vigente con el mismo código, sin anular nada.
  */
 export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCda[]; onClose: () => void }) {
   const qc = useQueryClient();
   const { plural } = useGrupoCda();
+  const { puede } = useModulos();
+  const puedeEmitir = puede('cda.carnets.emitir');
+  const puedeReimprimir = puede('cda.carnets.reimprimir');
   const vigentes = useQuery({ queryKey: CLAVE, queryFn: getCredencialesVigentesCda });
   const emitidoEn = useMemo(
     () => new Map((vigentes.data ?? []).map((v) => [v.operadorId, v.emitidaEn])),
     [vigentes.data],
   );
-  // Por defecto, los que aún no tienen carnet (los primeros en imprimirse).
+  const reimprimibles = useMemo(
+    () => new Set((vigentes.data ?? []).filter((v) => v.reimprimible).map((v) => v.operadorId)),
+    [vigentes.data],
+  );
+  // Por defecto, los que aún no tienen carnet (los primeros en imprimirse); quien solo reimprime empieza sin nadie.
   const [elegidos, setElegidos] = useState<ReadonlySet<string> | null>(null);
-  const seleccion = elegidos ?? new Set(operadores.filter((o) => !emitidoEn.has(o.id)).map((o) => o.id));
-  const reemplazados = operadores.filter((o) => seleccion.has(o.id) && emitidoEn.has(o.id)).map((o) => o.apellidosNombres);
+  const seleccion =
+    elegidos ?? new Set(puedeEmitir ? operadores.filter((o) => !emitidoEn.has(o.id)).map((o) => o.id) : []);
+  const elegidosEnOrden = operadores.filter((o) => seleccion.has(o.id));
+  const noReimprimibles = elegidosEnOrden.filter((o) => !reimprimibles.has(o.id)).map((o) => o.apellidosNombres);
+  const reemplazados = operadores
+    .filter((o) => seleccion.has(o.id) && emitidoEn.has(o.id))
+    .map((o) => o.apellidosNombres);
   const reemplazan = reemplazados.length;
   const { descargando, descargar } = useDescargaPdf('No se pudieron generar los carnets');
 
@@ -92,6 +111,12 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
     qc.invalidateQueries({ queryKey: CLAVE });
   }
 
+  async function reimprimir() {
+    const ids = elegidosEnOrden.map((o) => o.id);
+    if (ids.length === 0 || ids.length > MAX_CARNETS || noReimprimibles.length > 0) return;
+    await descargar('reimprimir', () => reimprimirCarnetsCda(ids), `carnets_cda_reimpresos_${hoyEcuador()}.pdf`);
+  }
+
   function confirmarAnular(o: OperadorCda) {
     if (window.confirm(`¿Anular el carnet de ${o.apellidosNombres}? Su código dejará de registrar asistencia.`)) {
       anular.mutate(o);
@@ -102,7 +127,12 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
 
   return (
     <Modal labelledBy="carnets-qr-titulo" onClose={onClose} maxWidth={640}>
-      <form className="ocda-modal" onSubmit={generar} aria-busy={ocupado || vigentes.isLoading}>
+      {/* Enter en el formulario emite solo si se puede emitir (si no, no hace nada). */}
+      <form
+        className="ocda-modal"
+        onSubmit={puedeEmitir ? generar : (e) => e.preventDefault()}
+        aria-busy={ocupado || vigentes.isLoading}
+      >
         <div className="ocda-modal-cabecera">
           <span className="ocda-modal-icono" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
@@ -123,24 +153,41 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
             No se pudo saber quién ya tiene carnet.
           </div>
         )}
-        {reemplazan > 0 && (
+        {puedeEmitir && reemplazan > 0 && (
           <div className="banner" role="status">
-            {reemplazan === 1 ? '1 persona elegida ya tiene carnet' : `${reemplazan} personas elegidas ya tienen carnet`} (
-            {listaNombres(reemplazados)}): al generar, su carnet anterior deja de funcionar.
+            {reemplazan === 1
+              ? '1 persona elegida ya tiene carnet'
+              : `${reemplazan} personas elegidas ya tienen carnet`}{' '}
+            ({listaNombres(reemplazados)}): al generar, su carnet anterior deja de funcionar.
           </div>
         )}
 
         <div className="ocda-modal-acciones" style={{ justifyContent: 'flex-start' }}>
-          <button type="button" className="ocda-btn-texto" onClick={() => setElegidos(new Set(operadores.map((o) => o.id)))}>
-            Elegir todos
-          </button>
           <button
             type="button"
             className="ocda-btn-texto"
-            onClick={() => setElegidos(new Set(operadores.filter((o) => !emitidoEn.has(o.id)).map((o) => o.id)))}
+            onClick={() => setElegidos(new Set(operadores.map((o) => o.id)))}
           >
-            Solo sin carnet
+            Elegir todos
           </button>
+          {puedeEmitir && (
+            <button
+              type="button"
+              className="ocda-btn-texto"
+              onClick={() => setElegidos(new Set(operadores.filter((o) => !emitidoEn.has(o.id)).map((o) => o.id)))}
+            >
+              Solo sin carnet
+            </button>
+          )}
+          {puedeReimprimir && (
+            <button
+              type="button"
+              className="ocda-btn-texto"
+              onClick={() => setElegidos(new Set(operadores.filter((o) => reimprimibles.has(o.id)).map((o) => o.id)))}
+            >
+              Solo reimprimibles
+            </button>
+          )}
           <button type="button" className="ocda-btn-texto" onClick={() => setElegidos(new Set())}>
             Ninguno
           </button>
@@ -156,8 +203,13 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
                   <input type="checkbox" checked={seleccion.has(o.id)} onChange={() => alternar(o.id)} />
                   <span>{o.apellidosNombres}</span>
                 </label>
-                <span className="ocda-form-ayuda">{emitido ? `Carnet del ${fechaHora(emitido)}` : 'Sin carnet'}</span>
-                {emitido && (
+                <span className="ocda-form-ayuda">
+                  <span>{emitido ? `Carnet del ${fechaHora(emitido)}` : 'Sin carnet'}</span>
+                  {emitido && puedeReimprimir && !reimprimibles.has(o.id) && (
+                    <span> · no reimprimible (reemitir una vez)</span>
+                  )}
+                </span>
+                {emitido && puedeEmitir && (
                   <button
                     type="button"
                     className="ocda-btn-texto peligro"
@@ -178,6 +230,18 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
             Se pueden generar hasta {MAX_CARNETS} carnets a la vez; elija menos personas.
           </div>
         )}
+        {puedeReimprimir && (
+          <p className="ocda-form-ayuda">
+            Reimprimir no anula nada: el mismo código queda en dos papeles. Si un carnet se perdió, use “Anular” y emita
+            uno nuevo.
+          </p>
+        )}
+        {puedeReimprimir && noReimprimibles.length > 0 && seleccion.size > 0 && (
+          <p className="ocda-form-ayuda" id="reimprimir-motivo" role="status">
+            No se puede reimprimir: {listaNombres(noReimprimibles)}. Sus carnets son de antes de esta función o no
+            tienen carnet; para reimprimirlos más adelante, emítalos de nuevo una vez.
+          </p>
+        )}
         <p role="status" className="sr-only">
           {ocupado ? 'Generando carnets…' : ''}
         </p>
@@ -185,9 +249,34 @@ export function CarnetsQrModal({ operadores, onClose }: { operadores: OperadorCd
           <button type="button" className="btn secondary" onClick={onClose}>
             Cerrar
           </button>
-          <button type="submit" className="btn" disabled={ocupado || seleccion.size === 0 || seleccion.size > MAX_CARNETS || vigentes.isLoading}>
-            {ocupado ? 'Generando…' : `Generar ${seleccion.size} carnet${seleccion.size === 1 ? '' : 's'}`}
-          </button>
+          {puedeReimprimir && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={reimprimir}
+              disabled={
+                ocupado ||
+                seleccion.size === 0 ||
+                seleccion.size > MAX_CARNETS ||
+                vigentes.isLoading ||
+                noReimprimibles.length > 0
+              }
+              aria-describedby={noReimprimibles.length > 0 && seleccion.size > 0 ? 'reimprimir-motivo' : undefined}
+            >
+              {descargando === 'reimprimir' ? 'Reimprimiendo…' : `Reimprimir ${seleccion.size} (mismo código)`}
+            </button>
+          )}
+          {puedeEmitir && (
+            <button
+              type="submit"
+              className="btn"
+              disabled={ocupado || seleccion.size === 0 || seleccion.size > MAX_CARNETS || vigentes.isLoading}
+            >
+              {descargando === 'carnets'
+                ? 'Generando…'
+                : `Generar ${seleccion.size} carnet${seleccion.size === 1 ? '' : 's'}`}
+            </button>
+          )}
         </div>
       </form>
     </Modal>

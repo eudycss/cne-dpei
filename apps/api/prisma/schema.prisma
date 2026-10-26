@@ -823,6 +823,8 @@ model CredencialQrCda {
   id               String    @id @default(uuid()) @db.Uuid
   operadorId       String    @map("operador_id") @db.Uuid
   tokenHash        String    @unique @map("token_hash") @db.VarChar(64)
+  /// Token cifrado (AES-256-GCM con CARNET_TOKEN_KEY) para reimprimir sin anular. Null = emitido antes o sin clave.
+  tokenCifrado     String?   @map("token_cifrado") @db.VarChar(120)
   emitidaEn        DateTime  @default(now()) @map("emitida_en") @db.Timestamptz(6)
   emitidaPorId     String?   @map("emitida_por_id") @db.Uuid
   revocadaEn       DateTime? @map("revocada_en") @db.Timestamptz(6)
