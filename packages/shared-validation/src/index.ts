@@ -711,6 +711,30 @@ export const diaAsistenciaSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
 
+const horaMarcaSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (use HH:MM, 00:00 a 23:59)');
+
+/**
+ * Corrección de un día pasado: deja la entrada y la salida como se indican
+ * (null = sin marca), con un motivo que queda en la bitácora.
+ */
+export const corregirAsistenciaCdaSchema = z
+  .object({
+    entrada: horaMarcaSchema.nullable(),
+    salida: horaMarcaSchema.nullable(),
+    motivo: z
+      .string({ required_error: 'Indique el motivo' })
+      .trim()
+      .min(10, 'Explique el motivo (mínimo 10 caracteres)')
+      .max(300, 'Máximo 300 caracteres'),
+  })
+  .strict()
+  .refine((c) => !c.salida || c.entrada, { message: 'Sin entrada no puede haber salida', path: ['salida'] })
+  .refine((c) => !c.salida || !c.entrada || c.salida > c.entrada, {
+    message: 'La salida debe ser posterior a la entrada',
+    path: ['salida'],
+  });
+export type CorregirAsistenciaCdaInput = z.infer<typeof corregirAsistenciaCdaSchema>;
+
 /** Máximo de días del reporte de atrasos (igual que el Excel de asistencia). */
 export const MAX_DIAS_REPORTE_ASISTENCIA = 120;
 

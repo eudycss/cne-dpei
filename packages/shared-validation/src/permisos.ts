@@ -6,6 +6,7 @@ export const PERMISO_IDS = [
   'cda.asistencia.marcar',
   'cda.asistencia.qr',
   'cda.asistencia.exportar',
+  'cda.asistencia.corregir',
   'cda.actas.gestionar',
   'cda.fotos.enlace',
   'cda.carnets.emitir',
@@ -28,6 +29,8 @@ export const PERMISOS: readonly PermisoAccion[] = [
   { id: 'cda.asistencia.marcar', modulo: 'operadores-cda', etiqueta: 'Marcar o quitar asistencia a mano', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.qr', modulo: 'operadores-cda', etiqueta: 'Marcar asistencia escaneando el carnet', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.exportar', modulo: 'operadores-cda', etiqueta: 'Exportar asistencia y atrasos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
+  // Cambia la historia: de fábrica solo el administrador, y al Asistente Transversal no se le puede dar.
+  { id: 'cda.asistencia.corregir', modulo: 'operadores-cda', etiqueta: 'Corregir la asistencia de días pasados (con motivo)', rolesPermitidos: ['TECNICO_SUPERVISOR'], rolesPorDefecto: [] },
   { id: 'cda.actas.gestionar', modulo: 'operadores-cda', etiqueta: 'Generar, descargar y marcar firmadas las actas', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   { id: 'cda.fotos.enlace', modulo: 'operadores-cda', etiqueta: 'Crear enlaces para subir fotos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   // Emitir un carnet anula el anterior: de fábrica, solo el administrador.

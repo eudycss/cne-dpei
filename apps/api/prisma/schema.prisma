@@ -762,7 +762,7 @@ model AsistenciaCda {
   entradaPorId  String?   @map("entrada_por_id") @db.Uuid
   salidaEn      DateTime? @map("salida_en") @db.Timestamptz(6)
   salidaPorId   String?   @map("salida_por_id") @db.Uuid
-  /// Cómo se registró cada marca: MANUAL (check), MASIVA o QR. Null en marcas anteriores a la columna.
+  /// Cómo se registró cada marca: MANUAL (check), MASIVA, QR o CORRECCION (día pasado). Null en marcas anteriores a la columna.
   entradaOrigen String?   @map("entrada_origen") @db.VarChar(10)
   salidaOrigen  String?   @map("salida_origen") @db.VarChar(10)
   creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)

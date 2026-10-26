@@ -3,6 +3,8 @@ import { diaAsistenciaSchema } from '@cne/shared-validation';
 import type {
   AsistenciaCdaDia,
   AsistenciaCdaFila,
+  CorregirAsistenciaCdaRequest,
+  CorregirAsistenciaCdaResult,
   FormatoReporteCda,
   GrupoCda,
   MarcarAsistenciaCdaMasivaResult,
@@ -12,7 +14,7 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { TEXTOS_GRUPO } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
-import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
+import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador, momentoEcuador } from './dia-ecuador';
 import { enTramos, personalDelCargo } from './periodos-cargo';
 import {
   type ArchivoReporte,
@@ -28,6 +30,7 @@ import {
 
 const MAX_DIAS_EXPORTAR = 120;
 const MARCA_CAMBIO = 'La marca cambió (otro técnico la modificó): no se quitó';
+const CORRECCION_CRUZADA = 'La asistencia de ese día cambió mientras la corregía: vuelva a abrirla';
 
 const CON_QUIEN_MARCO = {
   entradaPor: { select: { nombres: true, apellidos: true } },
@@ -222,6 +225,81 @@ export class AsistenciaCdaService {
       throw new ConflictException(tipo === 'ENTRADA' && fila.salidaEn ? 'Primero quite la salida de hoy' : MARCA_CAMBIO);
     }
     return { deshecho: true, marcaEn: marca.toISOString(), marcadaPorId };
+  }
+
+  /**
+   * Corrige un día pasado (acción aparte, con motivo para la bitácora): deja la
+   * entrada y la salida como se indican. Solo se reescribe la marca que cambia,
+   * que queda a nombre de quien corrige y con origen CORRECCION.
+   */
+  async corregir(
+    operadorId: string,
+    diaParam: string,
+    body: CorregirAsistenciaCdaRequest,
+    usuarioId: string,
+  ): Promise<CorregirAsistenciaCdaResult> {
+    const dia = parsearDia(diaParam);
+    if (dia >= diaEcuador()) {
+      throw new BadRequestException('Solo se corrigen días pasados: la asistencia de hoy se marca o se quita en la lista');
+    }
+    // Solo personal activo: es lo que muestra la lista del día (a un oculto se le reactiva primero).
+    const operador = await this.operadorActivo(operadorId);
+    if (operador.fechaInicio && dia < diaDeFechaDb(operador.fechaInicio)) {
+      throw new BadRequestException('Ese día es anterior a su fecha de ingreso');
+    }
+
+    const fecha = fechaDb(dia);
+    const entradaEn = body.entrada ? momentoEcuador(dia, body.entrada) : null;
+    const salidaEn = body.salida ? momentoEcuador(dia, body.salida) : null;
+    const previa = await this.prisma.asistenciaCda.findUnique({ where: { operadorId_fecha: { operadorId, fecha } } });
+    // A minuto: las marcas reales llevan segundos y el formulario solo HH:MM; la que no se tocó no se reescribe.
+    const minuto = (d: Date | null | undefined) => (d ? Math.floor(d.getTime() / 60_000) : null);
+    const igual = (a: Date | null | undefined, b: Date | null) => minuto(a) === minuto(b);
+    const cambiaEntrada = !igual(previa?.entradaEn, entradaEn);
+    const cambiaSalida = !igual(previa?.salidaEn, salidaEn);
+    if (!cambiaEntrada && !cambiaSalida) throw new BadRequestException('No hay cambios: la asistencia ya está así');
+
+    const data = {
+      ...(cambiaEntrada && {
+        entradaEn,
+        entradaPorId: entradaEn ? usuarioId : null,
+        entradaOrigen: entradaEn ? ('CORRECCION' satisfies OrigenMarcaCda) : null,
+      }),
+      ...(cambiaSalida && {
+        salidaEn,
+        salidaPorId: salidaEn ? usuarioId : null,
+        salidaOrigen: salidaEn ? ('CORRECCION' satisfies OrigenMarcaCda) : null,
+      }),
+    };
+    // Control optimista: solo se escribe si la fila sigue como se leyó, así "antes" (bitácora) es exacto.
+    if (previa) {
+      const { count } = await this.prisma.asistenciaCda.updateMany({
+        where: { id: previa.id, entradaEn: previa.entradaEn, salidaEn: previa.salidaEn },
+        data,
+      });
+      if (count === 0) throw new ConflictException(CORRECCION_CRUZADA);
+    } else {
+      try {
+        await this.prisma.asistenciaCda.create({ data: { operadorId, fecha, ...data } });
+      } catch (e) {
+        if ((e as { code?: string } | null)?.code === 'P2002') throw new ConflictException(CORRECCION_CRUZADA);
+        throw e;
+      }
+    }
+    const fila = await this.prisma.asistenciaCda.findUniqueOrThrow({
+      where: { operadorId_fecha: { operadorId, fecha } },
+      include: CON_QUIEN_MARCO,
+    });
+    return {
+      fila: {
+        operador: toOperadorCdaDto(operador),
+        entradaEn: fila.entradaEn?.toISOString() ?? null,
+        entradaPor: nombre(fila.entradaPor),
+        salidaEn: fila.salidaEn?.toISOString() ?? null,
+        salidaPor: nombre(fila.salidaPor),
+      },
+      antes: { entradaEn: previa?.entradaEn?.toISOString() ?? null, salidaEn: previa?.salidaEn?.toISOString() ?? null },
+    };
   }
 
   /** Marca a varios a la vez; los que ya tenían la marca (o no tienen entrada, para la salida) se omiten. */

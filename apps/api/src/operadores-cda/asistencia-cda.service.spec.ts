@@ -42,6 +42,7 @@ describe('AsistenciaCdaService', () => {
       findUniqueOrThrow: jest.fn(),
       upsert: jest.fn(),
       updateMany: jest.fn(),
+      create: jest.fn(),
       createMany: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -177,6 +178,163 @@ describe('AsistenciaCdaService', () => {
       await expect(service.deshacer(OP, 'ENTRADA')).rejects.toThrow('No hay entrada registrada hoy');
       prisma.asistenciaCda.findUnique.mockResolvedValueOnce({ id: 'a1', entradaEn: AHORA, salidaEn: null });
       await expect(service.deshacer(OP, 'SALIDA')).rejects.toThrow('No hay salida registrada hoy');
+    });
+  });
+
+  describe('corregir', () => {
+    const MOTIVO = 'Se olvidó marcar, confirmado con el supervisor';
+    const DIA = new Date('2026-10-21T00:00:00Z');
+
+    beforeEach(() => {
+      prisma.asistenciaCda.findUniqueOrThrow.mockResolvedValue({
+        entradaEn: null,
+        entradaPor: null,
+        salidaEn: null,
+        salidaPor: null,
+      });
+    });
+
+    it('día pasado sin fila: la crea con las horas en Ecuador, a nombre de quien corrige y origen CORRECCION', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce(null);
+      prisma.asistenciaCda.findUniqueOrThrow.mockResolvedValueOnce({
+        entradaEn: new Date('2026-10-21T13:05:00Z'),
+        entradaPor: ANA_TECNICA,
+        salidaEn: new Date('2026-10-21T22:00:00Z'),
+        salidaPor: ANA_TECNICA,
+      });
+
+      const r = await service.corregir(OP, '2026-10-21', { entrada: '08:05', salida: '17:00', motivo: MOTIVO }, USR);
+
+      expect(prisma.asistenciaCda.create).toHaveBeenCalledWith({
+        data: {
+          operadorId: OP,
+          fecha: DIA,
+          entradaEn: new Date('2026-10-21T13:05:00Z'),
+          entradaPorId: USR,
+          entradaOrigen: 'CORRECCION',
+          salidaEn: new Date('2026-10-21T22:00:00Z'),
+          salidaPorId: USR,
+          salidaOrigen: 'CORRECCION',
+        },
+      });
+      expect(prisma.asistenciaCda.updateMany).not.toHaveBeenCalled();
+      expect(r.antes).toEqual({ entradaEn: null, salidaEn: null });
+      expect(r.fila).toMatchObject({
+        entradaEn: '2026-10-21T13:05:00.000Z',
+        salidaEn: '2026-10-21T22:00:00.000Z',
+        entradaPor: 'Ana Técnica',
+      });
+    });
+
+    it('solo reescribe la marca que cambia, condicionado a que la fila siga como se leyó', async () => {
+      const previa = { id: 'f1', entradaEn: new Date('2026-10-21T13:05:00Z'), salidaEn: null };
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce(previa);
+      prisma.asistenciaCda.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      const r = await service.corregir(OP, '2026-10-21', { entrada: '08:05', salida: '17:00', motivo: MOTIVO }, USR);
+
+      expect(prisma.asistenciaCda.updateMany).toHaveBeenCalledWith({
+        where: { id: 'f1', entradaEn: previa.entradaEn, salidaEn: null },
+        data: { salidaEn: new Date('2026-10-21T22:00:00Z'), salidaPorId: USR, salidaOrigen: 'CORRECCION' },
+      });
+      expect(r.antes).toEqual({ entradaEn: '2026-10-21T13:05:00.000Z', salidaEn: null });
+    });
+
+    it('una marca real con segundos (08:05:37) que no se tocó se conserva tal cual', async () => {
+      const previa = { id: 'f1', entradaEn: new Date('2026-10-21T13:05:37.412Z'), salidaEn: new Date('2026-10-21T22:00:00Z') };
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce(previa);
+      prisma.asistenciaCda.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.corregir(OP, '2026-10-21', { entrada: '08:05', salida: '17:30', motivo: MOTIVO }, USR);
+
+      expect(prisma.asistenciaCda.updateMany.mock.calls[0][0].data).toEqual({
+        salidaEn: new Date('2026-10-21T22:30:00Z'),
+        salidaPorId: USR,
+        salidaOrigen: 'CORRECCION',
+      });
+    });
+
+    it('cambiar solo la entrada deja la salida como estaba', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce({
+        id: 'f1',
+        entradaEn: new Date('2026-10-21T13:05:00Z'),
+        salidaEn: new Date('2026-10-21T22:00:00Z'),
+      });
+      prisma.asistenciaCda.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.corregir(OP, '2026-10-21', { entrada: '07:55', salida: '17:00', motivo: MOTIVO }, USR);
+
+      expect(prisma.asistenciaCda.updateMany.mock.calls[0][0].data).toEqual({
+        entradaEn: new Date('2026-10-21T12:55:00Z'),
+        entradaPorId: USR,
+        entradaOrigen: 'CORRECCION',
+      });
+    });
+
+    it('quitar las marcas deja también vacíos quién y el origen', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce({
+        id: 'f1',
+        entradaEn: new Date('2026-10-21T13:05:00Z'),
+        salidaEn: new Date('2026-10-21T22:00:00Z'),
+      });
+      prisma.asistenciaCda.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.corregir(OP, '2026-10-21', { entrada: null, salida: null, motivo: MOTIVO }, USR);
+
+      expect(prisma.asistenciaCda.updateMany.mock.calls[0][0].data).toEqual({
+        entradaEn: null,
+        entradaPorId: null,
+        entradaOrigen: null,
+        salidaEn: null,
+        salidaPorId: null,
+        salidaOrigen: null,
+      });
+    });
+
+    it('si otro la cambió entretanto (o creó la fila a la vez): 409', async () => {
+      const cuerpo = { entrada: '08:00', salida: null, motivo: MOTIVO };
+      prisma.operadorCda.findUnique.mockResolvedValue(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce({ id: 'f1', entradaEn: null, salidaEn: null });
+      prisma.asistenciaCda.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.corregir(OP, '2026-10-21', cuerpo, USR)).rejects.toThrow(ConflictException);
+
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce(null);
+      prisma.asistenciaCda.create.mockRejectedValueOnce({ code: 'P2002' });
+      await expect(service.corregir(OP, '2026-10-21', cuerpo, USR)).rejects.toThrow('cambió mientras la corregía');
+    });
+
+    it('sin cambios: 400 y no escribe', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.asistenciaCda.findUnique.mockResolvedValueOnce({ id: 'f1', entradaEn: new Date('2026-10-21T13:05:20Z'), salidaEn: null });
+      await expect(
+        service.corregir(OP, '2026-10-21', { entrada: '08:05', salida: null, motivo: MOTIVO }, USR),
+      ).rejects.toThrow('No hay cambios');
+      expect(prisma.asistenciaCda.updateMany).not.toHaveBeenCalled();
+      expect(prisma.asistenciaCda.create).not.toHaveBeenCalled();
+    });
+
+    it('hoy, un día futuro o una fecha inválida no se corrigen aquí (hoy se marca en la lista)', async () => {
+      const cuerpo = { entrada: '08:00', salida: null, motivo: MOTIVO };
+      await expect(service.corregir(OP, '2026-10-22', cuerpo, USR)).rejects.toThrow('Solo se corrigen días pasados');
+      await expect(service.corregir(OP, '2026-10-23', cuerpo, USR)).rejects.toThrow(BadRequestException);
+      await expect(service.corregir(OP, '2026-13-01', cuerpo, USR)).rejects.toThrow(BadRequestException);
+      expect(prisma.operadorCda.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('no existe u oculto: 404; antes de su fecha de ingreso: 400', async () => {
+      const cuerpo = { entrada: '08:00', salida: null, motivo: MOTIVO };
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      await expect(service.corregir(OP, '2026-10-21', cuerpo, USR)).rejects.toThrow(NotFoundException);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ activo: false }));
+      await expect(service.corregir(OP, '2026-10-21', cuerpo, USR)).rejects.toThrow(NotFoundException);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      await expect(service.corregir(OP, '2026-10-19', cuerpo, USR)).rejects.toThrow('anterior a su fecha de ingreso');
+      expect(prisma.asistenciaCda.findUnique).not.toHaveBeenCalled();
     });
   });
 

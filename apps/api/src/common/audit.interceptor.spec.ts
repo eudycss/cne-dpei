@@ -189,6 +189,35 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
   });
 
+  it('asistencia CDA: corregir un día pasado guarda qué había, qué quedó y el motivo', async () => {
+    const corregir = await auditar(
+      {
+        method: 'PUT',
+        originalUrl: `/operadores-cda/${OTRO}/asistencia/2026-10-21`,
+        params: { id: OTRO, fecha: '2026-10-21' },
+        body: { entrada: '08:05', salida: null, motivo: '  Se olvidó marcar, lo confirmó el supervisor  ' },
+        user: ADMIN,
+      },
+      {
+        fila: { operador: { cedula: '1710034065' }, entradaEn: '2026-10-21T13:05:00.000Z', salidaEn: null },
+        antes: { entradaEn: null, salidaEn: null },
+      },
+    );
+    expect(corregir.data).toMatchObject({
+      accion: 'ASISTENCIA_CDA_CORREGIR',
+      entidad: 'operador_cda',
+      entidadId: OTRO,
+      datosDespues: {
+        fecha: '2026-10-21',
+        antes: { entradaEn: null, salidaEn: null },
+        despues: { entradaEn: '2026-10-21T13:05:00.000Z', salidaEn: null },
+        motivo: 'Se olvidó marcar, lo confirmó el supervisor',
+      },
+    });
+    // Sin datos personales de la persona (la cédula de la respuesta no se guarda).
+    expect(JSON.stringify(corregir.data.datosDespues)).not.toContain('1710034065');
+  });
+
   it('asistencia CDA: el marcado masivo guarda tipo y conteos; quitar una marca guarda operador y tipo', async () => {
     const masiva = await auditar(
       { method: 'POST', originalUrl: '/operadores-cda/asistencia/masiva', body: { tipo: 'ENTRADA', operadorIds: [OTRO] }, user: ADMIN },

@@ -8,6 +8,7 @@ import {
   avisosEnlacesSchema,
   configAlertasSchema,
   configAsistenciaCdaSchema,
+  corregirAsistenciaCdaSchema,
   rangoAsistenciaSchema,
   modoReporteCdaSchema,
   diasDelRango,
@@ -444,5 +445,33 @@ describe('actas de entrega CDA', () => {
     expect(generarActasCdaSchema.safeParse({ ...acta, lugar: 'Iba\nrra' }).success).toBe(false);
     expect(descargarActasCdaSchema.safeParse({ operadorIds: [] }).success).toBe(false);
     expect(descargarActasCdaSchema.safeParse({ operadorIds: Array(101).fill(id) }).success).toBe(false);
+  });
+});
+
+describe('corregirAsistenciaCdaSchema', () => {
+  const MOTIVO = 'Se olvidó marcar la salida';
+  const ok = (v: unknown) => corregirAsistenciaCdaSchema.safeParse(v).success;
+
+  it('acepta horas HH:MM o null, con motivo de al menos 10 caracteres', () => {
+    expect(ok({ entrada: '08:05', salida: '17:00', motivo: MOTIVO })).toBe(true);
+    expect(ok({ entrada: '08:05', salida: null, motivo: MOTIVO })).toBe(true);
+    expect(ok({ entrada: null, salida: null, motivo: MOTIVO })).toBe(true);
+    expect(corregirAsistenciaCdaSchema.parse({ entrada: null, salida: null, motivo: `  ${MOTIVO}  ` }).motivo).toBe(MOTIVO);
+  });
+
+  it('rechaza motivo corto o ausente, horas inválidas y campos extra', () => {
+    expect(ok({ entrada: '08:05', salida: null, motivo: 'olvido    ' })).toBe(false);
+    expect(ok({ entrada: '08:05', salida: null })).toBe(false);
+    expect(ok({ entrada: '8:05', salida: null, motivo: MOTIVO })).toBe(false);
+    expect(ok({ entrada: '24:00', salida: null, motivo: MOTIVO })).toBe(false);
+    expect(ok({ entrada: '08:05', salida: null, motivo: MOTIVO, usuarioId: 'x' })).toBe(false);
+  });
+
+  it('salida sin entrada o no posterior a la entrada: error en el campo salida', () => {
+    const sinEntrada = corregirAsistenciaCdaSchema.safeParse({ entrada: null, salida: '17:00', motivo: MOTIVO });
+    expect(sinEntrada.success).toBe(false);
+    expect(sinEntrada.error?.issues[0]).toMatchObject({ path: ['salida'], message: 'Sin entrada no puede haber salida' });
+    expect(ok({ entrada: '17:00', salida: '17:00', motivo: MOTIVO })).toBe(false);
+    expect(ok({ entrada: '17:00', salida: '08:00', motivo: MOTIVO })).toBe(false);
   });
 });

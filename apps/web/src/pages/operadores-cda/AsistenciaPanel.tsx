@@ -13,6 +13,7 @@ import {
   quitarAsistenciaCda,
 } from '../../lib/queries/operadores-cda';
 import { CheckMarca } from './CheckMarca';
+import { CorregirAsistenciaModal } from './CorregirAsistenciaModal';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
@@ -47,6 +48,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const { grupo, plural, singular, Singular } = useGrupoCda();
   const { puede } = useModulos();
   const puedeMarcar = puede('cda.asistencia.marcar');
+  const puedeCorregir = puede('cda.asistencia.corregir');
   const hoy = hoyEcuador();
   const [fecha, setFecha] = useState(hoy);
   const [busqueda, setBusqueda] = useState('');
@@ -54,6 +56,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const [masiva, setMasiva] = useState<TipoMarcaAsistenciaCda | null>(null);
   const [exportando, setExportando] = useState(false);
   const [escaneando, setEscaneando] = useState(false);
+  const [corrigiendo, setCorrigiendo] = useState<AsistenciaCdaFila | null>(null);
   const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
   const clave = ['asistencia-cda', grupo, fecha];
 
@@ -121,8 +124,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const pendientesEntrada = visibles.filter((f) => !f.entradaEn);
   const pendientesSalida = visibles.filter((f) => f.entradaEn && !f.salidaEn);
   const esHoy = data?.esHoy ?? fecha === hoy;
+  const corrige = !esHoy && puedeCorregir;
   const motivoBloqueo = !esHoy
-    ? 'Día pasado: solo consulta'
+    ? corrige
+      ? 'Día pasado: use Corregir'
+      : 'Día pasado: solo consulta'
     : !puedeMarcar
       ? 'Su rol no tiene permiso para marcar a mano'
       : undefined;
@@ -243,7 +249,9 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
 
       {!esHoy && data && (
         <div className="banner" role="status">
-          Está viendo un día pasado: solo consulta. La asistencia se marca únicamente el día de hoy.
+          {corrige
+            ? 'Está viendo un día pasado. Para cambiar una marca use “Corregir”: se pide el motivo y queda en la bitácora.'
+            : 'Está viendo un día pasado: solo consulta. La asistencia se marca únicamente el día de hoy.'}
         </div>
       )}
       {isLoading && <Cargando />}
@@ -269,6 +277,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                 <th scope="col">Teléfono</th>
                 <th scope="col">Entrada</th>
                 <th scope="col">Salida</th>
+                {corrige && (
+                  <th scope="col">
+                    <span className="sr-only">Corregir</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -317,6 +330,18 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                         onQuitar={() => confirmarQuitar(f, 'SALIDA')}
                       />
                     </td>
+                    {corrige && (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          aria-label={`Corregir asistencia de ${o.apellidosNombres}`}
+                          onClick={() => setCorrigiendo(f)}
+                        >
+                          Corregir
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -325,7 +350,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           {visibles.length === 0 && <p className="ocda-pie">Ningún {singular} con este filtro.</p>}
           <p className="ocda-pie">
             Mostrando {visibles.length} de {total} {plural}
-            {esHoy && puedeMarcar ? ' · Los cambios se guardan automáticamente' : ' · Solo consulta'}
+            {esHoy && puedeMarcar
+              ? ' · Los cambios se guardan automáticamente'
+              : corrige
+                ? ' · Correcciones con motivo'
+                : ' · Solo consulta'}
           </p>
         </div>
       )}
@@ -335,6 +364,15 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           tipo={masiva}
           filas={masiva === 'ENTRADA' ? pendientesEntrada : pendientesSalida}
           onClose={() => setMasiva(null)}
+          onHecho={refrescar}
+        />
+      )}
+
+      {corrigiendo && (
+        <CorregirAsistenciaModal
+          fila={corrigiendo}
+          fecha={fecha}
+          onClose={() => setCorrigiendo(null)}
           onHecho={refrescar}
         />
       )}

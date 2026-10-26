@@ -66,6 +66,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [AsistenciaCdaController, 'marcar', 'cda.asistencia.marcar'],
   [AsistenciaCdaController, 'masiva', 'cda.asistencia.marcar'],
   [AsistenciaCdaController, 'deshacer', 'cda.asistencia.marcar'],
+  [AsistenciaCdaController, 'corregir', 'cda.asistencia.corregir'],
   [AsistenciaCdaController, 'exportar', 'cda.asistencia.exportar'],
   [AsistenciaCdaController, 'exportarPdf', 'cda.asistencia.exportar'],
   [AtrasosCdaController, 'exportar', 'cda.asistencia.exportar'],
@@ -97,6 +98,12 @@ describe('Acciones de CDAs en los endpoints', () => {
       expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(PermisoGuard);
     },
   );
+
+  it('corregir días pasados: @Roles del método deja fuera al Asistente Transversal', () => {
+    const roles = rolesDe(AsistenciaCdaController, 'corregir');
+    expect(roles).toEqual(['ADMINISTRADOR', 'TECNICO_SUPERVISOR']);
+    expect(roles).not.toContain('ASISTENTE_TRANSVERSAL');
+  });
 
   it.each(ENDPOINTS.map(([c, m, p]) => [`${c.name}.${m}`, c, m, p] as const))(
     '%s: @Roles deja pasar a todos los roles a los que se les puede dar la acción',

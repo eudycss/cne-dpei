@@ -1098,8 +1098,8 @@ export interface ImportOperadoresCdaResult {
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
 
-/** Cómo se registró una marca: check individual, "marcar a pendientes" o carnet QR. */
-export type OrigenMarcaCda = 'MANUAL' | 'MASIVA' | 'QR';
+/** Cómo se registró una marca: check individual, "marcar a pendientes", carnet QR o corrección de un día pasado. */
+export type OrigenMarcaCda = 'MANUAL' | 'MASIVA' | 'QR' | 'CORRECCION';
 
 /** Qué toca registrar al escanear el carnet hoy. */
 export type SiguienteMarcaQrCda = 'ENTRADA' | 'SALIDA' | 'COMPLETO';
@@ -1144,6 +1144,19 @@ export interface AsistenciaCdaFila {
   entradaPor: string | null;
   salidaEn: string | null;
   salidaPor: string | null;
+}
+
+/** Horas "HH:MM" (Ecuador) de un día pasado; null = sin marca. */
+export interface CorregirAsistenciaCdaRequest {
+  entrada: string | null;
+  salida: string | null;
+  motivo: string;
+}
+
+/** Fila corregida y lo que había antes (ISO), para la bitácora. */
+export interface CorregirAsistenciaCdaResult {
+  fila: AsistenciaCdaFila;
+  antes: { entradaEn: string | null; salidaEn: string | null };
 }
 
 export interface AsistenciaCdaDia {
