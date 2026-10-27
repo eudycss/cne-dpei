@@ -27,9 +27,11 @@ export class AuthService {
     @Inject(NOTIFIER) private readonly notifier: INotifier,
   ) {}
 
-  async login(email: string, password: string): Promise<LoginResponse> {
+  /** `usuario` llega ya validado por loginSchema: cédula de 10 dígitos o correo. */
+  async login(usuario: string, password: string): Promise<LoginResponse> {
+    const where = usuario.includes('@') ? { email: usuario } : { cedula: usuario };
     const user = await this.prisma.usuario.findUnique({
-      where: { email },
+      where,
       include: { roles: { include: { rol: true } } },
     });
     if (!user || !user.activo) {
@@ -52,6 +54,7 @@ export class AuthService {
       ...tokens,
       user: {
         id: user.id,
+        cedula: user.cedula,
         email: user.email,
         nombres: user.nombres,
         apellidos: user.apellidos,

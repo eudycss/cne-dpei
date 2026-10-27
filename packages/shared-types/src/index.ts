@@ -34,6 +34,7 @@ export interface LoginResponse {
   refreshToken: string;
   user: {
     id: string;
+    cedula: string;
     email: string;
     nombres: string;
     apellidos: string;
