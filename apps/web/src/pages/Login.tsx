@@ -5,7 +5,7 @@ import { Logo } from '../components/Logo';
 import { PasswordField } from '../components/PasswordField';
 
 export function Login() {
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { login, loading } = useAuth();
@@ -16,7 +16,7 @@ export function Login() {
     e.preventDefault();
     setError(null);
     try {
-      const u = await login(email, password);
+      const u = await login(usuario, password);
       if (u.debeCambiarPwd) {
         navigate('/change-password', { replace: true });
       } else {
@@ -39,13 +39,16 @@ export function Login() {
           Sistema de Trazabilidad y Logística Electoral
         </p>
         <div className="field">
-          <label>Email</label>
+          <label htmlFor="login-usuario">Cédula o correo</label>
           <input
-            type="email"
+            id="login-usuario"
+            type="text"
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={usuario}
+            onChange={(e) => setUsuario(e.target.value)}
           />
         </div>
         <PasswordField

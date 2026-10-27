@@ -21,7 +21,7 @@ interface SessionUser {
 interface AuthContextValue {
   user: SessionUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<SessionUser>;
+  login: (usuario: string, password: string) => Promise<SessionUser>;
   logout: () => Promise<void>;
   markPasswordChanged: () => void;
 }
@@ -42,10 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else localStorage.removeItem(USER_KEY);
   }, [user]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (usuario: string, password: string) => {
     setLoading(true);
     try {
-      const { data } = await api.post<LoginResponse>('/auth/login', { email, password });
+      const { data } = await api.post<LoginResponse>('/auth/login', { usuario, password });
       tokenStore.set(data.accessToken, data.refreshToken);
       const u: SessionUser = data.user;
       setUser(u);
