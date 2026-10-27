@@ -25,7 +25,7 @@ const MENSAJE_OFFLINE: Record<'sin-verificador' | 'vencido' | 'invalido', string
     'No hay conexión y este dispositivo todavía no tiene un ingreso previo guardado. Necesitas conectarte a internet al menos una vez para poder entrar sin conexión más adelante.',
   vencido:
     'No hay conexión y tu acceso sin conexión venció (más de 7 días desde tu último ingreso en línea). Conéctate a internet para renovarlo.',
-  invalido: 'No hay conexión. Revisa tu email y contraseña (deben ser los mismos de tu último ingreso en línea).',
+  invalido: 'No hay conexión. Revisa tu cédula o correo y tu contraseña (deben ser los mismos de tu último ingreso en línea).',
 };
 
 export function LoginScreen() {
@@ -33,21 +33,21 @@ export function LoginScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function onSubmit() {
-    if (!email || !password) {
-      Alert.alert('Datos requeridos', 'Ingresa email y contraseña');
+    if (!usuario || !password) {
+      Alert.alert('Datos requeridos', 'Ingresa tu cédula o correo y tu contraseña');
       return;
     }
     setLoading(true);
     try {
-      await login(email, password);
+      await login(usuario, password);
     } catch (e: any) {
       if (isNetworkError(e)) {
-        const resultado = await loginOffline(email, password);
+        const resultado = await loginOffline(usuario, password);
         if (resultado.ok) {
           Alert.alert(
             'Sesión sin conexión',
@@ -84,16 +84,17 @@ export function LoginScreen() {
         <Text style={styles.title}>CNE Imbabura</Text>
         <Text style={styles.subtitle}>Trazabilidad y Logística Electoral</Text>
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>Cédula o correo</Text>
         <TextInput
           style={styles.input}
+          accessibilityLabel="Cédula o correo"
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType="email-address"
-          autoComplete="email"
+          keyboardType="default"
+          autoComplete="username"
           textContentType="username"
-          value={email}
-          onChangeText={setEmail}
+          value={usuario}
+          onChangeText={setUsuario}
           placeholderTextColor={colors.textPlaceholder}
         />
         <Text style={styles.label}>Contraseña</Text>
