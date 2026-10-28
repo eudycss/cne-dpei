@@ -98,8 +98,8 @@ export class UsersService {
       },
       include: { roles: { include: { rol: true } } },
     });
-    await this.notifier.sendInitialPassword(user.email, initialPassword).catch((e) =>
-      this.log.error(`No se pudo enviar correo a ${user.email}: ${e?.message}`),
+    await this.notifier.sendInitialPassword(parsed.email, initialPassword).catch((e) =>
+      this.log.error(`No se pudo enviar correo a ${parsed.email}: ${e?.message}`),
     );
     return { ...toUserDto(user), initialPassword };
   }
@@ -160,7 +160,8 @@ export class UsersService {
     await this.prisma.$transaction([
       this.prisma.usuario.update({
         where: { id },
-        data: { passwordHash, debeCambiarPwd: true },
+        // Restablecer también levanta el bloqueo por intentos fallidos.
+        data: { passwordHash, debeCambiarPwd: true, intentosFallidos: 0, bloqueadoHasta: null },
       }),
       // Revoca refresh tokens activos: las sesiones existentes quedan invalidadas
       this.prisma.refreshToken.updateMany({
@@ -169,10 +170,26 @@ export class UsersService {
       }),
     ]);
 
-    await this.notifier.sendInitialPassword(existing.email, temporaryPassword).catch((e) =>
-      this.log.error(`No se pudo enviar correo a ${existing.email}: ${e?.message}`),
-    );
+    // Las cuentas CDA no tienen correo: el administrador entrega la temporal en persona.
+    if (existing.email) {
+      const email = existing.email;
+      await this.notifier.sendInitialPassword(email, temporaryPassword).catch((e) =>
+        this.log.error(`No se pudo enviar correo a ${email}: ${e?.message}`),
+      );
+    }
     return { user: toUserDto(existing), temporaryPassword };
+  }
+
+  /** Levanta el bloqueo por contraseñas erróneas antes de que venza. */
+  async desbloquear(id: string): Promise<User> {
+    const existing = await this.prisma.usuario.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Usuario no encontrado');
+    const user = await this.prisma.usuario.update({
+      where: { id },
+      data: { intentosFallidos: 0, bloqueadoHasta: null },
+      include: { roles: { include: { rol: true } } },
+    });
+    return toUserDto(user);
   }
 
   async bulkUpload(file: Express.Multer.File): Promise<BulkUploadResult> {
@@ -321,6 +338,7 @@ function toUserDto(u: any): User {
     telefono: u.telefono ?? null,
     activo: u.activo,
     debeCambiarPwd: u.debeCambiarPwd,
+    bloqueadoHasta: u.bloqueadoHasta?.toISOString?.() ?? null,
     roles: (u.roles ?? []).map((r: any) => r.rol.nombre),
     creadoEn: u.creadoEn?.toISOString?.() ?? String(u.creadoEn),
     actualizadoEn: u.actualizadoEn?.toISOString?.() ?? String(u.actualizadoEn),

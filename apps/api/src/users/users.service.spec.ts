@@ -217,6 +217,69 @@ describe('UsersService', () => {
         data: { revocadoEn: expect.any(Date) },
       });
     });
+
+    it('también desbloquea la cuenta (contador y bloqueo en cero)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(
+        userRow({ id, intentosFallidos: 3, bloqueadoHasta: new Date(Date.now() + 60_000) }),
+      );
+
+      await service.resetPassword(id);
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ intentosFallidos: 0, bloqueadoHasta: null }),
+        }),
+      );
+    });
+
+    it('cuenta CDA sin correo: resetea sin intentar enviar el aviso', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id, email: null }));
+
+      const { user } = await service.resetPassword(id);
+
+      expect(notifier.sendInitialPassword).not.toHaveBeenCalled();
+      expect(user.email).toBeNull();
+    });
+  });
+
+  describe('desbloquear', () => {
+    const id = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.desbloquear(id)).rejects.toThrow(NotFoundException);
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('pone el contador en cero, quita el bloqueo y devuelve el usuario', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id }));
+      prisma.usuario.update.mockResolvedValueOnce(userRow({ id, bloqueadoHasta: null }));
+
+      const user = await service.desbloquear(id);
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id },
+          data: { intentosFallidos: 0, bloqueadoHasta: null },
+        }),
+      );
+      expect(user.bloqueadoHasta).toBeNull();
+    });
+  });
+
+  describe('toUserDto (vía list)', () => {
+    it('expone bloqueadoHasta en ISO y null si no está bloqueada', async () => {
+      prisma.usuario.count.mockResolvedValueOnce(2);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        userRow({ bloqueadoHasta: new Date('2026-10-28T22:00:00Z') }),
+        userRow({ bloqueadoHasta: null }),
+      ]);
+
+      const { items } = await service.list({});
+
+      expect(items.map((u) => u.bloqueadoHasta)).toEqual(['2026-10-28T22:00:00.000Z', null]);
+    });
   });
 
   describe('assignRoles', () => {

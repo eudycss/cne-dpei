@@ -7,6 +7,7 @@ import type { User } from '@cne/shared-types';
 
 import { NewUser } from './NewUser';
 import { EditUserModal } from './EditUserModal';
+import { ResetPasswordModal } from './ResetPasswordModal';
 import { api } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
@@ -151,5 +152,48 @@ describe('EditUserModal — errores', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Email ya registrado');
+  });
+});
+
+describe('EditUserModal — cuenta CDA sin correo', () => {
+  function renderSinCorreo() {
+    return render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EditUserModal user={{ ...USER, email: null }} isAdmin={false} onClose={vi.fn()} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('el correo queda vacío y opcional, y guardar no lo envía', async () => {
+    const user = userEvent.setup();
+    patchMock.mockResolvedValue({ data: {} });
+    renderSinCorreo();
+
+    const correo = screen.getByLabelText(/Email/);
+    expect(correo).toHaveValue('');
+    expect(correo).not.toBeRequired();
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(patchMock).toHaveBeenCalledWith('/users/u1', expect.not.objectContaining({ email: expect.anything() }));
+  });
+
+  it('si se escribe un correo, se envía', async () => {
+    const user = userEvent.setup();
+    patchMock.mockResolvedValue({ data: {} });
+    renderSinCorreo();
+
+    await user.type(screen.getByLabelText(/Email/), 'nuevo@cne-imbabura.gob.ec');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(patchMock).toHaveBeenCalledWith('/users/u1', expect.objectContaining({ email: 'nuevo@cne-imbabura.gob.ec' }));
+  });
+});
+
+describe('ResetPasswordModal — cuenta CDA sin correo', () => {
+  it('identifica a la persona por su cédula', () => {
+    render(<ResetPasswordModal user={{ ...USER, email: null }} onClose={vi.fn()} onDone={vi.fn()} />);
+
+    expect(screen.getByText(/cédula 1712345678/)).toBeInTheDocument();
+    expect(screen.queryByText(/null/)).not.toBeInTheDocument();
   });
 });

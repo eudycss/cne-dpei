@@ -6,7 +6,8 @@ import type { RoleName } from '@cne/shared-types';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  /** null en cuentas de Operadores/Asistentes CDA (entran con cédula). */
+  email: string | null;
   roles: RoleName[];
   debeCambiarPwd: boolean;
 }

@@ -3,7 +3,7 @@ import type { RoleName } from '@cne/shared-types';
 
 export interface AuthenticatedUser {
   sub: string;
-  email: string;
+  email: string | null;
   roles: RoleName[];
   debeCambiarPwd: boolean;
 }

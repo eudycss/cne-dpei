@@ -16,7 +16,7 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
     cedula: user.cedula,
     nombres: user.nombres,
     apellidos: user.apellidos,
-    email: user.email,
+    email: user.email ?? '',
     telefono: user.telefono ?? '',
   });
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +47,8 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
       cedula: cedula !== user.cedula ? cedula : undefined,
       nombres: form.nombres,
       apellidos: form.apellidos,
-      email: form.email,
+      // Las cuentas CDA no tienen correo: vacío = no se envía (no se puede borrar uno existente).
+      email: form.email.trim() || undefined,
       telefono: form.telefono || null,
     });
     if (!parsed.success) {
@@ -105,7 +106,7 @@ export function EditUserModal({ user, isAdmin, onClose, onDone }: Props) {
         </div>
         <div className="field">
           <label htmlFor="editar-usuario-email">Email</label>
-          <input id="editar-usuario-email" type="email" value={form.email} onChange={update('email')} required />
+          <input id="editar-usuario-email" type="email" value={form.email} onChange={update('email')} required={user.email !== null} />
         </div>
         <div className="field">
           <label htmlFor="editar-usuario-telefono">Teléfono (opcional)</label>

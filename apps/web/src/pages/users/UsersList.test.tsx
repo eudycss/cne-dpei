@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -73,5 +73,45 @@ describe('UsersList — usuarios inactivos', () => {
     expect(fila).toHaveTextContent('Inactivo');
     expect(fila.querySelector('button')).not.toBeNull();
     await waitFor(() => expect(getMock).toHaveBeenLastCalledWith(expect.not.stringContaining('activo=')));
+  });
+});
+
+describe('UsersList — cuentas CDA sin correo y bloqueo', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function apiCon(items: User[]) {
+    getMock.mockResolvedValue({ data: { items, total: items.length, page: 1, pageSize: 20 } });
+  }
+
+  it('una cuenta sin correo muestra un guion en la columna de email', async () => {
+    apiCon([{ ...ACTIVA, email: null }]);
+    renderLista();
+
+    const fila = (await screen.findByText('Ana Prueba')).closest('tr')!;
+    // Columnas con administrador: selección, cédula, nombre, email…
+    const celdaEmail = within(fila).getAllByRole('cell')[3];
+    expect(celdaEmail).toHaveTextContent('—');
+  });
+
+  it('muestra "Bloqueada hasta" y desbloquea con el botón', async () => {
+    const hasta = new Date(Date.now() + 10 * 60_000).toISOString();
+    apiCon([{ ...ACTIVA, bloqueadoHasta: hasta }]);
+    const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValueOnce({ data: { ...ACTIVA, bloqueadoHasta: null } });
+    renderLista();
+
+    expect(await screen.findByText(/Bloqueada hasta/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: /desbloquear/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/users/ana/desbloquear'));
+  });
+
+  it('un bloqueo vencido no se muestra ni ofrece desbloquear', async () => {
+    apiCon([{ ...ACTIVA, bloqueadoHasta: new Date(Date.now() - 60_000).toISOString() }]);
+    renderLista();
+
+    await screen.findByText('Ana Prueba');
+    expect(screen.queryByText(/Bloqueada hasta/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /desbloquear/i })).not.toBeInTheDocument();
   });
 });

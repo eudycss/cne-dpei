@@ -23,6 +23,7 @@ describe('AuthService', () => {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     refreshToken: {
       findUnique: jest.fn(),
@@ -76,6 +77,7 @@ describe('AuthService', () => {
     config.getOrThrow.mockReturnValue('secret');
     config.get.mockReturnValue(undefined);
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
+    prisma.usuario.update.mockResolvedValue({ intentosFallidos: 1 });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -172,6 +174,95 @@ describe('AuthService', () => {
       prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
       verifyMock.mockResolvedValueOnce(false);
       await expect(service.login('1034567899', 'mala')).rejects.toThrow('Credenciales inválidas');
+    });
+  });
+
+  describe('login: bloqueo por intentos fallidos', () => {
+    const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const QUINCE_MIN = 15 * 60_000;
+
+    it('cada contraseña errónea suma un intento de forma atómica', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ intentosFallidos: 0, bloqueadoHasta: null }));
+      verifyMock.mockResolvedValueOnce(false);
+
+      await expect(service.login('1034567899', 'mala')).rejects.toThrow(UnauthorizedException);
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id }, data: { intentosFallidos: { increment: 1 } } }),
+      );
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('el 5.º fallo bloquea 15 minutos y reinicia el contador', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ intentosFallidos: 4, bloqueadoHasta: null }));
+      verifyMock.mockResolvedValueOnce(false);
+      prisma.usuario.update.mockResolvedValueOnce({ intentosFallidos: 5 });
+      const antes = Date.now();
+
+      await expect(service.login('1034567899', 'mala')).rejects.toThrow('Credenciales inválidas');
+
+      const args = prisma.usuario.updateMany.mock.calls[0][0];
+      expect(args.where).toEqual({ id, intentosFallidos: { gte: 5 } });
+      expect(args.data.intentosFallidos).toBe(0);
+      const hasta = (args.data.bloqueadoHasta as Date).getTime();
+      expect(hasta).toBeGreaterThanOrEqual(antes + QUINCE_MIN);
+      expect(hasta).toBeLessThanOrEqual(Date.now() + QUINCE_MIN);
+    });
+
+    it('bloqueada: rechaza aunque la contraseña sea correcta, verifica igual y no cuenta', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(
+        userRow({ intentosFallidos: 0, bloqueadoHasta: new Date(Date.now() + 60_000) }),
+      );
+      verifyMock.mockResolvedValueOnce(true);
+
+      await expect(service.login('1034567899', 'correcta')).rejects.toThrow('Credenciales inválidas');
+
+      expect(verifyMock).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(jwt.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('bloqueo vencido: entra y limpia el bloqueo', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(
+        userRow({ intentosFallidos: 0, bloqueadoHasta: new Date(Date.now() - 1000) }),
+      );
+      verifyMock.mockResolvedValueOnce(true);
+
+      await expect(service.login('1034567899', 'correcta')).resolves.toHaveProperty('accessToken');
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id }, data: { intentosFallidos: 0, bloqueadoHasta: null } }),
+      );
+    });
+
+    it('éxito con fallos previos reinicia el contador', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ intentosFallidos: 3, bloqueadoHasta: null }));
+      verifyMock.mockResolvedValueOnce(true);
+
+      await service.login('1034567899', 'correcta');
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { intentosFallidos: 0, bloqueadoHasta: null } }),
+      );
+    });
+
+    it('éxito sin fallos previos no escribe en la base', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ intentosFallidos: 0, bloqueadoHasta: null }));
+      verifyMock.mockResolvedValueOnce(true);
+
+      await service.login('1034567899', 'correcta');
+
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('cuenta sin correo (CDA): entra y el token lleva email null', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ email: null, intentosFallidos: 0 }));
+      verifyMock.mockResolvedValueOnce(true);
+
+      const res = await service.login('1034567899', 'correcta');
+
+      expect(res.user.email).toBeNull();
+      expect(jwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ email: null }), expect.anything());
     });
   });
 

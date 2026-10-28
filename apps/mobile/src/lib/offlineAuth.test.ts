@@ -66,6 +66,15 @@ describe('offlineAuth', () => {
     expect(resultado).toEqual({ ok: true, usuario });
   });
 
+  it('cuenta CDA sin correo: guarda el verificador y entra offline con la cédula', async () => {
+    const sinCorreo = { ...usuario, email: null };
+    await guardarVerificadorOffline('Secreto123!', sinCorreo as any);
+
+    const resultado = await verificarLoginOffline('1034567899', 'Secreto123!');
+
+    expect(resultado).toEqual({ ok: true, usuario: sinCorreo });
+  });
+
   it('rechaza la cédula de otra persona', async () => {
     await guardarVerificadorOffline('Secreto123!', usuario as any);
 

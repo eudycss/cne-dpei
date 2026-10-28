@@ -13,12 +13,15 @@ export interface Role {
 export interface User {
   id: string;
   cedula: string;
-  email: string;
+  /** null en cuentas de Operadores/Asistentes CDA (entran con cédula). */
+  email: string | null;
   nombres: string;
   apellidos: string;
   telefono: string | null;
   activo: boolean;
   debeCambiarPwd: boolean;
+  /** ISO; mientras sea futura, la cuenta no puede iniciar sesión. */
+  bloqueadoHasta: string | null;
   roles: RoleName[];
   creadoEn: string;
   actualizadoEn: string;
@@ -35,7 +38,7 @@ export interface LoginResponse {
   user: {
     id: string;
     cedula: string;
-    email: string;
+    email: string | null;
     nombres: string;
     apellidos: string;
     debeCambiarPwd: boolean;

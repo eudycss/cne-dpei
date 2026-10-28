@@ -268,6 +268,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .table-report { min-width: 1000px; }
 
 .badge { display: inline-block; padding: 0.15rem 0.5rem; background: var(--badge-bg); color: var(--badge-text); border-radius: 999px; font-size: 0.75rem; margin-right: 4px; }
+.badge.warn { background: var(--warn-bg); color: var(--warn-text); }
 .banner { background: var(--warn-bg); color: var(--warn-text); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
 .banner.success { background: var(--success-bg); color: var(--success-text); }
 .banner.error { background: var(--error-bg); color: var(--error-text); }

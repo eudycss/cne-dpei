@@ -17,6 +17,9 @@ import { INotifier, NOTIFIER } from './notifier';
 import { parseWebOrigins } from '../common/web-origin.util';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora (HU16-CA3)
+/** Contraseñas erróneas seguidas antes de bloquear la cuenta. */
+export const MAX_INTENTOS_LOGIN = 5;
+export const BLOQUEO_LOGIN_MS = 15 * 60_000;
 
 @Injectable()
 export class AuthService {
@@ -37,8 +40,23 @@ export class AuthService {
     // Siempre se ejecuta argon2.verify (contra un hash señuelo si no hay usuario)
     // para que el tiempo de respuesta no revele qué cédulas o correos existen.
     const ok = await argon2.verify(user?.passwordHash ?? (await this.hashSenuelo()), password);
-    if (!user || !user.activo || !ok) {
+    if (!user || !user.activo) {
       throw new UnauthorizedException('Credenciales inválidas');
+    }
+    // Bloqueada: mismo mensaje genérico y no suma intentos (el bloqueo no se alarga).
+    const bloqueada = user.bloqueadoHasta !== null && user.bloqueadoHasta > new Date();
+    if (bloqueada) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+    if (!ok) {
+      await this.registrarIntentoFallido(user.id);
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+    if (user.intentosFallidos > 0 || user.bloqueadoHasta !== null) {
+      await this.prisma.usuario.update({
+        where: { id: user.id },
+        data: { intentosFallidos: 0, bloqueadoHasta: null },
+      });
     }
 
     const roles = user.roles.map((r) => r.rol.nombre as RoleName);
@@ -61,6 +79,25 @@ export class AuthService {
         roles,
       },
     };
+  }
+
+  /**
+   * Suma un intento con `increment` (atómico ante intentos en paralelo) y, al
+   * llegar al máximo, bloquea la cuenta. El `gte` del updateMany hace que dos
+   * fallos simultáneos que llegan al máximo bloqueen una sola vez.
+   */
+  private async registrarIntentoFallido(id: string): Promise<void> {
+    const { intentosFallidos } = await this.prisma.usuario.update({
+      where: { id },
+      data: { intentosFallidos: { increment: 1 } },
+      select: { intentosFallidos: true },
+    });
+    if (intentosFallidos >= MAX_INTENTOS_LOGIN) {
+      await this.prisma.usuario.updateMany({
+        where: { id, intentosFallidos: { gte: MAX_INTENTOS_LOGIN } },
+        data: { intentosFallidos: 0, bloqueadoHasta: new Date(Date.now() + BLOQUEO_LOGIN_MS) },
+      });
+    }
   }
 
   private hashSenueloPromise?: Promise<string>;
@@ -154,7 +191,8 @@ export class AuthService {
   /** HU16: emite token de recuperación. No revela si el email existe. */
   async forgotPassword(email: string): Promise<void> {
     const user = await this.prisma.usuario.findUnique({ where: { email } });
-    if (!user || !user.activo) {
+    // `!user.email` solo para el tipo: se buscó por correo, así que lo tiene.
+    if (!user || !user.activo || !user.email) {
       // HU16-CA5: respuesta genérica
       return;
     }

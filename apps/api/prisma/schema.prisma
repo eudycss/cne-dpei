@@ -141,17 +141,22 @@ enum PlataformaDisp {
 model Usuario {
   id             String   @id @default(uuid()) @db.Uuid
   cedula         String   @unique @db.VarChar(10)
-  email          String   @unique @db.VarChar(255)
+  /// Opcional: las cuentas de Operadores/Asistentes CDA entran solo con cédula.
+  email          String?  @unique @db.VarChar(255)
   nombres        String   @db.VarChar(120)
   apellidos      String   @db.VarChar(120)
   telefono       String?  @db.VarChar(20)
   passwordHash   String   @map("password_hash") @db.VarChar(255)
   debeCambiarPwd Boolean  @default(true) @map("debe_cambiar_pwd")
   activo         Boolean  @default(true)
+  /// Contraseñas erróneas seguidas; al llegar al máximo se bloquea un rato.
+  intentosFallidos Int       @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime? @map("bloqueado_hasta") @db.Timestamptz(6)
   creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn  DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   roles               UsuarioRol[]
+  operadorCda         OperadorCda?
   passwordResetTokens PasswordResetToken[]
   refreshTokens       RefreshToken[]
   dispositivos        Dispositivo[]
@@ -739,6 +744,9 @@ model OperadorCda {
   fotoKey          String?   @map("foto_key") @db.VarChar(255)
   fotoSubidaEn     DateTime? @map("foto_subida_en") @db.Timestamptz(6)
   activo           Boolean   @default(true)
+  /// Cuenta de la app (solo grupos OPERADOR y ASISTENTE).
+  usuarioId        String?   @unique @map("usuario_id") @db.Uuid
+  usuario          Usuario?  @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
   creadoEn         DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn    DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
