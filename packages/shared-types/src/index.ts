@@ -1034,7 +1034,24 @@ export interface OperadorCda {
   fechaInicio: string | null;
   tieneFoto: boolean;
   activo: boolean;
+  /**
+   * Cuenta de la app (solo grupos OPERADOR y ASISTENTE; el resto, SIN_CUENTA).
+   * Solo viene en el listado y en las acciones de Operadores CDA.
+   */
+  cuenta?: EstadoCuentaCda;
   creadoEn: string;
+}
+
+export type EstadoCuentaCda = 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA';
+
+/** Conteos del panel "Cuentas de la app" (operadores y asistentes activos). */
+export interface ResumenCuentasCda {
+  conCuenta: number;
+  sinCuenta: number;
+  pendientesCambioPwd: number;
+  bloqueadas: number;
+  /** Cuentas Operador CDA activas sin persona en Operadores CDA. */
+  cuentasSinVinculo: number;
 }
 
 /** Fila del Excel ya leída y normalizada. */
@@ -1098,6 +1115,8 @@ export interface ImportOperadoresCdaResult {
   actualizados: number;
   filas: OperadorCdaFila[];
   errores: BulkUploadRow[];
+  /** Solo al aplicar en Operadores/Asistentes: cuentas de la app creadas o vinculadas. */
+  cuentas?: { vinculadas: number; creadas: number };
 }
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
