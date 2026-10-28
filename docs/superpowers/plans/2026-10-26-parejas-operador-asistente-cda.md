@@ -155,3 +155,79 @@ Usar en los tests cédulas que pasen `isValidCedulaEcuatoriana` (ajustar `100123
 - [ ] `pnpm test` en la raíz → todo verde (reportar salida real si algo falla).
 - [ ] Invocar `revisor-calidad` sobre el diff del PR; corregir hallazgos con commits aparte.
 - [ ] Pedir confirmación al usuario antes de `git push` y de abrir el PR contra `probarweb` (el hook pre-push crea `deploy/*`; mergear a mano).
+
+---
+
+## PR 2 — Cuentas de la app para Operadores y Asistentes CDA
+
+Detallado el 2026-10-28. PR 1 = #120 (en producción).
+
+### Decisiones del usuario (2026-10-28)
+- **Cuentas viejas con cédula coincidente (68):** se vinculan y **conservan su contraseña** (no se resetea).
+- **Asistente CDA que ya es Administrador:** su misma cuenta recibe además el rol `OPERADOR_CDA`.
+- **Personas sin cuenta (~51):** se crean con un **botón de la web** ("Crear y vincular cuentas", solo Administrador); las altas manuales e importaciones nuevas crean su cuenta automáticamente.
+- **Bloqueo por intentos:** 5 contraseñas erróneas seguidas → cuenta bloqueada 15 min (mismo mensaje genérico); un Administrador puede desbloquear.
+- **Desactivar en Operadores CDA** → la cuenta de la app se desactiva también; al reactivar, vuelve.
+- **Cambio de Operador/Asistente a otro cargo CDA** → se quita el rol `OPERADOR_CDA` y se cierran sus sesiones; si vuelve, se devuelve.
+
+### Decisiones de Claude (revisables)
+- El vínculo de las 68 cuentas lo hace el mismo botón (no una migración de datos): el efecto es igual y queda probado con tests.
+- Al quitar la cuenta (desactivar o cambiar de cargo) **solo se desactiva la cuenta si `OPERADOR_CDA` era su único rol**; si tiene otros (el caso del Administrador), solo se le quita ese rol. Así nunca se deja sin acceso a un Administrador.
+- Si la cuenta vinculada estaba inactiva y la persona está activa en Operadores CDA, se reactiva.
+- `apellidosNombres` → `apellidos` = dos primeras palabras, `nombres` = el resto (con 2 palabras: 1 y 1; con 1: apellidos = esa, nombres = "-"). Se puede corregir en Usuarios.
+- Al quitar rol o desactivar se revocan sus refresh tokens (el access token muere en ≤15 min).
+- Las 10 cuentas `OPERADOR_CDA` sin persona en Operadores CDA se desactivan con un segundo botón ("Desactivar cuentas sin vínculo"), con confirmación; solo las que tienen `OPERADOR_CDA` como único rol.
+
+### Review Focus (PR 2)
+1. Administrador que además es Asistente CDA y se le desactiva en CDA → sigue entrando como Administrador. (Task 2.3)
+2. Cuenta sin correo en la web (Usuarios, menú de usuario, editar usuario) → muestra la cédula y guardar no falla. (Task 2.1 / 2.6)
+3. "Olvidé mi contraseña" con una cuenta sin correo → respuesta genérica, sin error. (Task 2.1)
+4. Usuario bloqueado que acierta la contraseña → sigue con "Credenciales inválidas" y no reinicia el contador; al vencer los 15 min entra. (Task 2.2)
+5. Pulsar "Crear y vincular" dos veces o a la vez → no duplica cuentas ni falla por índice único. (Task 2.3)
+
+### Task 2.1: Esquema, migración y `email` opcional
+**Files:** `apps/api/prisma/schema.prisma`, nueva migración, `packages/shared-types`, `auth/*`, `users/*`, `apps/web` (Layout, Usuarios), `apps/mobile/src/lib/offlineAuth.ts`.
+- `Usuario.email String? @unique`; `Usuario.intentosFallidos Int @default(0) @map("intentos_fallidos")`; `Usuario.bloqueadoHasta DateTime? @map("bloqueado_hasta") @db.Timestamptz(6)`.
+- `OperadorCda.usuarioId String? @unique @map("usuario_id") @db.Uuid` con relación a `Usuario` (`onDelete: SetNull`).
+- Tipos: `email: string | null` en `UserDto`, `LoginResponse.user`, `JwtPayload`, `CurrentUser`. Notifier: no envía si no hay correo. `forgotPassword` sigue buscando por correo (sin cambios de respuesta).
+- Web: menú de usuario y tabla de Usuarios muestran la cédula cuando no hay correo. Móvil: el verificador offline acepta `email` nulo.
+- Tests: `forgotPassword` con usuario sin correo no notifica; `UsersList` muestra la cédula sin correo; `offlineAuth` guarda y valida sesión sin correo.
+
+### Task 2.2: Bloqueo por intentos fallidos
+**Files:** `auth/auth.service.ts` (+spec), `users/users.controller.ts`, `users/users.service.ts` (+spec), web Usuarios.
+- Constantes `MAX_INTENTOS_LOGIN = 5`, `BLOQUEO_LOGIN_MS = 15 * 60_000`.
+- En `login`: `argon2.verify` siempre se ejecuta (se mantiene el hash señuelo). Si `bloqueadoHasta > ahora` → 401 genérico sin tocar el contador. Fallo → `intentosFallidos` con `increment` atómico; al llegar a 5 → `bloqueadoHasta = ahora + 15 min` e `intentosFallidos = 0`. Éxito → ambos a 0/null.
+- `POST /users/:id/desbloquear` (ADMINISTRADOR). `resetPassword` también desbloquea. `UserDto.bloqueadoHasta`.
+- Web Usuarios: insignia "Bloqueada hasta HH:MM" y botón "Desbloquear".
+- Tests: 5.º fallo bloquea; bloqueado + contraseña correcta → 401 y `verify` llamado; bloqueo vencido → entra y reinicia; éxito reinicia contador; desbloquear limpia ambos campos.
+
+### Task 2.3: `CuentasCdaService`
+**Files:** `operadores-cda/cuentas-cda.service.ts` (+spec), `operadores-cda/nombre-cda.ts` (+spec).
+- `asegurarCuenta(tx, operadorId)`: si ya tiene `usuarioId` → reactiva y garantiza rol; si existe `Usuario` con su cédula → vincula, agrega `OPERADOR_CDA`, reactiva si hace falta, **no toca la contraseña**; si no → crea `Usuario` (cédula, sin correo, nombres/apellidos partidos, teléfono, hash de `DEFAULT_RESET_PASSWORD ?? 'Cne2026!'`, `debeCambiarPwd: true`) con rol `OPERADOR_CDA` y lo vincula. Choque P2002 concurrente → reintenta leyendo el existente.
+- `retirarCuenta(tx, operadorId)`: quita `OPERADOR_CDA`; si era su único rol → `activo: false`; revoca refresh tokens. Sin vínculo → no hace nada.
+- `sincronizar()`: `asegurarCuenta` a cada OPERADOR/ASISTENTE activo sin cuenta → `{ vinculadas, creadas }`.
+- `resumen()`: `{ conCuenta, sinCuenta, pendientesCambioPwd, bloqueadas, cuentasSinVinculo }`.
+- `desactivarSinVinculo()`: cuentas activas cuyo único rol es `OPERADOR_CDA` y sin `OperadorCda` vinculado → inactivas + refresh revocados → `{ desactivadas }`.
+- `partirNombre("CABASCANGO PEREZ JUAN SEBASTIAN")` → `{ apellidos: "CABASCANGO PEREZ", nombres: "JUAN SEBASTIAN" }`; 2 palabras, 1 palabra y espacios repetidos con test.
+- Tests clave: cuenta vieja coincidente conserva `passwordHash`; Administrador recibe rol y conserva los suyos; `retirarCuenta` con dos roles no desactiva; creación usa `debeCambiarPwd: true` y nunca devuelve la contraseña.
+
+### Task 2.4: Enganchar el ciclo de vida en `OperadoresCdaService`
+- `crear` (grupo OPERADOR/ASISTENTE) → `asegurarCuenta` en la misma transacción.
+- `importar(aplicar)` → transacción interactiva; `asegurarCuenta` por cada fila OPERADOR/ASISTENTE (activa).
+- `cambiarActivo(false)` → `retirarCuenta`; `cambiarActivo(true)` → `asegurarCuenta`.
+- `cambiarCargo`: de OPERADOR/ASISTENTE a otro → `retirarCuenta`; de otro a OPERADOR/ASISTENTE → `asegurarCuenta`; entre OPERADOR y ASISTENTE → sin cambios.
+- DTO `OperadorCda.cuenta: 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA'`.
+- Tests por cada transición.
+
+### Task 2.5: Endpoints
+- `GET /operadores-cda/cuentas/resumen`, `POST /operadores-cda/cuentas/sincronizar`, `POST /operadores-cda/cuentas/desactivar-sin-vinculo` — solo ADMINISTRADOR, auditados por el interceptor global. Swagger.
+
+### Task 2.6: Web
+- Operadores CDA (pestañas Operadores y Asistentes): columna "Cuenta app" con insignia (Sin cuenta / Debe cambiar contraseña / Activa / Bloqueada / Inactiva) y filtro.
+- Panel "Cuentas de la app" (solo Administrador): conteos del resumen, botón "Crear y vincular cuentas" (confirmación que indica la contraseña inicial y que se cambia al primer ingreso) y "Desactivar cuentas sin vínculo" (confirmación con el número). Mensajes con `role="status"`/`role="alert"`. Estilo Figma existente.
+- Tests de insignias, confirmaciones y que un Técnico Supervisor no ve el panel.
+
+### Task 2.7: Cierre del PR 2
+- Suites completas + tsc de API, web, móvil y shared; `revisor-calidad`; corregir hallazgos.
+- Pedir confirmación antes del push/PR. **El merge aplica la migración en producción** (Render corre `db:migrate:deploy`): pedir confirmación explícita antes de mergear y verificar `list_deploys` después.
+- Tras el deploy: el Administrador pulsa "Crear y vincular cuentas" cuando lo decida.
