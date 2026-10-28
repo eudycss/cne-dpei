@@ -79,6 +79,27 @@ describe('Login', () => {
     expect(await screen.findByText('Credenciales inválidas')).toBeInTheDocument();
   });
 
+  it('anuncia el error a lectores de pantalla (role="alert")', async () => {
+    postMock.mockRejectedValueOnce({ response: { data: { message: 'Credenciales inválidas' } } });
+    const { container } = renderLogin();
+
+    await submitLogin(container, '1034567899', 'wrongpass');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Credenciales inválidas');
+  });
+
+  it('envía el correo como usuario', async () => {
+    postMock.mockResolvedValueOnce({ data: { accessToken: 'a', refreshToken: 'r', user: baseUser() } });
+    const { container } = renderLogin();
+
+    await submitLogin(container, 'admin@cne-imbabura.gob.ec', 'Clave1*');
+
+    expect(postMock).toHaveBeenCalledWith('/auth/login', {
+      usuario: 'admin@cne-imbabura.gob.ec',
+      password: 'Clave1*',
+    });
+  });
+
   it('redirige a /change-password si el usuario debe cambiar la contraseña', async () => {
     postMock.mockResolvedValueOnce({
       data: { accessToken: 'a', refreshToken: 'r', user: baseUser({ debeCambiarPwd: true }) },

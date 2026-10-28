@@ -34,11 +34,10 @@ export class AuthService {
       where,
       include: { roles: { include: { rol: true } } },
     });
-    if (!user || !user.activo) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-    const ok = await argon2.verify(user.passwordHash, password);
-    if (!ok) {
+    // Siempre se ejecuta argon2.verify (contra un hash señuelo si no hay usuario)
+    // para que el tiempo de respuesta no revele qué cédulas o correos existen.
+    const ok = await argon2.verify(user?.passwordHash ?? (await this.hashSenuelo()), password);
+    if (!user || !user.activo || !ok) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -62,6 +61,14 @@ export class AuthService {
         roles,
       },
     };
+  }
+
+  private hashSenueloPromise?: Promise<string>;
+
+  /** Hash argon2 de un valor aleatorio, calculado una vez por instancia. */
+  private hashSenuelo(): Promise<string> {
+    this.hashSenueloPromise ??= argon2.hash(crypto.randomUUID());
+    return this.hashSenueloPromise;
   }
 
   async refresh(refreshToken: string) {

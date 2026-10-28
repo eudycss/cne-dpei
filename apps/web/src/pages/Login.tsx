@@ -58,7 +58,11 @@ export function Login() {
           value={password}
           onChange={setPassword}
         />
-        {error && <div className="banner error">{error}</div>}
+        {error && (
+          <div className="banner error" role="alert">
+            {error}
+          </div>
+        )}
         <button className="btn" type="submit" disabled={loading} style={{ width: '100%' }}>
           {loading ? 'Ingresando…' : 'Iniciar sesión'}
         </button>

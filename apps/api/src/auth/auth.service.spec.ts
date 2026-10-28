@@ -94,7 +94,14 @@ describe('AuthService', () => {
     it('lanza UnauthorizedException si el usuario no existe', async () => {
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
       await expect(service.login('x@x.com', 'pw')).rejects.toThrow(UnauthorizedException);
-      expect(verifyMock).not.toHaveBeenCalled();
+    });
+
+    it('verifica contra un hash señuelo si el usuario no existe (sin oráculo de tiempo)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+      verifyMock.mockResolvedValueOnce(false);
+      await expect(service.login('1034567899', 'pw')).rejects.toThrow(UnauthorizedException);
+      expect(verifyMock).toHaveBeenCalledTimes(1);
+      expect(verifyMock).toHaveBeenCalledWith('hashed', 'pw');
     });
 
     it('lanza UnauthorizedException si el usuario está inactivo', async () => {
@@ -102,6 +109,15 @@ describe('AuthService', () => {
       await expect(service.login('op@cne-imbabura.gob.ec', 'pw')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    it('rechaza al usuario inactivo aunque la contraseña sea correcta, tras verificarla', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ activo: false }));
+      verifyMock.mockResolvedValueOnce(true);
+      await expect(service.login('op@cne-imbabura.gob.ec', 'pw')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(verifyMock).toHaveBeenCalledTimes(1);
     });
 
     it('lanza UnauthorizedException si la contraseña no coincide', async () => {
