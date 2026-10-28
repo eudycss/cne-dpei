@@ -41,9 +41,9 @@ function renderLogin(initialEntries: (string | { pathname: string; state?: unkno
   );
 }
 
-async function submitLogin(container: HTMLElement, email: string, password: string) {
+async function submitLogin(container: HTMLElement, usuario: string, password: string) {
   const user = userEvent.setup();
-  await user.type(container.querySelector('input[type="email"]')!, email);
+  await user.type(screen.getByLabelText('Cédula o correo'), usuario);
   await user.type(container.querySelector('input[type="password"]')!, password);
   await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 }
@@ -54,6 +54,22 @@ describe('Login', () => {
     localStorage.clear();
   });
 
+  it('el campo de usuario acepta texto libre (cédula o correo)', () => {
+    renderLogin();
+    const campo = screen.getByLabelText('Cédula o correo');
+    expect(campo).toHaveAttribute('type', 'text');
+    expect(campo).toHaveAttribute('autocomplete', 'username');
+  });
+
+  it('envía la cédula como usuario', async () => {
+    postMock.mockResolvedValueOnce({ data: { accessToken: 'a', refreshToken: 'r', user: baseUser() } });
+    const { container } = renderLogin();
+
+    await submitLogin(container, '1034567899', 'Clave1*');
+
+    expect(postMock).toHaveBeenCalledWith('/auth/login', { usuario: '1034567899', password: 'Clave1*' });
+  });
+
   it('muestra error si las credenciales son inválidas', async () => {
     postMock.mockRejectedValueOnce({ response: { data: { message: 'Credenciales inválidas' } } });
     const { container } = renderLogin();
@@ -61,6 +77,27 @@ describe('Login', () => {
     await submitLogin(container, 'x@x.com', 'wrongpass');
 
     expect(await screen.findByText('Credenciales inválidas')).toBeInTheDocument();
+  });
+
+  it('anuncia el error a lectores de pantalla (role="alert")', async () => {
+    postMock.mockRejectedValueOnce({ response: { data: { message: 'Credenciales inválidas' } } });
+    const { container } = renderLogin();
+
+    await submitLogin(container, '1034567899', 'wrongpass');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Credenciales inválidas');
+  });
+
+  it('envía el correo como usuario', async () => {
+    postMock.mockResolvedValueOnce({ data: { accessToken: 'a', refreshToken: 'r', user: baseUser() } });
+    const { container } = renderLogin();
+
+    await submitLogin(container, 'admin@cne-imbabura.gob.ec', 'Clave1*');
+
+    expect(postMock).toHaveBeenCalledWith('/auth/login', {
+      usuario: 'admin@cne-imbabura.gob.ec',
+      password: 'Clave1*',
+    });
   });
 
   it('redirige a /change-password si el usuario debe cambiar la contraseña', async () => {

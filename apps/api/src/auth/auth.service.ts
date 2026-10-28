@@ -27,16 +27,17 @@ export class AuthService {
     @Inject(NOTIFIER) private readonly notifier: INotifier,
   ) {}
 
-  async login(email: string, password: string): Promise<LoginResponse> {
+  /** `usuario` llega ya validado por loginSchema: cédula de 10 dígitos o correo. */
+  async login(usuario: string, password: string): Promise<LoginResponse> {
+    const where = usuario.includes('@') ? { email: usuario } : { cedula: usuario };
     const user = await this.prisma.usuario.findUnique({
-      where: { email },
+      where,
       include: { roles: { include: { rol: true } } },
     });
-    if (!user || !user.activo) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-    const ok = await argon2.verify(user.passwordHash, password);
-    if (!ok) {
+    // Siempre se ejecuta argon2.verify (contra un hash señuelo si no hay usuario)
+    // para que el tiempo de respuesta no revele qué cédulas o correos existen.
+    const ok = await argon2.verify(user?.passwordHash ?? (await this.hashSenuelo()), password);
+    if (!user || !user.activo || !ok) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -52,6 +53,7 @@ export class AuthService {
       ...tokens,
       user: {
         id: user.id,
+        cedula: user.cedula,
         email: user.email,
         nombres: user.nombres,
         apellidos: user.apellidos,
@@ -59,6 +61,14 @@ export class AuthService {
         roles,
       },
     };
+  }
+
+  private hashSenueloPromise?: Promise<string>;
+
+  /** Hash argon2 de un valor aleatorio, calculado una vez por instancia. */
+  private hashSenuelo(): Promise<string> {
+    this.hashSenueloPromise ??= argon2.hash(crypto.randomUUID());
+    return this.hashSenueloPromise;
   }
 
   async refresh(refreshToken: string) {

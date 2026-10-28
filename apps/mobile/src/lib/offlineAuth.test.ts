@@ -36,6 +36,7 @@ const storeMock = SecureStore as unknown as { __getStore: () => Record<string, s
 
 const usuario = {
   id: 'u1',
+  cedula: '1034567899',
   email: 'Operador@cne-imbabura.gob.ec',
   nombres: 'Ana',
   apellidos: 'Perez',
@@ -55,6 +56,34 @@ describe('offlineAuth', () => {
     const resultado = await verificarLoginOffline('operador@cne-imbabura.gob.ec', 'Secreto123!');
 
     expect(resultado).toEqual({ ok: true, usuario });
+  });
+
+  it('acepta la cédula (con espacios o guiones) tras un login online', async () => {
+    await guardarVerificadorOffline('Secreto123!', usuario as any);
+
+    const resultado = await verificarLoginOffline(' 103 456-7899 ', 'Secreto123!');
+
+    expect(resultado).toEqual({ ok: true, usuario });
+  });
+
+  it('rechaza la cédula de otra persona', async () => {
+    await guardarVerificadorOffline('Secreto123!', usuario as any);
+
+    const resultado = await verificarLoginOffline('1750123455', 'Secreto123!');
+
+    expect(resultado).toEqual({ ok: false, razon: 'invalido' });
+  });
+
+  it('un verificador guardado antes de esta versión (sin cédula) sigue entrando por correo', async () => {
+    const { cedula: _omitida, ...sinCedula } = usuario;
+    await guardarVerificadorOffline('Secreto123!', sinCedula as any);
+    const store = storeMock.__getStore();
+    const guardado = JSON.parse(store['cne.offline_auth']);
+    delete guardado.cedula;
+    store['cne.offline_auth'] = JSON.stringify(guardado);
+
+    expect((await verificarLoginOffline('operador@cne-imbabura.gob.ec', 'Secreto123!')).ok).toBe(true);
+    expect(await verificarLoginOffline('1034567899', 'Secreto123!')).toEqual({ ok: false, razon: 'invalido' });
   });
 
   it('rechaza una contraseña incorrecta', async () => {

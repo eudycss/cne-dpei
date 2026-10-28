@@ -18,6 +18,8 @@ import {
 
 interface SessionUser {
   id: string;
+  // Opcional: la sesión guardada por una versión anterior de la app no la trae.
+  cedula?: string;
   email: string;
   nombres: string;
   apellidos: string;
@@ -32,8 +34,8 @@ export type ResultadoLoginOffline =
 interface AuthContextValue {
   user: SessionUser | null;
   restoring: boolean;
-  login: (email: string, password: string) => Promise<SessionUser>;
-  loginOffline: (email: string, password: string) => Promise<ResultadoLoginOffline>;
+  login: (usuario: string, password: string) => Promise<SessionUser>;
+  loginOffline: (usuario: string, password: string) => Promise<ResultadoLoginOffline>;
   logout: () => Promise<void>;
   markPasswordChanged: () => void;
 }
@@ -71,8 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { data } = await api.post<LoginResponse>('/auth/login', { email, password });
+  const login = useCallback(async (usuario: string, password: string) => {
+    const { data } = await api.post<LoginResponse>('/auth/login', { usuario, password });
     // La copia local de la jornada (y la cola sin enviar) se conserva si es del
     // mismo operador (p. ej. volvió a entrar tras expirar la sesión) y se
     // descarta si es de otro. Va ANTES de guardar los tokens: si no, un envío
@@ -97,8 +99,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data.user;
   }, []);
 
-  const loginOffline = useCallback(async (email: string, password: string) => {
-    const resultado = await verificarLoginOffline(email, password);
+  const loginOffline = useCallback(async (usuario: string, password: string) => {
+    const resultado = await verificarLoginOffline(usuario, password);
     if (!resultado.ok) return resultado;
     await prepararCacheParaUsuario(resultado.usuario.id).catch(() => {});
     setUser(resultado.usuario);

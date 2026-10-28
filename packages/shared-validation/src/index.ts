@@ -87,10 +87,26 @@ export const telefonoSchema = z.preprocess(
     .optional(),
 );
 
-export const loginSchema = z.object({
-  email: emailSchema,
-  password: z.string().min(1, 'Contraseña requerida'),
-});
+// Los Operadores/Asistentes CDA entran con cédula; el personal administrativo
+// con correo. `email` se sigue aceptando como alias para las APK ya instaladas.
+function normalizarLogin(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null) return input;
+  const { email, usuario, ...resto } = input as Record<string, unknown>;
+  const valor = usuario ?? email;
+  if (typeof valor !== 'string') return { ...resto, usuario: valor };
+  const limpio = valor.trim();
+  return { ...resto, usuario: limpio.includes('@') ? limpio : limpio.replace(/[\s-]/g, '') };
+}
+
+export const loginSchema = z.preprocess(
+  normalizarLogin,
+  z.object({
+    usuario: z.union([cedulaSchema, emailSchema], {
+      errorMap: () => ({ message: 'Ingrese su cédula o correo' }),
+    }),
+    password: z.string().min(1, 'Contraseña requerida'),
+  }),
+);
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Contraseña actual requerida'),

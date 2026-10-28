@@ -64,6 +64,22 @@ describe('LoginScreen — reingreso sin conexión', () => {
     });
   }
 
+  it('el campo de usuario se anuncia como "Cédula o correo" y envía lo escrito', async () => {
+    mockLogin.mockResolvedValue({});
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<LoginScreen />);
+    });
+
+    const campo = renderer.root.findAllByType(TextInput)[0];
+    expect(campo.props.accessibilityLabel).toBe('Cédula o correo');
+    expect(campo.props.keyboardType).toBe('default');
+
+    await llenarYEnviar(renderer, '1034567899', 'Secreto123!');
+
+    expect(mockLogin).toHaveBeenCalledWith('1034567899', 'Secreto123!');
+  });
+
   it('si login() falla por red y loginOffline() tiene éxito, entra en modo sin conexión', async () => {
     mockLogin.mockRejectedValue(networkError());
     mockLoginOffline.mockResolvedValue({ ok: true });

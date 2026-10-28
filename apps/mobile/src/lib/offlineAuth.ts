@@ -15,6 +15,8 @@ const ITERACIONES = 10_000;
 
 interface SessionUserSnapshot {
   id: string;
+  // Opcional: las sesiones guardadas antes del login por cédula no la traen.
+  cedula?: string;
   email: string;
   nombres: string;
   apellidos: string;
@@ -24,6 +26,7 @@ interface SessionUserSnapshot {
 
 interface VerificadorOffline {
   email: string;
+  cedula?: string;
   salt: string;
   hash: string;
   guardadoEn: string;
@@ -53,6 +56,7 @@ export async function guardarVerificadorOffline(
   const hash = await hashConSal(password, salt);
   const verificador: VerificadorOffline = {
     email: usuario.email.toLowerCase(),
+    cedula: usuario.cedula,
     salt,
     hash,
     guardadoEn: new Date().toISOString(),
@@ -69,15 +73,26 @@ export type ResultadoLoginOffline =
   | { ok: true; usuario: SessionUserSnapshot }
   | { ok: false; razon: 'sin-verificador' | 'vencido' | 'invalido' };
 
+// Mismo criterio que loginSchema en el servidor: correo en minúsculas, o
+// cédula sin espacios ni guiones.
+function normalizarUsuario(usuario: string): string {
+  const limpio = usuario.trim();
+  return limpio.includes('@') ? limpio.toLowerCase() : limpio.replace(/[\s-]/g, '');
+}
+
 export async function verificarLoginOffline(
-  email: string,
+  usuario: string,
   password: string,
 ): Promise<ResultadoLoginOffline> {
   const raw = await SecureStore.getItemAsync(OFFLINE_KEY);
   if (!raw) return { ok: false, razon: 'sin-verificador' };
 
   const verificador = JSON.parse(raw) as VerificadorOffline;
-  if (verificador.email !== email.trim().toLowerCase()) {
+  const normalizado = normalizarUsuario(usuario);
+  const coincide =
+    normalizado === verificador.email ||
+    (verificador.cedula !== undefined && normalizado === verificador.cedula);
+  if (!coincide) {
     return { ok: false, razon: 'invalido' };
   }
 

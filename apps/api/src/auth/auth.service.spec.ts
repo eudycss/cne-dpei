@@ -56,6 +56,7 @@ describe('AuthService', () => {
   function userRow(overrides: Record<string, unknown> = {}) {
     return {
       id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      cedula: '1034567899',
       email: 'op@cne-imbabura.gob.ec',
       nombres: 'Ana',
       apellidos: 'López',
@@ -93,7 +94,14 @@ describe('AuthService', () => {
     it('lanza UnauthorizedException si el usuario no existe', async () => {
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
       await expect(service.login('x@x.com', 'pw')).rejects.toThrow(UnauthorizedException);
-      expect(verifyMock).not.toHaveBeenCalled();
+    });
+
+    it('verifica contra un hash señuelo si el usuario no existe (sin oráculo de tiempo)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+      verifyMock.mockResolvedValueOnce(false);
+      await expect(service.login('1034567899', 'pw')).rejects.toThrow(UnauthorizedException);
+      expect(verifyMock).toHaveBeenCalledTimes(1);
+      expect(verifyMock).toHaveBeenCalledWith('hashed', 'pw');
     });
 
     it('lanza UnauthorizedException si el usuario está inactivo', async () => {
@@ -101,6 +109,15 @@ describe('AuthService', () => {
       await expect(service.login('op@cne-imbabura.gob.ec', 'pw')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    it('rechaza al usuario inactivo aunque la contraseña sea correcta, tras verificarla', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ activo: false }));
+      verifyMock.mockResolvedValueOnce(true);
+      await expect(service.login('op@cne-imbabura.gob.ec', 'pw')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(verifyMock).toHaveBeenCalledTimes(1);
     });
 
     it('lanza UnauthorizedException si la contraseña no coincide', async () => {
@@ -121,6 +138,40 @@ describe('AuthService', () => {
       expect(result.refreshToken).toBe('signed.jwt.token');
       expect(result.user.roles).toEqual(['OPERADOR_CDA']);
       expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1); // persiste el refresh emitido
+    });
+
+    it('busca por correo cuando el identificador lo contiene', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
+      verifyMock.mockResolvedValueOnce(true);
+
+      await service.login('op@cne-imbabura.gob.ec', 'buena');
+
+      expect(prisma.usuario.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { email: 'op@cne-imbabura.gob.ec' } }),
+      );
+    });
+
+    it('entra con cédula y la devuelve en los datos del usuario', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
+      verifyMock.mockResolvedValueOnce(true);
+
+      const result = await service.login('1034567899', 'buena');
+
+      expect(prisma.usuario.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { cedula: '1034567899' } }),
+      );
+      expect(result.user.cedula).toBe('1034567899');
+    });
+
+    it('rechaza por cédula a un usuario inactivo', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ activo: false }));
+      await expect(service.login('1034567899', 'buena')).rejects.toThrow('Credenciales inválidas');
+    });
+
+    it('rechaza por cédula una contraseña errónea', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow());
+      verifyMock.mockResolvedValueOnce(false);
+      await expect(service.login('1034567899', 'mala')).rejects.toThrow('Credenciales inválidas');
     });
   });
 

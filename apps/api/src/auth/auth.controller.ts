@@ -10,6 +10,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
   loginSchema,
+  type LoginInput,
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
@@ -35,14 +36,18 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        email: { type: 'string', format: 'email', example: 'admin@cne-imbabura.gob.ec' },
+        usuario: {
+          type: 'string',
+          description: 'Cédula (Operadores/Asistentes CDA) o correo (personal administrativo)',
+          example: 'admin@cne-imbabura.gob.ec',
+        },
         password: { type: 'string', format: 'password' },
       },
-      required: ['email', 'password'],
+      required: ['usuario', 'password'],
     },
   })
-  login(@Body(new ZodValidationPipe(loginSchema)) body: { email: string; password: string }) {
-    return this.auth.login(body.email, body.password);
+  login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput) {
+    return this.auth.login(body.usuario, body.password);
   }
 
   @Public()
