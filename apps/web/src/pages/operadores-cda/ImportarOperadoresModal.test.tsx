@@ -59,6 +59,23 @@ describe('ImportarOperadoresModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('si la API creó o vinculó cuentas de la app, lo dice en el aviso', async () => {
+    postMock
+      .mockResolvedValueOnce({ data: resultado() })
+      .mockResolvedValueOnce({ data: resultado({ vistaPrevia: false, cuentas: { creadas: 1, vinculadas: 1 } }) });
+    renderModal();
+
+    await userEvent.upload(screen.getByLabelText('Archivo (.xlsx)'), archivo());
+    await userEvent.click(await screen.findByRole('button', { name: 'Importar 2 operador(es)' }));
+
+    await waitFor(() =>
+      expect(sileo.success).toHaveBeenCalledWith({
+        title: 'Importación lista: 1 nuevo(s), 1 actualizado(s).',
+        description: 'Cuentas de la app: 1 creada(s) y 1 vinculada(s).',
+      }),
+    );
+  });
+
   it('mientras lee un archivo no deja elegir otro (la vista previa siempre es del archivo a importar)', async () => {
     let resolver!: (v: unknown) => void;
     postMock.mockReturnValueOnce(new Promise((r) => (resolver = r)));

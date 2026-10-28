@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import { motion, useReducedMotion } from 'motion/react';
-import type { GrupoCda, OperadorCda } from '@cne/shared-types';
+import type { EstadoCuentaCda, GrupoCda, OperadorCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
@@ -17,6 +17,7 @@ import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { OperadorFormModal } from './OperadorFormModal';
 import { OcultarOperadorModal } from './OcultarOperadorModal';
+import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
 import { cargoCorto, fechaCorta, iniciales, mensajeError, normalizar, partirNombre } from './utils';
 
@@ -33,6 +34,15 @@ function refrescarOperadores(qc: QueryClient, grupo: GrupoCda) {
   ]);
 }
 
+/** Texto y color de la insignia "Cuenta app" (clases de .ocda-estado). */
+const ESTADO_CUENTA: Record<EstadoCuentaCda, { texto: string; clase: string }> = {
+  SIN_CUENTA: { texto: 'Sin cuenta', clase: 'vacio' },
+  PENDIENTE_CAMBIO: { texto: 'Debe cambiar contraseña', clase: 'aviso' },
+  ACTIVA: { texto: 'Activa', clase: 'ok' },
+  BLOQUEADA: { texto: 'Bloqueada', clase: 'error' },
+  INACTIVA: { texto: 'Inactiva', clase: 'vacio' },
+};
+
 /**
  * Personal de los Centros de Digitalización de Actas. Son ~64 personas por
  * cargo: se traen todas y se filtra en el navegador (nombre, cédula y fecha
@@ -45,7 +55,10 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const { puede } = useModulos();
   const puedeCarnets = puede('cda.carnets.emitir') || puede('cda.carnets.reimprimir');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
+  // Solo operadores y asistentes entran a la app de campo.
+  const conCuentaApp = grupo === 'OPERADOR' || grupo === 'ASISTENTE';
   const [busqueda, setBusqueda] = useState('');
+  const [filtroCuenta, setFiltroCuenta] = useState<EstadoCuentaCda | ''>('');
   const [params, setParams] = useSearchParams();
   const filtro = {
     desde: fechaDeUrl(params.get('ingresoDesde')),
@@ -67,6 +80,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     );
   const limpiarFiltros = () => {
     setBusqueda('');
+    setFiltroCuenta('');
     setParams(
       (prev) => {
         const p = new URLSearchParams(prev);
@@ -78,6 +92,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   };
   const [importando, setImportando] = useState(false);
   const [carnets, setCarnets] = useState(false);
+  const [cuentasApp, setCuentasApp] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
   // null = cerrado; 'nuevo' = agregar; un operador = editarlo.
   const [formulario, setFormulario] = useState<OperadorCda | 'nuevo' | null>(null);
@@ -114,11 +129,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     const q = normalizar(busqueda.trim());
     const f = { desde, hasta, incluirSinFecha };
     const filtrados = (data ?? []).filter(
-      (o) => (!q || normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q)) && cumpleIngreso(o, f),
+      (o) =>
+        (!q || normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q)) &&
+        cumpleIngreso(o, f) &&
+        (!filtroCuenta || o.cuenta === filtroCuenta),
     );
     return ordenarPorIngreso(filtrados, orden);
-  }, [data, busqueda, desde, hasta, incluirSinFecha, orden]);
-  const hayFiltros = busqueda.trim() !== '' || conRango;
+  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta]);
+  const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '';
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
@@ -140,6 +158,11 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               onClick={() => setCarnets(true)}
             >
               Carnets QR
+            </button>
+          )}
+          {isAdmin && conCuentaApp && (
+            <button type="button" className="btn secondary" onClick={() => setCuentasApp(true)}>
+              Cuentas de la app
             </button>
           )}
           {isAdmin && (
@@ -213,6 +236,19 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 Incluir sin fecha
               </button>
             )}
+            {conCuentaApp && (
+              <label className="ocda-fecha">
+                <span>Cuenta app</span>
+                <select value={filtroCuenta} onChange={(e) => setFiltroCuenta(e.target.value as EstadoCuentaCda | '')}>
+                  <option value="">Todas</option>
+                  {(Object.keys(ESTADO_CUENTA) as EstadoCuentaCda[]).map((estado) => (
+                    <option key={estado} value={estado}>
+                      {ESTADO_CUENTA[estado].texto}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="ocda-fecha">
               <span>Ordenar</span>
               <select value={orden} onChange={(e) => setOrden(e.target.value as OrdenListado)}>
@@ -259,6 +295,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               >
                 <TarjetaOperador
                   operador={o}
+                  mostrarCuenta={conCuentaApp}
                   onEnlace={puede('cda.fotos.enlace') ? () => setEnlacePara(o) : undefined}
                   admin={
                     isAdmin
@@ -285,6 +322,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       )}
 
       {importando && <ImportarOperadoresModal onClose={() => setImportando(false)} />}
+      {cuentasApp && <CuentasAppModal onClose={() => setCuentasApp(false)} />}
       {carnets && data && (
         <CarnetsQrModal operadores={data.filter((o) => o.activo)} onClose={() => setCarnets(false)} />
       )}
@@ -333,10 +371,13 @@ type AccionesAdmin = { onEditar: () => void; onOcultar: () => void; onReactivar:
 
 function TarjetaOperador({
   operador: o,
+  mostrarCuenta,
   onEnlace,
   admin,
 }: {
   operador: OperadorCda;
+  /** Operadores y asistentes: estado de su cuenta de la app. */
+  mostrarCuenta: boolean;
   /** Sin permiso para crear enlaces de foto, no se muestra el botón. */
   onEnlace?: () => void;
   /** Solo el administrador agrega, edita u oculta. */
@@ -370,6 +411,14 @@ function TarjetaOperador({
           <dt>Ingreso</dt>
           <dd className="mono">{o.fechaInicio ? fechaCorta(o.fechaInicio) : 'Sin fecha'}</dd>
         </div>
+        {mostrarCuenta && o.cuenta && (
+          <div>
+            <dt>Cuenta app</dt>
+            <dd>
+              <span className={`ocda-estado ${ESTADO_CUENTA[o.cuenta].clase}`}>{ESTADO_CUENTA[o.cuenta].texto}</span>
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="ocda-tarjeta-pie">
         {o.activo ? (
