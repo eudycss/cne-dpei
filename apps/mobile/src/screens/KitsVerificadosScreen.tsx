@@ -87,7 +87,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   rowCodigo: { fontSize: 14, fontFamily: fontFamily.bold, color: c.primary, letterSpacing: 0.5 },
   rowNombre: { fontSize: 15, fontFamily: fontFamily.semiBold, color: c.textPrimary, marginTop: 2 },
   rowMeta: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 2 },
-  rowPendiente: { fontSize: 12, fontFamily: fontFamily.medium, color: c.warningText, marginTop: 2 },
+  rowPendiente: { fontSize: 13, fontFamily: fontFamily.medium, color: c.warningText, marginTop: 2 },
   empty: { fontSize: 14, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 8 },
   error: { fontSize: 14, fontFamily: fontFamily.medium, color: c.error, marginTop: 8 },
 });

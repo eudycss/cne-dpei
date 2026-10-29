@@ -569,9 +569,33 @@ describe('TrackingService', () => {
     });
 
     it('kits legacy sin ítems de catálogo guardan solo texto y marcado', () => {
-      expect(checklistDesdeBd([], [{ texto: 'Acta', marcado: true, serie: 'x', estado: 'MALO' }])).toEqual([
+      expect(checklistDesdeBd([], [{ texto: 'Acta', marcado: true, serie: 'x', estado: 'MALO' }], 'Acta')).toEqual([
         { texto: 'Acta', marcado: true },
       ]);
+    });
+
+    it('kits legacy: el texto sale de contenidos y se exige cada fila (no vale la lista vacía)', () => {
+      expect(() => checklistDesdeBd([], [], 'Acta, sobres')).toThrow(BadRequestException);
+      expect(() => checklistDesdeBd([], [{ texto: 'Acta', marcado: true }], 'Acta, sobres')).toThrow(
+        BadRequestException,
+      );
+      expect(() =>
+        checklistDesdeBd([], [{ texto: 'Acta', marcado: true }, { texto: 'Inventado', marcado: true }], 'Acta, sobres'),
+      ).toThrow(BadRequestException);
+      expect(
+        checklistDesdeBd([], [{ texto: 'sobres', marcado: false }, { texto: 'Acta', marcado: true }], 'Acta, sobres'),
+      ).toEqual([
+        { texto: 'Acta', marcado: true },
+        { texto: 'sobres', marcado: false },
+      ]);
+    });
+
+    it('un kit sin artículos ni contenidos guarda la lista vacía aunque el cliente mande filas', () => {
+      expect(checklistDesdeBd([], [{ texto: 'Inventado', marcado: true }], null)).toEqual([]);
+    });
+
+    it('un kit con artículos de catálogo no acepta la lista vacía', () => {
+      expect(() => checklistDesdeBd(contenido, [])).toThrow(BadRequestException);
     });
   });
 
@@ -606,8 +630,8 @@ describe('TrackingService', () => {
       },
     );
 
-    it('un kit que el operador nunca recibió (ASIGNADO) no se puede verificar', async () => {
-      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ ...kit, estado: 'ASIGNADO' });
+    it.each(['EN_BODEGA', 'ASIGNADO'])('un kit %s (el operador nunca lo recibió) no se puede verificar', async (estado) => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ ...kit, estado });
 
       await expect(
         service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input),

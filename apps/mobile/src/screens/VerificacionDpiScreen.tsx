@@ -134,7 +134,12 @@ export function VerificacionDpiScreen() {
                   <Text style={styles.kitNombre}>{kit.nombre}</Text>
 
                   {kit.salidaPendiente ? (
-                    <View style={styles.aviso} accessibilityRole="alert" testID="aviso-salida-pendiente">
+                    <View
+                      style={styles.aviso}
+                      accessibilityRole="alert"
+                      accessibilityLiveRegion="polite"
+                      testID="aviso-salida-pendiente"
+                    >
                       <Text style={styles.avisoTexto}>
                         El celular del operador aún no envía la salida del recinto (quedó sin señal). Puede
                         verificar el kit igual: quedará registrado que la salida estaba pendiente.

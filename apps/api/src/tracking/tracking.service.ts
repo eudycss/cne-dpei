@@ -635,7 +635,7 @@ export class TrackingService {
       data: {
         kitId: kit.id,
         supervisorId,
-        items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items),
+        items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items, kit.contenidos ?? null),
         observaciones: parsed.observaciones ?? null,
         salidaPendiente,
       },
@@ -2094,15 +2094,23 @@ type FilaChecklistJson = { [K in keyof ItemChecklist]: ItemChecklist[K] };
  * hay en la BD (texto y serie de cada artículo del kit): del cliente solo se
  * acepta si volvió (`marcado`) y con qué estado. Así el móvil no puede meter
  * ítems ajenos al kit ni cambiar una serie. Exige que vengan todos los ítems
- * del kit, ni uno más. Los kits legacy (sin ítems de catálogo) guardan el
- * checklist de texto libre como antes.
+ * del kit, ni uno más. Los kits legacy (sin ítems de catálogo) toman cada
+ * fila del texto de `contenidos` y del cliente solo `marcado`; un kit sin nada
+ * registrado guarda la lista vacía.
  */
 export function checklistDesdeBd(
   itemsContenido: { itemId: string; serie: string | null; estado: EstadoItemKit; item: { etiqueta: string } }[],
   enviados: ItemChecklist[],
+  contenidosLegacy: string | null = null,
 ): FilaChecklistJson[] {
   if (itemsContenido.length === 0) {
-    return enviados.map(({ texto, marcado }) => ({ texto, marcado }));
+    const textos = parseContenidos(contenidosLegacy);
+    const porTexto = new Map(enviados.map((e) => [e.texto, e]));
+    if (porTexto.size !== enviados.length || enviados.length !== textos.length || textos.some((t) => !porTexto.has(t))) {
+      if (textos.length === 0) return [];
+      throw new BadRequestException('El checklist no coincide con el contenido del kit. Vuelve a escanearlo.');
+    }
+    return textos.map((texto) => ({ texto, marcado: porTexto.get(texto)!.marcado }));
   }
   const porId = new Map(enviados.filter((e) => e.itemId).map((e) => [e.itemId as string, e]));
   const idsKit = new Set(itemsContenido.map((ic) => ic.itemId));
