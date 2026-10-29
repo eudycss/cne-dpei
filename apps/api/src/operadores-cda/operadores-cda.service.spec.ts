@@ -234,6 +234,34 @@ describe('OperadoresCdaService', () => {
     });
   });
 
+  describe('buscar (en todos los cargos)', () => {
+    it('busca en los 9 cargos por nombre o cédula, solo activos, con lo mínimo para ubicar a la persona', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        { id: 'o1', apellidosNombres: 'PÉREZ ANA', cedula: '1005201015', grupo: 'DIGITADOR', activo: true },
+      ]);
+
+      const r = await service.buscar({ q: '1005201015' });
+
+      const args = prisma.operadorCda.findMany.mock.calls[0][0];
+      expect(args.where).toEqual({
+        activo: true,
+        OR: [
+          { apellidosNombres: { contains: '1005201015', mode: 'insensitive' } },
+          { cedula: { contains: '1005201015' } },
+        ],
+      });
+      expect(args.where).not.toHaveProperty('grupo');
+      expect(args.select).toEqual({ id: true, apellidosNombres: true, cedula: true, grupo: true, activo: true });
+      expect(args.take).toBe(20);
+      expect(r).toEqual([{ id: 'o1', apellidosNombres: 'PÉREZ ANA', cedula: '1005201015', grupo: 'DIGITADOR', activo: true }]);
+    });
+
+    it('con incluirInactivos también trae a los ocultos', async () => {
+      await service.buscar({ q: 'pérez', incluirInactivos: true });
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).not.toHaveProperty('activo');
+    });
+  });
+
   describe('CRUD manual', () => {
     const FILA_BD = {
       id: 'o1',

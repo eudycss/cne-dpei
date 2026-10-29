@@ -9,6 +9,7 @@ import { AtrasosPanel } from './AtrasosPanel';
 import { FILTROS_INGRESO } from './filtroIngreso';
 import { GrupoCdaContext, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
+import { BuscadorGeneral } from './BuscadorGeneral';
 
 const SECCIONES = [
   { id: 'listado', etiqueta: 'Listado' },
@@ -58,6 +59,7 @@ export function OperadoresCdaPage() {
         </div>
         <div className="ocda-acciones" ref={setAcciones} />
       </div>
+      <BuscadorGeneral />
       <label className="ocda-cargo">
         <span>Cargo</span>
         <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>

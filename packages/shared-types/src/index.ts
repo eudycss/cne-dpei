@@ -1051,6 +1051,15 @@ export interface OperadorCda {
   creadoEn: string;
 }
 
+/** Resultado del buscador en todos los cargos: lo justo para ir a su listado. */
+export interface PersonaCdaEncontrada {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  grupo: GrupoCda;
+  activo: boolean;
+}
+
 export type EstadoCuentaCda = 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA';
 
 /** Resultado de crear o vincular cuentas; `fallidas` se completan con el botón de la web. */

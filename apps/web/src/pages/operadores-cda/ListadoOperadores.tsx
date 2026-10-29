@@ -13,6 +13,7 @@ import { useFotoOperadorUrl } from './useFotoOperador';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
 import { useGrupoCda } from './grupo';
+import { EnOtroCargo } from './BuscadorGeneral';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { OperadorFormModal } from './OperadorFormModal';
@@ -115,6 +116,37 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     // Al alternar "Mostrar ocultos" la lista (y el foco en el botón) se queda mientras carga.
     placeholderData: keepPreviousData,
   });
+
+  // El buscador general llega con ?q=<cédula> (y ?ocultos=1): se pasan al
+  // filtro y se quitan de la URL para que no queden pegados. El foco va al
+  // filtro cuando ya está en pantalla: el botón pulsado desapareció (WCAG 2.4.3).
+  const qUrl = params.get('q');
+  const ocultosUrl = params.get('ocultos');
+  const busquedaRef = useRef<HTMLSpanElement>(null);
+  const [enfocarBusqueda, setEnfocarBusqueda] = useState(false);
+  useEffect(() => {
+    if (qUrl === null && ocultosUrl === null) return;
+    if (qUrl !== null) {
+      setBusqueda(qUrl.slice(0, 100));
+      setEnfocarBusqueda(true);
+    }
+    if (ocultosUrl === '1') setConOcultos(true);
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('q');
+        p.delete('ocultos');
+        return p;
+      },
+      { replace: true },
+    );
+  }, [qUrl, ocultosUrl, setParams]);
+  useEffect(() => {
+    const campo = busquedaRef.current?.querySelector('input');
+    if (!enfocarBusqueda || !campo) return;
+    campo.focus();
+    setEnfocarBusqueda(false);
+  }, [enfocarBusqueda, data]);
   const reactivar = useMutation({
     mutationFn: (o: OperadorCda) => cambiarActivoOperadorCda(o.id, true),
     onSuccess: (o) => {
@@ -196,7 +228,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       {data && (data.length > 0 || verOcultos) && (
         <>
           <div className="ocda-filtros">
-            <span className="ocda-campo" style={{ flex: '1 1 280px', maxWidth: 420 }}>
+            <span ref={busquedaRef} className="ocda-campo" style={{ flex: '1 1 280px', maxWidth: 420 }}>
               <SearchInput
                 value={busqueda}
                 onChange={setBusqueda}
@@ -312,11 +344,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
             ))}
           </ul>
           {visibles.length === 0 && (
-            <p className="muted">
-              {conRango && !rangoInvalido
-                ? `Ningún ${singular} coincide con los filtros.`
-                : `Ningún ${singular} coincide con “${busqueda}”.`}
-            </p>
+            <>
+              <p className="muted">
+                {conRango && !rangoInvalido
+                  ? `Ningún ${singular} coincide con los filtros.`
+                  : `Ningún ${singular} coincide con “${busqueda}”.`}
+              </p>
+              <EnOtroCargo texto={busqueda} />
+            </>
           )}
         </>
       )}
