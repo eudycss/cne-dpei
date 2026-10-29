@@ -1,0 +1,322 @@
+import { useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { sileo } from 'sileo';
+import type { AplicarParejasCdaResult, EstadoParejaCda, ParejaCdaFila } from '@cne/shared-types';
+import { useAuth } from '../../auth/AuthContext';
+import { Cargando } from '../../components/Cargando';
+import { Modal } from '../../components/Modal';
+import {
+  aplicarParejasCda,
+  descargarPlantillaParejasCda,
+  descargarQrParejasCda,
+  getFechasParejasCda,
+  getParejasCda,
+  quitarParejaCda,
+} from '../../lib/queries/operadores-cda';
+import { ParejaFormModal } from './ParejaFormModal';
+import { ImportarParejasModal } from './ImportarParejasModal';
+import { resumenApp } from './resumenParejas';
+import { hoyEcuador, mensajeError } from './utils';
+
+/** Texto y color (clases de .ocda-estado) de cada estado. */
+const ESTADO: Record<EstadoParejaCda, { texto: string; clase: string }> = {
+  EN_APP: { texto: 'En la app', clase: 'ok' },
+  SIN_KIT: { texto: 'Sin kit', clase: 'aviso' },
+  SOLO_REGISTRADA: { texto: 'Solo registrada', clase: 'vacio' },
+  PENDIENTE_EVENTO: { texto: 'Sin evento de este día', clase: 'pendiente' },
+};
+
+const fechaLarga = (dia: string) =>
+  new Date(`${dia}T12:00:00Z`).toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+/**
+ * Parejas Operador CDA + Asistente CDA que van a cada recinto, una lista por
+ * día (?dia= en la URL). La lista pasa a la app solo si el evento ACTIVO es
+ * de ese día: el kit del recinto se asigna al operador. Si la jornada ya
+ * inició, cada cambio que llega a la app pide justificación (HU12).
+ */
+export function ParejasPanel() {
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia') ?? '') ? (params.get('dia') as string) : hoyEcuador();
+  const [formulario, setFormulario] = useState<ParejaCdaFila | 'nueva' | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
+  const [justificacion, setJustificacion] = useState('');
+  // El último paso a la app queda a la vista (los avisos emergentes desaparecen).
+  const [resultado, setResultado] = useState<AplicarParejasCdaResult | null>(null);
+
+  const elegirDia = (valor: string) => {
+    setResultado(null);
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (valor) p.set('dia', valor);
+        else p.delete('dia');
+        return p;
+      },
+      { replace: true },
+    );
+  };
+
+  const { data, isLoading, error } = useQuery({ queryKey: ['parejas-cda', dia], queryFn: () => getParejasCda(dia) });
+  const { data: fechas } = useQuery({ queryKey: ['parejas-cda', 'fechas'], queryFn: getFechasParejasCda });
+  const refrescar = () => qc.invalidateQueries({ queryKey: ['parejas-cda'] });
+  const congelado = !!data?.congelado;
+  const motivo = justificacion.trim() || undefined;
+
+  const mostrarResultado = (r: AplicarParejasCdaResult | null) => {
+    setResultado(r);
+    if (r) (r.errores.length ? sileo.warning : sileo.success)(resumenApp(r));
+  };
+
+  const aplicar = useMutation({
+    mutationFn: () => aplicarParejasCda(dia, motivo),
+    onSuccess: (r) => {
+      refrescar();
+      mostrarResultado(r);
+    },
+    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo pasar la lista a la app') }),
+  });
+  const quitar = useMutation({
+    mutationFn: (p: ParejaCdaFila) => quitarParejaCda(p.id, motivo),
+    onSuccess: (_, p) => {
+      setQuitarA(null);
+      refrescar();
+      sileo.success({ title: 'Pareja quitada', description: `${p.operador.apellidosNombres} · ${p.recinto.nombre}` });
+    },
+  });
+  const qr = useMutation({
+    mutationFn: () => descargarQrParejasCda(dia),
+    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo descargar el PDF de QR') }),
+  });
+  const plantilla = useMutation({
+    mutationFn: descargarPlantillaParejasCda,
+    onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo descargar la plantilla') }),
+  });
+
+  const parejas = data?.parejas ?? [];
+  const recintos = new Set(parejas.map((p) => p.recinto.id)).size;
+  const conKit = parejas.some((p) => p.kitCodigo);
+
+  return (
+    <section aria-labelledby="parejas-titulo">
+      <h3 id="parejas-titulo" className="sr-only">
+        Parejas por recinto
+      </h3>
+      <div className="ocda-filtros">
+        <label className="ocda-fecha">
+          <span>Día</span>
+          <input type="date" value={dia} onChange={(e) => elegirDia(e.target.value)} />
+        </label>
+        {fechas && fechas.length > 0 && (
+          <div className="ocda-dias" role="group" aria-label="Días con lista">
+            {fechas.map((f) => (
+              <button key={f} type="button" className="ocda-chip" aria-pressed={f === dia} onClick={() => elegirDia(f)}>
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="ocda-subtitulo" style={{ marginTop: 0 }}>
+        Lista del <strong>{fechaLarga(dia)}</strong>
+      </p>
+      {data && (
+        <p className={`banner ${data.evento ? 'info' : 'aviso'}`}>
+          {data.evento
+            ? `Evento activo de este día: ${data.evento.nombre}. Cada pareja pasa a la app con el kit de su recinto (lo ve el operador).`
+            : 'No hay un evento ACTIVO con jornada este día: la lista queda registrada y pasa a la app cuando ese evento esté activo.'}
+        </p>
+      )}
+      {congelado && isAdmin && (
+        <div className="banner aviso">
+          <p style={{ margin: '0 0 0.5rem' }}>
+            <strong>La jornada ya inició: las asignaciones están congeladas.</strong> Para que un cambio llegue a la app escriba
+            el motivo; queda en la bitácora.
+          </p>
+          <label className="field" style={{ margin: 0 }}>
+            <span>Justificación</span>
+            <input value={justificacion} onChange={(e) => setJustificacion(e.target.value)} maxLength={500} autoComplete="off" />
+          </label>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: '0.5rem', flexWrap: 'wrap', margin: '0.75rem 0 1rem' }}>
+        {isAdmin && (
+          <>
+            <button type="button" className="btn" onClick={() => setFormulario('nueva')}>
+              Agregar pareja
+            </button>
+            <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
+              Cargar plantilla
+            </button>
+            <button type="button" className="btn secondary" onClick={() => plantilla.mutate()} disabled={plantilla.isPending}>
+              Descargar plantilla
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => aplicar.mutate()}
+              disabled={!data?.evento || parejas.length === 0 || (congelado && !motivo) || aplicar.isPending}
+            >
+              {aplicar.isPending ? 'Pasando a la app…' : 'Aplicar a la app'}
+            </button>
+          </>
+        )}
+        <button type="button" className="btn secondary" onClick={() => qr.mutate()} disabled={!conKit || qr.isPending}>
+          Descargar QR de esta lista
+        </button>
+      </div>
+
+      {resultado && (
+        <div className={`banner ${resultado.errores.length ? 'error' : 'success'}`} role={resultado.errores.length ? 'alert' : 'status'}>
+          <p style={{ margin: 0 }}>
+            <strong>Paso a la app:</strong> {resumenApp(resultado).title}
+          </p>
+          {resultado.errores.length > 0 && (
+            <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
+              {resultado.errores.map((e) => (
+                <li key={e.pareja}>
+                  <strong>{e.pareja}:</strong> {e.error}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="ocda-btn-texto" onClick={() => setResultado(null)}>
+            Cerrar resumen
+          </button>
+        </div>
+      )}
+
+      {isLoading && <Cargando />}
+      {error && (
+        <p className="banner error" role="alert">
+          {mensajeError(error, 'No se pudo cargar la lista')}
+        </p>
+      )}
+      {data && parejas.length === 0 && (
+        <p className="muted">Aún no hay parejas este día.{isAdmin && ' Agréguelas una por una o cargue la plantilla.'}</p>
+      )}
+      {parejas.length > 0 && (
+        <>
+          <p className="muted" role="status">
+            {parejas.length} pareja(s) en {recintos} recinto(s)
+          </p>
+          <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
+            <table>
+              <caption className="sr-only">Parejas del {dia}: recinto, operador, asistente y estado en la app</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Recinto</th>
+                  <th scope="col">Operador CDA</th>
+                  <th scope="col">Asistente CDA</th>
+                  <th scope="col">App</th>
+                  {isAdmin && <th scope="col">Acciones</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {parejas.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
+                      {p.recintoCompartido && (
+                        <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
+                          2 parejas
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {p.operador.apellidosNombres}
+                      <br />
+                      <span className="muted mono">{p.operador.cedula}</span>
+                    </td>
+                    <td>
+                      {p.asistente ? (
+                        <>
+                          {p.asistente.apellidosNombres}
+                          <br />
+                          <span className="muted mono">{p.asistente.cedula}</span>
+                        </>
+                      ) : (
+                        <span className="muted">Sin asistente</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
+                      {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
+                    </td>
+                    {isAdmin && (
+                      <td>
+                        <button
+                          type="button"
+                          className="ocda-btn-texto"
+                          aria-label={`Cambiar la pareja de ${p.operador.apellidosNombres}`}
+                          onClick={() => setFormulario(p)}
+                        >
+                          Cambiar
+                        </button>
+                        <button
+                          type="button"
+                          className="ocda-btn-texto peligro"
+                          aria-label={`Quitar la pareja de ${p.operador.apellidosNombres}`}
+                          onClick={() => {
+                            quitar.reset();
+                            setQuitarA(p);
+                          }}
+                        >
+                          Quitar
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {quitarA && (
+        <Modal labelledBy="quitar-pareja-titulo" onClose={() => setQuitarA(null)} maxWidth={480}>
+          <div className="login-card" style={{ width: '100%', maxWidth: 'none' }} aria-describedby="quitar-pareja-texto">
+            <h1 id="quitar-pareja-titulo">Quitar pareja</h1>
+            <p id="quitar-pareja-texto">
+              ¿Quitar la pareja de {quitarA.operador.apellidosNombres} ({quitarA.recinto.nombre})? Si tenía el kit en la app, el kit
+              sigue en su recinto pero sin operador.
+            </p>
+            {quitar.isError && (
+              <p className="banner error" role="alert">
+                {mensajeError(quitar.error, 'No se pudo quitar la pareja')}
+              </p>
+            )}
+            <div className="row" style={{ justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button type="button" className="btn secondary" onClick={() => setQuitarA(null)} disabled={quitar.isPending}>
+                Cancelar
+              </button>
+              <button type="button" className="btn" onClick={() => quitar.mutate(quitarA)} disabled={quitar.isPending}>
+                {quitar.isPending ? 'Quitando…' : 'Sí, quitar'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {formulario && (
+        <ParejaFormModal
+          dia={dia}
+          pareja={formulario === 'nueva' ? null : formulario}
+          congelado={congelado}
+          onResultado={mostrarResultado}
+          onClose={() => setFormulario(null)}
+        />
+      )}
+      {importando && (
+        <ImportarParejasModal dia={dia} congelado={congelado} onResultado={mostrarResultado} onClose={() => setImportando(false)} />
+      )}
+    </section>
+  );
+}

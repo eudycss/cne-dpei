@@ -1051,6 +1051,106 @@ export interface OperadorCda {
   creadoEn: string;
 }
 
+// --- Parejas Operador CDA + Asistente CDA por día ---
+
+/**
+ * EN_APP: el kit del recinto (evento activo) está asignado al operador.
+ * SIN_KIT: el recinto no tiene kit en el evento activo (faltan artículos).
+ * SOLO_REGISTRADA: segunda pareja en el mismo recinto y día.
+ * PENDIENTE_EVENTO: el evento activo no es de esa fecha; se aplica después.
+ */
+export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'SOLO_REGISTRADA' | 'PENDIENTE_EVENTO';
+
+export interface PersonaParejaCda {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  telefono: string | null;
+}
+
+export interface RecintoParejaCda {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
+
+export interface ParejaCdaFila {
+  id: string;
+  /** AAAA-MM-DD */
+  fecha: string;
+  recinto: RecintoParejaCda;
+  operador: PersonaParejaCda;
+  asistente: PersonaParejaCda | null;
+  kitCodigo: string | null;
+  estado: EstadoParejaCda;
+  /** Otra pareja va al mismo recinto ese día. */
+  recintoCompartido: boolean;
+  /** Artículos para crear el kit si el recinto no lo tiene. */
+  articulos: string | null;
+}
+
+export interface ParejasCdaDia {
+  fecha: string;
+  /** Evento ACTIVO de esa fecha (fechaJornada = fecha); null = la lista aún no pasa a la app. */
+  evento: { id: string; nombre: string } | null;
+  /** La jornada de ese evento ya inició: pasar cambios a la app pide justificación. */
+  congelado: boolean;
+  parejas: ParejaCdaFila[];
+}
+
+export interface DisponiblesParejasCda {
+  operadores: PersonaParejaCda[];
+  asistentes: PersonaParejaCda[];
+  recintos: RecintoParejaCda[];
+}
+
+export interface CrearParejaCdaRequest {
+  fecha: string;
+  operadorCdaId: string;
+  asistenteCdaId?: string | null;
+  recintoId: string;
+  /** "CODIGO" o "CODIGO:SERIE" separados por coma: crea el kit si el recinto no lo tiene. */
+  articulos?: string;
+  /** Obligatoria para pasar a la app si la jornada ya inició (asignaciones congeladas). */
+  justificacion?: string;
+}
+
+export interface EditarParejaCdaRequest {
+  operadorCdaId?: string;
+  asistenteCdaId?: string | null;
+  recintoId?: string;
+  justificacion?: string;
+}
+
+export interface FilaImportParejaCda {
+  fila: number;
+  operador: { cedula: string; nombre: string | null; nuevo: boolean };
+  asistente: { cedula: string; nombre: string | null; nuevo: boolean } | null;
+  recinto: RecintoParejaCda | null;
+  articulos: string | null;
+  errores: string[];
+  avisos: string[];
+}
+
+export interface ImportParejasCdaResult {
+  fecha: string;
+  /** false = vista previa (no se guardó nada). */
+  guardado: boolean;
+  filas: FilaImportParejaCda[];
+  /** Parejas guardadas (solo si guardado). */
+  guardadas: number;
+  /** Resultado del paso a la app (null = vista previa o sin evento activo de esa fecha). */
+  app: AplicarParejasCdaResult | null;
+}
+
+export interface AplicarParejasCdaResult {
+  enApp: number;
+  kitsCreados: number;
+  sinKit: number;
+  soloRegistradas: number;
+  errores: { pareja: string; error: string }[];
+}
+
 /** Resultado del buscador en todos los cargos: lo justo para ir a su listado. */
 export interface PersonaCdaEncontrada {
   id: string;

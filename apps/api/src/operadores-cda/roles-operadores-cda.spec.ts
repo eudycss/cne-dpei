@@ -9,6 +9,7 @@ import { AtrasosCdaController } from './atrasos-cda.controller';
 import { CredencialQrCdaController } from './credencial-qr-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 import { MODULO_KEY, ModuloGuard } from '../permisos-modulos/modulo.guard';
+import { ParejasCdaController, parsearFecha } from './parejas-cda.controller';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -39,6 +40,37 @@ describe('RBAC de Operadores CDA', () => {
       { q: '1005201015', incluirInactivos: false },
       { q: 'pérez', incluirInactivos: true },
     ]);
+  });
+
+  it.each(['listar', 'fechas', 'qr'])('parejas.%s: los mismos tres roles y el módulo operadores-cda', (metodo) => {
+    expect(rolesDe(ParejasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+    expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
+  });
+
+  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'eliminar', 'aplicar', 'importar'])(
+    'parejas.%s: solo administrador',
+    (metodo) => {
+      expect(rolesDe(ParejasCdaController, metodo)).toEqual(['ADMINISTRADOR']);
+    },
+  );
+
+  it('parejas.importar: ?app=false guarda sin pasar a la app', () => {
+    const importar = jest.fn();
+    const ctrl = new ParejasCdaController({ importar } as never);
+    const file = {} as Express.Multer.File;
+    ctrl.importar(file, { sub: 'admin' } as never, '2026-10-28', 'true', 'false');
+    ctrl.importar(file, { sub: 'admin' } as never, '2026-10-30', 'true');
+    expect(importar.mock.calls.map((c) => c.slice(1, 5))).toEqual([
+      ['2026-10-28', true, 'admin', false],
+      ['2026-10-30', true, 'admin', true],
+    ]);
+  });
+
+  it('parejas: ?fecha= obligatoria y válida', () => {
+    expect(parsearFecha('2026-10-30')).toBe('2026-10-30');
+    for (const f of [undefined, '', '30/10/2026', ['2026-10-30', '2026-10-31']]) {
+      expect(() => parsearFecha(f)).toThrow(BadRequestException);
+    }
   });
 
   it('buscar exige el módulo operadores-cda, igual que el listado', () => {

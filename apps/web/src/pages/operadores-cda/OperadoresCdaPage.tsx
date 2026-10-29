@@ -5,6 +5,7 @@ import { Pestanas } from '../../components/Pestanas';
 import { ListadoOperadores } from './ListadoOperadores';
 import { AsistenciaPanel } from './AsistenciaPanel';
 import { ActasPanel } from './ActasPanel';
+import { ParejasPanel } from './ParejasPanel';
 import { AtrasosPanel } from './AtrasosPanel';
 import { FILTROS_INGRESO } from './filtroIngreso';
 import { GrupoCdaContext, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
@@ -16,7 +17,12 @@ const SECCIONES = [
   { id: 'asistencia', etiqueta: 'Asistencia' },
   { id: 'atrasos', etiqueta: 'Atrasos' },
   { id: 'actas', etiqueta: 'Actas de entrega' },
+  { id: 'parejas', etiqueta: 'Parejas' },
 ] as const;
+
+/** Las parejas (operador + asistente por recinto) solo son de los dos cargos CDA. */
+const seccionesDe = (grupo: GrupoCda) =>
+  grupo === 'OPERADOR' || grupo === 'ASISTENTE' ? SECCIONES : SECCIONES.filter((s) => s.id !== 'parejas');
 
 /**
  * Personal CDA y CPE, con el tema "CNE Futurista" de Figma. Dos niveles: el
@@ -68,7 +74,7 @@ export function OperadoresCdaPage() {
       </label>
       {/* key: al cambiar de cargo se montan de nuevo (sin fechas ni búsquedas del otro cargo). */}
       <GrupoCdaContext.Provider key={grupo} value={grupo}>
-        <Pestanas pestanas={SECCIONES} porDefecto="asistencia" etiqueta={`Secciones de ${TEXTOS_GRUPO[grupo].titulo}`}>
+        <Pestanas pestanas={seccionesDe(grupo)} porDefecto="asistencia" etiqueta={`Secciones de ${TEXTOS_GRUPO[grupo].titulo}`}>
           {(seccion) =>
             seccion === 'listado' ? (
               <ListadoOperadores acciones={acciones} />
@@ -76,6 +82,8 @@ export function OperadoresCdaPage() {
               <AtrasosPanel acciones={acciones} />
             ) : seccion === 'actas' ? (
               <ActasPanel acciones={acciones} />
+            ) : seccion === 'parejas' ? (
+              <ParejasPanel />
             ) : (
               <AsistenciaPanel acciones={acciones} />
             )

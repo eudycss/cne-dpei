@@ -868,3 +868,72 @@ export const descargarActasCdaSchema = z.object({ operadorIds: operadorIdsActasS
 
 export * from './modulos';
 export * from './permisos';
+
+// --- Parejas Operador CDA + Asistente CDA por día ---
+
+/** Día de la lista de parejas: AAAA-MM-DD de una fecha que existe. */
+export const fechaParejaCdaSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (AAAA-MM-DD)')
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
+  }, 'Fecha inválida');
+
+/** Artículos del kit: "CODIGO" o "CODIGO:SERIE" separados por coma (como la carga masiva de kits). */
+export const articulosKitSchema = z.string().trim().max(1000, 'Máximo 1000 caracteres');
+
+/** Motivo para cambiar asignaciones una vez iniciada la jornada (HU12). */
+export const justificacionParejaCdaSchema = z.string().trim().max(500, 'Máximo 500 caracteres').optional();
+
+const asistenteDistinto = (d: { operadorCdaId?: string; asistenteCdaId?: string | null }) =>
+  !d.asistenteCdaId || d.asistenteCdaId !== d.operadorCdaId;
+
+export const crearParejaCdaSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema,
+    operadorCdaId: z.string().uuid('Elija un operador'),
+    asistenteCdaId: z.string().uuid('Asistente inválido').nullable().optional(),
+    recintoId: z.string().uuid('Elija un recinto'),
+    articulos: articulosKitSchema.optional(),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict()
+  .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
+export type CrearParejaCdaInput = z.infer<typeof crearParejaCdaSchema>;
+
+export const editarParejaCdaSchema = z
+  .object({
+    operadorCdaId: z.string().uuid('Operador inválido').optional(),
+    asistenteCdaId: z.string().uuid('Asistente inválido').nullable().optional(),
+    recintoId: z.string().uuid('Recinto inválido').optional(),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict()
+  .refine((d) => Object.keys(d).some((k) => k !== 'justificacion'), 'Indique qué cambiar')
+  .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
+export type EditarParejaCdaInput = z.infer<typeof editarParejaCdaSchema>;
+
+/** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
+export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
+
+const textoOpcional = (max: number) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().trim().max(max).optional());
+
+/** Una fila de la plantilla de parejas (encabezados en snake_case). */
+export const filaParejaCdaSchema = z
+  .object({
+    cedula_operador: cedulaSchema,
+    nombre_operador: textoOpcional(200),
+    telefono_operador: telefonoSchema,
+    cedula_asistente: z.preprocess((v) => (v === '' || v == null ? undefined : v), cedulaSchema.optional()),
+    nombre_asistente: textoOpcional(200),
+    telefono_asistente: telefonoSchema,
+    codigo_recinto: z.string().trim().min(1, 'Código de recinto requerido').max(20, 'Código de recinto muy largo'),
+    articulos: textoOpcional(1000),
+  })
+  .refine((d) => d.cedula_asistente !== d.cedula_operador, {
+    message: 'El asistente no puede ser el mismo operador',
+    path: ['cedula_asistente'],
+  });
+export type FilaParejaCdaInput = z.infer<typeof filaParejaCdaSchema>;

@@ -322,6 +322,30 @@ export class KitsService {
     return toKitDto(updated);
   }
 
+  /**
+   * Parejas CDA: deja el kit en su recinto pero sin operador (el QR impreso
+   * sigue valiendo). Mismas reglas que desasignar; además, un kit que ya
+   * salió de la Delegación conserva su operador. `soloValidar` no escribe.
+   */
+  async quitarOperador(id: string, justificacion?: string, soloValidar = false): Promise<void> {
+    const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
+    this.assertNoFrozen(evento, justificacion);
+    if (kit.estado !== 'EN_BODEGA' && kit.estado !== 'ASIGNADO') {
+      throw new ConflictException(`El kit ${kit.codigoUnico} ya salió de la Delegación: su operador no se puede quitar`);
+    }
+    if (!soloValidar) await this.prisma.kitElectoral.update({ where: { id }, data: { operadorId: null } });
+  }
+
+  /** HU12-CA6: evento ACTIVO cuya jornada ya llegó = asignaciones congeladas. */
+  estaCongelado(evento: { estado: string; fechaJornada: Date }): boolean {
+    const hoy = new Date().toISOString().slice(0, 10);
+    return evento.estado === 'ACTIVO' && hoy >= evento.fechaJornada.toISOString().slice(0, 10);
+  }
+
   // CA3 + CA4: generar PDF con etiquetas QR
   async generatePdfQr(input: PdfQrRequest): Promise<Buffer> {
     const parsed = pdfQrSchema.parse(input);
@@ -575,10 +599,7 @@ export class KitsService {
     evento: { estado: string; fechaJornada: Date },
     justificacion?: string,
   ): void {
-    const hoy = new Date().toISOString().slice(0, 10);
-    const jornada = evento.fechaJornada.toISOString().slice(0, 10);
-    const congelado = evento.estado === 'ACTIVO' && hoy >= jornada;
-    if (congelado && !justificacion?.trim()) {
+    if (this.estaCongelado(evento) && !justificacion?.trim()) {
       throw new BadRequestException({
         message:
           'Las asignaciones están congeladas: ya inició la jornada electoral. Proporciona una justificación para modificar esta asignación.',

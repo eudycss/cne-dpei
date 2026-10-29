@@ -742,6 +742,46 @@ describe('KitsService', () => {
     });
   });
 
+  describe('quitarOperador (Parejas CDA)', () => {
+    it('deja el kit en su recinto, sin operador', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', operadorId, recintoId }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      await service.quitarOperador(kitId);
+      expect(prisma.kitElectoral.update).toHaveBeenCalledWith({ where: { id: kitId }, data: { operadorId: null } });
+    });
+
+    it('con soloValidar no escribe', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', operadorId, recintoId }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      await service.quitarOperador(kitId, undefined, true);
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('respeta el congelamiento de la jornada (sin justificación) y el evento reabierto', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', operadorId, recintoId }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }));
+      await expect(service.quitarOperador(kitId)).rejects.toMatchObject({ response: { frozen: true } });
+
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', operadorId, recintoId }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ reabiertoEn: new Date() }));
+      await expect(service.quitarOperador(kitId, 'x')).rejects.toThrow(ForbiddenException);
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('un kit que ya salió (ENTREGADO en adelante) no pierde su operador', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'EN_RECINTO', operadorId, recintoId }));
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      await expect(service.quitarOperador(kitId)).rejects.toThrow(ConflictException);
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('estaCongelado: evento ACTIVO cuya jornada ya llegó', () => {
+      expect(service.estaCongelado({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') })).toBe(true);
+      expect(service.estaCongelado({ estado: 'ACTIVO', fechaJornada: new Date('2999-01-01') })).toBe(false);
+      expect(service.estaCongelado({ estado: 'BORRADOR', fechaJornada: new Date('2020-01-01') })).toBe(false);
+    });
+  });
+
   describe('generatePdfQr', () => {
     it('lanza BadRequestException si no se encuentran kits', async () => {
       prisma.kitElectoral.findMany.mockResolvedValueOnce([]);

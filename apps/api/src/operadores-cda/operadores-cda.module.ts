@@ -15,10 +15,13 @@ import { CredencialQrCdaController } from './credencial-qr-cda.controller';
 import { CifradoTokenCarnet } from './cifrado-token-carnet';
 import { CredencialQrCdaService } from './credencial-qr-cda.service';
 import { PermisosModulosModule } from '../permisos-modulos/permisos-modulos.module';
+import { KitsModule } from '../kits/kits.module';
+import { ParejasCdaController } from './parejas-cda.controller';
+import { ParejasCdaService } from './parejas-cda.service';
 
 @Module({
-  imports: [PermisosModulosModule],
-  controllers: [AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController],
-  providers: [AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet],
+  imports: [PermisosModulosModule, KitsModule],
+  controllers: [AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController, ParejasCdaController],
+  providers: [AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet, ParejasCdaService],
 })
 export class OperadoresCdaModule {}
