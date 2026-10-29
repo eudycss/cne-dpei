@@ -3,7 +3,7 @@ import * as QRCode from 'qrcode';
 import { GRIS, LINEA, RUTA_LOGO, fecha, hayLogo, nuevoPdf } from '../common/pdf';
 
 /**
- * Carnets QR de operadores CDA en tamaño tarjeta (ISO CR80, 85,6 × 54 mm),
+ * Carnets QR del personal CDA y CPE en tamaño tarjeta (ISO CR80, 85,6 × 54 mm),
  * 10 por hoja A4 con el borde como guía de corte. Lleva el logo, la foto (para
  * que quien escanea compare), nombre, cargo y el QR con el token.
  */
@@ -24,7 +24,7 @@ const X0 = (595.28 - ANCHO * COLUMNAS) / 2;
 const Y0 = (841.89 - ALTO * FILAS) / 2;
 
 export interface DatosCarnet {
-  /** "OPERADOR CDA" o "ASISTENTE CDA", arriba a la derecha. */
+  /** Cargo del grupo ("OPERADOR CDA", "DIGITADOR CPE", …), arriba a la derecha. */
   grupo: string;
   nombre: string;
   cargo: string;

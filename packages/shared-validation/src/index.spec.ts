@@ -326,14 +326,16 @@ describe('CRUD de operadores CDA', () => {
     expect(editarOperadorCdaSchema.safeParse({ ...sinCedula, grupo: 'ASISTENTE' }).success).toBe(false);
   });
 
-  it('alta: grupo opcional, solo uno de los 8 cargos CDA', () => {
-    expect(GRUPOS_CDA).toHaveLength(8);
+  it('alta: grupo opcional, solo uno de los 9 cargos (CDA y CPE)', () => {
+    expect(GRUPOS_CDA).toHaveLength(9);
+    expect(GRUPOS_CDA).toContain('ARCHIVADOR_ACTAS');
     for (const grupo of GRUPOS_CDA) expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo }).success).toBe(true);
     expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'TECNICO' }).success).toBe(false);
   });
 
-  it('cambiar de cargo: uno de los 8 cargos y nada más', () => {
+  it('cambiar de cargo: uno de los 9 cargos y nada más', () => {
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'SUPERVISOR' }).success).toBe(true);
+    expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'ARCHIVADOR_ACTAS' }).success).toBe(true);
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'TECNICO' }).success).toBe(false);
     expect(cambiarCargoOperadorCdaSchema.safeParse({}).success).toBe(false);
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'SUPERVISOR', desde: '2026-01-01' }).success).toBe(false);

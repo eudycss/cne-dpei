@@ -7,7 +7,8 @@ import { AsistenciaPanel } from './AsistenciaPanel';
 import { ActasPanel } from './ActasPanel';
 import { AtrasosPanel } from './AtrasosPanel';
 import { FILTROS_INGRESO } from './filtroIngreso';
-import { GRUPOS, GrupoCdaContext, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
+import { GrupoCdaContext, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
+import { OpcionesCargo } from './OpcionesCargo';
 
 const SECCIONES = [
   { id: 'listado', etiqueta: 'Listado' },
@@ -17,9 +18,9 @@ const SECCIONES = [
 ] as const;
 
 /**
- * Personal de los Centros de Digitalización de Actas, con el tema "CNE
- * Futurista" de Figma. Dos niveles: el cargo (selector, en ?grupo=; son 8 y
- * en pestañas no cabrían con zoom ni en pantallas angostas) y la sección
+ * Personal CDA y CPE, con el tema "CNE Futurista" de Figma. Dos niveles: el
+ * cargo (selector agrupado por centro, en ?grupo=; son 9 y en pestañas no
+ * cabrían con zoom ni en pantallas angostas) y la sección
  * (pestañas, en ?tab=). Todos los cargos usan los mismos componentes: el
  * grupo les llega por GrupoCdaContext. Se abre en Operadores CDA >
  * Asistencia, que es el uso diario. Cada pestaña pone sus acciones en el
@@ -48,10 +49,11 @@ export function OperadoresCdaPage() {
     <div className="tema-futurista ocda">
       <div className="ocda-encabezado">
         <div>
-          <p className="ocda-ruta">Personal / CDAs</p>
-          <h2 className="ocda-titulo">CDAs</h2>
+          <p className="ocda-ruta">Personal / CDA y CPE</p>
+          <h2 className="ocda-titulo">CDA y CPE</h2>
           <p className="ocda-subtitulo">
-            Asistencia, atrasos, fotos y actas de entrega del personal de los Centros de Digitalización de Actas.
+            Asistencia, atrasos, fotos y actas de entrega del personal de los Centros de Digitalización de Actas
+            (CDA) y del Centro de Procesamiento Electoral (CPE).
           </p>
         </div>
         <div className="ocda-acciones" ref={setAcciones} />
@@ -59,11 +61,7 @@ export function OperadoresCdaPage() {
       <label className="ocda-cargo">
         <span>Cargo</span>
         <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>
-          {GRUPOS.map((g) => (
-            <option key={g} value={g}>
-              {TEXTOS_GRUPO[g].titulo}
-            </option>
-          ))}
+          <OpcionesCargo />
         </select>
       </label>
       {/* key: al cambiar de cargo se montan de nuevo (sin fechas ni búsquedas del otro cargo). */}

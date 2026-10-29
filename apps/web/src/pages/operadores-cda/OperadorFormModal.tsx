@@ -12,7 +12,8 @@ import { crearOperadorCdaSchema, editarOperadorCdaSchema } from '@cne/shared-val
 import { Modal } from '../../components/Modal';
 import { cambiarCargoOperadorCda, crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
 import { Campo } from './Campo';
-import { GRUPOS, TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { OpcionesCargo } from './OpcionesCargo';
 import { hoyEcuador, mensajeError } from './utils';
 
 /** Orden en pantalla: el foco va al primero con error. */
@@ -204,7 +205,7 @@ export function OperadorFormModal({
           {editando && (
             <Campo
               id="operador-grupo"
-              etiqueta="Cargo CDA"
+              etiqueta="Cargo CDA o CPE"
               ancho
               requerido={false}
               ayuda={
@@ -214,11 +215,7 @@ export function OperadorFormModal({
               }
             >
               <select value={grupoNuevo} onChange={(e) => elegirCargo(e.target.value as GrupoCda)}>
-                {GRUPOS.map((g) => (
-                  <option key={g} value={g}>
-                    {TEXTOS_GRUPO[g].titulo}
-                  </option>
-                ))}
+                <OpcionesCargo />
               </select>
             </Campo>
           )}

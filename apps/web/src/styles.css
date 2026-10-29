@@ -631,6 +631,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   background-color: var(--f-bg-surface); color: var(--f-text); font: inherit; font-size: 0.95rem; font-weight: 600;
 }
 .ocda-cargo select:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
+.ocda-cargo optgroup, .ocda-cargo option { background-color: var(--f-bg-surface); color: var(--f-text); }
+.ocda-cargo optgroup { font-weight: 700; }
+.ocda-cargo option { font-weight: 500; }
 .ocda-chip {
   min-height: 36px; padding: 0.35rem 0.95rem; border-radius: 999px; font: inherit; font-size: 0.82rem; font-weight: 500;
   border: 1px solid var(--f-border-subtle); background: var(--f-bg-surface); color: var(--f-text-muted); cursor: pointer;

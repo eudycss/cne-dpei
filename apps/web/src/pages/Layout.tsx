@@ -96,7 +96,7 @@ export function Layout() {
               <SeccionMenu id="menu-personal" titulo="Personal">
                 <NavLink to="/operadores-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
                   <IdCard size={16} aria-hidden="true" />
-                  <span>CDAs</span>
+                  <span>CDA y CPE</span>
                 </NavLink>
               </SeccionMenu>
             )}

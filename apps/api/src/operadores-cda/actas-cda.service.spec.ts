@@ -271,6 +271,12 @@ describe('ActasCdaService', () => {
       expect(d.operadorCargo).toBe('ASISTENTE CDA');
     });
 
+    it('un cargo CPE sale con CPE en el acta, también al volver a descargarla', () => {
+      const d = aDatos(operador({ grupo: 'ARCHIVADOR_ACTAS' }) as never, acta({ grupo: 'ARCHIVADOR_ACTAS' }) as never);
+      expect(d.operadorCargo).toBe('ARCHIVADOR DE ACTAS CPE');
+      expect(aDatos(operador() as never, acta({ grupo: 'DIGITADOR' }) as never).operadorCargo).toBe('DIGITADOR CPE');
+    });
+
     it('sin acta generada: 404', async () => {
       prisma.operadorCda.findMany.mockResolvedValue([{ ...operador(), actas: [] }]);
       await expect(service.word(OP)).rejects.toThrow(NotFoundException);

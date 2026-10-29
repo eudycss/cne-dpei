@@ -281,11 +281,12 @@ export interface OpcionesReporteCda {
 const ARCHIVO_GRUPO: Record<GrupoCda, string> = {
   OPERADOR: 'operadores_cda',
   ASISTENTE: 'asistentes_cda',
-  DIGITADOR: 'digitadores_cda',
-  ASISTENTE_ARCHIVOS: 'asistentes_archivos_cda',
-  ASISTENTE_FIRMAS: 'asistentes_firmas_cda',
-  RECEPTOR_ACTAS: 'receptores_actas_cda',
-  SUPERVISOR: 'supervisores_cda',
+  DIGITADOR: 'digitadores_cpe',
+  ASISTENTE_ARCHIVOS: 'asistentes_archivos_cpe',
+  ASISTENTE_FIRMAS: 'asistentes_firmas_cpe',
+  RECEPTOR_ACTAS: 'receptores_actas_cpe',
+  ARCHIVADOR_ACTAS: 'archivadores_actas_cpe',
+  SUPERVISOR: 'supervisores_cpe',
   OPERADOR_ESCANER_CPE: 'operadores_escaner_cpe',
 };
 
