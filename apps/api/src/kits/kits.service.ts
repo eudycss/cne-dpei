@@ -108,6 +108,9 @@ export class KitsService {
     }
 
     const detalles = normalizarDetalle(parsed.detalleItems, parsed.itemIds) ?? [];
+    if (!tieneContenido(detalles.length, parsed.contenidos)) {
+      throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
+    }
     await this.assertItemsActivos(detalles.map((d) => d.itemId));
 
     // CA1 + CA5: generar codigoUnico único por evento (reintento ante colisión)
@@ -262,6 +265,9 @@ export class KitsService {
       // Con detalle (serie/estado) se reemplaza el contenido completo: así una
       // serie corregida o un ítem quitado quedan exactamente como se envían.
       const detalles = normalizarDetalle(parsed.detalleItems, undefined) ?? [];
+      if (!tieneContenido(detalles.length, kit.contenidos)) {
+        throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
+      }
       // Un ítem que ya estaba en el kit puede seguir aunque se haya desactivado
       // en el catálogo (si no, corregir una serie fallaría sin salida desde la
       // UI); solo los ítems nuevos deben estar activos.
@@ -272,6 +278,9 @@ export class KitsService {
       // Solo ids (clientes antiguos): diff para no perder la serie/estado de
       // los ítems que se mantienen.
       const itemIds = [...new Set(parsed.itemIds)];
+      if (!tieneContenido(itemIds.length, kit.contenidos)) {
+        throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
+      }
       await this.assertItemsActivos(itemIds);
       const actuales = new Set<string>(kit.itemsContenido.map((ic): string => ic.itemId));
       const nuevos = new Set<string>(itemIds);
@@ -483,6 +492,10 @@ export class KitsService {
         continue;
       }
       const detallesFila = normalizarDetalle(detalleFila, undefined) ?? [];
+      if (!tieneContenido(detallesFila.length, d.contenidos)) {
+        errores.push({ fila: filaNum, error: MENSAJE_KIT_SIN_ARTICULOS, datos: raw });
+        continue;
+      }
 
       try {
         const codigoUnico = await this.generarCodigoUnico(eventoId);
@@ -717,4 +730,12 @@ function toKitDto(k: any): Kit {
     esPrueba: k.esPrueba ?? false,
     creadoEn: k.creadoEn?.toISOString?.() ?? String(k.creadoEn),
   };
+}
+
+export const MENSAJE_KIT_SIN_ARTICULOS =
+  'El kit debe tener al menos un artículo (sin ellos no se puede verificar al retorno)';
+
+/** Artículos del catálogo o, en kits antiguos, el texto libre de contenidos. */
+function tieneContenido(articulos: number, contenidos: string | null | undefined): boolean {
+  return articulos > 0 || !!contenidos?.trim();
 }

@@ -171,7 +171,7 @@ describe('KitsService', () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
       prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId, esPrueba: true }));
 
-      await service.create({ eventoId, nombre: 'Kit 1', recintoId, esPrueba: true } as any);
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, esPrueba: true, contenidos: 'Acta' } as any);
 
       expect(prisma.kitElectoral.findFirst).not.toHaveBeenCalled();
       expect(prisma.kitElectoral.create).toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe('KitsService', () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(null); // sin colisión de código
       prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId, estado: 'ASIGNADO' }));
 
-      const result = await service.create({ eventoId, nombre: 'Kit 1', recintoId } as any);
+      const result = await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta' } as any);
 
       expect(result.estado).toBe('ASIGNADO');
       expect(prisma.kitElectoral.create).toHaveBeenCalledWith(
@@ -194,6 +194,16 @@ describe('KitsService', () => {
       const data = prisma.kitElectoral.create.mock.calls[0][0].data;
       expect(data.codigoUnico).toHaveLength(8);
       expect(data.qrPayload).toBe(data.codigoUnico); // CA2: el QR codifica el código único
+    });
+
+    it('rechaza un kit sin artículos ni contenidos (no se podría verificar al retorno)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+
+      await expect(
+        service.create({ eventoId, nombre: 'Kit 1', recintoId, itemIds: [], contenidos: '  ' } as any),
+      ).rejects.toThrow('El kit debe tener al menos un artículo');
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
     it('lanza BadRequestException si algún itemId no existe o está inactivo', async () => {
@@ -458,6 +468,22 @@ describe('KitsService', () => {
       );
     });
 
+    it('carga masiva: una fila sin artículos ni contenidos es error de esa fila', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([{ id: itemA, codigo: 'COMPUTADOR' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      const csv = ['nombre,items,contenidos', 'Kit A,,'].join('\n');
+      const result = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(result.creados).toBe(0);
+      expect(result.errores[0].error).toMatch(/al menos un artículo/i);
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
     it('carga masiva: una serie de más de 60 caracteres es error de esa fila', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findMany.mockResolvedValueOnce([]);
@@ -621,6 +647,18 @@ describe('KitsService', () => {
       await expect(
         service.editar(kitId, { itemIds: [operadorId] } as any),
       ).rejects.toThrow(BadRequestException);
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('no deja un kit sin artículos al editar (ni con detalleItems ni con itemIds vacíos)', async () => {
+      for (const cambio of [{ detalleItems: [] }, { itemIds: [] }]) {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(
+          kitRow({ contenidos: null, itemsContenido: [{ itemId: '55555555-5555-5555-5555-555555555555' }] }),
+        );
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+
+        await expect(service.editar(kitId, cambio as any)).rejects.toThrow('El kit debe tener al menos un artículo');
+      }
       expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
     });
 
@@ -831,7 +869,7 @@ describe('KitsService', () => {
       const csv = [
         'nombre,contenidos,cedula_operador,codigo_recinto',
         'Kit A,Acta,1002003004,28', // asignado
-        'Kit B,,,', // bodega
+        'Kit B,Acta,,', // bodega
         'Kit C,,9999999999,28', // operador inexistente -> error
         'Kit D,,1002003004,99', // recinto inexistente -> error
       ].join('\n');
@@ -860,8 +898,8 @@ describe('KitsService', () => {
 
       const csv = [
         'nombre,contenidos,cedula_operador,codigo_recinto',
-        'Kit A,,1002003004,28', // asigna recinto 28
-        'Kit B,,1002003004,30', // mismo operador, otro recinto -> error
+        'Kit A,Acta,1002003004,28', // asigna recinto 28
+        'Kit B,Acta,1002003004,30', // mismo operador, otro recinto -> error
       ].join('\n');
 
       const result = await service.bulkUpload(csvFile(csv), eventoId);

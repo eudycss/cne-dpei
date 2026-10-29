@@ -25,6 +25,7 @@ const kitCatalogo: ValidarKitRetornoResponse = {
   nombre: '28 — Escuela Central',
   operadorNombre: 'Ana López',
   yaVerificado: false,
+  salidaPendiente: false,
   items: [
     { texto: 'Computador', marcado: true, itemId: 'i1', serie: '5CD445577S', estado: 'BUENO' },
     { texto: 'Cargador', marcado: true, itemId: 'i2', serie: null, estado: 'BUENO' },
@@ -116,6 +117,42 @@ describe('VerificacionDpiScreen', () => {
     const boton = r.root.find((n) => n.type === Pressable && n.props.accessibilityLabel === 'Validar código');
     expect(boton.props.disabled).toBe(true);
     expect(r.root.findAllByType(TextInput)).toHaveLength(1);
+  });
+
+  it('si la salida del recinto aún no llega, avisa pero deja confirmar', async () => {
+    (validarKitRetorno as jest.Mock).mockResolvedValue({ ...kitCatalogo, salidaPendiente: true });
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+
+    const aviso = r.root.findByProps({ testID: 'aviso-salida-pendiente' });
+    expect(aviso.props.accessibilityRole).toBe('alert');
+    expect(textos(r).join(' ')).toMatch(/aún no envía la salida del recinto/);
+    const confirmar = r.root.find((n) => n.type === Pressable && n.props.onPress && textoDe(n) === 'Confirmar verificación');
+    expect(confirmar.props.disabled).toBe(false);
+  });
+
+  it('sin la salida pendiente no muestra el aviso', async () => {
+    (validarKitRetorno as jest.Mock).mockResolvedValue(kitCatalogo);
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+
+    expect(r.root.findAllByProps({ testID: 'aviso-salida-pendiente' })).toHaveLength(0);
+  });
+
+  it('un kit sin artículos registrados lo explica y se confirma con la lista vacía', async () => {
+    (validarKitRetorno as jest.Mock).mockResolvedValue({ ...kitCatalogo, items: [] });
+    (verificarKitRetorno as jest.Mock).mockResolvedValue({ id: 'r1' });
+    const r = await render();
+    await validarManual(r, 'ABCD2345');
+
+    expect(textos(r).join(' ')).toMatch(/no tiene artículos registrados/);
+    const confirmar = r.root.find((n) => n.type === Pressable && n.props.onPress && textoDe(n) === 'Confirmar verificación');
+    await act(async () => {
+      confirmar.props.onPress();
+      await flushPromises();
+    });
+
+    expect(verificarKitRetorno).toHaveBeenCalledWith({ kitId: kitCatalogo.id, items: [], observaciones: null });
   });
 
   it('cambiar el estado de un ítem al retorno se envía en la verificación', async () => {

@@ -503,7 +503,9 @@ export const itemChecklistSchema = z.object({
 export const verificarKitRetornoSchema = z
   .object({
     kitId: z.string().uuid('Kit inválido'),
-    items: z.array(itemChecklistSchema).min(1),
+    // Vacía solo en kits sin artículos registrados; si el kit los tiene, la
+    // API exige la lista completa (checklistDesdeBd).
+    items: z.array(itemChecklistSchema),
     observaciones: z.string().max(500).nullable().optional(),
   })
   .refine(

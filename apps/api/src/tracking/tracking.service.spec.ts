@@ -456,6 +456,63 @@ describe('TrackingService', () => {
       expect(result.items).toHaveLength(1);
     });
 
+    it('un kit EN_RETORNO o RETORNADO no tiene la salida pendiente', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId, codigoUnico: 'ABCD2345', nombre: 'Kit 1', operadorId, estado: 'RETORNADO',
+        contenidos: 'Acta', itemsContenido: [],
+      });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345');
+
+      expect(result.salidaPendiente).toBe(false);
+    });
+
+    it.each(['ENTREGADO', 'EN_RECINTO'])(
+      'un kit %s (salida del recinto aún sin sincronizar) se puede verificar y avisa que la salida está pendiente',
+      async (estado) => {
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+          id: kitId, codigoUnico: 'ABCD2345', nombre: 'Kit 1', operadorId, estado,
+          contenidos: 'Acta', itemsContenido: [],
+        });
+        prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+        prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+        const result = await service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345');
+
+        expect(result.salidaPendiente).toBe(true);
+      },
+    );
+
+    it.each(['EN_BODEGA', 'ASIGNADO'])('un kit %s (el operador nunca lo recibió) sigue rechazado', async (estado) => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId, codigoUnico: 'ABCD2345', nombre: 'Kit 1', operadorId, estado,
+        contenidos: 'Acta', itemsContenido: [],
+      });
+
+      await expect(
+        service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345'),
+      ).rejects.toThrow('El operador todavía no recibió este kit');
+    });
+
+    it('un kit sin artículos ni contenidos devuelve la lista vacía (se verifica igual)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({
+        id: kitId, codigoUnico: 'ABCD2345', nombre: 'Kit 1', operadorId, estado: 'RETORNADO',
+        contenidos: null, itemsContenido: [],
+      });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], 'ABCD2345');
+
+      expect(result.items).toEqual([]);
+    });
+
     it('un rol no transversal sin asignación sobre ese operador recibe 400', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findUnique.mockResolvedValueOnce({
@@ -520,7 +577,55 @@ describe('TrackingService', () => {
 
   describe('confirmarVerificacionKitRetorno', () => {
     const input = { kitId, items: [{ texto: 'Computador', marcado: true }] };
-    const kit = { id: kitId, eventoId, operadorId };
+    const kit = { id: kitId, eventoId, operadorId, estado: 'RETORNADO' };
+
+    it('con la salida ya sincronizada (RETORNADO) queda salidaPendiente=false', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit);
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+      prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+
+      await service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input);
+
+      expect(prisma.recepcionDpiKit.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ salidaPendiente: false }),
+      });
+    });
+
+    it.each(['ENTREGADO', 'EN_RECINTO'])(
+      'un kit %s se verifica y queda constancia de que la salida del recinto estaba pendiente',
+      async (estado) => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce({ ...kit, estado });
+        prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+        prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+
+        await service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input);
+
+        expect(prisma.recepcionDpiKit.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ salidaPendiente: true }),
+        });
+      },
+    );
+
+    it('un kit que el operador nunca recibió (ASIGNADO) no se puede verificar', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ ...kit, estado: 'ASIGNADO' });
+
+      await expect(
+        service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input),
+      ).rejects.toThrow('El operador todavía no recibió este kit');
+      expect(prisma.recepcionDpiKit.create).not.toHaveBeenCalled();
+    });
+
+    it('un kit sin artículos registrados se verifica con la lista vacía', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ ...kit, contenidos: null, itemsContenido: [] });
+      prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+      prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+
+      await service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], { kitId, items: [] });
+
+      expect(prisma.recepcionDpiKit.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ items: [] }),
+      });
+    });
 
     it('el ASISTENTE_TRANSVERSAL verifica el kit de cualquier operador y queda registrado a su nombre', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit);

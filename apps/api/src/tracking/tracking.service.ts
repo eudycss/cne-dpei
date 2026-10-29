@@ -562,9 +562,7 @@ export class TrackingService {
     }
     await this.verificarPertenenciaOperador(evento.id, supervisorId, roles, kit.operadorId);
 
-    if (kit.estado !== 'EN_RETORNO' && kit.estado !== 'RETORNADO') {
-      throw new BadRequestException('Este kit todavía no salió del recinto');
-    }
+    const salidaPendiente = salidaDelRecintoPendiente(kit.estado);
 
     const operador = await this.prisma.usuario.findUnique({
       where: { id: kit.operadorId },
@@ -598,6 +596,7 @@ export class TrackingService {
       operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : 'Operador',
       items,
       yaVerificado,
+      salidaPendiente,
     };
   }
 
@@ -622,6 +621,7 @@ export class TrackingService {
       throw new BadRequestException('Este kit no está asignado a ningún operador');
     }
     await this.verificarPertenenciaOperador(kit.eventoId, supervisorId, roles, kit.operadorId);
+    const salidaPendiente = salidaDelRecintoPendiente(kit.estado);
 
     const existente = await this.prisma.recepcionDpiKit.findFirst({
       where: { kitId: kit.id },
@@ -637,6 +637,7 @@ export class TrackingService {
         supervisorId,
         items: checklistDesdeBd(kit.itemsContenido ?? [], parsed.items),
         observaciones: parsed.observaciones ?? null,
+        salidaPendiente,
       },
     });
 
@@ -706,6 +707,7 @@ export class TrackingService {
         operadorId: kit?.operadorId ?? '',
         operadorNombre: kit?.operadorId ? nombrePorId.get(kit.operadorId) ?? 'Operador' : 'Operador',
         confirmadoEn: r.confirmadoEn.toISOString(),
+        salidaPendiente: r.salidaPendiente,
       };
     });
 
@@ -2129,3 +2131,16 @@ function parseContenidos(contenidos: string | null): string[] {
 }
 // ponytail: heurística simple (salto de línea, si no hay, coma). Si en el futuro
 // los admins necesitan listas más ricas, migrar `contenidos` a una tabla real.
+
+/**
+ * Verificación de retorno: true si el operador ya recibió el kit pero su
+ * salida del recinto todavía no llega (registrada sin señal y aún en la cola
+ * del celular). El kit está físicamente en la Delegación, así que se verifica
+ * igual y queda marcado. Si el operador nunca lo recibió, no hay retorno que
+ * verificar.
+ */
+export function salidaDelRecintoPendiente(estado: string): boolean {
+  if (estado === 'EN_RETORNO' || estado === 'RETORNADO') return false;
+  if (estado === 'ENTREGADO' || estado === 'EN_RECINTO') return true;
+  throw new BadRequestException('El operador todavía no recibió este kit');
+}
