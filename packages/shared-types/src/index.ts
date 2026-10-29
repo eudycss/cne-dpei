@@ -516,6 +516,12 @@ export interface ValidarKitRetornoResponse {
   operadorNombre: string;
   items: ItemChecklist[];
   yaVerificado: boolean;
+  /**
+   * El operador recibió el kit pero su celular aún no envía la salida del
+   * recinto (quedó sin señal). Se puede verificar igual: el kit está en la
+   * Delegación, y la verificación queda marcada.
+   */
+  salidaPendiente: boolean;
 }
 
 export interface VerificarKitRetornoRequest {
@@ -537,6 +543,8 @@ export interface KitVerificadoRetorno {
   operadorId: string;
   operadorNombre: string;
   confirmadoEn: string;
+  /** Se verificó antes de que llegara la salida del recinto del operador. */
+  salidaPendiente: boolean;
 }
 
 export interface KitsVerificadosRetornoResponse {

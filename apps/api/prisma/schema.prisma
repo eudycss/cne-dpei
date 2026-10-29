@@ -534,6 +534,8 @@ model RecepcionDpiKit {
   items         Json
   observaciones String?  @db.VarChar(500)
   confirmadoEn  DateTime @default(now()) @map("confirmado_en") @db.Timestamptz(6)
+  /// Se verificó cuando el celular del operador aún no enviaba la salida del recinto.
+  salidaPendiente Boolean @default(false) @map("salida_pendiente")
 
   @@index([kitId], map: "idx_recepciones_dpi_kit")
   @@map("recepciones_dpi_kit")

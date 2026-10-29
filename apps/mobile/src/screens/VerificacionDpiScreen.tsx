@@ -133,9 +133,29 @@ export function VerificacionDpiScreen() {
                   <Text style={styles.kitCode}>{kit.codigoUnico}</Text>
                   <Text style={styles.kitNombre}>{kit.nombre}</Text>
 
+                  {kit.salidaPendiente ? (
+                    <View
+                      style={styles.aviso}
+                      accessibilityRole="alert"
+                      accessibilityLiveRegion="polite"
+                      testID="aviso-salida-pendiente"
+                    >
+                      <Text style={styles.avisoTexto}>
+                        El celular del operador aún no envía la salida del recinto (quedó sin señal). Puede
+                        verificar el kit igual: quedará registrado que la salida estaba pendiente.
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <Text style={styles.checklistTitulo} accessibilityRole="header">
                     Contenido: {items.length} artículo{items.length === 1 ? '' : 's'}
                   </Text>
+                  {items.length === 0 ? (
+                    <Text style={styles.sinArticulos}>
+                      Este kit no tiene artículos registrados. Confirme que llegó y anote en observaciones lo
+                      que trae.
+                    </Text>
+                  ) : null}
                   <View style={styles.checklist}>
                     {items.map((it, index) => (
                       <View key={index} style={styles.item}>
@@ -259,6 +279,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   modalScroll: { flexGrow: 0 },
   // Reparte el ancho con "Cancelar"; el texto no queda pegado a los bordes.
   btnModal: { flex: 1, minHeight: 44, marginBottom: 0, paddingVertical: 12, paddingHorizontal: 10, justifyContent: 'center' },
+  aviso: { backgroundColor: c.warningBg, borderRadius: 8, padding: 12, marginTop: 12 },
+  avisoTexto: { color: c.warningText, fontSize: 13, fontFamily: fontFamily.medium, lineHeight: 19 },
+  sinArticulos: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary, marginTop: 6, lineHeight: 19 },
   checklistTitulo: { fontSize: 13, fontFamily: fontFamily.semiBold, color: c.textSecondary, marginTop: 4 },
   modalTitle: { fontSize: 18, fontFamily: fontFamily.bold, color: c.textPrimary, marginBottom: 4 },
   kitOperador: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textSecondary, marginTop: 8 },

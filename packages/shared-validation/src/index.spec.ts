@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MARGEN_LLEGADA_MAX_METROS,
+  verificarKitRetornoSchema as verificarKitRetornoSchemaRetorno,
   bulkRecintoRowSchema,
   createRecintoSchema,
   updateRecintoSchema,
@@ -473,5 +474,18 @@ describe('corregirAsistenciaCdaSchema', () => {
     expect(sinEntrada.error?.issues[0]).toMatchObject({ path: ['salida'], message: 'Sin entrada no puede haber salida' });
     expect(ok({ entrada: '17:00', salida: '17:00', motivo: MOTIVO })).toBe(false);
     expect(ok({ entrada: '17:00', salida: '08:00', motivo: MOTIVO })).toBe(false);
+  });
+});
+
+describe('verificarKitRetornoSchema', () => {
+  const kitId = '11111111-1111-4111-8111-111111111111';
+
+  it('acepta un kit sin artículos registrados (lista vacía)', () => {
+    expect(verificarKitRetornoSchemaRetorno.safeParse({ kitId, items: [] }).success).toBe(true);
+  });
+
+  it('sigue exigiendo observación si falta algún artículo', () => {
+    const r = verificarKitRetornoSchemaRetorno.safeParse({ kitId, items: [{ texto: 'Acta', marcado: false }] });
+    expect(r.success).toBe(false);
   });
 });
