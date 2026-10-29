@@ -20,6 +20,9 @@ jobs:
       - run: pnpm install
       - run: pnpm --filter @cne/shared-types build
       - run: pnpm --filter @cne/shared-validation build
+      # Cliente de Prisma con los tipos del schema (no necesita base de datos):
+      # sin esto los modelos quedan como `any` y los tests no validan los tipos.
+      - run: pnpm --filter @cne/api db:generate
       - run: pnpm --filter @cne/api test
       # Los e2e necesitan Postgres y no corren aquí, pero al menos deben compilar.
       - name: Tipos de los e2e de la API

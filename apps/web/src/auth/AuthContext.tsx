@@ -11,7 +11,8 @@ import { api, tokenStore } from '../lib/api';
 
 interface SessionUser {
   id: string;
-  email: string;
+  /** null en cuentas CDA (entran con cédula). */
+  email: string | null;
   nombres: string;
   apellidos: string;
   debeCambiarPwd: boolean;

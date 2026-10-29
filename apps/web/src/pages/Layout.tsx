@@ -135,7 +135,7 @@ export function Layout() {
             <div>
               <strong>{user?.nombres} {user?.apellidos}</strong>
             </div>
-            <div style={{ opacity: 0.7 }}>{user?.email}</div>
+            {user?.email && <div style={{ opacity: 0.7 }}>{user.email}</div>}
             <div style={{ marginTop: '0.25rem' }}>
               {user?.roles.map((r) => (
                 <span className="badge" key={r}>{etiquetaRol(r)}</span>

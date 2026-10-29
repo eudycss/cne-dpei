@@ -20,7 +20,8 @@ interface SessionUser {
   id: string;
   // Opcional: la sesión guardada por una versión anterior de la app no la trae.
   cedula?: string;
-  email: string;
+  /** null en cuentas CDA (entran con cédula). */
+  email: string | null;
   nombres: string;
   apellidos: string;
   debeCambiarPwd: boolean;

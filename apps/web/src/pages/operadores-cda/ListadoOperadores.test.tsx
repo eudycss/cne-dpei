@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { OperadorCda, RoleName } from '@cne/shared-types';
 
 import { ListadoOperadores } from './ListadoOperadores';
+import { GrupoCdaContext } from './grupo';
 import { hoyEcuador, iniciales, normalizar } from './utils';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
@@ -47,11 +48,13 @@ function Url() {
   return <span data-testid="url">{search}</span>;
 }
 
-function renderPagina(ruta = '/operadores-cda') {
+function renderPagina(ruta = '/operadores-cda', grupo: OperadorCda['grupo'] = 'OPERADOR') {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={[ruta]}>
-        <ListadoOperadores />
+        <GrupoCdaContext.Provider value={grupo}>
+          <ListadoOperadores />
+        </GrupoCdaContext.Provider>
         <Url />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -538,5 +541,70 @@ describe('ListadoOperadores — fecha de ingreso', () => {
     expect(nombres()).toEqual(['BRAVO RUIZ JUAN', 'ANDRADE LÓPEZ MARÍA', 'CEVALLOS MEJÍA ANA']);
     await userEvent.selectOptions(screen.getByLabelText('Ordenar'), 'ingreso-antiguo');
     expect(nombres()).toEqual(['ANDRADE LÓPEZ MARÍA', 'BRAVO RUIZ JUAN', 'CEVALLOS MEJÍA ANA']);
+  });
+
+  describe('cuentas de la app', () => {
+    it('el administrador ve "Cuentas de la app" en operadores y asistentes', async () => {
+      getMock.mockResolvedValueOnce({ data: [operador({})] });
+      renderPagina();
+      await screen.findByRole('list', { name: 'Operadores CDA' });
+      expect(screen.getByRole('button', { name: 'Cuentas de la app' })).toBeInTheDocument();
+    });
+
+    it('no aparece para otros cargos (digitadores) ni para quien no es administrador', async () => {
+      getMock.mockResolvedValueOnce({ data: [operador({ grupo: 'DIGITADOR' })] });
+      const { unmount } = renderPagina('/operadores-cda', 'DIGITADOR');
+      await screen.findByRole('list', { name: 'Digitadores' });
+      expect(screen.queryByRole('button', { name: 'Cuentas de la app' })).not.toBeInTheDocument();
+      unmount();
+
+      roles = ['TECNICO_SUPERVISOR'];
+      getMock.mockResolvedValueOnce({ data: [operador({})] });
+      renderPagina();
+      await screen.findByRole('list', { name: 'Operadores CDA' });
+      expect(screen.queryByRole('button', { name: 'Cuentas de la app' })).not.toBeInTheDocument();
+    });
+
+    it('cada tarjeta muestra el estado de su cuenta', async () => {
+      getMock.mockResolvedValueOnce({
+        data: [
+          operador({ cuenta: 'PENDIENTE_CAMBIO' }),
+          operador({ id: 'o2', apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', cedula: '1002003000', cuenta: 'SIN_CUENTA' }),
+          operador({ id: 'o3', apellidosNombres: 'BRAVO PAZ LUIS', cedula: '1003004000', cuenta: 'BLOQUEADA' }),
+        ],
+      });
+      renderPagina();
+
+      const tarjetas = within(await screen.findByRole('list', { name: 'Operadores CDA' })).getAllByRole('listitem');
+      expect(within(tarjetas[0]).getByText('Debe cambiar contraseña')).toBeInTheDocument();
+      expect(within(tarjetas[1]).getByText('Sin cuenta')).toBeInTheDocument();
+      expect(within(tarjetas[2]).getByText('Bloqueada')).toBeInTheDocument();
+    });
+
+    it('filtra por estado de la cuenta', async () => {
+      const user = userEvent.setup();
+      getMock.mockResolvedValueOnce({
+        data: [
+          operador({ cuenta: 'ACTIVA' }),
+          operador({ id: 'o2', apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', cedula: '1002003000', cuenta: 'SIN_CUENTA' }),
+        ],
+      });
+      renderPagina();
+      await screen.findByRole('list', { name: 'Operadores CDA' });
+
+      await user.selectOptions(screen.getByLabelText('Cuenta app'), 'SIN_CUENTA');
+
+      const tarjetas = within(screen.getByRole('list', { name: 'Operadores CDA' })).getAllByRole('listitem');
+      expect(tarjetas).toHaveLength(1);
+      expect(within(tarjetas[0]).getByRole('heading', { name: 'ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    });
+
+    it('en digitadores no hay línea de cuenta ni filtro', async () => {
+      getMock.mockResolvedValueOnce({ data: [operador({ grupo: 'DIGITADOR', cuenta: 'SIN_CUENTA' })] });
+      renderPagina('/operadores-cda', 'DIGITADOR');
+      await screen.findByRole('list', { name: 'Digitadores' });
+      expect(screen.queryByText('Cuenta app')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Cuenta app')).not.toBeInTheDocument();
+    });
   });
 });

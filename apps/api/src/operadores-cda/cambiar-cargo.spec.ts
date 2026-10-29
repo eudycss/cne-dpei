@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 
 import { OperadoresCdaService } from './operadores-cda.service';
 import { PrismaService } from '../db/prisma.service';
+import { CuentasCdaService } from './cuentas-cda.service';
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -33,6 +34,12 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     asistenciaCda: { findFirst: jest.fn() },
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
+  const cuentas = {
+    tieneCuenta: jest.fn((g: string) => g === 'OPERADOR' || g === 'ASISTENTE'),
+    asegurarCuenta: jest.fn(),
+    retirarCuenta: jest.fn(),
+    hashInicial: jest.fn().mockResolvedValue('hash-inicial'),
+  };
   const leido = (over: Record<string, unknown> = {}) => ({
     grupo: 'ASISTENTE',
     activo: true,
@@ -48,7 +55,11 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     prisma.asistenciaCda.findFirst.mockResolvedValue(null);
     tx.operadorCda.findUniqueOrThrow.mockResolvedValue(FILA);
     const moduleRef = await Test.createTestingModule({
-      providers: [OperadoresCdaService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OperadoresCdaService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CuentasCdaService, useValue: cuentas },
+      ],
     }).compile();
     service = moduleRef.get(OperadoresCdaService);
   });
@@ -118,5 +129,29 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     tx.operadorCda.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(service.cambiarCargo(OP, 'OPERADOR', USR)).rejects.toThrow(ConflictException);
     expect(tx.cambioCargoCda.create).not.toHaveBeenCalled();
+  });
+
+  describe('cuenta de la app', () => {
+    it('de asistente a digitador: retira la cuenta en la misma transacción', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'ASISTENTE' }));
+      await service.cambiarCargo(OP, 'DIGITADOR', USR);
+      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(tx, OP);
+      expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
+    });
+
+    it('de digitador a operador: asegura la cuenta', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'DIGITADOR' }));
+      await service.cambiarCargo(OP, 'OPERADOR', USR);
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP, 'hash-inicial');
+      expect(cuentas.retirarCuenta).not.toHaveBeenCalled();
+    });
+
+    it('entre operador y asistente la cuenta no cambia', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'ASISTENTE' }));
+      await service.cambiarCargo(OP, 'OPERADOR', USR);
+      expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
+      expect(cuentas.retirarCuenta).not.toHaveBeenCalled();
+      expect(cuentas.hashInicial).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { OperadoresCdaController } from './operadores-cda.controller';
 import { OperadoresCdaService } from './operadores-cda.service';
+import { CuentasCdaService } from './cuentas-cda.service';
+import { CuentasCdaController } from './cuentas-cda.controller';
 import { AsistenciaCdaController } from './asistencia-cda.controller';
 import { AsistenciaCdaService } from './asistencia-cda.service';
 import { FotoCdaController, FotoCdaPublicoController } from './foto-cda.controller';
@@ -16,7 +18,7 @@ import { PermisosModulosModule } from '../permisos-modulos/permisos-modulos.modu
 
 @Module({
   imports: [PermisosModulosModule],
-  controllers: [AtrasosCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController],
-  providers: [AtrasosCdaService, OperadoresCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet],
+  controllers: [AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController],
+  providers: [AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet],
 })
 export class OperadoresCdaModule {}

@@ -13,12 +13,15 @@ export interface Role {
 export interface User {
   id: string;
   cedula: string;
-  email: string;
+  /** null en cuentas de Operadores/Asistentes CDA (entran con cédula). */
+  email: string | null;
   nombres: string;
   apellidos: string;
   telefono: string | null;
   activo: boolean;
   debeCambiarPwd: boolean;
+  /** ISO; mientras sea futura, la cuenta no puede iniciar sesión. */
+  bloqueadoHasta: string | null;
   roles: RoleName[];
   creadoEn: string;
   actualizadoEn: string;
@@ -35,7 +38,7 @@ export interface LoginResponse {
   user: {
     id: string;
     cedula: string;
-    email: string;
+    email: string | null;
     nombres: string;
     apellidos: string;
     debeCambiarPwd: boolean;
@@ -1031,7 +1034,31 @@ export interface OperadorCda {
   fechaInicio: string | null;
   tieneFoto: boolean;
   activo: boolean;
+  /**
+   * Cuenta de la app (solo grupos OPERADOR y ASISTENTE; el resto, SIN_CUENTA).
+   * Solo viene en el listado y en las acciones de Operadores CDA.
+   */
+  cuenta?: EstadoCuentaCda;
   creadoEn: string;
+}
+
+export type EstadoCuentaCda = 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA';
+
+/** Resultado de crear o vincular cuentas; `fallidas` se completan con el botón de la web. */
+export interface ResultadoSincronizarCuentasCda {
+  vinculadas: number;
+  creadas: number;
+  fallidas: number;
+}
+
+/** Conteos del panel "Cuentas de la app" (operadores y asistentes activos). */
+export interface ResumenCuentasCda {
+  conCuenta: number;
+  sinCuenta: number;
+  pendientesCambioPwd: number;
+  bloqueadas: number;
+  /** Cuentas Operador CDA activas sin persona en Operadores CDA. */
+  cuentasSinVinculo: number;
 }
 
 /** Fila del Excel ya leída y normalizada. */
@@ -1095,6 +1122,8 @@ export interface ImportOperadoresCdaResult {
   actualizados: number;
   filas: OperadorCdaFila[];
   errores: BulkUploadRow[];
+  /** Solo al aplicar en Operadores/Asistentes: cuentas de la app creadas o vinculadas. */
+  cuentas?: ResultadoSincronizarCuentasCda;
 }
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';

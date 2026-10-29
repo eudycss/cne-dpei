@@ -81,6 +81,13 @@ export class UsersController {
     return this.users.resetPassword(id);
   }
 
+  @Post(':id/desbloquear')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Levantar el bloqueo por contraseñas erróneas' })
+  desbloquear(@Param('id', ParseUUIDPipe) id: string) {
+    return this.users.desbloquear(id);
+  }
+
   @Post('bulk')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'HU7-CA1: Carga masiva desde Excel/CSV' })

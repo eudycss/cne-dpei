@@ -17,7 +17,8 @@ interface SessionUserSnapshot {
   id: string;
   // Opcional: las sesiones guardadas antes del login por cédula no la traen.
   cedula?: string;
-  email: string;
+  /** null en cuentas CDA (entran con cédula). */
+  email: string | null;
   nombres: string;
   apellidos: string;
   debeCambiarPwd: boolean;
@@ -25,7 +26,7 @@ interface SessionUserSnapshot {
 }
 
 interface VerificadorOffline {
-  email: string;
+  email: string | null;
   cedula?: string;
   salt: string;
   hash: string;
@@ -55,7 +56,7 @@ export async function guardarVerificadorOffline(
   const salt = Array.from(saltBytes, (b) => b.toString(16).padStart(2, '0')).join('');
   const hash = await hashConSal(password, salt);
   const verificador: VerificadorOffline = {
-    email: usuario.email.toLowerCase(),
+    email: usuario.email?.toLowerCase() ?? null,
     cedula: usuario.cedula,
     salt,
     hash,

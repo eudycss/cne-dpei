@@ -33,9 +33,21 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
 
   const aplicar = useMutation({
     mutationFn: (file: File) => importarOperadoresCda(file, true, grupo),
-    onSuccess: ({ nuevos, actualizados }) => {
+    onSuccess: ({ nuevos, actualizados, cuentas }) => {
       qc.invalidateQueries({ queryKey: ['operadores-cda', grupo] });
-      sileo.success({ title: `Importación lista: ${nuevos} nuevo(s), ${actualizados} actualizado(s).` });
+      const titulo = `Importación lista: ${nuevos} nuevo(s), ${actualizados} actualizado(s).`;
+      sileo.success(
+        cuentas
+          ? {
+              title: titulo,
+              description:
+                `Cuentas de la app: ${cuentas.creadas} creada(s) y ${cuentas.vinculadas} vinculada(s).` +
+                (cuentas.fallidas > 0
+                  ? ` ${cuentas.fallidas} no se ${cuentas.fallidas === 1 ? 'pudo' : 'pudieron'} crear: complétela${cuentas.fallidas === 1 ? '' : 's'} en “Cuentas de la app”.`
+                  : ''),
+            }
+          : { title: titulo },
+      );
       onClose();
     },
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo importar el archivo') }),

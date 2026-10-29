@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { operadorCdaFilaSchema } from '@cne/shared-validation';
 import type {
@@ -8,10 +8,12 @@ import type {
   EditarOperadorCdaRequest,
   GrupoCda,
   ImportOperadoresCdaResult,
+  EstadoCuentaCda,
   OperadorCda,
   OperadorCdaFila,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { CuentasCdaService, GRUPOS_CON_CUENTA } from './cuentas-cda.service';
 import { leerFilasOperadoresCda, type FilaLeida } from './excel-operadores-cda';
 import { tamanoDescomprimidoZip } from './zip';
 import { TEXTOS_GRUPO } from './grupo-cda';
@@ -29,7 +31,12 @@ const MAX_TEXTO_ERROR = 200;
 
 @Injectable()
 export class OperadoresCdaService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly log = new Logger(OperadoresCdaService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cuentas: CuentasCdaService,
+  ) {}
 
   async list(opts: { search?: string; incluirInactivos?: boolean; grupo?: GrupoCda } = {}): Promise<OperadorCda[]> {
     const search = opts.search?.trim();
@@ -45,8 +52,9 @@ export class OperadoresCdaService {
         }),
       },
       orderBy: { apellidosNombres: 'asc' },
+      include: { usuario: { select: { activo: true, debeCambiarPwd: true, bloqueadoHasta: true } } },
     });
-    return items.map(toOperadorCdaDto);
+    return items.map(({ usuario, ...o }) => ({ ...toOperadorCdaDto(o), cuenta: estadoCuenta(o, usuario) }));
   }
 
   /**
@@ -64,6 +72,13 @@ export class OperadoresCdaService {
       const creado = await this.prisma.operadorCda.create({
         data: { cedula: datos.cedula, grupo, ...datosEditables(datos) },
       });
+      // Fuera de la transacción del alta: si falla, la persona queda creada y el
+      // botón "Crear y vincular cuentas" lo completa.
+      if (this.cuentas.tieneCuenta(grupo)) {
+        await this.cuentas.sincronizar({ ids: [creado.id] }).catch((e) =>
+          this.log.error(`No se pudo crear la cuenta del operador CDA ${creado.id}: ${(e as Error)?.message}`),
+        );
+      }
       return toOperadorCdaDto(creado);
     } catch (e) {
       // Dos altas simultáneas con la misma cédula: la segunda choca con el índice único.
@@ -87,7 +102,14 @@ export class OperadoresCdaService {
    */
   async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
     await this.existe(id);
-    const editado = await this.prisma.operadorCda.update({ where: { id }, data: { activo } });
+    const passwordHash = activo ? await this.cuentas.hashInicial() : '';
+    // Misma transacción: ocultar a alguien nunca le deja la app abierta.
+    const editado = await this.prisma.$transaction(async (tx) => {
+      const fila = await tx.operadorCda.update({ where: { id }, data: { activo } });
+      if (activo) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
+      else await this.cuentas.retirarCuenta(tx, id);
+      return fila;
+    });
     return toOperadorCdaDto(editado);
   }
 
@@ -117,6 +139,10 @@ export class OperadoresCdaService {
       select: { id: true },
     });
     const desde = marcoHoy ? diaDeFechaDb(new Date(fechaDb(hoy).getTime() + 86_400_000)) : hoy;
+    const teniaCuenta = this.cuentas.tieneCuenta(o.grupo);
+    const tendraCuenta = this.cuentas.tieneCuenta(grupo);
+    // El hash (argon2, lento) se calcula antes de abrir la transacción.
+    const passwordHash = !teniaCuenta && tendraCuenta ? await this.cuentas.hashInicial() : '';
 
     const editado = await this.prisma.$transaction(async (tx) => {
       // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
@@ -126,6 +152,8 @@ export class OperadoresCdaService {
       await tx.cambioCargoCda.create({
         data: { operadorId: id, grupoAnterior: o.grupo, grupoNuevo: grupo, desde: fechaDb(desde), hechoPorId: usuarioId },
       });
+      if (teniaCuenta && !tendraCuenta) await this.cuentas.retirarCuenta(tx, id);
+      if (!teniaCuenta && tendraCuenta) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
       return tx.operadorCda.findUniqueOrThrow({ where: { id } });
     });
     return {
@@ -206,7 +234,15 @@ export class OperadoresCdaService {
         });
       }),
     );
-    return resultado;
+    // Después de guardar (todo o nada): las cuentas se crean de a una; si alguna
+    // falla, el botón "Crear y vincular cuentas" la completa.
+    if (!this.cuentas.tieneCuenta(grupo)) return resultado;
+    const cedulas = conAccion.map((f) => f.cedula);
+    const cuentas = await this.cuentas.sincronizar({ cedulas }).catch((e) => {
+      this.log.error(`No se pudieron crear las cuentas tras importar: ${(e as Error)?.message}`);
+      return { vinculadas: 0, creadas: 0, fallidas: cedulas.length };
+    });
+    return { ...resultado, cuentas };
   }
 
   private async leerExcel(file: Express.Multer.File | undefined): Promise<FilaLeida[]> {
@@ -342,4 +378,15 @@ export function toOperadorCdaDto(o: {
     activo: o.activo,
     creadoEn: o.creadoEn.toISOString(),
   };
+}
+
+/** Estado de la cuenta de la app para la columna "Cuenta app" de la web. */
+function estadoCuenta(
+  o: { grupo: GrupoCda; activo: boolean },
+  usuario: { activo: boolean; debeCambiarPwd: boolean; bloqueadoHasta: Date | null } | null,
+): EstadoCuentaCda {
+  if (!usuario || !GRUPOS_CON_CUENTA.includes(o.grupo)) return 'SIN_CUENTA';
+  if (!o.activo || !usuario.activo) return 'INACTIVA';
+  if (usuario.bloqueadoHasta && usuario.bloqueadoHasta > new Date()) return 'BLOQUEADA';
+  return usuario.debeCambiarPwd ? 'PENDIENTE_CAMBIO' : 'ACTIVA';
 }

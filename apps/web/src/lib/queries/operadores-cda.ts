@@ -23,6 +23,8 @@ import type {
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
   ReporteAtrasosCda,
+  ResultadoSincronizarCuentasCda,
+  ResumenCuentasCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
@@ -300,4 +302,21 @@ export function pedirReporteCda(reporte: ReporteCda, o: OpcionesReporteCda) {
     `/operadores-cda/asistencia/${RUTA_REPORTE[reporte]}.${o.formato}?${rango(o.desde, o.hasta)}&modo=${o.modo}&grupo=${o.grupo ?? 'OPERADOR'}`,
     { responseType: 'blob' },
   );
+}
+
+export async function getResumenCuentasCda(): Promise<ResumenCuentasCda> {
+  const { data } = await api.get<ResumenCuentasCda>('/operadores-cda/cuentas/resumen');
+  return data;
+}
+
+/** Crea o vincula la cuenta de la app de cada operador/asistente activo que aún no tiene. */
+export async function sincronizarCuentasCda(): Promise<ResultadoSincronizarCuentasCda> {
+  const { data } = await api.post<ResultadoSincronizarCuentasCda>('/operadores-cda/cuentas/sincronizar');
+  return data;
+}
+
+/** Desactiva las cuentas Operador CDA que no corresponden a nadie del listado. */
+export async function desactivarCuentasSinVinculo(): Promise<{ desactivadas: number }> {
+  const { data } = await api.post<{ desactivadas: number }>('/operadores-cda/cuentas/desactivar-sin-vinculo');
+  return data;
 }

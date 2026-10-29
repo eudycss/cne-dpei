@@ -77,6 +77,19 @@ export function UsersList() {
     }
   }
 
+  async function desbloquear(u: User) {
+    setTogglingId(u.id);
+    try {
+      await api.post(`/users/${u.id}/desbloquear`);
+      sileo.success({ title: `${u.nombres} ${u.apellidos} ya puede iniciar sesión` });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    } catch (e: any) {
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo desbloquear' });
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function resetearEstado(u: User) {
     if (
       !window.confirm(
@@ -175,10 +188,17 @@ export function UsersList() {
                     )}
                     <td>{u.cedula}</td>
                     <td>{u.nombres} {u.apellidos}</td>
-                    <td>{u.email}</td>
+                    <td>{u.email ?? '—'}</td>
                     <td>{u.telefono ?? '—'}</td>
                     <td>{u.roles.map((r) => <span key={r} className="badge">{r}</span>)}</td>
-                    <td>{u.activo ? '✓ Activo' : '✗ Inactivo'}</td>
+                    <td>
+                      {u.activo ? '✓ Activo' : '✗ Inactivo'}
+                      {estaBloqueada(u) && (
+                        <div>
+                          <span className="badge warn">Bloqueada hasta {horaCorta(u.bloqueadoHasta!)}</span>
+                        </div>
+                      )}
+                    </td>
                     {isAdmin && (
                       <td>
                         <div className="row" style={{ margin: 0, gap: '0.35rem' }}>
@@ -196,6 +216,17 @@ export function UsersList() {
                           >
                             Restablecer clave
                           </button>
+                          {estaBloqueada(u) && (
+                            <button
+                              className="btn secondary"
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                              disabled={togglingId === u.id}
+                              onClick={() => desbloquear(u)}
+                              aria-label={`Desbloquear a ${u.nombres} ${u.apellidos}`}
+                            >
+                              Desbloquear
+                            </button>
+                          )}
                           {u.roles.includes('OPERADOR_CDA') && (
                             <button
                               className="btn secondary"
@@ -352,4 +383,13 @@ function AssignRolesModal({
       </div>
     </div>
   );
+}
+
+/** Bloqueada por contraseñas erróneas y el bloqueo aún no vence. */
+function estaBloqueada(u: User): boolean {
+  return u.bloqueadoHasta !== null && u.bloqueadoHasta !== undefined && new Date(u.bloqueadoHasta) > new Date();
+}
+
+function horaCorta(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
 }

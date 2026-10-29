@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 
 import { OperadoresCdaService } from './operadores-cda.service';
 import { PrismaService } from '../db/prisma.service';
+import { CuentasCdaService } from './cuentas-cda.service';
 
 const ENCABEZADOS = ['N°', 'Apellidos Nombres', 'Cédula', 'Teléfonos De Contacto', 'Cargo', 'Unidad', 'Inicial'];
 const FILA_OK = [1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273', 'OPERADOR CDA', 'UPSI', '20 de octubre de 2026'];
@@ -29,14 +30,28 @@ describe('OperadoresCdaService', () => {
       update: jest.fn(),
       upsert: jest.fn((args: unknown) => args),
     },
-    $transaction: jest.fn((ops: unknown[]) => Promise.resolve(ops)),
+    $transaction: jest.fn((ops: unknown) =>
+      typeof ops === 'function' ? (ops as (tx: unknown) => unknown)(prisma) : Promise.resolve(ops),
+    ),
+  };
+
+  const cuentas = {
+    tieneCuenta: jest.fn((g: string) => g === 'OPERADOR' || g === 'ASISTENTE'),
+    asegurarCuenta: jest.fn().mockResolvedValue('YA_TENIA'),
+    retirarCuenta: jest.fn().mockResolvedValue(undefined),
+    sincronizar: jest.fn().mockResolvedValue({ vinculadas: 0, creadas: 1, fallidas: 0 }),
+    hashInicial: jest.fn().mockResolvedValue('hash-inicial'),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma.operadorCda.findMany.mockResolvedValue([]);
     const moduleRef = await Test.createTestingModule({
-      providers: [OperadoresCdaService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OperadoresCdaService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CuentasCdaService, useValue: cuentas },
+      ],
     }).compile();
     service = moduleRef.get(OperadoresCdaService);
   });
@@ -321,6 +336,124 @@ describe('OperadoresCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
       await expect(service.cambiarActivo('no-existe', true)).rejects.toBeInstanceOf(NotFoundException);
       await expect(service.editar('no-existe', ALTA)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('cuentas de la app', () => {
+    const FILA = {
+      id: 'o1',
+      grupo: 'ASISTENTE',
+      numero: null,
+      apellidosNombres: 'RUIZ MORA JUAN',
+      cedula: '1710034065',
+      telefono: null,
+      cargo: 'ASISTENTE CDA',
+      unidad: null,
+      fechaInicio: null,
+      fotoKey: null,
+      activo: true,
+      creadoEn: new Date('2026-10-23T10:00:00Z'),
+    };
+    const ALTA = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'ASISTENTE CDA', fechaInicio: '2026-10-20' };
+
+    it('crear un asistente le crea o vincula la cuenta', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce(FILA);
+
+      await service.crear({ ...ALTA, grupo: 'ASISTENTE' });
+
+      expect(cuentas.sincronizar).toHaveBeenCalledWith({ ids: ['o1'] });
+    });
+
+    it('si crear la cuenta falla, el alta igual responde bien (el botón la completa)', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce(FILA);
+      cuentas.sincronizar.mockRejectedValueOnce(new Error('sin conexión'));
+
+      await expect(service.crear({ ...ALTA, grupo: 'ASISTENTE' })).resolves.toMatchObject({ id: 'o1' });
+    });
+
+    it('si crear las cuentas falla tras importar, la importación igual responde y lo informa', async () => {
+      cuentas.sincronizar.mockRejectedValueOnce(new Error('sin conexión'));
+
+      const r = await service.importar(await excel([FILA_OK]), { aplicar: true });
+
+      expect(r.cuentas).toEqual({ vinculadas: 0, creadas: 0, fallidas: 1 });
+    });
+
+    it('crear un digitador no crea cuenta', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce({ ...FILA, grupo: 'DIGITADOR' });
+
+      await service.crear({ ...ALTA, grupo: 'DIGITADOR' });
+
+      expect(cuentas.sincronizar).not.toHaveBeenCalled();
+    });
+
+    it('importar operadores: tras guardar, crea o vincula las cuentas de esas cédulas y lo informa', async () => {
+      const file = await excel([FILA_OK]);
+
+      const r = await service.importar(file, { aplicar: true });
+
+      expect(cuentas.sincronizar).toHaveBeenCalledWith({ cedulas: ['1710034065'] });
+      expect(r.cuentas).toEqual({ vinculadas: 0, creadas: 1, fallidas: 0 });
+    });
+
+    it('la vista previa no toca cuentas', async () => {
+      await service.importar(await excel([FILA_OK]), { aplicar: false });
+      expect(cuentas.sincronizar).not.toHaveBeenCalled();
+    });
+
+    it('importar otro grupo (digitadores) no crea cuentas', async () => {
+      const r = await service.importar(await excel([FILA_OK]), { aplicar: true, grupo: 'DIGITADOR' });
+      expect(cuentas.sincronizar).not.toHaveBeenCalled();
+      expect(r.cuentas).toBeUndefined();
+    });
+
+    it('ocultar retira la cuenta en la misma transacción; reactivar la asegura', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA, activo: false });
+      await service.cambiarActivo('o1', false);
+      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(prisma, 'o1');
+      expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
+
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce(FILA);
+      await service.cambiarActivo('o1', true);
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1', 'hash-inicial');
+    });
+
+    it('si retirar la cuenta falla, falla todo (misma transacción)', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA, activo: false });
+      cuentas.retirarCuenta.mockRejectedValueOnce(new Error('falla'));
+      await expect(service.cambiarActivo('o1', false)).rejects.toThrow('falla');
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it.each([
+      [{ usuario: null }, 'SIN_CUENTA'],
+      [{ usuario: { activo: true, debeCambiarPwd: true, bloqueadoHasta: null } }, 'PENDIENTE_CAMBIO'],
+      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'ACTIVA'],
+      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() + 60_000) } }, 'BLOQUEADA'],
+      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() - 60_000) } }, 'ACTIVA'],
+      [{ usuario: { activo: false, debeCambiarPwd: false, bloqueadoHasta: null } }, 'INACTIVA'],
+      [{ activo: false, usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'INACTIVA'],
+      [{ grupo: 'DIGITADOR', usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'SIN_CUENTA'],
+    ])('list: estado de la cuenta %o → %s', async (cambios, esperado) => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ ...FILA, ...cambios }]);
+
+      const [o] = await service.list({ grupo: 'ASISTENTE' });
+
+      expect(o.cuenta).toBe(esperado);
+      expect(o).not.toHaveProperty('usuario');
+    });
+
+    it('list pide los datos de la cuenta vinculada', async () => {
+      await service.list({});
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].include).toEqual({
+        usuario: { select: { activo: true, debeCambiarPwd: true, bloqueadoHasta: true } },
+      });
     });
   });
 });

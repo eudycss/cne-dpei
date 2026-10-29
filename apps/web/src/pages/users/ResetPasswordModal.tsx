@@ -53,7 +53,7 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
           <>
             <p className="muted">
               Se asignará la contraseña por defecto a{' '}
-              <strong>{user.nombres} {user.apellidos}</strong> ({user.email}).
+              <strong>{user.nombres} {user.apellidos}</strong> ({user.email ?? `cédula ${user.cedula}`}).
               El usuario deberá cambiarla en su próximo inicio de sesión y sus
               sesiones activas se cerrarán.
             </p>
