@@ -161,6 +161,7 @@ model Usuario {
   refreshTokens       RefreshToken[]
   dispositivos        Dispositivo[]
   kitsAsignados       KitElectoral[]
+  parejasCdaCreadas   ParejaCda[]     @relation("ParejaCdaCreadaPor")
 
   asistenciasCdaEntrada AsistenciaCda[]  @relation("AsistenciaCdaEntradaPor")
   asistenciasCdaSalida  AsistenciaCda[]  @relation("AsistenciaCdaSalidaPor")
@@ -305,6 +306,7 @@ model Recinto {
   origenes   Recinto[]      @relation("CdaDestino")
   militares  Militar[]
   kits       KitElectoral[]
+  parejasCda ParejaCda[]
 
   @@index([cantonId], map: "idx_recintos_canton")
   @@index([tipo], map: "idx_recintos_tipo")
@@ -398,6 +400,7 @@ model KitElectoral {
   itemsContenido KitItemContenido[]
   entregaCustodio      EntregaCustodioKit?
   correccionesCustodia CorreccionCustodiaKit[]
+  parejasCda           ParejaCda[]
 
   @@unique([eventoId, codigoUnico])
   @@index([eventoId], map: "idx_kits_evento")
@@ -758,6 +761,8 @@ model OperadorCda {
   actas        ActaEntregaCda[]
   credenciales CredencialQrCda[]
   cambiosCargo CambioCargoCda[]
+  parejasComoOperador  ParejaCda[] @relation("ParejaCdaOperador")
+  parejasComoAsistente ParejaCda[] @relation("ParejaCdaAsistente")
 
   @@index([grupo, activo])
   @@map("operadores_cda")
@@ -921,4 +926,32 @@ model BitacoraAuditoria {
   @@index([entidad, entidadId], map: "idx_bitacora_entidad")
   @@index([ocurridoEn], map: "idx_bitacora_fecha")
   @@map("bitacora_auditoria")
+}
+
+/// Pareja Operador CDA + Asistente CDA que va a un recinto un día dado
+/// (pruebas técnicas, jornada). Normalmente una pareja por recinto; la
+/// segunda en el mismo recinto y día solo queda registrada (el kit y la app
+/// son de la primera). kitId = kit del evento activo asignado al operador.
+model ParejaCda {
+  id             String   @id @default(uuid()) @db.Uuid
+  fecha          DateTime @db.Date
+  recintoId      String   @map("recinto_id") @db.Uuid
+  operadorCdaId  String   @map("operador_cda_id") @db.Uuid
+  asistenteCdaId String?  @map("asistente_cda_id") @db.Uuid
+  kitId          String?  @map("kit_id") @db.Uuid
+  /// Artículos para crear el kit si el recinto no lo tiene ("CODIGO[:SERIE]", separados por coma).
+  articulos      String?  @db.VarChar(1000)
+  creadoPorId    String?  @map("creado_por_id") @db.Uuid
+  creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  recinto   Recinto       @relation(fields: [recintoId], references: [id], onDelete: Restrict)
+  operador  OperadorCda   @relation("ParejaCdaOperador", fields: [operadorCdaId], references: [id], onDelete: Restrict)
+  asistente OperadorCda?  @relation("ParejaCdaAsistente", fields: [asistenteCdaId], references: [id], onDelete: Restrict)
+  kit       KitElectoral? @relation(fields: [kitId], references: [id], onDelete: SetNull)
+  creadoPor Usuario?      @relation("ParejaCdaCreadaPor", fields: [creadoPorId], references: [id])
+
+  @@unique([fecha, operadorCdaId], map: "uq_parejas_cda_fecha_operador")
+  @@unique([fecha, asistenteCdaId], map: "uq_parejas_cda_fecha_asistente")
+  @@index([fecha, recintoId], map: "idx_parejas_cda_fecha_recinto")
+  @@map("parejas_cda")
 }

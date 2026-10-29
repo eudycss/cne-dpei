@@ -643,6 +643,14 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 }
 .ocda-persona-datos { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; overflow-wrap: anywhere; }
 .ocda-en-otro { margin-top: 0.75rem; max-width: 640px; }
+.ocda-dias { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.tema-futurista .banner.info { background: var(--f-cian-suave); color: var(--f-text); border-color: var(--f-cian); }
+.tema-futurista .banner.aviso { background: var(--f-aviso-suave); color: var(--f-text); border-color: var(--f-aviso); }
+.ocda-check-linea { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem; font-size: 0.9rem; }
+.ocda-check-linea input { width: 18px; height: 18px; }
+.ocda-obs { margin: 0; padding-left: 1rem; font-size: 0.82rem; }
+.ocda-obs.error { color: var(--f-error); }
+.ocda-obs.aviso { color: var(--f-aviso); }
 .ocda-en-otro p.muted { margin: 0; }
 .ocda-cargo option { font-weight: 500; }
 .ocda-chip {

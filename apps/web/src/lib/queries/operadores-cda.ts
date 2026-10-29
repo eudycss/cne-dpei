@@ -1,5 +1,11 @@
 import type {
   ActaCdaFila,
+  AplicarParejasCdaResult,
+  CrearParejaCdaRequest,
+  DisponiblesParejasCda,
+  EditarParejaCdaRequest,
+  ImportParejasCdaResult,
+  ParejasCdaDia,
   ActaEntregaCda,
   AsistenciaCdaDia,
   CambiarCargoOperadorCdaResult,
@@ -329,4 +335,76 @@ export async function sincronizarCuentasCda(): Promise<ResultadoSincronizarCuent
 export async function desactivarCuentasSinVinculo(): Promise<{ desactivadas: number }> {
   const { data } = await api.post<{ desactivadas: number }>('/operadores-cda/cuentas/desactivar-sin-vinculo');
   return data;
+}
+
+// --- Parejas Operador CDA + Asistente CDA por día ---
+
+export async function getParejasCda(fecha: string): Promise<ParejasCdaDia> {
+  const { data } = await api.get<ParejasCdaDia>(`/parejas-cda?fecha=${fecha}`);
+  return data;
+}
+
+export async function getFechasParejasCda(): Promise<string[]> {
+  const { data } = await api.get<string[]>('/parejas-cda/fechas');
+  return data;
+}
+
+/** `todos`: también quienes ya fueron otro día y los recintos ya usados. */
+export async function getDisponiblesParejasCda(fecha: string, todos: boolean): Promise<DisponiblesParejasCda> {
+  const { data } = await api.get<DisponiblesParejasCda>(`/parejas-cda/disponibles?fecha=${fecha}${todos ? '&todos=true' : ''}`);
+  return data;
+}
+
+export async function crearParejaCda(body: CrearParejaCdaRequest): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>('/parejas-cda', body);
+  return data;
+}
+
+export async function editarParejaCda(id: string, body: EditarParejaCdaRequest): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.patch<AplicarParejasCdaResult>(`/parejas-cda/${id}`, body);
+  return data;
+}
+
+/** `justificacion`: obligatoria si la jornada ya inició y la pareja tenía el kit. */
+export async function quitarParejaCda(id: string, justificacion?: string): Promise<void> {
+  if (justificacion) await api.delete(`/parejas-cda/${id}`, { data: { justificacion } });
+  else await api.delete(`/parejas-cda/${id}`);
+}
+
+export async function aplicarParejasCda(fecha: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/aplicar?fecha=${fecha}`, justificacion ? { justificacion } : {});
+  return data;
+}
+
+/**
+ * Sin `guardar` solo devuelve la vista previa. `app: false` guarda sin pasar
+ * a la app (listas históricas de un evento que no debe tocarse).
+ */
+export async function importarParejasCda(
+  file: File,
+  fecha: string,
+  guardar: boolean,
+  opciones: { app?: boolean; justificacion?: string } = {},
+): Promise<ImportParejasCdaResult> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const extra =
+    (opciones.app === false ? '&app=false' : '') +
+    (opciones.justificacion ? `&justificacion=${encodeURIComponent(opciones.justificacion)}` : '');
+  const { data } = await api.post<ImportParejasCdaResult>(
+    `/parejas-cda/importar?fecha=${fecha}${guardar ? '&guardar=true' : ''}${extra}`,
+    fd,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data;
+}
+
+export async function descargarPlantillaParejasCda(): Promise<void> {
+  const res = await api.get<Blob>('/parejas-cda/plantilla.xlsx', { responseType: 'blob' });
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'plantilla_parejas_cda.xlsx'));
+}
+
+export async function descargarQrParejasCda(fecha: string): Promise<void> {
+  const res = await api.get<Blob>(`/parejas-cda/qr?fecha=${fecha}`, { responseType: 'blob' });
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `kits-qr-parejas_${fecha}.pdf`));
 }
