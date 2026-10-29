@@ -31,18 +31,22 @@ describe('OperadoresCdaPage', () => {
     );
   });
 
-  it('se llama CDAs y abre en Operadores CDA > Asistencia', async () => {
+  it('se llama CDA y CPE y abre en Operadores CDA > Asistencia', async () => {
     renderPagina();
-    expect(screen.getByRole('heading', { name: 'CDAs' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'CDA y CPE' })).toBeInTheDocument();
     const cargo = screen.getByRole('combobox', { name: 'Cargo' });
     expect(cargo).toHaveDisplayValue('Operadores CDA');
-    expect(within(cargo).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      'Operadores CDA',
-      'Asistentes CDA',
+    const opciones = (centro: string) =>
+      within(within(cargo).getByRole('group', { name: new RegExp(`^${centro} — `) }))
+        .getAllByRole('option')
+        .map((o) => o.textContent);
+    expect(opciones('CDA')).toEqual(['Operadores CDA', 'Asistentes CDA']);
+    expect(opciones('CPE')).toEqual([
       'Digitadores',
       'Asistentes de Archivos',
       'Asistentes de firmas',
       'Receptores de actas',
+      'Archivadores de actas',
       'Supervisores',
       'Operadores de escáner CPE',
     ]);
@@ -80,6 +84,21 @@ describe('OperadoresCdaPage', () => {
     expect(await screen.findByText('Aún no hay supervisores registrados.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Agregar supervisor' })).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=SUPERVISOR');
+  });
+
+  it('elegir un cargo CPE del combo lo deja en la URL y pide sus datos', async () => {
+    renderPagina('/operadores-cda?tab=listado');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Cargo' }), 'Archivadores de actas');
+    expect(await screen.findByText('Aún no hay archivadores de actas registrados.')).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=ARCHIVADOR_ACTAS');
+  });
+
+  it('Archivadores de actas es un cargo CPE más, con su propio listado', async () => {
+    renderPagina('/operadores-cda?grupo=archivadores-actas&tab=listado');
+    expect(screen.getByRole('combobox', { name: 'Cargo' })).toHaveDisplayValue('Archivadores de actas');
+    expect(await screen.findByText('Aún no hay archivadores de actas registrados.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar archivador de actas' })).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=ARCHIVADOR_ACTAS');
   });
 
   it('?grupo= desconocido abre Operadores CDA', async () => {

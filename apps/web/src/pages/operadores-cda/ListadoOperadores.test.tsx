@@ -233,7 +233,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
     const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
 
-    const cargoCda = within(dialogo).getByRole('combobox', { name: 'Cargo CDA' });
+    const cargoCda = within(dialogo).getByRole('combobox', { name: 'Cargo CDA o CPE' });
     expect(cargoCda).toHaveDisplayValue('Asistentes CDA');
     await userEvent.selectOptions(cargoCda, 'Operadores CDA');
     expect(cargoCda).toHaveAccessibleDescription(
@@ -272,7 +272,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
     const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
-    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA' }), 'Supervisores');
+    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA o CPE' }), 'Supervisores');
     expect(within(dialogo).getByLabelText('Cargo')).toHaveValue('OPERADOR CDA');
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Supervisores' }));
     await waitFor(() => expect(patchMock).toHaveBeenLastCalledWith('/operadores-cda/o1/cargo', { grupo: 'SUPERVISOR' }));
@@ -291,7 +291,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
     const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
-    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA' }), 'Digitadores');
+    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA o CPE' }), 'Digitadores');
     const pedidosAntes = getMock.mock.calls.length;
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Digitadores' }));
     await waitFor(() =>
@@ -301,7 +301,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     expect(screen.getByRole('dialog', { name: 'Editar operador' })).toBeInTheDocument();
   });
 
-  it('editar sin cambiar de cargo no llama al cambio de cargo; agregar no muestra "Cargo CDA"', async () => {
+  it('editar sin cambiar de cargo no llama al cambio de cargo; agregar no muestra "Cargo CDA o CPE"', async () => {
     getMock.mockResolvedValue({ data: [operador({})] });
     patchMock.mockResolvedValueOnce({ data: operador({}) });
     renderPagina();
@@ -313,7 +313,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
 
     await userEvent.click(screen.getByRole('button', { name: 'Agregar operador' }));
     const alta = await screen.findByRole('dialog', { name: 'Agregar operador' });
-    expect(within(alta).queryByRole('combobox', { name: 'Cargo CDA' })).not.toBeInTheDocument();
+    expect(within(alta).queryByRole('combobox', { name: 'Cargo CDA o CPE' })).not.toBeInTheDocument();
   });
 
   it('editar: una fecha de ingreso ya registrada no se puede borrar', async () => {

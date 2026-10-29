@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido } from './filtroIngreso';
-import { GRUPOS, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
+import { CENTROS, GRUPOS, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
 import { fechaCorta } from './utils';
 
 const sin = { desde: '', hasta: '', incluirSinFecha: false };
@@ -52,9 +52,13 @@ describe('fechas e ids que llegan en la URL', () => {
   });
 
   it('grupoDeRuta: cada cargo tiene su ruta propia; una desconocida es OPERADOR', () => {
-    expect(GRUPOS).toHaveLength(8);
+    expect(GRUPOS).toHaveLength(9);
     for (const g of GRUPOS) expect(grupoDeRuta(TEXTOS_GRUPO[g].ruta)).toBe(g);
-    expect(new Set(GRUPOS.map((g) => TEXTOS_GRUPO[g].ruta)).size).toBe(8);
+    expect(new Set(GRUPOS.map((g) => TEXTOS_GRUPO[g].ruta)).size).toBe(9);
+    expect(grupoDeRuta('archivadores-actas')).toBe('ARCHIVADOR_ACTAS');
+    // Todo cargo cae en una sección del combo; solo operadores y asistentes son CDA.
+    for (const g of GRUPOS) expect(CENTROS).toContain(TEXTOS_GRUPO[g].centro);
+    expect(GRUPOS.filter((g) => TEXTOS_GRUPO[g].centro === 'CDA')).toEqual(['OPERADOR', 'ASISTENTE']);
     for (const v of [null, '', 'xyz', 'SUPERVISOR']) expect(grupoDeRuta(v)).toBe('OPERADOR');
   });
 });

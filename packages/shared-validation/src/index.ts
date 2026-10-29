@@ -649,7 +649,10 @@ export const operadorCdaFilaSchema = z.object({
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
 
-/** Cargos del personal CDA (cada uno con su propia gestión). */
+/**
+ * Cargos del personal (cada uno con su propia gestión). Solo OPERADOR y
+ * ASISTENTE son CDA; el resto es CPE en actas y carnets.
+ */
 export const GRUPOS_CDA = [
   'OPERADOR',
   'ASISTENTE',
@@ -657,6 +660,7 @@ export const GRUPOS_CDA = [
   'ASISTENTE_ARCHIVOS',
   'ASISTENTE_FIRMAS',
   'RECEPTOR_ACTAS',
+  'ARCHIVADOR_ACTAS',
   'SUPERVISOR',
   'OPERADOR_ESCANER_CPE',
 ] as const;

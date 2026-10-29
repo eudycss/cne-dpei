@@ -8,7 +8,7 @@ import type { EstadoPrenda } from '@cne/shared-types';
 import { nuevoPdf } from '../common/pdf';
 
 /**
- * Acta de entrega de indumentaria y credencial de un operador CDA, en Word
+ * Acta de entrega de indumentaria y credencial del personal CDA o CPE, en Word
  * (desde la plantilla oficial) y en PDF (mismo texto, dibujado con pdfkit).
  * Nada se guarda: se genera al momento con los datos del acta.
  */
@@ -34,7 +34,7 @@ export interface DatosActaCda {
   entregaCargo: string;
   operadorNombre: string;
   operadorCedula: string;
-  /** el cargo del grupo ("OPERADOR CDA", "SUPERVISOR CDA", …). */
+  /** el cargo del grupo ("OPERADOR CDA", "SUPERVISOR CPE", …). */
   operadorCargo: string;
   estadoPeto: EstadoPrenda;
   estadoCredencial: EstadoPrenda;

@@ -728,6 +728,7 @@ enum GrupoCda {
   RECEPTOR_ACTAS
   SUPERVISOR
   OPERADOR_ESCANER_CPE
+  ARCHIVADOR_ACTAS
 
   @@map("grupo_cda")
 }

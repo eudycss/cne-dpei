@@ -2,7 +2,10 @@ import { BadRequestException } from '@nestjs/common';
 import { grupoCdaQuerySchema } from '@cne/shared-validation';
 import type { GrupoCda } from '@cne/shared-types';
 
-/** Textos que cambian según el grupo (reportes, actas, carnets y mensajes). */
+/**
+ * Textos que cambian según el grupo (reportes, actas, carnets y mensajes).
+ * Solo operadores y asistentes son CDA; el resto dice CPE.
+ */
 export const TEXTOS_GRUPO: Record<
   GrupoCda,
   { titulo: string; contador: string; cargo: string; archivo: string; singular: string }
@@ -24,36 +27,43 @@ export const TEXTOS_GRUPO: Record<
   DIGITADOR: {
     titulo: 'Digitadores',
     contador: 'Digitadores',
-    cargo: 'DIGITADOR CDA',
-    archivo: 'digitadores_cda',
+    cargo: 'DIGITADOR CPE',
+    archivo: 'digitadores_cpe',
     singular: 'digitador',
   },
   ASISTENTE_ARCHIVOS: {
     titulo: 'Asistentes de Archivos',
     contador: 'Asistentes de Archivos',
-    cargo: 'ASISTENTE DE ARCHIVOS CDA',
-    archivo: 'asistentes_archivos_cda',
+    cargo: 'ASISTENTE DE ARCHIVOS CPE',
+    archivo: 'asistentes_archivos_cpe',
     singular: 'asistente de archivos',
   },
   ASISTENTE_FIRMAS: {
     titulo: 'Asistentes de firmas',
     contador: 'Asistentes de firmas',
-    cargo: 'ASISTENTE DE FIRMAS CDA',
-    archivo: 'asistentes_firmas_cda',
+    cargo: 'ASISTENTE DE FIRMAS CPE',
+    archivo: 'asistentes_firmas_cpe',
     singular: 'asistente de firmas',
   },
   RECEPTOR_ACTAS: {
     titulo: 'Receptores de actas',
     contador: 'Receptores',
-    cargo: 'RECEPTOR DE ACTAS CDA',
-    archivo: 'receptores_actas_cda',
+    cargo: 'RECEPTOR DE ACTAS CPE',
+    archivo: 'receptores_actas_cpe',
     singular: 'receptor de actas',
+  },
+  ARCHIVADOR_ACTAS: {
+    titulo: 'Archivadores de actas',
+    contador: 'Archivadores',
+    cargo: 'ARCHIVADOR DE ACTAS CPE',
+    archivo: 'archivadores_actas_cpe',
+    singular: 'archivador de actas',
   },
   SUPERVISOR: {
     titulo: 'Supervisores',
     contador: 'Supervisores',
-    cargo: 'SUPERVISOR CDA',
-    archivo: 'supervisores_cda',
+    cargo: 'SUPERVISOR CPE',
+    archivo: 'supervisores_cpe',
     singular: 'supervisor',
   },
   OPERADOR_ESCANER_CPE: {
