@@ -43,13 +43,18 @@ export class AuthService {
     if (!user || !user.activo) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    const roles = user.roles.map((r) => r.rol.nombre as RoleName);
+    // Los administradores no se bloquean: como el usuario es la cédula (casi
+    // pública), cualquiera podría dejarlos fuera a propósito. Los protege el
+    // límite de intentos por IP del controlador.
+    const bloqueable = !roles.includes('ADMINISTRADOR');
     // Bloqueada: mismo mensaje genérico y no suma intentos (el bloqueo no se alarga).
-    const bloqueada = user.bloqueadoHasta !== null && user.bloqueadoHasta > new Date();
+    const bloqueada = bloqueable && user.bloqueadoHasta !== null && user.bloqueadoHasta > new Date();
     if (bloqueada) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
     if (!ok) {
-      await this.registrarIntentoFallido(user.id);
+      if (bloqueable) await this.registrarIntentoFallido(user.id);
       throw new UnauthorizedException('Credenciales inválidas');
     }
     if (user.intentosFallidos > 0 || user.bloqueadoHasta !== null) {
@@ -59,7 +64,6 @@ export class AuthService {
       });
     }
 
-    const roles = user.roles.map((r) => r.rol.nombre as RoleName);
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,

@@ -255,6 +255,31 @@ describe('AuthService', () => {
       expect(prisma.usuario.update).not.toHaveBeenCalled();
     });
 
+    it('administrador: las contraseñas erróneas no cuentan (no se le puede dejar fuera a propósito)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(
+        userRow({ intentosFallidos: 4, bloqueadoHasta: null, roles: [{ rol: { nombre: 'ADMINISTRADOR' } }] }),
+      );
+      verifyMock.mockResolvedValueOnce(false);
+
+      await expect(service.login('1034567899', 'mala')).rejects.toThrow('Credenciales inválidas');
+
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('administrador con un bloqueo previo vigente: entra con la contraseña correcta', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(
+        userRow({
+          intentosFallidos: 0,
+          bloqueadoHasta: new Date(Date.now() + 60_000),
+          roles: [{ rol: { nombre: 'ADMINISTRADOR' } }, { rol: { nombre: 'OPERADOR_CDA' } }],
+        }),
+      );
+      verifyMock.mockResolvedValueOnce(true);
+
+      await expect(service.login('1034567899', 'correcta')).resolves.toHaveProperty('accessToken');
+    });
+
     it('cuenta sin correo (CDA): entra y el token lleva email null', async () => {
       prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ email: null, intentosFallidos: 0 }));
       verifyMock.mockResolvedValueOnce(true);

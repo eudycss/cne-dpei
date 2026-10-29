@@ -170,6 +170,11 @@ Detallado el 2026-10-28. PR 1 = #120 (en producción).
 - **Desactivar en Operadores CDA** → la cuenta de la app se desactiva también; al reactivar, vuelve.
 - **Cambio de Operador/Asistente a otro cargo CDA** → se quita el rol `OPERADOR_CDA` y se cierran sus sesiones; si vuelve, se devuelve.
 
+### Decisiones del usuario tras la revisión (2026-10-28)
+- Se mantiene la contraseña inicial común; el Administrador pulsa "Crear y vincular cuentas" **justo antes del evento** para acortar la ventana antes del primer ingreso.
+- **Los Administradores no se bloquean** por contraseñas erróneas (solo el límite por IP), para que nadie los deje fuera a propósito con su cédula.
+- Se acepta que tras retirar una cuenta el access token siga válido hasta 15 min (igual que al desactivar en Usuarios).
+
 ### Decisiones de Claude (revisables)
 - El vínculo de las 68 cuentas lo hace el mismo botón (no una migración de datos): el efecto es igual y queda probado con tests.
 - Al quitar la cuenta (desactivar o cambiar de cargo) **solo se desactiva la cuenta si `OPERADOR_CDA` era su único rol**; si tiene otros (el caso del Administrador), solo se le quita ese rol. Así nunca se deja sin acceso a un Administrador.
