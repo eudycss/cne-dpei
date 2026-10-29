@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../common/roles.decorator';
 import { AsistenciaCdaController } from './asistencia-cda.controller';
@@ -7,6 +8,7 @@ import { ActasCdaController } from './actas-cda.controller';
 import { AtrasosCdaController } from './atrasos-cda.controller';
 import { CredencialQrCdaController } from './credencial-qr-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
+import { MODULO_KEY, ModuloGuard } from '../permisos-modulos/modulo.guard';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -25,6 +27,38 @@ describe('RBAC de Operadores CDA', () => {
   it('ver el listado: los mismos tres roles; importar el Excel: solo administrador', () => {
     expect(rolesDe(OperadoresCdaController, 'list')).toEqual(TOMAN_ASISTENCIA);
     expect(rolesDe(OperadoresCdaController, 'importar')).toEqual(['ADMINISTRADOR']);
+  });
+
+  it('buscar en todos los cargos: los mismos tres roles; ocultos solo para el administrador', () => {
+    expect(rolesDe(OperadoresCdaController, 'buscar')).toEqual(TOMAN_ASISTENCIA);
+    const buscar = jest.fn();
+    const ctrl = new OperadoresCdaController({ buscar } as never);
+    ctrl.buscar({ roles: ['TECNICO_SUPERVISOR'] } as never, ' 1005201015 ', 'true');
+    ctrl.buscar({ roles: ['ADMINISTRADOR'] } as never, 'pérez', 'true');
+    expect(buscar.mock.calls.map(([o]) => o)).toEqual([
+      { q: '1005201015', incluirInactivos: false },
+      { q: 'pérez', incluirInactivos: true },
+    ]);
+  });
+
+  it('buscar exige el módulo operadores-cda, igual que el listado', () => {
+    for (const metodo of ['list', 'buscar']) {
+      const fn = (OperadoresCdaController.prototype as any)[metodo];
+      expect(Reflect.getMetadata(MODULO_KEY, fn)).toBe('operadores-cda');
+      expect(Reflect.getMetadata('__guards__', fn)).toContain(ModuloGuard);
+    }
+  });
+
+  it('buscar: 400 con menos de 3 caracteres, vacío o repetido; acota el largo a 100', () => {
+    const buscar = jest.fn();
+    const ctrl = new OperadoresCdaController({ buscar } as never);
+    const admin = { roles: ['ADMINISTRADOR'] } as never;
+    for (const q of [undefined, '', '  ab  ', ['abc', 'def']]) {
+      expect(() => ctrl.buscar(admin, q as never)).toThrow(BadRequestException);
+    }
+    expect(buscar).not.toHaveBeenCalled();
+    ctrl.buscar(admin, 'x'.repeat(300));
+    expect(buscar.mock.calls[0][0].q).toHaveLength(100);
   });
 
   it.each(['crear', 'editar', 'cambiarActivo', 'cambiarCargo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {

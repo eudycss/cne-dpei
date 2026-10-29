@@ -11,6 +11,7 @@ import type {
   EstadoCuentaCda,
   OperadorCda,
   OperadorCdaFila,
+  PersonaCdaEncontrada,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService, GRUPOS_CON_CUENTA } from './cuentas-cda.service';
@@ -55,6 +56,25 @@ export class OperadoresCdaService {
       include: { usuario: { select: { activo: true, debeCambiarPwd: true, bloqueadoHasta: true } } },
     });
     return items.map(({ usuario, ...o }) => ({ ...toOperadorCdaDto(o), cuenta: estadoCuenta(o, usuario) }));
+  }
+
+  /**
+   * Busca por nombre o cédula en todos los cargos (CDA y CPE), para saber en
+   * qué listado está una persona. Hasta 20 resultados.
+   */
+  buscar(opts: { q: string; incluirInactivos?: boolean }): Promise<PersonaCdaEncontrada[]> {
+    return this.prisma.operadorCda.findMany({
+      where: {
+        ...(!opts.incluirInactivos && { activo: true }),
+        OR: [
+          { apellidosNombres: { contains: opts.q, mode: 'insensitive' as const } },
+          { cedula: { contains: opts.q } },
+        ],
+      },
+      orderBy: { apellidosNombres: 'asc' },
+      take: 20,
+      select: { id: true, apellidosNombres: true, cedula: true, grupo: true, activo: true },
+    });
   }
 
   /**

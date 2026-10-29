@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -56,6 +57,24 @@ export class OperadoresCdaController {
       search: typeof search === 'string' ? search.slice(0, 100) : undefined,
       incluirInactivos: incluirInactivos === 'true' && user.roles.includes('ADMINISTRADOR'),
       grupo: parsearGrupo(grupo),
+    });
+  }
+
+  @Get('buscar')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @ApiOperation({
+    summary:
+      'Busca por nombre o cédula (?q=, mínimo 3 caracteres) en todos los cargos CDA y CPE, hasta 20 personas. ?incluirInactivos=true: también los ocultos (solo administrador)',
+  })
+  buscar(@CurrentUser() user: AuthenticatedUser, @Query('q') q?: unknown, @Query('incluirInactivos') incluirInactivos?: string) {
+    // Repetido (?q=a&q=b) llega como arreglo: se rechaza igual que uno corto.
+    const texto = typeof q === 'string' ? q.trim().slice(0, 100) : '';
+    if (texto.length < 3) throw new BadRequestException('Escriba al menos 3 caracteres del nombre o la cédula');
+    return this.operadores.buscar({
+      q: texto,
+      incluirInactivos: incluirInactivos === 'true' && user.roles.includes('ADMINISTRADOR'),
     });
   }
 

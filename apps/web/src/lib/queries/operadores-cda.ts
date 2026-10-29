@@ -10,6 +10,7 @@ import type {
   CredencialQrCdaVigente,
   CrearOperadorCdaRequest,
   EditarOperadorCdaRequest,
+  PersonaCdaEncontrada,
   GenerarActasCdaRequest,
   GenerarActasCdaResult,
   PersonaEntregaCda,
@@ -34,6 +35,14 @@ import { api } from '../api';
 export async function getOperadoresCda(incluirInactivos = false, grupo: GrupoCda = 'OPERADOR'): Promise<OperadorCda[]> {
   const { data } = await api.get<OperadorCda[]>(
     `/operadores-cda?grupo=${grupo}${incluirInactivos ? '&incluirInactivos=true' : ''}`,
+  );
+  return data;
+}
+
+/** Busca por nombre o cédula en todos los cargos (`q` de 3 caracteres o más). */
+export async function buscarPersonasCda(q: string, incluirInactivos = false): Promise<PersonaCdaEncontrada[]> {
+  const { data } = await api.get<PersonaCdaEncontrada[]>(
+    `/operadores-cda/buscar?q=${encodeURIComponent(q)}${incluirInactivos ? '&incluirInactivos=true' : ''}`,
   );
   return data;
 }

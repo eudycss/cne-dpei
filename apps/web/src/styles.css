@@ -633,6 +633,17 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-cargo select:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
 .ocda-cargo optgroup, .ocda-cargo option { background-color: var(--f-bg-surface); color: var(--f-text); }
 .ocda-cargo optgroup { font-weight: 700; }
+.ocda-buscador { margin-top: 1.5rem; max-width: 640px; }
+.ocda-buscador .ocda-campo { display: block; }
+.ocda-buscador p.muted { margin: 0.5rem 0 0; }
+.ocda-personas { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.ocda-persona {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0.65rem 0.9rem; background: var(--f-bg-surface); border: 1px solid var(--f-border-subtle); border-radius: 12px;
+}
+.ocda-persona-datos { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; overflow-wrap: anywhere; }
+.ocda-en-otro { margin-top: 0.75rem; max-width: 640px; }
+.ocda-en-otro p.muted { margin: 0; }
 .ocda-cargo option { font-weight: 500; }
 .ocda-chip {
   min-height: 36px; padding: 0.35rem 0.95rem; border-radius: 999px; font: inherit; font-size: 0.82rem; font-weight: 500;
