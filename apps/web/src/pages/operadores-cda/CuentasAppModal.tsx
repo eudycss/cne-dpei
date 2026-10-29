@@ -44,8 +44,14 @@ export function CuentasAppModal({ onClose }: { onClose: () => void }) {
 
   const crear = useMutation({
     mutationFn: sincronizarCuentasCda,
-    onSuccess: ({ creadas, vinculadas }) =>
-      alTerminar(`${cuentas(creadas)} ${creadas === 1 ? 'creada' : 'creadas'} y ${plural(vinculadas, 'vinculada')}`),
+    onSuccess: ({ creadas, vinculadas, fallidas }) => {
+      const hecho = `${cuentas(creadas)} ${creadas === 1 ? 'creada' : 'creadas'} y ${plural(vinculadas, 'vinculada')}`;
+      alTerminar(
+        fallidas > 0
+          ? `${hecho}. ${fallidas} no se ${fallidas === 1 ? 'pudo' : 'pudieron'} crear: vuelva a pulsar “Crear y vincular”.`
+          : hecho,
+      );
+    },
     onError: (e) => alFallar(e, 'No se pudieron crear las cuentas'),
   });
   const desactivar = useMutation({
@@ -105,7 +111,7 @@ export function CuentasAppModal({ onClose }: { onClose: () => void }) {
             </div>
 
             {confirmando === 'crear' && (
-              <div className="banner">
+              <div className="banner" id="cuentas-app-aviso">
                 <p style={{ marginTop: 0 }}>
                   Se creará la cuenta de {plural(r.sinCuenta, 'persona')} que aún no la tiene
                   {r.sinCuenta === 1 ? '' : 'n'}. Entrarán con su cédula y la misma contraseña inicial que “Restablecer
@@ -117,7 +123,7 @@ export function CuentasAppModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {confirmando === 'desactivar' && (
-              <div className="banner">
+              <div className="banner" id="cuentas-app-aviso">
                 <p style={{ margin: 0 }}>
                   Se desactivarán {cuentas(r.cuentasSinVinculo)} de Operador CDA que no corresponden a nadie de
                   Operadores CDA. Solo se tocan cuentas cuyo único rol es Operador CDA; cada una se puede reactivar en
@@ -145,16 +151,29 @@ export function CuentasAppModal({ onClose }: { onClose: () => void }) {
                     className="btn secondary"
                     onClick={() => setConfirmando(null)}
                     disabled={ocupado}
+                    aria-describedby="cuentas-app-aviso"
                     autoFocus
                   >
                     No, volver
                   </button>
                   {confirmando === 'crear' ? (
-                    <button type="button" className="btn" onClick={() => crear.mutate()} disabled={ocupado}>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => crear.mutate()}
+                      disabled={ocupado}
+                      aria-describedby="cuentas-app-aviso"
+                    >
                       {crear.isPending ? 'Creando cuentas…' : 'Sí, crear y vincular'}
                     </button>
                   ) : (
-                    <button type="button" className="btn danger" onClick={() => desactivar.mutate()} disabled={ocupado}>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() => desactivar.mutate()}
+                      disabled={ocupado}
+                      aria-describedby="cuentas-app-aviso"
+                    >
                       {desactivar.isPending ? 'Desactivando…' : 'Sí, desactivar'}
                     </button>
                   )}

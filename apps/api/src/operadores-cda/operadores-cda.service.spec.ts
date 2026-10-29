@@ -39,7 +39,8 @@ describe('OperadoresCdaService', () => {
     tieneCuenta: jest.fn((g: string) => g === 'OPERADOR' || g === 'ASISTENTE'),
     asegurarCuenta: jest.fn().mockResolvedValue('YA_TENIA'),
     retirarCuenta: jest.fn().mockResolvedValue(undefined),
-    sincronizar: jest.fn().mockResolvedValue({ vinculadas: 0, creadas: 1 }),
+    sincronizar: jest.fn().mockResolvedValue({ vinculadas: 0, creadas: 1, fallidas: 0 }),
+    hashInicial: jest.fn().mockResolvedValue('hash-inicial'),
   };
 
   beforeEach(async () => {
@@ -364,6 +365,22 @@ describe('OperadoresCdaService', () => {
       expect(cuentas.sincronizar).toHaveBeenCalledWith({ ids: ['o1'] });
     });
 
+    it('si crear la cuenta falla, el alta igual responde bien (el botón la completa)', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce(FILA);
+      cuentas.sincronizar.mockRejectedValueOnce(new Error('sin conexión'));
+
+      await expect(service.crear({ ...ALTA, grupo: 'ASISTENTE' })).resolves.toMatchObject({ id: 'o1' });
+    });
+
+    it('si crear las cuentas falla tras importar, la importación igual responde y lo informa', async () => {
+      cuentas.sincronizar.mockRejectedValueOnce(new Error('sin conexión'));
+
+      const r = await service.importar(await excel([FILA_OK]), { aplicar: true });
+
+      expect(r.cuentas).toEqual({ vinculadas: 0, creadas: 0, fallidas: 1 });
+    });
+
     it('crear un digitador no crea cuenta', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
       prisma.operadorCda.create.mockResolvedValueOnce({ ...FILA, grupo: 'DIGITADOR' });
@@ -379,7 +396,7 @@ describe('OperadoresCdaService', () => {
       const r = await service.importar(file, { aplicar: true });
 
       expect(cuentas.sincronizar).toHaveBeenCalledWith({ cedulas: ['1710034065'] });
-      expect(r.cuentas).toEqual({ vinculadas: 0, creadas: 1 });
+      expect(r.cuentas).toEqual({ vinculadas: 0, creadas: 1, fallidas: 0 });
     });
 
     it('la vista previa no toca cuentas', async () => {
@@ -403,7 +420,7 @@ describe('OperadoresCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
       prisma.operadorCda.update.mockResolvedValueOnce(FILA);
       await service.cambiarActivo('o1', true);
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1');
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1', 'hash-inicial');
     });
 
     it('si retirar la cuenta falla, falla todo (misma transacción)', async () => {

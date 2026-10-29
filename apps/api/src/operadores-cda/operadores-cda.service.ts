@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { operadorCdaFilaSchema } from '@cne/shared-validation';
 import type {
@@ -31,6 +31,8 @@ const MAX_TEXTO_ERROR = 200;
 
 @Injectable()
 export class OperadoresCdaService {
+  private readonly log = new Logger(OperadoresCdaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cuentas: CuentasCdaService,
@@ -72,7 +74,11 @@ export class OperadoresCdaService {
       });
       // Fuera de la transacción del alta: si falla, la persona queda creada y el
       // botón "Crear y vincular cuentas" lo completa.
-      if (this.cuentas.tieneCuenta(grupo)) await this.cuentas.sincronizar({ ids: [creado.id] });
+      if (this.cuentas.tieneCuenta(grupo)) {
+        await this.cuentas.sincronizar({ ids: [creado.id] }).catch((e) =>
+          this.log.error(`No se pudo crear la cuenta del operador CDA ${creado.id}: ${(e as Error)?.message}`),
+        );
+      }
       return toOperadorCdaDto(creado);
     } catch (e) {
       // Dos altas simultáneas con la misma cédula: la segunda choca con el índice único.
@@ -96,10 +102,11 @@ export class OperadoresCdaService {
    */
   async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
     await this.existe(id);
+    const passwordHash = activo ? await this.cuentas.hashInicial() : '';
     // Misma transacción: ocultar a alguien nunca le deja la app abierta.
     const editado = await this.prisma.$transaction(async (tx) => {
       const fila = await tx.operadorCda.update({ where: { id }, data: { activo } });
-      if (activo) await this.cuentas.asegurarCuenta(tx, id);
+      if (activo) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
       else await this.cuentas.retirarCuenta(tx, id);
       return fila;
     });
@@ -132,6 +139,10 @@ export class OperadoresCdaService {
       select: { id: true },
     });
     const desde = marcoHoy ? diaDeFechaDb(new Date(fechaDb(hoy).getTime() + 86_400_000)) : hoy;
+    const teniaCuenta = this.cuentas.tieneCuenta(o.grupo);
+    const tendraCuenta = this.cuentas.tieneCuenta(grupo);
+    // El hash (argon2, lento) se calcula antes de abrir la transacción.
+    const passwordHash = !teniaCuenta && tendraCuenta ? await this.cuentas.hashInicial() : '';
 
     const editado = await this.prisma.$transaction(async (tx) => {
       // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
@@ -141,10 +152,8 @@ export class OperadoresCdaService {
       await tx.cambioCargoCda.create({
         data: { operadorId: id, grupoAnterior: o.grupo, grupoNuevo: grupo, desde: fechaDb(desde), hechoPorId: usuarioId },
       });
-      const teniaCuenta = this.cuentas.tieneCuenta(o.grupo);
-      const tendraCuenta = this.cuentas.tieneCuenta(grupo);
       if (teniaCuenta && !tendraCuenta) await this.cuentas.retirarCuenta(tx, id);
-      if (!teniaCuenta && tendraCuenta) await this.cuentas.asegurarCuenta(tx, id);
+      if (!teniaCuenta && tendraCuenta) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
       return tx.operadorCda.findUniqueOrThrow({ where: { id } });
     });
     return {
@@ -228,7 +237,11 @@ export class OperadoresCdaService {
     // Después de guardar (todo o nada): las cuentas se crean de a una; si alguna
     // falla, el botón "Crear y vincular cuentas" la completa.
     if (!this.cuentas.tieneCuenta(grupo)) return resultado;
-    const cuentas = await this.cuentas.sincronizar({ cedulas: conAccion.map((f) => f.cedula) });
+    const cedulas = conAccion.map((f) => f.cedula);
+    const cuentas = await this.cuentas.sincronizar({ cedulas }).catch((e) => {
+      this.log.error(`No se pudieron crear las cuentas tras importar: ${(e as Error)?.message}`);
+      return { vinculadas: 0, creadas: 0, fallidas: cedulas.length };
+    });
     return { ...resultado, cuentas };
   }
 

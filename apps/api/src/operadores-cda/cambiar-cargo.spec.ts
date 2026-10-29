@@ -38,6 +38,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     tieneCuenta: jest.fn((g: string) => g === 'OPERADOR' || g === 'ASISTENTE'),
     asegurarCuenta: jest.fn(),
     retirarCuenta: jest.fn(),
+    hashInicial: jest.fn().mockResolvedValue('hash-inicial'),
   };
   const leido = (over: Record<string, unknown> = {}) => ({
     grupo: 'ASISTENTE',
@@ -141,7 +142,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     it('de digitador a operador: asegura la cuenta', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'DIGITADOR' }));
       await service.cambiarCargo(OP, 'OPERADOR', USR);
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP);
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP, 'hash-inicial');
       expect(cuentas.retirarCuenta).not.toHaveBeenCalled();
     });
 
@@ -150,6 +151,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
       await service.cambiarCargo(OP, 'OPERADOR', USR);
       expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
       expect(cuentas.retirarCuenta).not.toHaveBeenCalled();
+      expect(cuentas.hashInicial).not.toHaveBeenCalled();
     });
   });
 });

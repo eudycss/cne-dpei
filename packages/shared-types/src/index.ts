@@ -1044,6 +1044,13 @@ export interface OperadorCda {
 
 export type EstadoCuentaCda = 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA';
 
+/** Resultado de crear o vincular cuentas; `fallidas` se completan con el botón de la web. */
+export interface ResultadoSincronizarCuentasCda {
+  vinculadas: number;
+  creadas: number;
+  fallidas: number;
+}
+
 /** Conteos del panel "Cuentas de la app" (operadores y asistentes activos). */
 export interface ResumenCuentasCda {
   conCuenta: number;
@@ -1116,7 +1123,7 @@ export interface ImportOperadoresCdaResult {
   filas: OperadorCdaFila[];
   errores: BulkUploadRow[];
   /** Solo al aplicar en Operadores/Asistentes: cuentas de la app creadas o vinculadas. */
-  cuentas?: { vinculadas: number; creadas: number };
+  cuentas?: ResultadoSincronizarCuentasCda;
 }
 
 export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';

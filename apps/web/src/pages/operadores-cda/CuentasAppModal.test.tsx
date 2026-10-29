@@ -49,18 +49,34 @@ describe('CuentasAppModal', () => {
 
   it('crear y vincular: pide confirmación, llama a la API y anuncia el resultado', async () => {
     const user = userEvent.setup();
-    postMock.mockResolvedValueOnce({ data: { vinculadas: 1, creadas: 50 } });
+    postMock.mockResolvedValueOnce({ data: { vinculadas: 1, creadas: 50, fallidas: 0 } });
     renderModal();
 
     await user.click(await screen.findByRole('button', { name: 'Crear y vincular 51 cuentas' }));
     expect(postMock).not.toHaveBeenCalled();
     expect(screen.getByText(/misma contraseña inicial que “Restablecer clave”/)).toBeInTheDocument();
     expect(screen.getByText(/conservan su contraseña/)).toBeInTheDocument();
+    // La advertencia se lee junto con los botones de la confirmación (el foco cae en "No, volver").
+    expect(screen.getByRole('button', { name: 'No, volver' })).toHaveAccessibleDescription(/contraseña inicial/);
+    expect(screen.getByRole('button', { name: 'Sí, crear y vincular' })).toHaveAccessibleDescription(/contraseña inicial/);
     await user.click(screen.getByRole('button', { name: 'Sí, crear y vincular' }));
 
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/cuentas/sincronizar'));
     expect(await screen.findByRole('status')).toHaveTextContent('50 cuentas creadas y 1 vinculada');
     expect(getMock).toHaveBeenCalledTimes(2); // el resumen se vuelve a pedir
+  });
+
+  it('si algunas cuentas fallaron, lo dice y sugiere reintentar', async () => {
+    const user = userEvent.setup();
+    postMock.mockResolvedValueOnce({ data: { vinculadas: 0, creadas: 49, fallidas: 2 } });
+    renderModal();
+
+    await user.click(await screen.findByRole('button', { name: 'Crear y vincular 51 cuentas' }));
+    await user.click(screen.getByRole('button', { name: 'Sí, crear y vincular' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '49 cuentas creadas y 0 vinculadas. 2 no se pudieron crear: vuelva a pulsar “Crear y vincular”.',
+    );
   });
 
   it('cancelar la confirmación no llama a la API', async () => {

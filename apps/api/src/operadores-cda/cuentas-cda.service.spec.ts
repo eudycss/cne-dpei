@@ -43,6 +43,8 @@ describe('CuentasCdaService', () => {
     );
     prisma.rol.findUnique.mockResolvedValue({ id: ROL_ID });
     prisma.usuario.create.mockResolvedValue({ id: USR_ID });
+    prisma.operadorCda.findMany.mockResolvedValue([]);
+    prisma.usuarioRol.count.mockResolvedValue(0);
     const moduleRef = await Test.createTestingModule({
       providers: [CuentasCdaService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -54,10 +56,11 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID);
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
 
       expect(r).toBe('CREADA');
-      expect(argon2.hash).toHaveBeenCalledWith('Cne2026!');
+      // El hash llega calculado de afuera: argon2 (~64 MB, lento con 0.1 vCPU) no corre dentro de la transacción.
+      expect(argon2.hash).not.toHaveBeenCalled();
       expect(prisma.usuario.create).toHaveBeenCalledWith({
         data: {
           cedula: '1710034065',
@@ -74,13 +77,16 @@ describe('CuentasCdaService', () => {
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
 
-    it('usa DEFAULT_RESET_PASSWORD si está configurada', async () => {
+    it('hashInicial: la contraseña inicial por defecto, calculada una sola vez', async () => {
+      await expect(service.hashInicial()).resolves.toBe('hash-inicial');
+      await service.hashInicial();
+      expect(argon2.hash).toHaveBeenCalledTimes(1);
+      expect(argon2.hash).toHaveBeenCalledWith('Cne2026!');
+    });
+
+    it('hashInicial usa DEFAULT_RESET_PASSWORD si está configurada', async () => {
       process.env.DEFAULT_RESET_PASSWORD = 'OtraClave1!';
-      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
-      prisma.usuario.findUnique.mockResolvedValueOnce(null);
-
-      await service.asegurarCuenta(prisma as never, OP_ID);
-
+      await service.hashInicial();
       expect(argon2.hash).toHaveBeenCalledWith('OtraClave1!');
     });
 
@@ -88,7 +94,7 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID);
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
 
       expect(r).toBe('VINCULADA');
       expect(prisma.usuario.create).not.toHaveBeenCalled();
@@ -105,24 +111,49 @@ describe('CuentasCdaService', () => {
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
 
-    it('cuenta vieja inactiva: la reactiva al vincular', async () => {
+    it('cuenta vieja inactiva que solo era de Operador CDA: la reactiva al vincular', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+      prisma.usuarioRol.count.mockResolvedValueOnce(0);
 
-      await service.asegurarCuenta(prisma as never, OP_ID);
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
 
+      expect(prisma.usuarioRol.count).toHaveBeenCalledWith({ where: { usuarioId: USR_ID, rolId: { not: ROL_ID } } });
       expect(prisma.usuario.update).toHaveBeenCalledWith({ where: { id: USR_ID }, data: { activo: true } });
     });
 
-    it('ya vinculada: reactiva y garantiza el rol, sin crear nada', async () => {
-      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+    it('cuenta inactiva con otros roles (técnico o administrador dado de baja): vincula pero NO la reactiva', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+      prisma.usuarioRol.count.mockResolvedValueOnce(1);
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID);
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+
+      expect(r).toBe('VINCULADA');
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
+    });
+
+    it('ya vinculada e inactiva (solo Operador CDA): reactiva y garantiza el rol, sin crear nada', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
 
       expect(r).toBe('YA_TENIA');
-      expect(prisma.usuario.findUnique).not.toHaveBeenCalled();
+      expect(prisma.usuario.findUnique).toHaveBeenCalledWith({ where: { id: USR_ID }, select: { id: true, activo: true } });
       expect(prisma.usuario.create).not.toHaveBeenCalled();
       expect(prisma.usuario.update).toHaveBeenCalledWith({ where: { id: USR_ID }, data: { activo: true } });
+      expect(prisma.usuarioRol.upsert).toHaveBeenCalled();
+    });
+
+    it('ya vinculada y activa: no escribe el estado, solo garantiza el rol', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
       expect(prisma.usuarioRol.upsert).toHaveBeenCalled();
     });
 
@@ -132,7 +163,7 @@ describe('CuentasCdaService', () => {
     ])('no aplica a %s', async (_caso, cambios) => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador(cambios));
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID);
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
 
       expect(r).toBe('NO_APLICA');
       expect(prisma.usuario.create).not.toHaveBeenCalled();
@@ -191,7 +222,38 @@ describe('CuentasCdaService', () => {
         select: { id: true },
         orderBy: { apellidosNombres: 'asc' },
       });
-      expect(r).toEqual({ vinculadas: 1, creadas: 1 });
+      expect(r).toEqual({ vinculadas: 1, creadas: 1, fallidas: 0 });
+    });
+
+    it('una persona que falla no detiene a las demás: se cuenta como fallida', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+      prisma.operadorCda.findUnique
+        .mockRejectedValueOnce(new Error('se cayó la conexión'))
+        .mockResolvedValueOnce(operador({ id: 'b' }));
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+
+      const r = await service.sincronizar();
+
+      expect(r).toEqual({ vinculadas: 0, creadas: 1, fallidas: 1 });
+    });
+
+    it('calcula el hash una sola vez para todo el lote, fuera de las transacciones', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+      prisma.operadorCda.findUnique
+        .mockResolvedValueOnce(operador({ id: 'a' }))
+        .mockResolvedValueOnce(operador({ id: 'b', cedula: '1002003000' }));
+      prisma.usuario.findUnique.mockResolvedValue(null);
+
+      await service.sincronizar();
+
+      expect(argon2.hash).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('sin pendientes no calcula el hash', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([]);
+      await expect(service.sincronizar()).resolves.toEqual({ vinculadas: 0, creadas: 0, fallidas: 0 });
+      expect(argon2.hash).not.toHaveBeenCalled();
     });
 
     it('puede limitarse a ciertos ids o cédulas (alta manual e importación)', async () => {
@@ -212,7 +274,7 @@ describe('CuentasCdaService', () => {
 
       const r = await service.sincronizar();
 
-      expect(r).toEqual({ vinculadas: 1, creadas: 0 });
+      expect(r).toEqual({ vinculadas: 1, creadas: 0, fallidas: 0 });
     });
   });
 
@@ -224,6 +286,7 @@ describe('CuentasCdaService', () => {
         .mockResolvedValueOnce(40) // pendientesCambioPwd
         .mockResolvedValueOnce(2); // bloqueadas
       prisma.usuario.count.mockResolvedValueOnce(10);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ cedula: '1710034065' }]);
 
       await expect(service.resumen()).resolves.toEqual({
         conCuenta: 70,
@@ -232,11 +295,13 @@ describe('CuentasCdaService', () => {
         bloqueadas: 2,
         cuentasSinVinculo: 10,
       });
+      expect(prisma.usuario.count.mock.calls[0][0].where.cedula).toEqual({ notIn: ['1710034065'] });
     });
   });
 
   describe('desactivarSinVinculo', () => {
-    it('desactiva solo cuentas activas cuyo único rol es Operador CDA y sin persona vinculada', async () => {
+    it('desactiva solo cuentas activas cuyo único rol es Operador CDA y que no son de nadie del listado', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ cedula: '1710034065' }]);
       prisma.usuario.findMany.mockResolvedValueOnce([{ id: 'x' }, { id: 'y' }]);
       prisma.usuario.updateMany.mockResolvedValueOnce({ count: 2 });
 
@@ -246,6 +311,8 @@ describe('CuentasCdaService', () => {
         where: {
           activo: true,
           operadorCda: { is: null },
+          // Una persona del listado aún sin vincular no es "cuenta sin vínculo": se vincula al sincronizar.
+          cedula: { notIn: ['1710034065'] },
           roles: { some: { rol: { nombre: 'OPERADOR_CDA' } }, every: { rol: { nombre: 'OPERADOR_CDA' } } },
         },
         select: { id: true },

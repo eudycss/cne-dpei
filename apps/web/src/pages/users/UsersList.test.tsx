@@ -101,7 +101,8 @@ describe('UsersList — cuentas CDA sin correo y bloqueo', () => {
     renderLista();
 
     expect(await screen.findByText(/Bloqueada hasta/)).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: /desbloquear/i }));
+    // Cada fila dice a quién desbloquea (WCAG 2.4.6).
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Desbloquear a Ana Prueba' }));
 
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/users/ana/desbloquear'));
   });

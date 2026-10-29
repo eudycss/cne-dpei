@@ -40,7 +40,11 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
         cuentas
           ? {
               title: titulo,
-              description: `Cuentas de la app: ${cuentas.creadas} creada(s) y ${cuentas.vinculadas} vinculada(s).`,
+              description:
+                `Cuentas de la app: ${cuentas.creadas} creada(s) y ${cuentas.vinculadas} vinculada(s).` +
+                (cuentas.fallidas > 0
+                  ? ` ${cuentas.fallidas} no se ${cuentas.fallidas === 1 ? 'pudo' : 'pudieron'} crear: complétela${cuentas.fallidas === 1 ? '' : 's'} en “Cuentas de la app”.`
+                  : ''),
             }
           : { title: titulo },
       );

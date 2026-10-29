@@ -23,6 +23,7 @@ import type {
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
   ReporteAtrasosCda,
+  ResultadoSincronizarCuentasCda,
   ResumenCuentasCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
@@ -309,8 +310,8 @@ export async function getResumenCuentasCda(): Promise<ResumenCuentasCda> {
 }
 
 /** Crea o vincula la cuenta de la app de cada operador/asistente activo que aún no tiene. */
-export async function sincronizarCuentasCda(): Promise<{ vinculadas: number; creadas: number }> {
-  const { data } = await api.post<{ vinculadas: number; creadas: number }>('/operadores-cda/cuentas/sincronizar');
+export async function sincronizarCuentasCda(): Promise<ResultadoSincronizarCuentasCda> {
+  const { data } = await api.post<ResultadoSincronizarCuentasCda>('/operadores-cda/cuentas/sincronizar');
   return data;
 }
 

@@ -222,6 +222,7 @@ export function UsersList() {
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                               disabled={togglingId === u.id}
                               onClick={() => desbloquear(u)}
+                              aria-label={`Desbloquear a ${u.nombres} ${u.apellidos}`}
                             >
                               Desbloquear
                             </button>
