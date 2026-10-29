@@ -25,6 +25,8 @@ const SIN_OPERADORES: OperadorEnRetorno[] = [];
 
 // Centro aproximado de la provincia de Imbabura (Ibarra) como vista por defecto.
 const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
+// Debe coincidir con la clase h-[480px] del MapView de operadores en ruta.
+const ALTO_MAPA = 480;
 
 function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   if (!cda.ubicacion) return null;
@@ -254,7 +256,7 @@ export function MonitoreoPage() {
       </p>
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
-        <div className="card" style={{ flex: '2 1 520px', minHeight: 480, padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ flex: '2 1 520px', minHeight: ALTO_MAPA, padding: 0, overflow: 'hidden' }}>
           <MapView center={CENTRO_IMBABURA} zoom={11} pitch={30} className="h-[480px] w-full">
             <FitBounds points={puntosEncuadre} />
             <FlyTo target={enfoque?.target ?? null} nonce={enfoque?.nonce ?? 0} />
@@ -296,8 +298,13 @@ export function MonitoreoPage() {
           </MapView>
         </div>
 
-        <div className="card" style={{ flex: '1 1 280px', minWidth: 260 }}>
-          <h3 style={{ marginTop: 0 }}>
+        {/* Alto tope = el del mapa: con muchos operadores la lista hace scroll en vez de estirar
+            la fila. La región es enfocable para que también se desplace con el teclado. */}
+        <div
+          className="card"
+          style={{ flex: '1 1 280px', minWidth: 260, maxHeight: ALTO_MAPA, display: 'flex', flexDirection: 'column' }}
+        >
+          <h3 id="monitoreo-en-ruta-titulo" style={{ marginTop: 0 }}>
             En ruta (<TextoAnimado text={String(operadores.length)} />)
           </h3>
           {operadores.length > 0 ? (
@@ -312,45 +319,52 @@ export function MonitoreoPage() {
           ) : operadores.length === 0 ? (
             <p style={{ opacity: 0.7 }}>No hay operadores en tránsito ni en retorno en este momento.</p>
           ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {operadores.map((o) => {
-                const sinSenal = estaSinSenal(o.capturadoEn, ahora);
-                return (
-                <li
-                  key={o.operadorId}
-                  style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--border)' }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => enfocar(o.latitud, o.longitud)}
-                    aria-describedby="monitoreo-ayuda-centrar"
-                    className="monitoreo-operador-btn"
+            <div
+              role="region"
+              aria-labelledby="monitoreo-en-ruta-titulo"
+              tabIndex={0}
+              style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 2 }}
+            >
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {operadores.map((o) => {
+                  const sinSenal = estaSinSenal(o.capturadoEn, ahora);
+                  return (
+                  <li
+                    key={o.operadorId}
+                    style={{ padding: '0.6rem 0', borderBottom: '1px solid var(--border)' }}
                   >
-                  <strong>{o.operadorNombre}</strong>
-                  <div style={{ fontSize: 13, opacity: 0.8, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: sinSenal ? COLOR_SIN_SENAL : ESTADO_INFO[o.estado].color,
-                        display: 'inline-block',
-                      }}
-                    />
-                    {ESTADO_INFO[o.estado].label} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
-                    {formatearFechaHora(o.capturadoEn)}
-                  </div>
-                  {sinSenal ? (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--error-text)', marginTop: 2 }}>
-                      Sin señal hace {formatearDuracion(minutosDesde(o.capturadoEn, ahora))}
+                    <button
+                      type="button"
+                      onClick={() => enfocar(o.latitud, o.longitud)}
+                      aria-describedby="monitoreo-ayuda-centrar"
+                      className="monitoreo-operador-btn"
+                    >
+                    <strong>{o.operadorNombre}</strong>
+                    <div style={{ fontSize: 13, opacity: 0.8, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: sinSenal ? COLOR_SIN_SENAL : ESTADO_INFO[o.estado].color,
+                          display: 'inline-block',
+                        }}
+                      />
+                      {ESTADO_INFO[o.estado].label} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
+                      {formatearFechaHora(o.capturadoEn)}
                     </div>
-                  ) : null}
-                  </button>
-                </li>
-                );
-              })}
-            </ul>
+                    {sinSenal ? (
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--error-text)', marginTop: 2 }}>
+                        Sin señal hace {formatearDuracion(minutosDesde(o.capturadoEn, ahora))}
+                      </div>
+                    ) : null}
+                    </button>
+                  </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </div>
       </div>

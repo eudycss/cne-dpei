@@ -148,6 +148,7 @@ describe('MonitoreoPage', () => {
     expect(
       await screen.findByText('No hay operadores en tránsito ni en retorno en este momento.'),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /En ruta/ })).not.toBeInTheDocument();
     expect(
       await screen.findByText('No hay CDAs con operador asignado en el evento activo'),
     ).toBeInTheDocument();
@@ -190,6 +191,22 @@ describe('MonitoreoPage', () => {
 
     expect(within(filaRetorno).getByText(/En retorno/)).toBeInTheDocument();
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
+  });
+
+  it('la lista "En ruta" tiene scroll propio y no estira la tarjeta del mapa', async () => {
+    getOperadoresMock.mockResolvedValue([operadorRetorno, operadorTransito]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    const lista = await screen.findByRole('region', { name: /En ruta/ });
+    expect(lista).toHaveAttribute('tabindex', '0');
+    expect(lista.style.overflowY).toBe('auto');
+    // Sin minHeight 0 el contenido de la tarjeta flex la estira y vuelve el espacio bajo el mapa.
+    expect(lista.style.minHeight).toBe('0');
+    expect(within(lista).getByText('Juan Pérez')).toBeInTheDocument();
+    const tarjeta = lista.closest('.card') as HTMLElement;
+    expect(tarjeta.style.maxHeight).toBe('480px');
   });
 
   describe('mapa en ruta', () => {
