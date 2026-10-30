@@ -36,8 +36,8 @@ const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true
 
 const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
-  operador: { select: { ...PERSONA, usuarioId: true } },
-  asistente: { select: { ...PERSONA, usuarioId: true } },
+  operador: { select: { ...PERSONA, usuarioId: true, activo: true } },
+  asistente: { select: { ...PERSONA, usuarioId: true, activo: true } },
   kit: { select: { codigoUnico: true, eventoId: true, operadorId: true } },
 } satisfies Prisma.ParejaCdaInclude;
 
@@ -85,13 +85,14 @@ export class ParejasCdaService {
     const [evento, parejas] = await Promise.all([this.eventoDeFecha(fecha), this.parejasDelDia(fecha)]);
     const primeras = primerasPorRecinto(parejas);
     const sobrantes = sobrantesPorRecinto(parejas, primeras);
+    const portadores = portadoresDelDia(parejas, primeras, sobrantes);
     return {
       fecha,
       evento,
       congelado: !!evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }),
       parejas: parejas
         // "Compartido": el recinto tiene alguna pareja que solo queda registrada.
-        .map((p) => aFila(p, evento, primeras.has(p.id) ? portadorDe(p, sobrantes.get(p.recintoId)) : null, sobrantes.has(p.recintoId)))
+        .map((p) => aFila(p, evento, portadores.get(p.id) ?? null, sobrantes.has(p.recintoId)))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
     };
   }
@@ -666,7 +667,7 @@ export class ParejasCdaService {
     const congelado = this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) });
     const parejas = await this.parejasDelDia(fecha);
     const primeras = primerasPorRecinto(parejas);
-    const sobrantes = sobrantesPorRecinto(parejas, primeras);
+    const portadores = portadoresDelDia(parejas, primeras, sobrantesPorRecinto(parejas, primeras));
     const r = vacio();
     for (const p of parejas) {
       if (filtro.ids && !filtro.ids.includes(p.id)) continue;
@@ -677,7 +678,7 @@ export class ParejasCdaService {
       }
       try {
         // El kit (la app y el nombre del QR) va a quien tiene Android en el recinto.
-        const portador = portadorDe(p, sobrantes.get(p.recintoId));
+        const portador = portadores.get(p.id) ?? p.operador;
         const usuarioId = portador.usuarioId ?? (await this.crearCuentaOperador(portador.id));
         const resultado = await this.aplicarPareja(p, evento, usuarioId, congelado ? justificacion?.trim() || null : undefined);
         r.enApp++;
@@ -959,18 +960,32 @@ function sobrantesPorRecinto(parejas: ParejaConRelaciones[], primeras: Set<strin
 }
 
 /**
- * Quién lleva el kit del recinto (la app y el nombre del QR): el primero con
- * Android entre el operador y el asistente de la pareja y, después, los de
- * las parejas del recinto que no llevan kit propio. Si nadie tiene Android,
- * el operador (y la web avisa que la APK no se instala en iPhone).
+ * Quién lleva cada kit (la app y el nombre del QR), por pareja que va a la
+ * app: el primero con Android y activo entre su operador y su asistente y,
+ * después, los de las parejas del recinto que no llevan kit propio. Nadie
+ * lleva dos kits (recinto con dos dispositivos). Si no hay nadie con
+ * Android, su operador (y la web avisa que la APK no se instala en iPhone).
  */
-function portadorDe(p: ParejaConRelaciones, companeras: ParejaConRelaciones[] = []): PersonaDePareja {
-  const personas = [p, ...companeras].flatMap((x) => [x.operador, x.asistente]).filter((x): x is PersonaDePareja => !!x);
-  return personas.find((x) => x.dispositivo === 'ANDROID') ?? p.operador;
+function portadoresDelDia(
+  parejas: ParejaConRelaciones[],
+  primeras: Set<string>,
+  sobrantes: Map<string, ParejaConRelaciones[]>,
+): Map<string, PersonaDePareja> {
+  const usados = new Set<string>();
+  const portadores = new Map<string, PersonaDePareja>();
+  const personas = (xs: ParejaConRelaciones[]) => xs.flatMap((x) => [x.operador, x.asistente]).filter((x): x is PersonaDePareja => !!x);
+  for (const p of parejas) {
+    if (!primeras.has(p.id)) continue;
+    const candidatos = [...personas([p]), ...personas(sobrantes.get(p.recintoId) ?? [])];
+    const elegido = candidatos.find((x) => x.dispositivo === 'ANDROID' && x.activo && !usados.has(x.id)) ?? p.operador;
+    usados.add(elegido.id);
+    portadores.set(p.id, elegido);
+  }
+  return portadores;
 }
 
 /** Persona para la web: sin el id de su cuenta. */
-function sinCuenta({ usuarioId: _usuarioId, ...persona }: PersonaDePareja) {
+function sinCuenta({ usuarioId: _usuarioId, activo: _activo, ...persona }: PersonaDePareja) {
   return aPersona(persona);
 }
 
@@ -978,7 +993,7 @@ function aFila(p: ParejaConRelaciones, evento: Evento | null, portador: PersonaD
   let estado: EstadoParejaCda;
   if (!portador) estado = 'SOLO_REGISTRADA';
   else if (!evento) estado = 'PENDIENTE_EVENTO';
-  else if (p.kit && p.kit.eventoId === evento.id && p.kit.operadorId === portador.usuarioId) estado = 'EN_APP';
+  else if (p.kit && p.kit.eventoId === evento.id && !!portador.usuarioId && p.kit.operadorId === portador.usuarioId) estado = 'EN_APP';
   else estado = 'SIN_KIT';
   return {
     id: p.id,
