@@ -26,6 +26,19 @@ describe('TrackingController — roles de la verificación de kits al retorno', 
   });
 });
 
+describe('TrackingController — llegada al DPEI registrada desde la web', () => {
+  it('solo el administrador la registra', () => {
+    expect(rolesDe('llegadaDpiManual')).toEqual(['ADMINISTRADOR']);
+  });
+
+  it('pasa el motivo y quién la registra (el usuario de la sesión, no un dato del cuerpo)', () => {
+    const registrarLlegadaDpiManual = jest.fn();
+    const ctrl = new TrackingController({ registrarLlegadaDpiManual } as never, {} as never);
+    ctrl.llegadaDpiManual('op-1', { motivo: 'Olvidó marcarla' }, { sub: 'admin-1' } as never);
+    expect(registrarLlegadaDpiManual).toHaveBeenCalledWith('op-1', 'Olvidó marcarla', 'admin-1');
+  });
+});
+
 describe('TrackingController — roles de la prueba de conexión', () => {
   it('solo el operador CDA registra la prueba de conexión', () => {
     expect(rolesDe('pruebaConexion')).toEqual(['OPERADOR_CDA']);

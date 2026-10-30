@@ -116,3 +116,24 @@ describe('UsersList — cuentas CDA sin correo y bloqueo', () => {
     expect(screen.queryByRole('button', { name: /desbloquear/i })).not.toBeInTheDocument();
   });
 });
+
+describe('UsersList — llegada al DPEI olvidada', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('un operador CDA tiene "Registrar llegada al DPEI", que abre el diálogo y la registra con el motivo', async () => {
+    apiUsuarios();
+    const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValueOnce({ data: { id: 'x', ocurridoEn: '2026-10-30T23:00:00Z' } });
+    renderLista();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Registrar llegada al DPEI de Ana Prueba' }));
+    await user.type(screen.getByLabelText('Motivo (requerido)'), 'Olvidó marcarla en la app');
+    await user.click(screen.getByRole('button', { name: 'Registrar llegada' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/tracking/operadores/ana/llegada-dpi-manual', { motivo: 'Olvidó marcarla en la app' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});

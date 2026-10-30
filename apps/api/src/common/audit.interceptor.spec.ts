@@ -218,6 +218,26 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(corregir.data.datosDespues)).not.toContain('1710034065');
   });
 
+  it('llegada al DPEI registrada por el administrador: a quién y el motivo', async () => {
+    const { data } = await auditar(
+      {
+        method: 'POST',
+        originalUrl: `/tracking/operadores/${OTRO}/llegada-dpi-manual`,
+        params: { operadorId: OTRO },
+        body: { motivo: '  Olvidó marcarla; entregó el kit en bodega  ' },
+        user: ADMIN,
+      },
+      { id: 'llegada-1', ocurridoEn: '2026-10-30T23:00:00.000Z' },
+    );
+    expect(data).toMatchObject({
+      usuarioId: ADMIN.sub,
+      accion: 'LLEGADA_DPI_MANUAL',
+      entidad: 'eventos_tracking',
+      entidadId: OTRO,
+      datosDespues: { motivo: 'Olvidó marcarla; entregó el kit en bodega', ocurridoEn: '2026-10-30T23:00:00.000Z' },
+    });
+  });
+
   it('asistencia CDA: el marcado masivo guarda tipo y conteos; quitar una marca guarda operador y tipo', async () => {
     const masiva = await auditar(
       { method: 'POST', originalUrl: '/operadores-cda/asistencia/masiva', body: { tipo: 'ENTRADA', operadorIds: [OTRO] }, user: ADMIN },

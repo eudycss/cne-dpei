@@ -43,6 +43,7 @@ import {
   descargarActasCdaSchema,
   diaAsistenciaSchema,
   crearKitConParejaCdaSchema,
+  llegadaDpiManualSchema,
 } from './index';
 
 describe('configAlertasSchema', () => {
@@ -553,5 +554,18 @@ describe('crearKitConParejaCdaSchema (Nuevo kit en un paso)', () => {
 
   it('no acepta campos de más (p. ej. operadorId de Usuarios)', () => {
     expect(crearKitConParejaCdaSchema.safeParse({ ...base, operadorId: base.operadorCdaId }).success).toBe(false);
+  });
+});
+
+describe('llegadaDpiManualSchema (llegada al DPEI desde la web)', () => {
+  it('exige un motivo de 5 a 500 caracteres, sin espacios de relleno', () => {
+    expect(llegadaDpiManualSchema.safeParse({ motivo: '  Olvidó marcarla  ' })).toEqual({ success: true, data: { motivo: 'Olvidó marcarla' } });
+    expect(llegadaDpiManualSchema.safeParse({ motivo: '    ab   ' }).success).toBe(false);
+    expect(llegadaDpiManualSchema.safeParse({ motivo: 'x'.repeat(501) }).success).toBe(false);
+    expect(llegadaDpiManualSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('no acepta otros campos (la hora y quién la registra los pone el servidor)', () => {
+    expect(llegadaDpiManualSchema.safeParse({ motivo: 'Olvidó marcarla', ocurridoEn: '2026-10-30T10:00:00Z' }).success).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
+import type { CdaEstadoDto, LlegadaDpiResponse, OperadorEnRetorno } from '@cne/shared-types';
 import { api } from '../api';
 
 /**
@@ -8,6 +8,15 @@ import { api } from '../api';
  */
 export async function getOperadoresEnRetorno(): Promise<OperadorEnRetorno[]> {
   const { data } = await api.get<OperadorEnRetorno[]>('/tracking/operadores-en-retorno');
+  return data;
+}
+
+/**
+ * El operador olvidó marcar la llegada al DPEI: el administrador la registra
+ * con un motivo (no borra su recorrido) y el operador sale del mapa.
+ */
+export async function registrarLlegadaDpiManual(operadorId: string, motivo: string): Promise<LlegadaDpiResponse> {
+  const { data } = await api.post<LlegadaDpiResponse>(`/tracking/operadores/${operadorId}/llegada-dpi-manual`, { motivo });
   return data;
 }
 

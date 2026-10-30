@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../auth/AuthContext';
 import { TextoAnimado } from '../../components/TextoAnimado';
 import { BotonConMotivo } from '../../components/BotonConMotivo';
 import { Cargando } from '../../components/Cargando';
@@ -13,6 +14,7 @@ import { ESTADO_INFO, type ConteoEstados } from './estado-info';
 import { KpiEstados } from './KpiEstados';
 import { FiltroEstado, type FiltroEstadoValor } from './FiltroEstado';
 import { IndicadorSync } from './IndicadorSync';
+import { RegistrarLlegadaDpiModal } from './RegistrarLlegadaDpiModal';
 
 // Marcador de quien dejó de enviar ubicación: gris y sin pulso, para que no se
 // confunda con una posición en vivo.
@@ -181,6 +183,12 @@ export function MonitoreoPage() {
   });
 
   const operadores = data ?? SIN_OPERADORES;
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  // Operador en retorno que olvidó marcar la llegada al DPEI (lo registra el admin).
+  const [llegadaDe, setLlegadaDe] = useState<{ id: string; nombre: string } | null>(null);
+
   // Reloj propio: si nadie envía posiciones nuevas, React Query devuelve los
   // mismos datos y no hay re-render, así que "sin señal" nunca aparecería.
   const [ahora, setAhora] = useState(() => Date.now());
@@ -360,6 +368,18 @@ export function MonitoreoPage() {
                       </div>
                     ) : null}
                     </button>
+                    {isAdmin && o.estado === 'EN_RETORNO' && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ padding: '0.4rem 0.7rem', fontSize: '0.8rem', marginTop: '0.35rem', minHeight: 32 }}
+                        onClick={() => setLlegadaDe({ id: o.operadorId, nombre: o.operadorNombre })}
+                        aria-label={`Registrar llegada al DPEI de ${o.operadorNombre}`}
+                        title="Olvidó marcar la llegada en la app"
+                      >
+                        Registrar llegada al DPEI
+                      </button>
+                    )}
                   </li>
                   );
                 })}
@@ -368,6 +388,18 @@ export function MonitoreoPage() {
           )}
         </div>
       </div>
+
+      {llegadaDe && (
+        <RegistrarLlegadaDpiModal
+          operador={llegadaDe}
+          onClose={() => setLlegadaDe(null)}
+          onDone={() => {
+            setLlegadaDe(null);
+            qc.invalidateQueries({ queryKey: ['operadores-en-retorno'] });
+            qc.invalidateQueries({ queryKey: ['estado-cdas'] });
+          }}
+        />
+      )}
 
       <div className="seccion-titulo" style={{ marginTop: '2rem' }}>
         <h2 style={{ margin: 0 }}>Estado de CDAs</h2>

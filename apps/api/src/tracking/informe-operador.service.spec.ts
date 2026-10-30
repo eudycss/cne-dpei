@@ -32,6 +32,7 @@ function fila(over: Partial<ReporteFlujoItem> = {}): ReporteFlujoItem {
     pruebaConexionEn: '2026-10-01T17:00:00.000Z',
     salidaRecintoEn: '2026-10-01T16:58:00.000Z',
     llegadaDpiEn: null,
+    llegadaDpiManual: false,
     ...over,
   };
 }
@@ -215,6 +216,21 @@ describe('generarInformesOperadorPdf', () => {
         expect.any(Array),
         [['01/10/2026, 09:09', 'Pendiente', 'Pendiente', 'Pendiente', 'Pendiente']],
       );
+    } finally {
+      espia.mockRestore();
+    }
+  });
+
+  it('la llegada al DPI registrada por el administrador queda señalada en el informe', async () => {
+    const espia = jest.spyOn(pdfComun, 'tabla');
+    try {
+      await generarInformesOperadorPdf(
+        [{ ...sinFotos, llegadaDpi: new Date('2026-10-01T23:30:00.000Z'), llegadaDpiManual: true }],
+        responsable,
+        false,
+      );
+      const filas = espia.mock.calls.at(-1)![3] as string[][];
+      expect(filas.at(-1)).toEqual(['Llegada al DPI', '01/10/2026, 18:30 (registrada por el administrador)']);
     } finally {
       espia.mockRestore();
     }

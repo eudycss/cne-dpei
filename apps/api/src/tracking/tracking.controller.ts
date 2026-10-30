@@ -28,6 +28,7 @@ import {
 } from '@nestjs/swagger';
 import type {
   IngestaPosicionesRequest,
+  LlegadaDpiManualRequest,
   LlegadaDpiRequest,
   LlegadaNoCdaRequest,
   LlegadaRecintoManualRequest,
@@ -41,6 +42,7 @@ import type {
 } from '@cne/shared-types';
 import {
   ingestaPosicionesSchema,
+  llegadaDpiManualSchema,
   llegadaDpiSchema,
   llegadaNoCdaSchema,
   llegadaRecintoManualSchema,
@@ -450,6 +452,22 @@ export class TrackingController {
   })
   kitsVerificadosRetorno(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.kitsVerificadosRetorno(user.sub, user.roles);
+  }
+
+  @Post('operadores/:operadorId/llegada-dpi-manual')
+  @UseGuards(EventoNoReabiertoGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'operadorId', description: 'Usuario del operador que olvidó marcar la llegada' })
+  @ApiOperation({
+    summary: 'El operador olvidó marcar la llegada al DPEI: el administrador la registra con un motivo (no borra nada)',
+  })
+  llegadaDpiManual(
+    @Param('operadorId', ParseUUIDPipe) operadorId: string,
+    @Body(new ZodValidationPipe(llegadaDpiManualSchema)) body: LlegadaDpiManualRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tracking.registrarLlegadaDpiManual(operadorId, body.motivo, user.sub);
   }
 
   @Post('reset-operador/:operadorId')

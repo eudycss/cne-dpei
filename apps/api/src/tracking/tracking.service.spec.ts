@@ -26,7 +26,7 @@ describe('TrackingService', () => {
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     entregaCustodioKit: { findUnique: jest.fn() },
-    usuario: { findUnique: jest.fn(), findMany: jest.fn() },
+    usuario: { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     asignacionSupervisor: { findFirst: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
     $executeRaw: jest.fn(),
@@ -228,6 +228,32 @@ describe('TrackingService', () => {
           }),
         }),
       );
+      expect(fila.llegadaDpiManual).toBe(false);
+    });
+
+    it('marca la llegada al DPEI registrada desde la web por un administrador', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId, codigoUnico: 'K001' }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: '1961', nombre: 'UE García Moreno', canton: { id: 1, nombre: 'Ibarra' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Willy', apellidos: 'Paspuel', cedula: '1002003001' },
+      ]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId, tipo: 'SALIDA_RECINTO', ocurridoEn: new Date('2026-10-01T22:00:00.000Z'), registradoPorId: null },
+        { operadorId, tipo: 'LLEGADA_DPI', ocurridoEn: new Date('2026-10-02T01:00:00.000Z'), registradoPorId: 'admin-1' },
+      ]);
+
+      const [fila] = await service.reporteFlujoCdas();
+
+      expect(fila).toMatchObject({ llegadaDpiEn: '2026-10-02T01:00:00.000Z', llegadaDpiManual: true });
+      expect(prisma.eventoTracking.findMany.mock.calls[0][0].select).toEqual({
+        operadorId: true,
+        tipo: true,
+        ocurridoEn: true,
+        registradoPorId: true,
+      });
     });
   });
 
@@ -948,7 +974,108 @@ describe('TrackingService', () => {
     });
   });
 
+  describe('registrarLlegadaDpiManual (el operador olvidó marcarla)', () => {
+    const adminId = '99999999-9999-9999-9999-999999999999';
+    const motivo = 'Olvidó marcar la llegada; entregó el kit en bodega';
+
+    beforeEach(() => prisma.usuario.findFirst.mockResolvedValue({ id: operadorId }));
+
+    it('registra la llegada con la hora actual, quién y por qué, cierra los kits y avisa, sin borrar nada', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null) // sin llegada previa
+        .mockResolvedValueOnce({ id: 'salida-recinto' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'llegada-manual', ocurridoEn: new Date('2026-06-23T19:00:00Z') });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'López' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+
+      const r = await service.registrarLlegadaDpiManual(operadorId, motivo, adminId);
+
+      expect(prisma.eventoTracking.create).toHaveBeenCalledWith({
+        data: {
+          eventoId,
+          operadorId,
+          tipo: 'LLEGADA_DPI',
+          recintoId,
+          ocurridoEn: expect.any(Date),
+          registradoPorId: adminId,
+          motivoManual: motivo,
+        },
+        select: { id: true, ocurridoEn: true },
+      });
+      expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+        where: { eventoId, operadorId, estado: 'EN_RETORNO' },
+        data: { estado: 'RETORNADO' },
+      });
+      expect(notifications.encolarLlegadaDpi).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+      expect(r).toEqual({ id: 'llegada-manual', ocurridoEn: '2026-06-23T19:00:00.000Z' });
+    });
+
+    it('si ya tiene la llegada registrada: 409', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'ya' });
+
+      await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow(
+        'Este operador ya tiene registrada la llegada al DPEI',
+      );
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('sin salida del recinto: 400 (no está en retorno)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow(
+        'El operador aún no registra la salida del recinto',
+      );
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('sin evento activo: 404', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('si el usuario no es un Operador CDA: 404, sin registrar nada', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.usuario.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow('Operador no encontrado');
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith({
+        where: { id: operadorId, roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
+        select: { id: true },
+      });
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('si el operador la marcó en la app al mismo tiempo (índice único): 409, sin cerrar ni avisar dos veces', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'salida-recinto' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.eventoTracking.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+
+      await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow(ConflictException);
+      expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      expect(notifications.encolarLlegadaDpi).not.toHaveBeenCalled();
+    });
+  });
+
   describe('registrarLlegadaDpi', () => {
+    it('si el administrador la registró al mismo tiempo (índice único): 409, sin cerrar ni avisar dos veces', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'salida-recinto' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(Object.assign(new Error('raw'), { code: 'P2010', meta: { code: '23505' } }));
+
+      await expect(service.registrarLlegadaDpi(operadorId, geo as any)).rejects.toThrow('Ya registraste tu llegada al DPI');
+      expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      expect(notifications.encolarLlegadaDpi).not.toHaveBeenCalled();
+    });
+
     it('lanza ConflictException si ya registró la llegada al DPI', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'tk1' });
