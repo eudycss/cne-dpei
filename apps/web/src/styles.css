@@ -625,6 +625,8 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-fecha select { border: 0; background-color: transparent; color: var(--f-text); font: inherit; font-size: 0.9rem; min-height: 40px; }
 .ocda-fecha select:focus { outline: none; }
 /* Selector de cargo: 8 opciones no caben como pestañas con zoom ni en celular (WCAG 1.4.10). */
+.ocda-cargo-fila { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+.ocda-cargo-fila .btn { margin-bottom: 0.1rem; }
 .ocda-cargo { display: inline-flex; flex-direction: column; gap: 0.35rem; margin-top: 1.5rem; font-size: 0.8rem; font-weight: 600; color: var(--f-text-muted); }
 .ocda-cargo select {
   min-height: 44px; min-width: min(320px, 100%); border-radius: 12px; border: 1px solid var(--f-borde-control);
@@ -877,6 +879,26 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-form-campo [aria-invalid='true'] { border-color: var(--f-error); }
 .ocda-form-error { color: var(--f-error); font-size: 0.78rem; }
 .ocda-form-ayuda { color: var(--f-text-muted); font-size: 0.75rem; }
+
+/* Gestionar cargos (modal del administrador). */
+.ocda-tabla.compacta table { min-width: 560px; }
+.ocda-cargos-acciones { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.ocda-cargos-acciones .muted { font-size: 0.75rem; }
+.ocda-cargos-editar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.ocda-cargos-editar input {
+  flex: 1; min-width: 200px; min-height: 44px; padding: 0 0.8rem; border-radius: 10px;
+  border: 1px solid var(--f-borde-control); background: var(--f-bg-base); color: var(--f-text);
+}
+.ocda-cargos-editar input:focus-visible { outline: none; border-color: var(--f-cian); box-shadow: var(--focus-ring); }
+.ocda-cargos-editar input[aria-invalid='true'] { border-color: var(--f-error); }
+.ocda-confirmar {
+  display: grid; gap: 0.6rem; padding: 1rem; border-radius: 14px;
+  background: var(--f-error-suave); border: 1px solid var(--f-error);
+}
+.ocda-confirmar h3, .ocda-confirmar p { margin: 0; }
+.ocda-confirmar h3 { font-size: 1rem; }
+.ocda-confirmar p { font-size: 0.85rem; color: var(--f-text); }
+.ocda-subtitulo-modal { margin: 0.5rem 0 0; font-size: 1rem; color: var(--f-text); }
 .ocda-form-prendas {
   display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin: 0; padding: 0.9rem; border: 1px solid var(--f-border-subtle); border-radius: 14px;

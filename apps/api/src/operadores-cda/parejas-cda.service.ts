@@ -18,7 +18,7 @@ import { PrismaService } from '../db/prisma.service';
 import { KitsService } from '../kits/kits.service';
 import { parseUploadRows } from '../common/parse-upload-rows';
 import { CuentasCdaService } from './cuentas-cda.service';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, fechaDb } from './dia-ecuador';
 
 /** Cargo con el que se registra a quien llega nuevo en la plantilla. */
@@ -318,8 +318,8 @@ export class ParejasCdaService {
           if (!nombre) errores.push(`Cédula nueva ${cedula}: falta ${columna}`);
           return { cedula, nombre: nombre ?? null, nuevo: true };
         }
-        if (p.grupo !== grupo) errores.push(`La cédula ${cedula} es de ${TEXTOS_GRUPO[p.grupo].titulo}, no de ${TEXTOS_GRUPO[grupo].titulo}`);
-        else if (!p.activo) errores.push(`${p.apellidosNombres} está oculto en ${TEXTOS_GRUPO[grupo].titulo}`);
+        if (p.grupo !== grupo) errores.push(`La cédula ${cedula} es de ${textosGrupo(p.grupo).titulo}, no de ${textosGrupo(grupo).titulo}`);
+        else if (!p.activo) errores.push(`${p.apellidosNombres} está oculto en ${textosGrupo(grupo).titulo}`);
         if (personasHoy.has(p.id)) errores.push(`${p.apellidosNombres} ya tiene pareja el ${fecha}`);
         const otro = otroDia.get(p.id);
         if (otro) avisos.push(`${p.apellidosNombres} ya fue el ${otro}`);
@@ -517,7 +517,7 @@ export class ParejasCdaService {
     const comprobar = async (id: string, grupo: 'OPERADOR' | 'ASISTENTE', rol: string) => {
       const p = await this.prisma.operadorCda.findUnique({ where: { id }, select: { grupo: true, activo: true } });
       if (!p) throw new NotFoundException(`No se encontró al ${rol}`);
-      if (p.grupo !== grupo) throw new BadRequestException(`La persona elegida como ${rol} no es de ${TEXTOS_GRUPO[grupo].titulo}`);
+      if (p.grupo !== grupo) throw new BadRequestException(`La persona elegida como ${rol} no es de ${textosGrupo(grupo).titulo}`);
       if (!p.activo) throw new BadRequestException(`La persona elegida como ${rol} está oculta`);
     };
     await comprobar(operadorCdaId, 'OPERADOR', 'operador');

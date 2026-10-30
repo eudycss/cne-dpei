@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
-import type { GrupoCda } from '@cne/shared-types';
+import type { CargoCda, GrupoCda } from '@cne/shared-types';
 
-type TextosGrupo = {
+export type TextosGrupo = {
   /** Solo operadores y asistentes son CDA; el resto es CPE. */
   centro: 'CDA' | 'CPE';
   titulo: string;
@@ -14,11 +14,11 @@ type TextosGrupo = {
 };
 
 /**
- * Textos que cambian entre los cargos del personal CDA. El orden es el del
- * selector de cargo. En el listado el cargo se ve abreviado (Asist. Adm.
- * Electoral Provincial) para todos.
+ * Textos de los 9 cargos originales (los demás los agrega el administrador
+ * y arman los suyos con el nombre: textosDeCargo). En el listado el cargo se
+ * ve abreviado (Asist. Adm. Electoral Provincial) para todos.
  */
-export const TEXTOS_GRUPO: Record<GrupoCda, TextosGrupo> = {
+export const TEXTOS_GRUPO: Record<string, TextosGrupo> = {
   OPERADOR: {
     centro: 'CDA',
     titulo: 'Operadores CDA',
@@ -102,15 +102,54 @@ export const TEXTOS_GRUPO: Record<GrupoCda, TextosGrupo> = {
   },
 };
 
-/** Cargos en el orden del selector. */
-export const GRUPOS = Object.keys(TEXTOS_GRUPO) as GrupoCda[];
-
 /** Secciones del selector de cargo. */
 export const CENTROS = ['CDA', 'CPE'] as const;
 
-/** ?grupo= de la URL -> cargo; ausente o desconocido = OPERADOR. */
-export function grupoDeRuta(ruta: string | null): GrupoCda {
-  return GRUPOS.find((g) => TEXTOS_GRUPO[g].ruta === ruta) ?? 'OPERADOR';
+/** Los 9 originales: lo que hay mientras llega la lista de la API (y en pruebas). */
+export const CARGOS_BASE: CargoCda[] = Object.entries(TEXTOS_GRUPO).map(([clave, t], i) => ({
+  clave,
+  nombre: t.titulo,
+  centro: t.centro,
+  activo: true,
+  protegido: clave === 'OPERADOR' || clave === 'ASISTENTE',
+  orden: i + 1,
+  personas: 0,
+}));
+
+const PREFIJO_CARGO = 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - ';
+
+/**
+ * Textos de un cargo. Los originales conservan los suyos (si se renombran
+ * cambia solo el título); uno nuevo los arma con su nombre y dice "persona".
+ */
+export function textosDeCargo(clave: GrupoCda, cargos: readonly CargoCda[]): TextosGrupo {
+  const c = cargos.find((x) => x.clave === clave);
+  const base = TEXTOS_GRUPO[clave];
+  if (base) return c ? { ...base, titulo: c.nombre } : base;
+  const nombre = c?.nombre ?? clave;
+  return {
+    centro: c?.centro ?? 'CPE',
+    titulo: nombre,
+    plural: nombre.toLowerCase(),
+    singular: 'persona',
+    Singular: 'Persona',
+    cargoPorDefecto: `${PREFIJO_CARGO}${nombre.toUpperCase()}`,
+    // Las rutas de los originales usan "-": con "_" no chocan nunca.
+    ruta: clave.toLowerCase(),
+  };
+}
+
+/** ?grupo= de la URL -> cargo (también uno desactivado); ausente o desconocido = OPERADOR. */
+export function grupoDeRuta(ruta: string | null, cargos: readonly CargoCda[] = CARGOS_BASE): GrupoCda {
+  return cargos.find((c) => textosDeCargo(c.clave, cargos).ruta === ruta)?.clave ?? 'OPERADOR';
+}
+
+/** Lista de cargos de la API (la pone la página CDAs). Sin proveedor, los 9 originales. */
+export const CargosCdaContext = createContext<readonly CargoCda[]>(CARGOS_BASE);
+
+export function useCargosCda() {
+  const cargos = useContext(CargosCdaContext);
+  return { cargos, textos: (clave: GrupoCda) => textosDeCargo(clave, cargos) };
 }
 
 /**
@@ -122,5 +161,6 @@ export const GrupoCdaContext = createContext<GrupoCda>('OPERADOR');
 
 export function useGrupoCda(): { grupo: GrupoCda } & TextosGrupo {
   const grupo = useContext(GrupoCdaContext);
-  return { grupo, ...TEXTOS_GRUPO[grupo] };
+  const { textos } = useCargosCda();
+  return { grupo, ...textos(grupo) };
 }

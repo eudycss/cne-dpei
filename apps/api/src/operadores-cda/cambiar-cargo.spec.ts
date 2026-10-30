@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { OperadoresCdaService } from './operadores-cda.service';
 import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService } from './cuentas-cda.service';
+import { registrarCargos, TEXTOS_GRUPO } from './grupo-cda';
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -65,6 +66,23 @@ describe('OperadoresCdaService.cambiarCargo', () => {
   });
 
   afterEach(() => jest.useRealTimers());
+
+  it('no pasa a nadie a un cargo desactivado (400) y no toca nada', async () => {
+    const base = Object.entries(TEXTOS_GRUPO).map(([clave, t]) => ({
+      clave,
+      nombre: t.titulo,
+      centro: (t.cargo.endsWith(' CDA') ? 'CDA' : 'CPE') as 'CDA' | 'CPE',
+      activo: true,
+    }));
+    registrarCargos(base.map((c) => (c.clave === 'DIGITADOR' ? { ...c, activo: false } : c)));
+    try {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(leido());
+      await expect(service.cambiarCargo(OP, 'DIGITADOR', USR)).rejects.toThrow('desactivado');
+      expect(tx.operadorCda.updateMany).not.toHaveBeenCalled();
+    } finally {
+      registrarCargos(base);
+    }
+  });
 
   it('cambia el cargo desde hoy (Ecuador) y registra el cambio con quién lo hizo', async () => {
     prisma.operadorCda.findUnique.mockResolvedValueOnce(leido());

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import type { GrupoCda } from '@cne/shared-types';
 import { Pestanas } from '../../components/Pestanas';
 import { ListadoOperadores } from './ListadoOperadores';
@@ -8,9 +9,12 @@ import { ActasPanel } from './ActasPanel';
 import { ParejasPanel } from './ParejasPanel';
 import { AtrasosPanel } from './AtrasosPanel';
 import { FILTROS_INGRESO } from './filtroIngreso';
-import { GrupoCdaContext, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
+import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCargo } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
+import { GestionarCargosModal } from './GestionarCargosModal';
+import { getCargosCda } from '../../lib/queries/operadores-cda';
+import { useAuth } from '../../auth/AuthContext';
 
 const SECCIONES = [
   { id: 'listado', etiqueta: 'Listado' },
@@ -36,7 +40,14 @@ const seccionesDe = (grupo: GrupoCda) =>
 export function OperadoresCdaPage() {
   const [acciones, setAcciones] = useState<HTMLDivElement | null>(null);
   const [params, setParams] = useSearchParams();
-  const grupo = grupoDeRuta(params.get('grupo'));
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const [gestionando, setGestionando] = useState(false);
+  // Mientras llega la lista (o si viniera vacía) quedan los 9 originales.
+  const { data } = useQuery({ queryKey: ['cargos-cda'], queryFn: getCargosCda, staleTime: 5 * 60_000 });
+  const cargos = data && data.length > 0 ? data : CARGOS_BASE;
+  const grupo = grupoDeRuta(params.get('grupo'), cargos);
+  const textos = textosDeCargo(grupo, cargos);
 
   function elegirGrupo(g: GrupoCda) {
     // Conserva la sección; los filtros del listado eran del cargo anterior.
@@ -44,7 +55,7 @@ export function OperadoresCdaPage() {
       (prev) => {
         const p = new URLSearchParams(prev);
         if (g === 'OPERADOR') p.delete('grupo');
-        else p.set('grupo', TEXTOS_GRUPO[g].ruta);
+        else p.set('grupo', textosDeCargo(g, cargos).ruta);
         for (const f of FILTROS_INGRESO) p.delete(f);
         return p;
       },
@@ -53,43 +64,53 @@ export function OperadoresCdaPage() {
   }
 
   return (
-    <div className="tema-futurista ocda">
-      <div className="ocda-encabezado">
-        <div>
-          <p className="ocda-ruta">Personal / CDA y CPE</p>
-          <h2 className="ocda-titulo">CDA y CPE</h2>
-          <p className="ocda-subtitulo">
-            Asistencia, atrasos, fotos y actas de entrega del personal de los Centros de Digitalización de Actas
-            (CDA) y del Centro de Procesamiento Electoral (CPE).
-          </p>
+    <CargosCdaContext.Provider value={cargos}>
+      <div className="tema-futurista ocda">
+        <div className="ocda-encabezado">
+          <div>
+            <p className="ocda-ruta">Personal / CDA y CPE</p>
+            <h2 className="ocda-titulo">CDA y CPE</h2>
+            <p className="ocda-subtitulo">
+              Asistencia, atrasos, fotos y actas de entrega del personal de los Centros de Digitalización de Actas
+              (CDA) y del Centro de Procesamiento Electoral (CPE).
+            </p>
+          </div>
+          <div className="ocda-acciones" ref={setAcciones} />
         </div>
-        <div className="ocda-acciones" ref={setAcciones} />
+        <BuscadorGeneral />
+        <div className="ocda-cargo-fila">
+          <label className="ocda-cargo">
+            <span>Cargo</span>
+            <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>
+              <OpcionesCargo actual={grupo} />
+            </select>
+          </label>
+          {isAdmin && (
+            <button type="button" className="btn secondary ocda-btn-chico" onClick={() => setGestionando(true)}>
+              Gestionar cargos
+            </button>
+          )}
+        </div>
+        {gestionando && <GestionarCargosModal onClose={() => setGestionando(false)} />}
+        {/* key: al cambiar de cargo se montan de nuevo (sin fechas ni búsquedas del otro cargo). */}
+        <GrupoCdaContext.Provider key={grupo} value={grupo}>
+          <Pestanas pestanas={seccionesDe(grupo)} porDefecto="asistencia" etiqueta={`Secciones de ${textos.titulo}`}>
+            {(seccion) =>
+              seccion === 'listado' ? (
+                <ListadoOperadores acciones={acciones} />
+              ) : seccion === 'atrasos' ? (
+                <AtrasosPanel acciones={acciones} />
+              ) : seccion === 'actas' ? (
+                <ActasPanel acciones={acciones} />
+              ) : seccion === 'parejas' ? (
+                <ParejasPanel />
+              ) : (
+                <AsistenciaPanel acciones={acciones} />
+              )
+            }
+          </Pestanas>
+        </GrupoCdaContext.Provider>
       </div>
-      <BuscadorGeneral />
-      <label className="ocda-cargo">
-        <span>Cargo</span>
-        <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>
-          <OpcionesCargo />
-        </select>
-      </label>
-      {/* key: al cambiar de cargo se montan de nuevo (sin fechas ni búsquedas del otro cargo). */}
-      <GrupoCdaContext.Provider key={grupo} value={grupo}>
-        <Pestanas pestanas={seccionesDe(grupo)} porDefecto="asistencia" etiqueta={`Secciones de ${TEXTOS_GRUPO[grupo].titulo}`}>
-          {(seccion) =>
-            seccion === 'listado' ? (
-              <ListadoOperadores acciones={acciones} />
-            ) : seccion === 'atrasos' ? (
-              <AtrasosPanel acciones={acciones} />
-            ) : seccion === 'actas' ? (
-              <ActasPanel acciones={acciones} />
-            ) : seccion === 'parejas' ? (
-              <ParejasPanel />
-            ) : (
-              <AsistenciaPanel acciones={acciones} />
-            )
-          }
-        </Pestanas>
-      </GrupoCdaContext.Provider>
-    </div>
+    </CargosCdaContext.Provider>
   );
 }

@@ -16,7 +16,7 @@ import { AsistenciaCdaService } from './asistencia-cda.service';
 import { diaEcuador, fechaDb, horaEcuador } from './dia-ecuador';
 import { hashToken } from './foto-cda.service';
 import { toOperadorCdaDto } from './operadores-cda.service';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { textosGrupo } from './grupo-cda';
 
 const PREFIJO = 'CDA1';
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -156,7 +156,7 @@ export class CredencialQrCdaService {
     }
     return carnetsPdf(
       emitidas.map((e, i) => ({
-        grupo: TEXTOS_GRUPO[e.operador.grupo].cargo,
+        grupo: textosGrupo(e.operador.grupo).cargo,
         nombre: e.operador.apellidosNombres,
         cargo: e.operador.cargo.split(' - ')[0],
         token: e.token,

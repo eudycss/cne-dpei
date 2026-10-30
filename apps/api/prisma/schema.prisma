@@ -721,24 +721,33 @@ enum EstadoActaCda {
 /// Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial"). El nombre
 /// llega en una sola columna "APELLIDOS NOMBRES" y no se puede partir con
 /// seguridad (hay apellidos compuestos), por eso se guarda entero.
-/// Operadores CDA o Asistentes CDA: misma gestión, listas separadas.
-enum GrupoCda {
-  OPERADOR
-  ASISTENTE
-  DIGITADOR
-  ASISTENTE_ARCHIVOS
-  ASISTENTE_FIRMAS
-  RECEPTOR_ACTAS
-  SUPERVISOR
-  OPERADOR_ESCANER_CPE
-  ARCHIVADOR_ACTAS
+/// Cargos del personal CDA y CPE (combo "Cargo"): misma gestión, listas
+/// separadas. Las 9 claves originales (OPERADOR, ASISTENTE, ...) se conservan;
+/// el administrador agrega más. No se borran: se desactivan (el personal y su
+/// historial siguen colgando de la clave).
+model CargoCda {
+  clave         String   @id @db.VarChar(40)
+  nombre        String   @db.VarChar(80)
+  /// CDA o CPE (sección del combo, actas y carnets). No cambia.
+  centro        String   @db.VarChar(3)
+  activo        Boolean  @default(true)
+  orden         Int
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
-  @@map("grupo_cda")
+  personal        OperadorCda[]
+  configAsistencia ConfigAsistenciaCda[]
+  cambiosDesde    CambioCargoCda[] @relation("CambioCargoCdaAnterior")
+  cambiosHacia    CambioCargoCda[] @relation("CambioCargoCdaNuevo")
+  actas           ActaEntregaCda[]
+
+  @@map("cargos_cda")
 }
 
 model OperadorCda {
   id               String    @id @default(uuid()) @db.Uuid
-  grupo            GrupoCda  @default(OPERADOR)
+  grupo            String    @default("OPERADOR") @db.VarChar(40)
+  cargoCda         CargoCda  @relation(fields: [grupo], references: [clave], onUpdate: Cascade, onDelete: Restrict)
   numero           Int?
   apellidosNombres String    @map("apellidos_nombres") @db.VarChar(200)
   cedula           String    @unique @db.VarChar(10)
@@ -798,7 +807,8 @@ model AsistenciaCda {
 /// cambió queda en la bitácora (ASISTENCIA_CDA_CONFIG).
 model ConfigAsistenciaCda {
   /// Una fila por grupo (hora y gracia propias).
-  grupo         GrupoCda @id
+  grupo         String   @id @db.VarChar(40)
+  cargoCda      CargoCda @relation(fields: [grupo], references: [clave], onUpdate: Cascade, onDelete: Restrict)
   /// "HH:MM" en hora de Ecuador.
   horaEntrada   String   @default("08:00") @map("hora_entrada") @db.VarChar(5)
   minutosGracia Int      @default(10) @map("minutos_gracia")
@@ -860,14 +870,16 @@ model CredencialQrCda {
 model CambioCargoCda {
   id            String   @id @default(uuid()) @db.Uuid
   operadorId    String   @map("operador_id") @db.Uuid
-  grupoAnterior GrupoCda @map("grupo_anterior")
-  grupoNuevo    GrupoCda @map("grupo_nuevo")
+  grupoAnterior String   @map("grupo_anterior") @db.VarChar(40)
+  grupoNuevo    String   @map("grupo_nuevo") @db.VarChar(40)
   desde         DateTime @db.Date
   hechoPorId    String?  @map("hecho_por_id") @db.Uuid
   creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
-  operador OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
-  hechoPor Usuario?    @relation("CambioCargoCdaHechoPor", fields: [hechoPorId], references: [id])
+  operador      OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+  hechoPor      Usuario?    @relation("CambioCargoCdaHechoPor", fields: [hechoPorId], references: [id])
+  cargoAnterior CargoCda    @relation("CambioCargoCdaAnterior", fields: [grupoAnterior], references: [clave], onUpdate: Cascade, onDelete: Restrict)
+  cargoNuevo    CargoCda    @relation("CambioCargoCdaNuevo", fields: [grupoNuevo], references: [clave], onUpdate: Cascade, onDelete: Restrict)
 
   @@index([operadorId, desde], map: "idx_cambios_cargo_cda_operador")
   @@index([grupoAnterior], map: "idx_cambios_cargo_cda_anterior")
@@ -891,7 +903,7 @@ model ActaEntregaCda {
   estadoCredencial EstadoPrenda  @map("estado_credencial")
   estadoCordon     EstadoPrenda  @map("estado_cordon")
   /// Cargo con el que se generó: el documento lo conserva aunque la persona cambie de cargo.
-  grupo            GrupoCda
+  grupo            String        @db.VarChar(40)
   estado           EstadoActaCda @default(GENERADA)
   firmadaEn        DateTime?     @map("firmada_en") @db.Timestamptz(6)
   creadoPorId      String?       @map("creado_por_id") @db.Uuid
@@ -901,6 +913,7 @@ model ActaEntregaCda {
   operador   OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
   entregaPor Usuario?    @relation("ActaEntregaCdaEntregaPor", fields: [entregaPorId], references: [id])
   creadoPor  Usuario?    @relation("ActaEntregaCdaCreadoPor", fields: [creadoPorId], references: [id])
+  cargoCda   CargoCda    @relation(fields: [grupo], references: [clave], onUpdate: Cascade, onDelete: Restrict)
 
   @@index([operadorId], map: "idx_actas_entrega_cda_operador")
   @@map("actas_entrega_cda")

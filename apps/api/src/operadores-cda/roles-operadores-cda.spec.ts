@@ -10,6 +10,7 @@ import { CredencialQrCdaController } from './credencial-qr-cda.controller';
 import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 import { MODULO_KEY, ModuloGuard } from '../permisos-modulos/modulo.guard';
 import { ParejasCdaController, parsearFecha } from './parejas-cda.controller';
+import { CargosCdaController, parsearClave } from './cargos-cda.controller';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -64,6 +65,23 @@ describe('RBAC de Operadores CDA', () => {
       ['2026-10-28', true, 'admin', false],
       ['2026-10-30', true, 'admin', true],
     ]);
+  });
+
+  it('cargos: ver la lista, los mismos tres roles; crear, renombrar o desactivar, solo administrador', () => {
+    expect(rolesDe(CargosCdaController, 'listar')).toEqual(TOMAN_ASISTENCIA);
+    for (const metodo of ['crear', 'renombrar', 'cambiarActivo']) {
+      expect(rolesDe(CargosCdaController, metodo)).toEqual(['ADMINISTRADOR']);
+    }
+    for (const metodo of ['listar', 'crear', 'renombrar', 'cambiarActivo']) {
+      const fn = (CargosCdaController.prototype as any)[metodo];
+      expect(Reflect.getMetadata(MODULO_KEY, fn)).toBe('operadores-cda');
+      expect(Reflect.getMetadata('__guards__', fn)).toContain(ModuloGuard);
+    }
+  });
+
+  it('cargos: la clave de la ruta tiene forma de clave (si no, 400)', () => {
+    expect(parsearClave('RECEPTOR_ACTAS')).toBe('RECEPTOR_ACTAS');
+    for (const c of ['receptor', '', '../x', 'A'.repeat(41)]) expect(() => parsearClave(c)).toThrow(BadRequestException);
   });
 
   it('parejas: ?fecha= obligatoria y válida', () => {

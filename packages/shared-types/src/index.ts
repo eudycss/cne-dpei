@@ -1018,17 +1018,37 @@ export interface FilaInformeCustodia {
 }
 
 // --- Operadores CDA (personal de los Centros de Digitalización de Actas) ---
-/** El personal de los CDA se divide por cargo; cada grupo tiene la misma gestión. */
-export type GrupoCda =
-  | 'OPERADOR'
-  | 'ASISTENTE'
-  | 'DIGITADOR'
-  | 'ASISTENTE_ARCHIVOS'
-  | 'ASISTENTE_FIRMAS'
-  | 'RECEPTOR_ACTAS'
-  | 'ARCHIVADOR_ACTAS'
-  | 'SUPERVISOR'
-  | 'OPERADOR_ESCANER_CPE';
+/**
+ * El personal de los CDA se divide por cargo; cada grupo tiene la misma
+ * gestión. Es la clave del cargo en la tabla cargos_cda: las 9 originales
+ * (OPERADOR, ASISTENTE, DIGITADOR, ...) y las que agregue el administrador.
+ */
+export type GrupoCda = string;
+
+export type CentroCda = 'CDA' | 'CPE';
+
+/** Un cargo del combo "Cargo" (gestión de cargos). */
+export interface CargoCda {
+  clave: GrupoCda;
+  nombre: string;
+  centro: CentroCda;
+  /** Desactivado: no sale en el combo, pero su personal e historial se conservan. */
+  activo: boolean;
+  /** Operadores y Asistentes CDA: usan la app (parejas, kits); no se desactivan. */
+  protegido: boolean;
+  orden: number;
+  /** Personas activas en el cargo. */
+  personas: number;
+}
+
+export interface CrearCargoCdaRequest {
+  nombre: string;
+  centro: CentroCda;
+}
+
+export interface RenombrarCargoCdaRequest {
+  nombre: string;
+}
 
 export interface OperadorCda {
   id: string;

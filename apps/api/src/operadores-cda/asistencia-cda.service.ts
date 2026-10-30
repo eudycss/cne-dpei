@@ -12,7 +12,7 @@ import type {
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { textosGrupo } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador, momentoEcuador } from './dia-ecuador';
 import { enTramos, personalDelCargo } from './periodos-cargo';
@@ -66,7 +66,7 @@ const COLUMNAS_FALTARON: ColumnaReporte[] = [
 const columnasResumenDia = (grupo: GrupoCda): ColumnaReporte[] => [
   FECHA,
   { titulo: 'Día', ancho: 34 },
-  { titulo: TEXTOS_GRUPO[grupo].contador, ancho: 13 },
+  { titulo: textosGrupo(grupo).contador, ancho: 13 },
   { titulo: 'Entrada', ancho: 11 },
   { titulo: 'Salida', ancho: 11 },
 ];
@@ -98,7 +98,7 @@ export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conS
 
 function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
   const c = contadoresDelDia(filas);
-  return `${TEXTOS_GRUPO[grupo].contador} ${c.asistieron} · Entrada ${c.entrada} · Salida ${c.salida}`;
+  return `${textosGrupo(grupo).contador} ${c.asistieron} · Entrada ${c.entrada} · Salida ${c.salida}`;
 }
 
 const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
@@ -436,7 +436,7 @@ export class AsistenciaCdaService {
             },
             {
               hoja: 'Asistencia',
-              titulo: `Detalle por ${TEXTOS_GRUPO[grupo].singular} y día`,
+              titulo: `Detalle por ${textosGrupo(grupo).singular} y día`,
               columnas: [FECHA, ...COLUMNAS],
               filas: filas.map((f) => [f.fecha, ...f.celdas]),
               resaltadas: indicesSinEntrada(filas),
@@ -466,9 +466,9 @@ export class AsistenciaCdaService {
 
     return generarReporte(
       {
-        titulo: `Reporte de asistencia — ${TEXTOS_GRUPO[grupo].titulo}`,
+        titulo: `Reporte de asistencia — ${textosGrupo(grupo).titulo}`,
         detalle: `Del ${diaCorto(desde)} al ${diaCorto(hasta)} · hora de Ecuador`,
-        archivo: `asistencia_${TEXTOS_GRUPO[grupo].archivo}`,
+        archivo: `asistencia_${textosGrupo(grupo).archivo}`,
         desde,
         hasta,
         modo,

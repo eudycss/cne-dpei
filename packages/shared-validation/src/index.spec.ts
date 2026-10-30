@@ -31,6 +31,9 @@ import {
   crearOperadorCdaSchema,
   cambiarCargoOperadorCdaSchema,
   GRUPOS_CDA,
+  crearCargoCdaSchema,
+  renombrarCargoCdaSchema,
+  cambiarActivoCargoCdaSchema,
   editarOperadorCdaSchema,
   cambiarActivoOperadorCdaSchema,
   grupoCdaQuerySchema,
@@ -326,17 +329,20 @@ describe('CRUD de operadores CDA', () => {
     expect(editarOperadorCdaSchema.safeParse({ ...sinCedula, grupo: 'ASISTENTE' }).success).toBe(false);
   });
 
-  it('alta: grupo opcional, solo uno de los 9 cargos (CDA y CPE)', () => {
+  it('alta: grupo opcional, con forma de clave de cargo (que exista lo revisa la API)', () => {
     expect(GRUPOS_CDA).toHaveLength(9);
     expect(GRUPOS_CDA).toContain('ARCHIVADOR_ACTAS');
     for (const grupo of GRUPOS_CDA) expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo }).success).toBe(true);
-    expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'TECNICO' }).success).toBe(false);
+    expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo: 'COORDINADORES_CPE' }).success).toBe(true);
+    for (const grupo of ['tecnico', '', '1ABC', 'A-B', 'A'.repeat(41), 5]) {
+      expect(crearOperadorCdaSchema.safeParse({ ...alta, grupo }).success).toBe(false);
+    }
   });
 
-  it('cambiar de cargo: uno de los 9 cargos y nada más', () => {
+  it('cambiar de cargo: una clave de cargo y nada más', () => {
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'SUPERVISOR' }).success).toBe(true);
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'ARCHIVADOR_ACTAS' }).success).toBe(true);
-    expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'TECNICO' }).success).toBe(false);
+    expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'supervisor' }).success).toBe(false);
     expect(cambiarCargoOperadorCdaSchema.safeParse({}).success).toBe(false);
     expect(cambiarCargoOperadorCdaSchema.safeParse({ grupo: 'SUPERVISOR', desde: '2026-01-01' }).success).toBe(false);
   });
@@ -489,5 +495,33 @@ describe('verificarKitRetornoSchema', () => {
   it('sigue exigiendo observación si falta algún artículo', () => {
     const r = verificarKitRetornoSchemaRetorno.safeParse({ kitId, items: [{ texto: 'Acta', marcado: false }] });
     expect(r.success).toBe(false);
+  });
+});
+
+describe('cargos CDA/CPE (gestión)', () => {
+  it('crear: nombre de 3 a 80 caracteres y centro CDA o CPE', () => {
+    expect(crearCargoCdaSchema.parse({ nombre: '  Coordinadores de sala ', centro: 'CPE' })).toEqual({
+      nombre: 'Coordinadores de sala',
+      centro: 'CPE',
+    });
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'Técnicos (turno 2)', centro: 'CDA' }).success).toBe(true);
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'ab', centro: 'CPE' }).success).toBe(false);
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'x'.repeat(81), centro: 'CPE' }).success).toBe(false);
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'Cargo nuevo', centro: 'OTRO' }).success).toBe(false);
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'Cargo nuevo' }).success).toBe(false);
+    expect(crearCargoCdaSchema.safeParse({ nombre: 'Cargo nuevo', centro: 'CPE', clave: 'X' }).success).toBe(false);
+  });
+
+  it('nombre: sin símbolos raros ni HTML, espacios internos colapsados', () => {
+    expect(renombrarCargoCdaSchema.parse({ nombre: 'Receptores   de actas' })).toEqual({ nombre: 'Receptores de actas' });
+    for (const nombre of ['<b>Jefes</b>', 'Jefes; DROP', 'Jefes\n2', '   ', '-Jefes', '=SUMA(A1)', '/x/y', '%_%']) {
+      expect(renombrarCargoCdaSchema.safeParse({ nombre }).success).toBe(false);
+    }
+    expect(renombrarCargoCdaSchema.safeParse({ nombre: 'Jefes', centro: 'CDA' }).success).toBe(false);
+  });
+
+  it('activar o desactivar: solo el booleano', () => {
+    expect(cambiarActivoCargoCdaSchema.safeParse({ activo: false }).success).toBe(true);
+    expect(cambiarActivoCargoCdaSchema.safeParse({ activo: 'no' }).success).toBe(false);
   });
 });

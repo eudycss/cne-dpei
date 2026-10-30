@@ -17,6 +17,11 @@ function grupoCda(req: Request): GrupoCda {
   return r.success ? r.data : 'OPERADOR';
 }
 
+/** Clave de un cargo (ruta o respuesta) o nada si no tiene esa forma. */
+function claveCargo(v: unknown): string | undefined {
+  return grupoCdaSchema.safeParse(v).success ? (v as string) : undefined;
+}
+
 /** Descargas de reportes de operadores CDA: grupo, rango, modo y formato pedidos (nada personal). */
 function resumenDescargaReporte(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
@@ -72,6 +77,31 @@ const AUDIT_TABLE: Array<{
   },
   // CRUD manual: nombres, cédulas y teléfonos son datos personales, así que solo
   // queda qué campos se tocaron; de ocultar/reactivar queda el valor.
+  // Gestión de cargos CDA/CPE: la clave va en la ruta (o en la respuesta al crear).
+  {
+    method: 'POST',
+    pathRegex: /^\/cargos-cda$/,
+    accion: 'CARGO_CDA_CREAR',
+    entidad: 'cargo_cda',
+    entidadId: (_req, res) => claveCargo((res as { clave?: unknown } | null)?.clave),
+    campos: ['nombre', 'centro'],
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/cargos-cda\/[^/]+$/,
+    accion: 'CARGO_CDA_RENOMBRAR',
+    entidad: 'cargo_cda',
+    entidadId: (req) => claveCargo(req.params?.clave),
+    campos: ['nombre'],
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/cargos-cda\/[^/]+\/activo$/,
+    accion: 'CARGO_CDA_ACTIVO',
+    entidad: 'cargo_cda',
+    entidadId: (req) => claveCargo(req.params?.clave),
+    campos: ['activo'],
+  },
   { method: 'POST',  pathRegex: /^\/operadores-cda$/,          accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+$/,   accion: 'OPERADOR_CDA_UPDATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/activo$/, accion: 'OPERADOR_CDA_ACTIVO', entidad: 'operador_cda', campos: ['activo'] },
