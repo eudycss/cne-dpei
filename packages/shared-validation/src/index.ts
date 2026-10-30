@@ -650,8 +650,9 @@ export const operadorCdaFilaSchema = z.object({
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
 
 /**
- * Cargos del personal (cada uno con su propia gestión). Solo OPERADOR y
- * ASISTENTE son CDA; el resto es CPE en actas y carnets.
+ * Los 9 cargos con los que nació la tabla de cargos (cada uno con su propia
+ * gestión). El administrador puede agregar más desde la web: la lista
+ * completa está en la base (cargos_cda) y la API revisa que la clave exista.
  */
 export const GRUPOS_CDA = [
   'OPERADOR',
@@ -665,9 +666,36 @@ export const GRUPOS_CDA = [
   'OPERADOR_ESCANER_CPE',
 ] as const;
 
-export const grupoCdaSchema = z.enum(GRUPOS_CDA, {
-  errorMap: () => ({ message: 'Grupo inválido' }),
-});
+/** Clave de un cargo: MAYÚSCULAS, dígitos y "_" (la forma de las 9 originales). */
+export const grupoCdaSchema = z
+  .string({ invalid_type_error: 'Grupo inválido' })
+  .regex(/^[A-Z][A-Z0-9_]{0,39}$/, 'Grupo inválido');
+
+export const CENTROS_CDA = ['CDA', 'CPE'] as const;
+
+/**
+ * Nombre visible de un cargo: empieza con letra o número (va a Excel y PDF);
+ * luego letras, números, espacios y . , ( ) - /
+ */
+const nombreCargoCdaSchema = z
+  .string({ required_error: 'Nombre requerido' })
+  .transform((s) => s.trim().replace(/ +/g, ' '))
+  .pipe(
+    z
+      .string()
+      .min(3, 'Mínimo 3 caracteres')
+      .max(80, 'Máximo 80 caracteres')
+      .regex(/^[\p{L}\p{N}][\p{L}\p{N} .,()\-/]*$/u, 'Empiece con letra o número; use solo letras, números, espacios y . , ( ) - /'),
+  );
+
+/** Cargo nuevo: el centro se elige aquí y después no cambia. */
+export const crearCargoCdaSchema = z
+  .object({ nombre: nombreCargoCdaSchema, centro: z.enum(CENTROS_CDA, { errorMap: () => ({ message: 'Centro inválido' }) }) })
+  .strict();
+
+export const renombrarCargoCdaSchema = z.object({ nombre: nombreCargoCdaSchema }).strict();
+
+export const cambiarActivoCargoCdaSchema = z.object({ activo: z.boolean() }).strict();
 
 /** Para ?grupo= en la URL: ausente = OPERADOR (lo que había antes de los asistentes). */
 export const grupoCdaQuerySchema = grupoCdaSchema.default('OPERADOR');

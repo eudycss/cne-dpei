@@ -17,7 +17,7 @@ import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService, GRUPOS_CON_CUENTA } from './cuentas-cda.service';
 import { leerFilasOperadoresCda, type FilaLeida } from './excel-operadores-cda';
 import { tamanoDescomprimidoZip } from './zip';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { asegurarCargoActivo, textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, fechaDb } from './dia-ecuador';
 
 // Un .xlsx es un ZIP: empieza con "PK\x03\x04".
@@ -83,6 +83,7 @@ export class OperadoresCdaService {
    */
   async crear(datos: CrearOperadorCdaRequest): Promise<OperadorCda> {
     const grupo = datos.grupo ?? 'OPERADOR';
+    asegurarCargoActivo(grupo);
     const existente = await this.prisma.operadorCda.findUnique({
       where: { cedula: datos.cedula },
       select: { activo: true, grupo: true },
@@ -151,7 +152,8 @@ export class OperadoresCdaService {
     });
     if (!o) throw new NotFoundException('Operador no encontrado');
     if (!o.activo) throw new ConflictException('Reactívelo antes de cambiarlo de cargo');
-    if (o.grupo === grupo) throw new BadRequestException(`Ya está en ${TEXTOS_GRUPO[grupo].titulo}`);
+    if (o.grupo === grupo) throw new BadRequestException(`Ya está en ${textosGrupo(grupo).titulo}`);
+    asegurarCargoActivo(grupo);
 
     const hoy = diaEcuador();
     const marcoHoy = await this.prisma.asistenciaCda.findFirst({
@@ -200,6 +202,7 @@ export class OperadoresCdaService {
     file: Express.Multer.File | undefined,
     { aplicar, grupo = 'OPERADOR' }: { aplicar: boolean; grupo?: GrupoCda },
   ): Promise<ImportOperadoresCdaResult> {
+    asegurarCargoActivo(grupo);
     const leidas = await this.leerExcel(file);
     const validadas = validarFilas(leidas);
 
@@ -213,7 +216,7 @@ export class OperadoresCdaService {
     const filas = validadas.filas.filter((f) => {
       const otro = grupoDe.get(f.cedula);
       if (!otro || otro === grupo) return true;
-      errores.push({ fila: f.fila, error: `La cédula ya está registrada en ${TEXTOS_GRUPO[otro].titulo}` });
+      errores.push({ fila: f.fila, error: `La cédula ya está registrada en ${textosGrupo(otro).titulo}` });
       return false;
     });
     errores.sort((a, b) => a.fila - b.fila);
@@ -314,8 +317,8 @@ function datosEditables(d: EditarOperadorCdaRequest) {
 }
 
 function mensajeCedulaRepetida(existente: { activo: boolean; grupo: GrupoCda }, grupo: GrupoCda): string {
-  if (existente.grupo !== grupo) return `Esa cédula ya está registrada en ${TEXTOS_GRUPO[existente.grupo].titulo}`;
-  const quien = TEXTOS_GRUPO[grupo].singular;
+  if (existente.grupo !== grupo) return `Esa cédula ya está registrada en ${textosGrupo(existente.grupo).titulo}`;
+  const quien = textosGrupo(grupo).singular;
   return existente.activo
     ? `Ya existe un ${quien} con esa cédula`
     : `Ya existe un ${quien} oculto con esa cédula: actívelo desde "Mostrar ocultos"`;

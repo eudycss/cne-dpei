@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido } from './filtroIngreso';
-import { CENTROS, GRUPOS, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
+import { CARGOS_BASE, CENTROS, TEXTOS_GRUPO, grupoDeRuta } from './grupo';
 import { fechaCorta } from './utils';
 
 const sin = { desde: '', hasta: '', incluirSinFecha: false };
@@ -52,6 +52,7 @@ describe('fechas e ids que llegan en la URL', () => {
   });
 
   it('grupoDeRuta: cada cargo tiene su ruta propia; una desconocida es OPERADOR', () => {
+    const GRUPOS = CARGOS_BASE.map((c) => c.clave);
     expect(GRUPOS).toHaveLength(9);
     for (const g of GRUPOS) expect(grupoDeRuta(TEXTOS_GRUPO[g].ruta)).toBe(g);
     expect(new Set(GRUPOS.map((g) => TEXTOS_GRUPO[g].ruta)).size).toBe(9);
@@ -60,5 +61,15 @@ describe('fechas e ids que llegan en la URL', () => {
     for (const g of GRUPOS) expect(CENTROS).toContain(TEXTOS_GRUPO[g].centro);
     expect(GRUPOS.filter((g) => TEXTOS_GRUPO[g].centro === 'CDA')).toEqual(['OPERADOR', 'ASISTENTE']);
     for (const v of [null, '', 'xyz', 'SUPERVISOR']) expect(grupoDeRuta(v)).toBe('OPERADOR');
+  });
+
+  it('grupoDeRuta: un cargo agregado usa su clave en minúsculas y no choca con los originales', () => {
+    const cargos = [
+      ...CARGOS_BASE,
+      { clave: 'RECEPTORES_ACTAS', nombre: 'Receptores (2)', centro: 'CPE' as const, activo: true, protegido: false, orden: 10, personas: 0 },
+    ];
+    expect(grupoDeRuta('receptores_actas', cargos)).toBe('RECEPTORES_ACTAS');
+    expect(grupoDeRuta('receptores-actas', cargos)).toBe('RECEPTOR_ACTAS');
+    expect(grupoDeRuta('receptores_actas')).toBe('OPERADOR');
   });
 });

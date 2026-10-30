@@ -55,6 +55,56 @@ describe('OperadoresCdaPage', () => {
     expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/^\/operadores-cda\/asistencia\?fecha=.*&grupo=OPERADOR$/));
   });
 
+  describe('cargos de la API', () => {
+    const CARGOS = [
+      { clave: 'OPERADOR', nombre: 'Operadores CDA', centro: 'CDA', activo: true, protegido: true, orden: 1, personas: 3 },
+      { clave: 'ASISTENTE', nombre: 'Asistentes CDA', centro: 'CDA', activo: true, protegido: true, orden: 2, personas: 0 },
+      { clave: 'DIGITADOR', nombre: 'Digitación', centro: 'CPE', activo: true, protegido: false, orden: 3, personas: 0 },
+      { clave: 'JEFES_DE_SALA', nombre: 'Jefes de sala', centro: 'CPE', activo: true, protegido: false, orden: 10, personas: 0 },
+      { clave: 'COORDINADORES', nombre: 'Coordinadores', centro: 'CPE', activo: false, protegido: false, orden: 11, personas: 1 },
+    ];
+    beforeEach(() => {
+      getMock.mockImplementation((url: string) =>
+        Promise.resolve({
+          data:
+            url === '/cargos-cda'
+              ? CARGOS
+              : url.startsWith('/operadores-cda/asistencia')
+                ? { fecha: '2026-10-22', esHoy: true, filas: [] }
+                : [],
+        }),
+      );
+    });
+
+    it('el combo sale de la API: nombres nuevos y cargos agregados; los desactivados no salen', async () => {
+      renderPagina();
+      const cargo = screen.getByRole('combobox', { name: 'Cargo' });
+      const cpe = () =>
+        within(within(cargo).getByRole('group', { name: /^CPE — / }))
+          .getAllByRole('option')
+          .map((o) => o.textContent);
+      await waitFor(() => expect(cpe()).toEqual(['Digitación', 'Jefes de sala']));
+      await userEvent.selectOptions(cargo, 'Jefes de sala');
+      expect(screen.getByRole('tablist', { name: 'Secciones de Jefes de sala' })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Parejas' })).not.toBeInTheDocument();
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/&grupo=JEFES_DE_SALA$/)));
+    });
+
+    it('?grupo= de un cargo desactivado lo abre (su historial se consulta) y el combo lo marca', async () => {
+      renderPagina('/operadores-cda?grupo=coordinadores');
+      const cargo = screen.getByRole('combobox', { name: 'Cargo' });
+      await waitFor(() => expect(cargo).toHaveDisplayValue('Coordinadores (desactivado)'));
+      expect(screen.getByRole('tablist', { name: 'Secciones de Coordinadores' })).toBeInTheDocument();
+    });
+
+    it('el administrador abre Gestionar cargos', async () => {
+      renderPagina();
+      await userEvent.click(screen.getByRole('button', { name: 'Gestionar cargos' }));
+      expect(await screen.findByRole('dialog', { name: 'Gestionar cargos' })).toBeInTheDocument();
+      expect(await screen.findByRole('table', { name: 'Cargos CDA y CPE' })).toBeInTheDocument();
+    });
+  });
+
   it('Asistentes CDA tiene las mismas secciones y pide los datos de su grupo', async () => {
     renderPagina();
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Cargo' }), 'Asistentes CDA');

@@ -5,6 +5,7 @@ import * as ExcelJS from 'exceljs';
 import { OperadoresCdaService } from './operadores-cda.service';
 import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService } from './cuentas-cda.service';
+import { registrarCargos, TEXTOS_GRUPO } from './grupo-cda';
 
 const ENCABEZADOS = ['N°', 'Apellidos Nombres', 'Cédula', 'Teléfonos De Contacto', 'Cargo', 'Unidad', 'Inicial'];
 const FILA_OK = [1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273', 'OPERADOR CDA', 'UPSI', '20 de octubre de 2026'];
@@ -54,6 +55,40 @@ describe('OperadoresCdaService', () => {
       ],
     }).compile();
     service = moduleRef.get(OperadoresCdaService);
+  });
+
+  describe('cargo desactivado', () => {
+    const base = Object.entries(TEXTOS_GRUPO).map(([clave, t]) => ({
+      clave,
+      nombre: t.titulo,
+      centro: (t.cargo.endsWith(' CDA') ? 'CDA' : 'CPE') as 'CDA' | 'CPE',
+      activo: true,
+    }));
+    beforeEach(() => registrarCargos(base.map((c) => (c.clave === 'SUPERVISOR' ? { ...c, activo: false } : c))));
+    afterEach(() => registrarCargos(base));
+
+    it('no se agrega personal a un cargo desactivado', async () => {
+      await expect(
+        service.crear({
+          apellidosNombres: 'RUIZ MORA JUAN',
+          cedula: '1710034065',
+          cargo: 'X',
+          fechaInicio: '2026-10-20',
+          grupo: 'SUPERVISOR',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+    });
+
+    it('ni se importa el Excel en él (ni siquiera la vista previa)', async () => {
+      await expect(service.importar(await excel([FILA_OK]), { aplicar: true, grupo: 'SUPERVISOR' })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.importar(await excel([FILA_OK]), { aplicar: false, grupo: 'SUPERVISOR' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.operadorCda.upsert).not.toHaveBeenCalled();
+    });
   });
 
   describe('importar (vista previa)', () => {

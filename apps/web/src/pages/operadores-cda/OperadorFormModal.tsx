@@ -12,7 +12,7 @@ import { crearOperadorCdaSchema, editarOperadorCdaSchema } from '@cne/shared-val
 import { Modal } from '../../components/Modal';
 import { cambiarCargoOperadorCda, crearOperadorCda, editarOperadorCda } from '../../lib/queries/operadores-cda';
 import { Campo } from './Campo';
-import { TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { type TextosGrupo, useCargosCda, useGrupoCda } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
 import { hoyEcuador, mensajeError } from './utils';
 
@@ -33,9 +33,9 @@ function inicial(cargoPorDefecto: string, o?: OperadorCda): Formulario {
 }
 
 /** Lo que conviene hacer después de cambiar de cargo: el carnet y el acta dicen el cargo anterior. */
-function avisarCambioCargo(r: CambiarCargoOperadorCdaResult) {
-  const antes = TEXTOS_GRUPO[r.grupoAnterior].titulo;
-  const ahora = TEXTOS_GRUPO[r.operador.grupo].titulo;
+function avisarCambioCargo(r: CambiarCargoOperadorCdaResult, textos: (g: GrupoCda) => TextosGrupo) {
+  const antes = textos(r.grupoAnterior).titulo;
+  const ahora = textos(r.operador.grupo).titulo;
   const pendientes = [
     r.carnetVigente && `reemita su carnet QR (el impreso dice el cargo de ${antes})`,
     r.actaVigente && `genere una nueva acta de entrega en ${ahora}`,
@@ -60,6 +60,7 @@ export function OperadorFormModal({
 }) {
   const editando = !!operador;
   const { grupo, singular, Singular, cargoPorDefecto } = useGrupoCda();
+  const { textos } = useCargosCda();
   const qc = useQueryClient();
   const [f, setF] = useState<Formulario>(() => inicial(cargoPorDefecto, operador));
   const grupoOriginal = operador?.grupo ?? grupo;
@@ -68,7 +69,7 @@ export function OperadorFormModal({
 
   function elegirCargo(g: GrupoCda) {
     // El texto de "Cargo" sigue al cargo CDA si era el de por defecto; si lo escribieron a mano, se respeta.
-    const porDefecto = (x: GrupoCda) => TEXTOS_GRUPO[x].cargoPorDefecto;
+    const porDefecto = (x: GrupoCda) => textos(x).cargoPorDefecto;
     if (f.cargo === porDefecto(grupoNuevo)) cambiar({ cargo: porDefecto(g) });
     setGrupoNuevo(g);
   }
@@ -88,14 +89,14 @@ export function OperadorFormModal({
     },
     onSuccess: ({ o, cambio }) => {
       sileo.success({
-        title: cambio ? `Pasó a ${TEXTOS_GRUPO[o.grupo].titulo}` : editando ? 'Datos actualizados' : `${Singular} agregado`,
+        title: cambio ? `Pasó a ${textos(o.grupo).titulo}` : editando ? 'Datos actualizados' : `${Singular} agregado`,
         description:
           cambio && cambio.desde !== hoyEcuador()
             ? `${o.apellidosNombres} · desde mañana (hoy ya marcó entrada)`
             : o.apellidosNombres,
       });
       if (cambio) {
-        avisarCambioCargo(cambio);
+        avisarCambioCargo(cambio, textos);
         // Sale de esta lista y entra en la del otro cargo.
         qc.invalidateQueries({ queryKey: ['operadores-cda'] });
       }
@@ -210,12 +211,12 @@ export function OperadorFormModal({
               requerido={false}
               ayuda={
                 cambiaCargo
-                  ? `Pasará a ${TEXTOS_GRUPO[grupoNuevo].titulo} desde hoy (desde mañana si ya marcó entrada hoy). Su asistencia anterior queda en ${TEXTOS_GRUPO[grupoOriginal].titulo}.`
+                  ? `Pasará a ${textos(grupoNuevo).titulo} desde hoy (desde mañana si ya marcó entrada hoy). Su asistencia anterior queda en ${textos(grupoOriginal).titulo}.`
                   : 'Para pasarlo a otro cargo (rige desde hoy).'
               }
             >
               <select value={grupoNuevo} onChange={(e) => elegirCargo(e.target.value as GrupoCda)}>
-                <OpcionesCargo />
+                <OpcionesCargo actual={grupoOriginal} />
               </select>
             </Campo>
           )}
@@ -240,7 +241,7 @@ export function OperadorFormModal({
             {guardar.isPending
               ? 'Guardando…'
               : cambiaCargo
-                ? `Guardar y pasar a ${TEXTOS_GRUPO[grupoNuevo].titulo}`
+                ? `Guardar y pasar a ${textos(grupoNuevo).titulo}`
                 : editando
                   ? 'Guardar cambios'
                   : `Agregar ${singular}`}

@@ -16,7 +16,7 @@ import type {
   GrupoCda,
   PersonaEntregaCda,
 } from '@cne/shared-types';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { textosGrupo } from './grupo-cda';
 
 import { PrismaService } from '../db/prisma.service';
 import { toOperadorCdaDto } from './operadores-cda.service';
@@ -88,7 +88,7 @@ export class ActasCdaService {
       return {
         operador: toOperadorCdaDto(o),
         acta: delCargo ? toActaDto(ultima) : null,
-        actaOtroCargo: ultima && !delCargo ? TEXTOS_GRUPO[ultima.grupo].cargo : null,
+        actaOtroCargo: ultima && !delCargo ? textosGrupo(ultima.grupo).cargo : null,
       };
     });
   }
@@ -275,7 +275,7 @@ export function aDatos(o: OperadorBasico, a: ActaDb): DatosActaCda {
     operadorNombre: o.apellidosNombres,
     operadorCedula: o.cedula,
     // El cargo con que se generó: un acta firmada no cambia si la persona cambia de cargo.
-    operadorCargo: TEXTOS_GRUPO[a.grupo].cargo,
+    operadorCargo: textosGrupo(a.grupo).cargo,
     estadoPeto: a.estadoPeto,
     estadoCredencial: a.estadoCredencial,
     estadoCordon: a.estadoCordon,

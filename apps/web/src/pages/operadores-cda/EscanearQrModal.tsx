@@ -9,7 +9,7 @@ import { CamaraQr } from './CamaraQr';
 import { useFotoOperadorUrl } from './useFotoOperador';
 import { useEnLinea } from '../../lib/useEnLinea';
 import { cargoCorto, horaEcuador, iniciales, mensajeError } from './utils';
-import { TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { useCargosCda, useGrupoCda } from './grupo';
 
 type Confirmacion = { token: string; consulta: ConsultaQrCda };
 
@@ -207,7 +207,8 @@ function Confirmar({
   const foto = useFotoOperadorUrl(o);
   // Un carnet del otro grupo se acepta (la marca va a su grupo), pero se avisa.
   const { grupo } = useGrupoCda();
-  const otroGrupo = o.grupo !== grupo ? TEXTOS_GRUPO[o.grupo] : null;
+  const { textos } = useCargosCda();
+  const otroGrupo = o.grupo !== grupo ? textos(o.grupo) : null;
   // Se evalúa al mostrar: si espera, puede cancelar y volver a escanear.
   const [ahora] = useState(() => Date.now());
   const salidaEnEspera = siguiente === 'SALIDA' && salidaDesde !== null && Date.parse(salidaDesde) > ahora;

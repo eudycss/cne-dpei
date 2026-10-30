@@ -6,7 +6,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { buscarPersonasCda } from '../../lib/queries/operadores-cda';
 import { FILTROS_INGRESO } from './filtroIngreso';
-import { TEXTOS_GRUPO, useGrupoCda } from './grupo';
+import { useCargosCda, useGrupoCda } from './grupo';
 import { mensajeError } from './utils';
 
 /** La API pide al menos 3 caracteres y devuelve hasta 20 personas. */
@@ -43,11 +43,12 @@ export function useBuscarPersonasCda(texto: string) {
  */
 export function useIrAPersona() {
   const [, setParams] = useSearchParams();
+  const { textos } = useCargosCda();
   return (p: PersonaCdaEncontrada) =>
     setParams((prev) => {
       const n = new URLSearchParams(prev);
       if (p.grupo === 'OPERADOR') n.delete('grupo');
-      else n.set('grupo', TEXTOS_GRUPO[p.grupo].ruta);
+      else n.set('grupo', textos(p.grupo).ruta);
       n.set('tab', 'listado');
       n.set('q', p.cedula);
       if (p.activo) n.delete('ocultos');
@@ -67,10 +68,11 @@ export function PersonasEncontradas({
   etiqueta: string;
   onIr: (p: PersonaCdaEncontrada) => void;
 }) {
+  const { textos } = useCargosCda();
   return (
     <ul className="ocda-personas" aria-label={etiqueta}>
       {personas.map((p) => {
-        const t = TEXTOS_GRUPO[p.grupo];
+        const t = textos(p.grupo);
         return (
           <li key={p.id} className="ocda-persona">
             <span className="ocda-persona-datos">

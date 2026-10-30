@@ -390,6 +390,32 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
   });
 
+  it('gestión de cargos CDA: queda la clave, el nombre, el centro y si se desactivó', async () => {
+    const crear = await auditar(
+      { method: 'POST', originalUrl: '/cargos-cda', body: { nombre: 'Jefes de sala', centro: 'CPE' }, user: ADMIN },
+      { clave: 'JEFES_DE_SALA', nombre: 'Jefes de sala' },
+    );
+    expect(crear.data).toMatchObject({
+      accion: 'CARGO_CDA_CREAR',
+      entidad: 'cargo_cda',
+      entidadId: 'JEFES_DE_SALA',
+      datosDespues: { nombre: 'Jefes de sala', centro: 'CPE' },
+    });
+
+    const renombrar = await auditar({
+      method: 'PATCH', originalUrl: '/cargos-cda/DIGITADOR', params: { clave: 'DIGITADOR' }, body: { nombre: 'Digitación' }, user: ADMIN,
+    });
+    expect(renombrar.data).toMatchObject({ accion: 'CARGO_CDA_RENOMBRAR', entidadId: 'DIGITADOR', datosDespues: { nombre: 'Digitación' } });
+
+    const desactivar = await auditar({
+      method: 'PATCH', originalUrl: '/cargos-cda/DIGITADOR/activo', params: { clave: 'DIGITADOR' }, body: { activo: false }, user: ADMIN,
+    });
+    expect(desactivar.data).toMatchObject({ accion: 'CARGO_CDA_ACTIVO', entidadId: 'DIGITADOR', datosDespues: { activo: false } });
+
+    const ver = await auditar({ method: 'GET', originalUrl: '/cargos-cda', user: ADMIN });
+    expect(ver.create).not.toHaveBeenCalled();
+  });
+
   it('CRUD de operadores CDA: no guarda nombres, cédulas ni teléfonos; de ocultar sí guarda el valor', async () => {
     const crear = await auditar(
       { method: 'POST', originalUrl: '/operadores-cda', body: { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', telefono: '0987111222', cargo: 'X' }, user: ADMIN },

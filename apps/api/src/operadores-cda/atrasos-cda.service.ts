@@ -10,7 +10,7 @@ import type {
   ResumenAtrasoOperadorCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { TEXTOS_GRUPO } from './grupo-cda';
+import { textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import { enTramos, personalDelCargo } from './periodos-cargo';
 import { CONFIG_ASISTENCIA_POR_DEFECTO, clasificarEntrada } from './puntualidad';
@@ -167,7 +167,7 @@ export class AtrasosCdaService {
   ): Promise<ArchivoReporte> {
     const modo = parsearModo(modoParam);
     const rep = await this.reporte(desde, hasta, grupo);
-    const textos = TEXTOS_GRUPO[grupo];
+    const textos = textosGrupo(grupo);
     const celdas = (f: FilaAtrasoCda): Celda[] => [
       f.apellidosNombres,
       f.cedula,

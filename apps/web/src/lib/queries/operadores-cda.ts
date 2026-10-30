@@ -23,6 +23,8 @@ import type {
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
   AsistenciaCdaFila,
+  CargoCda,
+  CrearCargoCdaRequest,
   FormatoReporteCda,
   GrupoCda,
   ModoReporteCda,
@@ -292,8 +294,8 @@ export interface OpcionesReporteCda {
   grupo?: GrupoCda;
 }
 
-/** Igual que TEXTOS_GRUPO[].archivo en la API. */
-const ARCHIVO_GRUPO: Record<GrupoCda, string> = {
+/** Igual que TEXTOS_GRUPO[].archivo en la API (los cargos nuevos: la clave en minúsculas). */
+const ARCHIVO_GRUPO: Record<string, string> = {
   OPERADOR: 'operadores_cda',
   ASISTENTE: 'asistentes_cda',
   DIGITADOR: 'digitadores_cpe',
@@ -309,7 +311,8 @@ const RUTA_REPORTE: Record<ReporteCda, string> = { asistencia: 'exportar', atras
 
 /** Mismo nombre que pone la API (respaldo si no llega Content-Disposition). */
 export function nombreReporteCda(reporte: ReporteCda, o: OpcionesReporteCda): string {
-  const archivo = ARCHIVO_GRUPO[o.grupo ?? 'OPERADOR'];
+  const grupo = o.grupo ?? 'OPERADOR';
+  const archivo = ARCHIVO_GRUPO[grupo] ?? grupo.toLowerCase();
   return `${reporte}_${archivo}_${o.desde}_${o.hasta}${o.modo === 'POR_DIA' ? '_por_dia' : ''}.${o.formato}`;
 }
 
@@ -407,4 +410,26 @@ export async function descargarPlantillaParejasCda(): Promise<void> {
 export async function descargarQrParejasCda(fecha: string): Promise<void> {
   const res = await api.get<Blob>(`/parejas-cda/qr?fecha=${fecha}`, { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `kits-qr-parejas_${fecha}.pdf`));
+}
+
+// Gestión de cargos (combo "Cargo"): todos ven la lista; crear, renombrar y desactivar, solo el administrador.
+
+export async function getCargosCda(): Promise<CargoCda[]> {
+  const { data } = await api.get<CargoCda[]>('/cargos-cda');
+  return data;
+}
+
+export async function crearCargoCda(body: CrearCargoCdaRequest): Promise<CargoCda> {
+  const { data } = await api.post<CargoCda>('/cargos-cda', body);
+  return data;
+}
+
+export async function renombrarCargoCda(clave: GrupoCda, nombre: string): Promise<CargoCda> {
+  const { data } = await api.patch<CargoCda>(`/cargos-cda/${encodeURIComponent(clave)}`, { nombre });
+  return data;
+}
+
+export async function cambiarActivoCargoCda(clave: GrupoCda, activo: boolean): Promise<CargoCda> {
+  const { data } = await api.patch<CargoCda>(`/cargos-cda/${encodeURIComponent(clave)}/activo`, { activo });
+  return data;
 }
