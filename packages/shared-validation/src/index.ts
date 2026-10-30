@@ -930,6 +930,19 @@ export const crearParejaCdaSchema = z
   .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
 export type CrearParejaCdaInput = z.infer<typeof crearParejaCdaSchema>;
 
+export const crearKitConParejaCdaSchema = z
+  .object({
+    eventoId: z.string().uuid('Evento inválido'),
+    recintoId: z.string().uuid('Elija un recinto'),
+    operadorCdaId: z.string().uuid('Elija un operador'),
+    asistenteCdaId: z.string().uuid('Asistente inválido').nullable().optional(),
+    detalleItems: z.array(itemKitDetalleSchema).max(100).optional(),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict()
+  .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
+export type CrearKitConParejaCdaInput = z.infer<typeof crearKitConParejaCdaSchema>;
+
 export const editarParejaCdaSchema = z
   .object({
     operadorCdaId: z.string().uuid('Operador inválido').optional(),

@@ -18,14 +18,16 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { z } from 'zod';
 import {
+  crearKitConParejaCdaSchema,
   crearParejaCdaSchema,
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
   justificacionBodyParejaCdaSchema,
   justificacionParejaCdaSchema,
 } from '@cne/shared-validation';
-import type { CrearParejaCdaRequest, EditarParejaCdaRequest } from '@cne/shared-types';
+import type { CrearKitConParejaCdaRequest, CrearParejaCdaRequest, EditarParejaCdaRequest } from '@cne/shared-types';
 
 import { ParejasCdaService } from './parejas-cda.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -110,6 +112,29 @@ export class ParejasCdaController {
   @ApiOperation({ summary: 'Agrega una pareja; si hay evento ACTIVO de esa fecha, el kit del recinto pasa al operador' })
   crear(@Body(new ZodValidationPipe(crearParejaCdaSchema)) body: CrearParejaCdaRequest, @CurrentUser() user: AuthenticatedUser) {
     return this.parejas.crear(body, user.sub);
+  }
+
+  @Get('disponibles-kit')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Para "Nuevo kit": operadores y asistentes sin kit ni pareja en el evento, y recintos CDA sin kit' })
+  disponiblesKit(@Query('eventoId') eventoId?: unknown) {
+    const r = z.string().uuid().safeParse(eventoId);
+    if (!r.success) throw new BadRequestException('Indique el evento');
+    return this.parejas.disponiblesParaKit(r.data);
+  }
+
+  @Post('kit')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Nuevo kit en un paso: crea el kit del recinto, lo asigna al operador y registra la pareja' })
+  crearKit(
+    @Body(new ZodValidationPipe(crearKitConParejaCdaSchema)) body: CrearKitConParejaCdaRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.parejas.crearKitConPareja(body, user.sub);
   }
 
   @Patch(':id')

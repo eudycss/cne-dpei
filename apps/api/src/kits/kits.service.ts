@@ -107,11 +107,14 @@ export class KitsService {
       }
     }
 
-    const detalles = normalizarDetalle(parsed.detalleItems, parsed.itemIds) ?? [];
-    if (!tieneContenido(detalles.length, parsed.contenidos)) {
-      throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
+    let detalles = normalizarDetalle(parsed.detalleItems, parsed.itemIds) ?? [];
+    if (tieneContenido(detalles.length, parsed.contenidos)) {
+      await this.assertItemsActivos(detalles.map((d) => d.itemId));
+    } else {
+      // Sin artículos: todos los activos del catálogo (ya son activos, no hace falta validarlos).
+      detalles = await this.articulosPorDefecto();
+      if (detalles.length === 0) throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
     }
-    await this.assertItemsActivos(detalles.map((d) => d.itemId));
 
     // CA1 + CA5: generar codigoUnico único por evento (reintento ante colisión)
     const codigoUnico = await this.generarCodigoUnico(parsed.eventoId);
@@ -515,7 +518,11 @@ export class KitsService {
         });
         continue;
       }
-      const detallesFila = normalizarDetalle(detalleFila, undefined) ?? [];
+      let detallesFila = normalizarDetalle(detalleFila, undefined) ?? [];
+      // Fila sin artículos: lleva todos los activos del catálogo (los que ya se leyeron).
+      if (!tieneContenido(detallesFila.length, d.contenidos)) {
+        detallesFila = itemsCatalogActivos.map((it): DetalleItem => ({ itemId: it.id, serie: null, estado: 'BUENO' }));
+      }
       if (!tieneContenido(detallesFila.length, d.contenidos)) {
         errores.push({ fila: filaNum, error: MENSAJE_KIT_SIN_ARTICULOS, datos: raw });
         continue;
@@ -579,6 +586,12 @@ export class KitsService {
   }
 
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  /** Kit creado sin artículos: lleva todos los activos del catálogo, en buen estado y sin serie. */
+  private async articulosPorDefecto(): Promise<DetalleItem[]> {
+    const activos = await this.prisma.itemKitCatalog.findMany({ where: { activo: true }, select: { id: true } });
+    return activos.map((it) => ({ itemId: it.id, serie: null, estado: 'BUENO' }));
+  }
 
   private async assertItemsActivos(itemIds: string[]): Promise<void> {
     if (itemIds.length === 0) return;

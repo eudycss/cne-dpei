@@ -34,6 +34,7 @@ import {
   getRecintosOcupados,
 } from '../../lib/queries/kits';
 import { PasoFlujo } from '../../components/PasoFlujo';
+import { crearKitConParejaCda, getDisponiblesKitCda } from '../../lib/queries/operadores-cda';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,8 @@ export function KitsPage() {
   const invalidateKits = () => {
     qc.invalidateQueries({ queryKey: ['kits'] });
     qc.invalidateQueries({ queryKey: ['kits-recintos-ocupados'] });
+    qc.invalidateQueries({ queryKey: ['kits-disponibles-cda'] });
+    qc.invalidateQueries({ queryKey: ['parejas-cda'] });
   };
 
   useEffect(() => {
@@ -603,6 +606,9 @@ export function KitsPage() {
 
 // ─── Modal crear kit ──────────────────────────────────────────────────────────
 
+const SIN_OPERADOR = '— Sin operador (asignar después) —';
+const SIN_ASISTENTE = '— Sin asistente —';
+
 function CreateKitModal({
   eventoId,
   recintos,
@@ -621,10 +627,27 @@ function CreateKitModal({
   onDone: () => void;
 }) {
   const [recintoId, setRecintoId] = useState('');
+  const [operadorCdaId, setOperadorCdaId] = useState('');
+  const [asistenteCdaId, setAsistenteCdaId] = useState('');
+  const [justificacion, setJustificacion] = useState('');
+  const [frozen, setFrozen] = useState(false);
   const [esPrueba, setEsPrueba] = useState(false);
   const [contenidos, setContenidos] = useState<ContenidosKit>(() => contenidosDesdeCatalogo(itemsCatalog));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Personas sin kit ni pareja en este evento (Operadores y Asistentes CDA).
+  const { data: disponibles } = useQuery({
+    queryKey: ['kits-disponibles-cda', eventoId],
+    queryFn: () => getDisponiblesKitCda(eventoId),
+  });
+  // La primera opción ('' con el mismo texto del placeholder) deja quitar lo elegido.
+  const opcionesPersona = (ninguno: string, lista?: { id: string; apellidosNombres: string; cedula: string }[]) => [
+    { value: '', label: ninguno },
+    ...(Array.isArray(lista) ? lista : []).map((p) => ({ value: p.id, label: p.apellidosNombres, sublabel: p.cedula })),
+  ];
+  const operadorOptions = useMemo(() => opcionesPersona(SIN_OPERADOR, disponibles?.operadores), [disponibles]);
+  const asistenteOptions = useMemo(() => opcionesPersona(SIN_ASISTENTE, disponibles?.asistentes), [disponibles]);
 
   const recintoOptions = useMemo(() => {
     const ocupados = new Set(recintosOcupados);
@@ -655,6 +678,31 @@ function CreateKitModal({
     const recinto = recintos.find((r) => r.id === recintoId);
     if (!recinto) {
       setError('Recinto inválido');
+      return;
+    }
+    if (!esPrueba && operadorCdaId) {
+      if (frozen && !justificacion.trim()) {
+        setError('Escribe la justificación');
+        return;
+      }
+      setSaving(true);
+      try {
+        await crearKitConParejaCda({
+          eventoId,
+          recintoId,
+          operadorCdaId,
+          ...(asistenteCdaId && { asistenteCdaId }),
+          detalleItems: aDetalleItems(contenidos),
+          ...(frozen && { justificacion: justificacion.trim() }),
+        });
+        onDone();
+      } catch (err: any) {
+        const data = err?.response?.data;
+        if (data?.frozen) setFrozen(true);
+        setError(data?.message ?? 'No se pudo crear el kit');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     const parsed = createKitSchema.safeParse({
@@ -703,6 +751,66 @@ function CreateKitModal({
           </p>
         </div>
 
+        {!esPrueba && (
+          <>
+            <div className="field">
+              <label id="kit-nuevo-operador">Operador CDA (recibe el kit en la app)</label>
+              <SearchableSelect
+                labelId="kit-nuevo-operador"
+                options={operadorOptions}
+                value={operadorCdaId}
+                onChange={(v) => {
+                  setOperadorCdaId(v);
+                  if (!v) setAsistenteCdaId('');
+                }}
+                placeholder={SIN_OPERADOR}
+                searchPlaceholder="Busca por nombre o cédula…"
+              />
+            </div>
+            <div className="field">
+              <label id="kit-nuevo-asistente">Asistente CDA (su pareja)</label>
+              <SearchableSelect
+                labelId="kit-nuevo-asistente"
+                describedBy="kit-nuevo-personas-ayuda"
+                options={asistenteOptions}
+                value={asistenteCdaId}
+                onChange={setAsistenteCdaId}
+                placeholder={SIN_ASISTENTE}
+                searchPlaceholder="Busca por nombre o cédula…"
+                disabled={!operadorCdaId}
+              />
+              <p id="kit-nuevo-personas-ayuda" className="muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                {operadorCdaId ? '' : 'Elija primero un operador. '}
+                Solo aparecen quienes aún no tienen kit ni pareja en este evento.
+              </p>
+            </div>
+          </>
+        )}
+
+        {frozen && !esPrueba && operadorCdaId && (
+          <div className="field">
+            <label htmlFor="kit-nuevo-justificacion">Justificación (requerida)</label>
+            <textarea
+              id="kit-nuevo-justificacion"
+              value={justificacion}
+              onChange={(e) => setJustificacion(e.target.value)}
+              rows={3}
+              maxLength={500}
+              required
+              autoFocus
+              placeholder="La jornada electoral ya inició: explica por qué se necesita este kit…"
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.65rem',
+                border: '1px solid var(--border-input)',
+                borderRadius: 6,
+                fontSize: '0.9rem',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+        )}
+
         <ContenidosKitField
           idTitulo="kit-contenidos-nuevo"
           itemsCatalog={itemsCatalog}
@@ -713,11 +821,19 @@ function CreateKitModal({
         />
 
         <label className="row" style={{ margin: '0.5rem 0 0', gap: '0.35rem', alignItems: 'center' }}>
-          <input type="checkbox" checked={esPrueba} onChange={(e) => setEsPrueba(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={esPrueba}
+            onChange={(e) => {
+              setEsPrueba(e.target.checked);
+              setOperadorCdaId('');
+              setAsistenteCdaId('');
+            }}
+          />
           Es un kit de prueba (no aparecerá en el listado por defecto)
         </label>
 
-        {error && <div className="banner error">{error}</div>}
+        {error && <div className="banner error" role="alert">{error}</div>}
 
         <div className="modal-acciones">
           <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>

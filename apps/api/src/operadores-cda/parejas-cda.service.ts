@@ -1,15 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { filaParejaCdaSchema } from '@cne/shared-validation';
 import type {
   AplicarParejasCdaResult,
+  CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
   EstadoParejaCda,
   FilaImportParejaCda,
   ImportParejasCdaResult,
+  Kit,
   ParejaCdaFila,
   ParejasCdaDia,
   RecintoParejaCda,
@@ -45,6 +47,8 @@ type Filtro = { ids?: string[]; recintos?: string[] };
 const MAX_FILAS = 300;
 const MENSAJE_CONGELADO =
   'Las asignaciones están congeladas: ya inició la jornada. Escriba una justificación para pasar esta pareja a la app.';
+const MENSAJE_CONGELADO_KIT =
+  'Las asignaciones están congeladas: ya inició la jornada. Escriba una justificación para crear y asignar este kit.';
 
 const vacio = (): AplicarParejasCdaResult => ({ enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] });
 
@@ -56,6 +60,8 @@ const vacio = (): AplicarParejasCdaResult => ({ enApp: 0, kitsCreados: 0, sinKit
  */
 @Injectable()
 export class ParejasCdaService {
+  private readonly log = new Logger(ParejasCdaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cuentas: CuentasCdaService,
@@ -182,6 +188,86 @@ export class ParejasCdaService {
     if (kit) await this.kits.quitarOperador(kit, justificacion);
     await this.prisma.parejaCda.delete({ where: { id } });
     await this.aplicarDia(diaDeFechaDb(actual.fecha), { recintos: [actual.recintoId] }, justificacion);
+  }
+
+  /**
+   * Para "Nuevo kit" de la página Kits: operadores y asistentes sin pareja en
+   * la jornada del evento ni kit en el evento, y recintos CDA sin kit real.
+   */
+  async disponiblesParaKit(eventoId: string): Promise<DisponiblesParejasCda> {
+    const evento = await this.eventoPorId(eventoId);
+    const [parejas, kitsEvento] = await Promise.all([
+      this.prisma.parejaCda.findMany({ where: { fecha: evento.fechaJornada }, select: { operadorCdaId: true, asistenteCdaId: true } }),
+      this.prisma.kitElectoral.findMany({ where: { eventoId, esPrueba: false }, select: { recintoId: true, operadorId: true } }),
+    ]);
+    const conPareja = [...new Set(parejas.flatMap((p) => [p.operadorCdaId, p.asistenteCdaId]).filter((id): id is string => !!id))];
+    const usuariosConKit = [...new Set(kitsEvento.map((k) => k.operadorId).filter((id): id is string => !!id))];
+    const recintosConKit = [...new Set(kitsEvento.map((k) => k.recintoId).filter((id): id is string => !!id))];
+    const libre = {
+      activo: true,
+      ...(conPareja.length > 0 && { id: { notIn: conPareja } }),
+      ...(usuariosConKit.length > 0 && { OR: [{ usuarioId: null }, { usuarioId: { notIn: usuariosConKit } }] }),
+    };
+    const [operadores, asistentes, recintos] = await Promise.all([
+      this.prisma.operadorCda.findMany({ where: { grupo: 'OPERADOR', ...libre }, select: PERSONA, orderBy: { apellidosNombres: 'asc' } }),
+      this.prisma.operadorCda.findMany({ where: { grupo: 'ASISTENTE', ...libre }, select: PERSONA, orderBy: { apellidosNombres: 'asc' } }),
+      this.prisma.recinto.findMany({
+        where: { tipo: 'CDA', activo: true, ...(recintosConKit.length > 0 && { id: { notIn: recintosConKit } }) },
+        select: { id: true, codigoRecinto: true, nombre: true },
+        orderBy: { nombre: 'asc' },
+      }),
+    ]);
+    return { operadores, asistentes, recintos: recintos.map(aRecinto) };
+  }
+
+  /**
+   * "Nuevo kit" en un paso: crea el kit del recinto (sin artículos, los del
+   * catálogo), lo asigna al operador y registra la pareja en la fecha de la
+   * jornada del evento. Si algo falla después de crear el kit, se borra: es
+   * nuevo y no tiene historial.
+   */
+  async crearKitConPareja(datos: CrearKitConParejaCdaRequest, usuarioId: string): Promise<Kit> {
+    const evento = await this.eventoPorId(datos.eventoId);
+    const dia = diaDeFechaDb(evento.fechaJornada);
+    const asistenteCdaId = datos.asistenteCdaId ?? null;
+    await this.validarIntegrantes(datos.operadorCdaId, asistenteCdaId);
+    const recinto = await this.validarRecinto(datos.recintoId);
+    await this.libresEseDia(evento.fechaJornada, dia, datos.operadorCdaId, asistenteCdaId);
+    const justificacion = datos.justificacion?.trim() || undefined;
+    if (this.kits.estaCongelado(evento) && !justificacion) {
+      throw new BadRequestException({ message: MENSAJE_CONGELADO_KIT, frozen: true });
+    }
+    const operador = await this.prisma.operadorCda.findUnique({ where: { id: datos.operadorCdaId }, select: { usuarioId: true } });
+    const cuenta = operador?.usuarioId ?? (await this.crearCuentaOperador(datos.operadorCdaId));
+
+    const nuevo = await this.kits.create({
+      eventoId: evento.id,
+      nombre: `${recinto.codigoRecinto} — ${recinto.nombre}`,
+      recintoId: datos.recintoId,
+      ...(datos.detalleItems && { detalleItems: datos.detalleItems }),
+    });
+    try {
+      const kit = await this.kits.asignar(nuevo.id, justificacion ? { operadorId: cuenta, justificacion } : { operadorId: cuenta });
+      await this.guardar(dia, () =>
+        this.prisma.parejaCda.create({
+          data: {
+            fecha: evento.fechaJornada,
+            operadorCdaId: datos.operadorCdaId,
+            asistenteCdaId,
+            recintoId: datos.recintoId,
+            kitId: nuevo.id,
+            creadoPorId: usuarioId,
+          },
+        }),
+      );
+      return kit;
+    } catch (e) {
+      await this.prisma.kitElectoral.delete({ where: { id: nuevo.id } }).catch((err: unknown) =>
+        // Queda un kit sin pareja: el administrador lo ve en Kits y puede asignarlo o editarlo.
+        this.log.error(`No se pudo borrar el kit ${nuevo.id} tras fallar su asignación: ${(err as Error)?.message}`),
+      );
+      throw e;
+    }
   }
 
   /** Botón "Aplicar a la app": pasa toda la lista del día al evento activo de esa fecha. */
@@ -409,7 +495,6 @@ export class ParejasCdaService {
     const parejas = await this.parejasDelDia(fecha);
     const primeras = primerasPorRecinto(parejas);
     const r = vacio();
-    let hash: string | undefined;
     for (const p of parejas) {
       if (filtro.ids && !filtro.ids.includes(p.id)) continue;
       if (filtro.recintos && !filtro.recintos.includes(p.recintoId)) continue;
@@ -418,20 +503,10 @@ export class ParejasCdaService {
         continue;
       }
       try {
-        let usuarioId = p.operador.usuarioId;
-        if (!usuarioId) {
-          hash ??= await this.cuentas.hashInicial();
-          const h = hash;
-          await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, p.operadorCdaId, h));
-          usuarioId = (await this.prisma.operadorCda.findUnique({ where: { id: p.operadorCdaId }, select: { usuarioId: true } }))?.usuarioId ?? null;
-          if (!usuarioId) throw new BadRequestException('El operador está oculto: no tiene cuenta de la app');
-        }
+        const usuarioId = p.operador.usuarioId ?? (await this.crearCuentaOperador(p.operadorCdaId));
         const resultado = await this.aplicarPareja(p, evento, usuarioId, congelado ? justificacion?.trim() || null : undefined);
-        if (resultado === 'SIN_KIT') r.sinKit++;
-        else {
-          r.enApp++;
-          if (resultado === 'KIT_CREADO') r.kitsCreados++;
-        }
+        r.enApp++;
+        if (resultado === 'KIT_CREADO') r.kitsCreados++;
       } catch (e) {
         r.errores.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`, error: (e as Error).message });
       }
@@ -441,7 +516,8 @@ export class ParejasCdaService {
 
   /**
    * Kit real del recinto en el evento → al operador. Si el recinto no tiene
-   * kit y la pareja trae artículos, se crea. La asignación pasa por
+   * kit, se crea con los artículos de la pareja o, sin ellos, con los del
+   * catálogo. La asignación pasa por
    * KitsService: respeta evento reabierto, congelamiento y 1 operador = 1 recinto.
    */
   private async aplicarPareja(
@@ -450,7 +526,7 @@ export class ParejasCdaService {
     usuarioId: string,
     /** undefined = no congelado; null = congelado sin justificación. */
     justificacion: string | null | undefined,
-  ): Promise<'EN_APP' | 'KIT_CREADO' | 'SIN_KIT'> {
+  ): Promise<'EN_APP' | 'KIT_CREADO'> {
     let kit = await this.prisma.kitElectoral.findFirst({
       where: { eventoId: evento.id, recintoId: p.recintoId, esPrueba: false },
       select: { id: true, operadorId: true },
@@ -459,13 +535,13 @@ export class ParejasCdaService {
     if (cambia && justificacion === null) throw new BadRequestException(MENSAJE_CONGELADO);
     let creado = false;
     if (!kit) {
-      if (!p.articulos) return 'SIN_KIT';
-      const detalleItems = await this.detalleDeArticulos(p.articulos);
+      // Sin artículos en la pareja: KitsService pone los activos del catálogo.
+      const detalleItems = p.articulos ? await this.detalleDeArticulos(p.articulos) : undefined;
       const nuevo = await this.kits.create({
         eventoId: evento.id,
         nombre: `Kit Recinto ${p.recinto.codigoRecinto}`,
         recintoId: p.recintoId,
-        detalleItems,
+        ...(detalleItems && { detalleItems }),
       });
       kit = { id: nuevo.id, operadorId: null };
       creado = true;
@@ -525,9 +601,40 @@ export class ParejasCdaService {
   }
 
   private async validarRecinto(recintoId: string) {
-    const r = await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { activo: true, tipo: true } });
+    const r = await this.prisma.recinto.findUnique({
+      where: { id: recintoId },
+      select: { activo: true, tipo: true, codigoRecinto: true, nombre: true },
+    });
     if (!r || !r.activo) throw new NotFoundException('Recinto no encontrado');
     if (r.tipo !== 'CDA') throw new BadRequestException('El recinto no es CDA');
+    return r;
+  }
+
+  private async eventoPorId(id: string) {
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id }, select: { id: true, estado: true, fechaJornada: true } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    return evento;
+  }
+
+  /** Antes de crear el kit: ni el operador ni el asistente pueden tener ya pareja ese día. */
+  private async libresEseDia(fecha: Date, dia: string, operadorCdaId: string, asistenteCdaId: string | null) {
+    const personas = [operadorCdaId, ...(asistenteCdaId ? [asistenteCdaId] : [])];
+    const ocupada = await this.prisma.parejaCda.findFirst({
+      where: { fecha, OR: [{ operadorCdaId: { in: personas } }, { asistenteCdaId: { in: personas } }] },
+      select: { operadorCdaId: true, asistenteCdaId: true },
+    });
+    if (!ocupada) return;
+    const quien = [ocupada.operadorCdaId, ocupada.asistenteCdaId].includes(operadorCdaId) ? 'operador' : 'asistente';
+    throw new ConflictException(`El ${quien} ya tiene pareja el ${dia}`);
+  }
+
+  /** Crea (o vincula) la cuenta de la app del operador y devuelve su usuario. */
+  private async crearCuentaOperador(operadorCdaId: string): Promise<string> {
+    const hash = await this.cuentas.hashInicial();
+    await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, operadorCdaId, hash));
+    const op = await this.prisma.operadorCda.findUnique({ where: { id: operadorCdaId }, select: { usuarioId: true } });
+    if (!op?.usuarioId) throw new BadRequestException('El operador está oculto: no tiene cuenta de la app');
+    return op.usuarioId;
   }
 
   /** Traduce el choque de únicos (misma persona dos veces el mismo día) a un 409 legible. */

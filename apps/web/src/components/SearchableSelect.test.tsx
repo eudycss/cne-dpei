@@ -29,6 +29,17 @@ function ControlledSelect({ onChange }: { onChange?: (v: string) => void }) {
 }
 
 describe('SearchableSelect', () => {
+  it('deshabilitado no se abre ni cambia el valor', async () => {
+    const onChange = vi.fn();
+    render(<SearchableSelect options={OPTIONS} value="" onChange={onChange} placeholder="— Selecciona —" disabled />);
+
+    const boton = screen.getByRole('button', { name: '— Selecciona —' });
+    expect(boton).toBeDisabled();
+    await userEvent.setup().click(boton);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('se renderiza inicialmente como botón mostrando el placeholder', () => {
     render(<ControlledSelect />);
     expect(screen.getByRole('button', { name: '— Selecciona —' })).toBeInTheDocument();

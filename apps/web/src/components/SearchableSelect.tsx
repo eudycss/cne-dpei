@@ -14,6 +14,11 @@ interface Props {
   placeholder: string;
   searchPlaceholder?: string;
   required?: boolean;
+  disabled?: boolean;
+  /** id del <label> visible: el botón se anuncia como "etiqueta + valor". */
+  labelId?: string;
+  /** id del texto de ayuda (p. ej. por qué está deshabilitado). */
+  describedBy?: string;
 }
 
 const MAX_RESULTS = 12;
@@ -31,6 +36,9 @@ export function SearchableSelect({
   placeholder,
   searchPlaceholder,
   required,
+  disabled,
+  labelId,
+  describedBy,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [search, setSearch] = useState('');
@@ -105,6 +113,9 @@ export function SearchableSelect({
       <button
         type="button"
         onClick={openEditing}
+        disabled={disabled}
+        aria-labelledby={labelId ? `${labelId} ${listboxId}-valor` : undefined}
+        aria-describedby={describedBy}
         aria-haspopup="listbox"
         aria-expanded={false}
         aria-required={required}
@@ -121,10 +132,12 @@ export function SearchableSelect({
           background: 'var(--bg-card)',
           color: selected ? 'var(--text)' : 'var(--text-muted)',
           textAlign: 'left',
-          cursor: 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
         }}
       >
         <span
+          id={`${listboxId}-valor`}
           style={{
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -144,6 +157,7 @@ export function SearchableSelect({
         ref={inputRef}
         type="text"
         role="combobox"
+        aria-labelledby={labelId}
         aria-expanded="true"
         aria-controls={listboxId}
         aria-required={required}

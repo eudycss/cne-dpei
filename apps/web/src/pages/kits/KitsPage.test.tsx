@@ -38,6 +38,11 @@ let recintosActuales: { id: string; codigoRecinto: string; nombre: string }[];
 let operadoresActuales: { id: string; nombres: string; apellidos: string; cedula: string }[] = [];
 let kitsActuales: Kit[] = [];
 let recintosOcupadosActuales: string[] = [];
+let disponiblesActuales: {
+  operadores: { id: string; apellidosNombres: string; cedula: string; telefono: string | null }[];
+  asistentes: { id: string; apellidosNombres: string; cedula: string; telefono: string | null }[];
+  recintos: unknown[];
+} = { operadores: [], asistentes: [], recintos: [] };
 
 function mockApiResponses() {
   getMock.mockImplementation((url: string) => {
@@ -63,6 +68,9 @@ function mockApiResponses() {
       return Promise.resolve({
         data: { items: operadoresActuales, total: operadoresActuales.length, page: 1, pageSize: 100 },
       });
+    }
+    if (url.startsWith('/parejas-cda/disponibles-kit')) {
+      return Promise.resolve({ data: disponiblesActuales });
     }
     if (url.startsWith('/kits/recintos-ocupados')) {
       return Promise.resolve({ data: recintosOcupadosActuales });
@@ -98,6 +106,7 @@ describe('KitsPage — botones de escritura ocultos para no-admin', () => {
     operadoresActuales = [];
     kitsActuales = [];
     recintosOcupadosActuales = [];
+    disponiblesActuales = { operadores: [], asistentes: [], recintos: [] };
     mockApiResponses();
   });
 
@@ -160,6 +169,7 @@ describe('KitsPage — CreateKitModal', () => {
     operadoresActuales = [];
     kitsActuales = [];
     recintosOcupadosActuales = [];
+    disponiblesActuales = { operadores: [], asistentes: [], recintos: [] };
     mockApiResponses();
   });
 
@@ -257,6 +267,103 @@ describe('KitsPage — CreateKitModal', () => {
         }),
       ),
     );
+  });
+
+  describe('operador y asistente en el mismo paso', () => {
+    const OPERADOR = { id: '77777777-7777-4777-8777-777777777777', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null };
+    const ASISTENTE = { id: '88888888-8888-4888-8888-888888888888', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null };
+
+    beforeEach(() => {
+      disponiblesActuales = { operadores: [OPERADOR], asistentes: [ASISTENTE], recintos: [] };
+    });
+
+    it('pide los disponibles del evento y crea el kit con su operador y asistente en un solo envío', async () => {
+      const user = await openCreateModal();
+      postMock.mockResolvedValueOnce({ data: {} });
+
+      expect(getMock).toHaveBeenCalledWith('/parejas-cda/disponibles-kit?eventoId=55555555-5555-5555-5555-555555555555');
+      await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+      await user.click(screen.getByText('28 — Escuela Central'));
+      await user.click(screen.getByRole('button', { name: /Sin operador/ }));
+      await user.click(await screen.findByText('PÉREZ ANA'));
+      await user.click(screen.getByRole('button', { name: /Sin asistente/ }));
+      await user.click(await screen.findByText('RUIZ JUAN'));
+      await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith('/parejas-cda/kit', {
+          eventoId: '55555555-5555-5555-5555-555555555555',
+          recintoId: '33333333-3333-3333-3333-333333333333',
+          operadorCdaId: OPERADOR.id,
+          asistenteCdaId: ASISTENTE.id,
+          detalleItems: [
+            { itemId: '11111111-1111-1111-1111-111111111111', serie: null, estado: 'BUENO' },
+            { itemId: '22222222-2222-2222-2222-222222222222', serie: null, estado: 'BUENO' },
+          ],
+        }),
+      );
+    });
+
+    it('cada combo se anuncia con su etiqueta y el error se lee como alerta', async () => {
+      const user = await openCreateModal();
+
+      expect(screen.getByRole('button', { name: /^Operador CDA.*Sin operador/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Asistente CDA.*Sin asistente/ })).toHaveAccessibleDescription(
+        /Elija primero un operador/,
+      );
+      await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Selecciona un recinto');
+    });
+
+    it('al marcar kit de prueba se olvidan el operador y el asistente elegidos', async () => {
+      const user = await openCreateModal();
+      await user.click(screen.getByRole('button', { name: /Sin operador/ }));
+      await user.click(await screen.findByText('PÉREZ ANA'));
+
+      await user.click(screen.getByLabelText(/Es un kit de prueba/));
+      await user.click(screen.getByLabelText(/Es un kit de prueba/));
+
+      expect(screen.getByRole('button', { name: /Sin operador/ })).toBeInTheDocument();
+    });
+
+    it('el asistente se elige solo después del operador', async () => {
+      await openCreateModal();
+
+      expect(screen.getByRole('button', { name: /Sin asistente/ })).toBeDisabled();
+      expect(screen.getByText(/solo aparecen quienes aún no tienen kit ni pareja/i)).toBeInTheDocument();
+    });
+
+    it('jornada iniciada: pide la justificación y la envía al reintentar', async () => {
+      const user = await openCreateModal();
+      postMock
+        .mockRejectedValueOnce({ response: { data: { message: 'Las asignaciones están congeladas', frozen: true } } })
+        .mockResolvedValueOnce({ data: {} });
+
+      await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+      await user.click(screen.getByText('28 — Escuela Central'));
+      await user.click(screen.getByRole('button', { name: /Sin operador/ }));
+      await user.click(await screen.findByText('PÉREZ ANA'));
+      await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+      await user.type(await screen.findByLabelText('Justificación (requerida)'), 'Reemplazo por enfermedad');
+      await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+      await waitFor(() =>
+        expect(postMock).toHaveBeenLastCalledWith(
+          '/parejas-cda/kit',
+          expect.objectContaining({ justificacion: 'Reemplazo por enfermedad' }),
+        ),
+      );
+    });
+
+    it('un kit de prueba no lleva operador ni asistente', async () => {
+      const user = await openCreateModal();
+
+      await user.click(screen.getByLabelText(/Es un kit de prueba/));
+
+      expect(screen.queryByRole('button', { name: /Sin operador/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Sin asistente/ })).not.toBeInTheDocument();
+    });
   });
 
   it('"+ Agregar otro" crea el ítem en el catálogo y lo deja marcado en el checklist', async () => {

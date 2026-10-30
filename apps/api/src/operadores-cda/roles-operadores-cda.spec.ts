@@ -48,12 +48,22 @@ describe('RBAC de Operadores CDA', () => {
     expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
 
-  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'eliminar', 'aplicar', 'importar'])(
+  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
     'parejas.%s: solo administrador',
     (metodo) => {
       expect(rolesDe(ParejasCdaController, metodo)).toEqual(['ADMINISTRADOR']);
     },
   );
+
+  it('parejas.disponiblesKit: ?eventoId= obligatorio y con forma de id (si no, 400)', () => {
+    const disponiblesParaKit = jest.fn();
+    const ctrl = new ParejasCdaController({ disponiblesParaKit } as never);
+    ctrl.disponiblesKit('11111111-1111-4111-8111-111111111111');
+    expect(disponiblesParaKit).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111');
+    for (const v of [undefined, '', 'abc', ['11111111-1111-4111-8111-111111111111']]) {
+      expect(() => ctrl.disponiblesKit(v)).toThrow(BadRequestException);
+    }
+  });
 
   it('parejas.importar: ?app=false guarda sin pasar a la app', () => {
     const importar = jest.fn();
