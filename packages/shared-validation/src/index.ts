@@ -452,6 +452,14 @@ export const llegadaRecintoManualSchema = z.object({
   recintoId: z.string().uuid(),
 });
 
+// El operador olvidó marcar la llegada al DPEI: el administrador la registra
+// desde la web y deja constancia del motivo.
+export const llegadaDpiManualSchema = z
+  .object({
+    motivo: z.string().trim().min(5, 'Escriba el motivo (mínimo 5 caracteres)').max(500, 'Máximo 500 caracteres'),
+  })
+  .strict();
+
 // Prueba de conexión: el operador confirma a la vista que el recinto tiene
 // conexión, después de la llegada y antes de la salida. Solo guarda la hora.
 export const pruebaConexionSchema = z.object({

@@ -346,6 +346,22 @@ const AUDIT_TABLE: Array<{
   { method: 'POST', pathRegex: /^\/tracking\/recepcion-kit$/, accion: 'RECEPCION_KIT', entidad: 'recepciones_kit' },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto$/, accion: 'REGISTRO_LLEGADA_RECINTO', entidad: 'eventos_tracking' },
   // HU13 Parte B — registro manual de llegada por supervisor (recintos esDificilAcceso)
+  // Llegada al DPEI que el operador olvidó marcar: la registra el administrador con un motivo.
+  {
+    method: 'POST',
+    pathRegex: /^\/tracking\/operadores\/[^/]+\/llegada-dpi-manual$/,
+    accion: 'LLEGADA_DPI_MANUAL',
+    entidad: 'eventos_tracking',
+    entidadId: (req) => String(req.params?.operadorId ?? '').slice(0, 40) || undefined,
+    resumen: (res, req) => {
+      const motivo = (req.body as { motivo?: unknown } | undefined)?.motivo;
+      const ocurridoEn = (res as { ocurridoEn?: unknown } | null)?.ocurridoEn;
+      return {
+        motivo: typeof motivo === 'string' ? motivo.trim().slice(0, 300) : null,
+        ocurridoEn: typeof ocurridoEn === 'string' ? ocurridoEn.slice(0, 40) : null,
+      };
+    },
+  },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto-manual$/, accion: 'REGISTRO_LLEGADA_RECINTO_MANUAL', entidad: 'eventos_tracking', campos: ['recintoId', 'operadorId', 'ocurridoEn'] },
 ];
 

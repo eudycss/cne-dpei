@@ -170,6 +170,7 @@ model Usuario {
   actasCdaEntregadas    ActaEntregaCda[] @relation("ActaEntregaCdaEntregaPor")
   actasCdaCreadas       ActaEntregaCda[] @relation("ActaEntregaCdaCreadoPor")
   cambiosCargoCda       CambioCargoCda[] @relation("CambioCargoCdaHechoPor")
+  llegadasDpiManuales   EventoTracking[] @relation("LlegadaDpiManualPor")
 
   @@map("usuarios")
 }
@@ -470,6 +471,11 @@ model EventoTracking {
   // las actas antes de poder registrar la salida del recinto.
   actaInstalacionUrl String? @map("acta_instalacion_url") @db.VarChar(512)
   actaEscrutinioUrl  String? @map("acta_escrutinio_url") @db.VarChar(512)
+  // Solo en una LLEGADA_DPI registrada desde la web por un administrador
+  // (el operador olvidó marcarla): quién la registró y por qué.
+  registradoPorId String?  @map("registrado_por_id") @db.Uuid
+  motivoManual    String?  @map("motivo_manual") @db.VarChar(500)
+  registradoPor   Usuario? @relation("LlegadaDpiManualPor", fields: [registradoPorId], references: [id], onDelete: SetNull)
 
   @@index([operadorId, eventoId], map: "idx_tracking_operador")
   @@index([tipo], map: "idx_tracking_tipo")

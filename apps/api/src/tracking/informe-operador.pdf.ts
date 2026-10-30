@@ -34,6 +34,8 @@ export interface JornadaOperador {
   pruebaConexion: Date | null;
   salidaRecinto: Date | null;
   llegadaDpi: Date | null;
+  /** Registrada por un administrador desde la web (el operador olvidó marcarla). */
+  llegadaDpiManual?: boolean;
 }
 
 /** Todo lo que lleva el informe de un operador (las fotos se piden al dibujarlo). */
@@ -115,7 +117,7 @@ export async function generarReporteGeneralPdf(
         hito(f.llegadaRecinto),
         ...(incluirJornada ? [hito(f.pruebaConexion)] : []),
         hito(f.salidaRecinto),
-        hito(f.llegadaDpi),
+        hitoLlegadaDpi(f),
       ]),
       ANCHO_HORIZONTAL,
     );
@@ -131,6 +133,10 @@ export async function generarReporteGeneralPdf(
 
 function hito(d: Date | null): string {
   return d ? fecha(d) : 'Pendiente';
+}
+
+function hitoLlegadaDpi(j: { llegadaDpi: Date | null; llegadaDpiManual?: boolean }): string {
+  return j.llegadaDpi && j.llegadaDpiManual ? `${hito(j.llegadaDpi)} (registrada por el administrador)` : hito(j.llegadaDpi);
 }
 
 function sinOperadores(doc: PDFKit.PDFDocument): void {
@@ -176,7 +182,7 @@ function dibujarInforme(
     valores.push(a.pruebaConexion ? `Conexión verificada ${fecha(a.pruebaConexion)}` : 'Pendiente');
   }
   columnas.push('Salida del recinto', 'Llegada al DPI');
-  valores.push(hito(a.salidaRecinto), hito(a.llegadaDpi));
+  valores.push(hito(a.salidaRecinto), hitoLlegadaDpi(a));
   if (incluirJornada) {
     // Día de elecciones: una fila con todos los hitos (como el reporte de flujo).
     tabla(doc, columnas, columnas.map(() => 1 / columnas.length), [valores]);

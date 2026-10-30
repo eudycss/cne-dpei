@@ -584,6 +584,10 @@ export interface LlegadaRecintoManualRequest {
   recintoId: string;
 }
 
+export interface LlegadaDpiManualRequest {
+  motivo: string;
+}
+
 export interface LlegadaRecintoManualResponse {
   id: string;
   ocurridoEn: string;
@@ -750,6 +754,8 @@ export interface ReporteFlujoItem {
   pruebaConexionEn: string | null;
   salidaRecintoEn: string | null;
   llegadaDpiEn: string | null;
+  /** La llegada al DPEI la registró un administrador desde la web (el operador olvidó marcarla). */
+  llegadaDpiManual: boolean;
 }
 
 /** Usuario que puede firmar el Informe del Operador CDA como responsable. */

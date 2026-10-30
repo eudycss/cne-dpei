@@ -159,5 +159,6 @@ function jornada(f: ReporteFlujoItem): JornadaOperador {
     pruebaConexion: aFecha(f.pruebaConexionEn),
     salidaRecinto: aFecha(f.salidaRecintoEn),
     llegadaDpi: aFecha(f.llegadaDpiEn),
+    llegadaDpiManual: f.llegadaDpiManual,
   };
 }

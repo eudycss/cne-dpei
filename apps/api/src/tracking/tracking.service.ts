@@ -1765,13 +1765,15 @@ export class TrackingService {
         operadorId: { in: operadorIds },
         tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'PRUEBA_CONEXION', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
       },
-      select: { operadorId: true, tipo: true, ocurridoEn: true },
+      select: { operadorId: true, tipo: true, ocurridoEn: true, registradoPorId: true },
     });
     const hitosPorOperador = new Map<string, Map<string, Date>>();
+    const llegadaManual = new Set<string>();
     for (const h of hitos) {
       const mapa = hitosPorOperador.get(h.operadorId) ?? new Map<string, Date>();
       mapa.set(h.tipo, h.ocurridoEn);
       hitosPorOperador.set(h.operadorId, mapa);
+      if (h.tipo === 'LLEGADA_DPI' && h.registradoPorId) llegadaManual.add(h.operadorId);
     }
 
     return cdas.map((cda) => {
@@ -1794,6 +1796,7 @@ export class TrackingService {
         pruebaConexionEn: mapa?.get('PRUEBA_CONEXION')?.toISOString() ?? null,
         salidaRecintoEn: mapa?.get('SALIDA_RECINTO')?.toISOString() ?? null,
         llegadaDpiEn: mapa?.get('LLEGADA_DPI')?.toISOString() ?? null,
+        llegadaDpiManual: llegadaManual.has(operadorId),
       };
     });
   }
@@ -2003,10 +2006,76 @@ export class TrackingService {
         now()
       )
       RETURNING id;
-    `)[0].id;
+    `.catch((e: unknown) => {
+      // El administrador la registró desde la web al mismo tiempo (uq_tracking_llegada_dpi).
+      if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu llegada al DPI');
+      throw e;
+    }))[0].id;
 
+    await this.cerrarLlegadaDpi(evento.id, operadorId, recintoId, ocurridoEn);
+    return { id, ocurridoEn: ocurridoEn.toISOString() };
+  }
+
+  /**
+   * El operador olvidó marcar la llegada al DPEI y sigue en el mapa: un
+   * administrador la registra desde la web con la hora actual y un motivo.
+   * Queda como una llegada más (historial e informe), marcada como manual;
+   * a diferencia de "Resetear estado", no borra nada.
+   */
+  async registrarLlegadaDpiManual(operadorId: string, motivo: string, adminId: string): Promise<LlegadaDpiResponse> {
+    const evento = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' } });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+
+    const operador = await this.prisma.usuario.findFirst({
+      where: { id: operadorId, roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } } },
+      select: { id: true },
+    });
+    if (!operador) throw new NotFoundException('Operador no encontrado');
+
+    const existente = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
+      select: { id: true },
+    });
+    if (existente) throw new ConflictException('Este operador ya tiene registrada la llegada al DPEI');
+
+    const salida = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
+      select: { id: true },
+    });
+    if (!salida) throw new BadRequestException('El operador aún no registra la salida del recinto');
+
+    const kit = await this.prisma.kitElectoral.findFirst({
+      where: { eventoId: evento.id, operadorId },
+      select: { recintoId: true },
+    });
+    const recintoId = kit?.recintoId ?? null;
+    const llegada = await this.prisma.eventoTracking
+      .create({
+        data: {
+          eventoId: evento.id,
+          operadorId,
+          tipo: 'LLEGADA_DPI',
+          recintoId,
+          ocurridoEn: new Date(),
+          registradoPorId: adminId,
+          motivoManual: motivo,
+        },
+        select: { id: true, ocurridoEn: true },
+      })
+      .catch((e: unknown) => {
+        // El operador la marcó en la app al mismo tiempo (uq_tracking_llegada_dpi).
+        if (esUnicoRepetido(e)) throw new ConflictException('Este operador ya tiene registrada la llegada al DPEI');
+        throw e;
+      });
+
+    await this.cerrarLlegadaDpi(evento.id, operadorId, recintoId, llegada.ocurridoEn);
+    return { id: llegada.id, ocurridoEn: llegada.ocurridoEn.toISOString() };
+  }
+
+  /** Tras registrar la llegada al DPEI: kits en retorno → RETORNADO y aviso a supervisor y administradores. */
+  private async cerrarLlegadaDpi(eventoId: string, operadorId: string, recintoId: string | null, ocurridoEn: Date) {
     await this.prisma.kitElectoral.updateMany({
-      where: { eventoId: evento.id, operadorId, estado: 'EN_RETORNO' },
+      where: { eventoId, operadorId, estado: 'EN_RETORNO' },
       data: { estado: 'RETORNADO' },
     });
 
@@ -2020,7 +2089,7 @@ export class TrackingService {
 
     await this.notifications.encolarLlegadaDpi({
       operadorId,
-      eventoId: evento.id,
+      eventoId,
       payload: {
         operadorId,
         operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
@@ -2028,8 +2097,6 @@ export class TrackingService {
         ocurridoEn: ocurridoEn.toISOString(),
       },
     });
-
-    return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
 
   async resetEstadoOperador(operadorId: string): Promise<{ kitsReseteados: number }> {
@@ -2057,6 +2124,12 @@ export class TrackingService {
 
     return { kitsReseteados: kitIds.length };
   }
+}
+
+/** Choque con un índice único: P2002 (cliente de Prisma) o 23505 dentro de un $queryRaw (P2010). */
+function esUnicoRepetido(e: unknown): boolean {
+  const err = e as { code?: string; meta?: { code?: string } } | null;
+  return err?.code === 'P2002' || (err?.code === 'P2010' && err.meta?.code === '23505');
 }
 
 /** Detecta el content-type de una imagen a partir de sus magic bytes. */

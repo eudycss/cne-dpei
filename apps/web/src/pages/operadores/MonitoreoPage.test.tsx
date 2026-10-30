@@ -13,6 +13,12 @@ vi.mock('../../lib/queries/monitoreo', () => ({
   getEstadoCdas: vi.fn(),
   getFotoMilitar: vi.fn(),
   getFotoActa: vi.fn(),
+  registrarLlegadaDpiManual: vi.fn(),
+}));
+
+let rolesSesion: string[] = ['ADMINISTRADOR'];
+vi.mock('../../auth/AuthContext', () => ({
+  useAuth: () => ({ user: { roles: rolesSesion } }),
 }));
 
 const flyToMock = vi.fn();
@@ -118,6 +124,31 @@ function renderPage() {
 describe('MonitoreoPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    rolesSesion = ['ADMINISTRADOR'];
+  });
+
+  describe('llegada al DPEI olvidada', () => {
+    it('el administrador puede registrarla para quien va en retorno (no para quien va de ida)', async () => {
+      getOperadoresMock.mockResolvedValue([operadorRetorno, operadorTransito]);
+      getEstadoCdasMock.mockResolvedValue([]);
+      renderPage();
+
+      const boton = await screen.findByRole('button', { name: 'Registrar llegada al DPEI de Juan Pérez' });
+      expect(screen.queryByRole('button', { name: /Registrar llegada al DPEI de Carla Suárez/ })).not.toBeInTheDocument();
+
+      await userEvent.setup().click(boton);
+      expect(screen.getByRole('dialog', { name: 'Registrar llegada al DPEI' })).toBeInTheDocument();
+    });
+
+    it('el técnico supervisor no ve el botón', async () => {
+      rolesSesion = ['TECNICO_SUPERVISOR'];
+      getOperadoresMock.mockResolvedValue([operadorRetorno]);
+      getEstadoCdasMock.mockResolvedValue([]);
+      renderPage();
+
+      await screen.findAllByText('Juan Pérez');
+      expect(screen.queryByRole('button', { name: /Registrar llegada al DPEI/ })).not.toBeInTheDocument();
+    });
   });
 
   it('muestra "Cargando…" mientras las queries están pendientes', () => {
