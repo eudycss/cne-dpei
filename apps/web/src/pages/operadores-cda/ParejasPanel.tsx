@@ -249,9 +249,12 @@ export function ParejasPanel() {
             </span>
           </div>
           <p className="muted" role="status">
-            {q ? `${visibles.length} de ${parejas.length} pareja(s)` : `${parejas.length} pareja(s) en ${recintos} recinto(s)`}
+            {!q
+              ? `${parejas.length} pareja(s) en ${recintos} recinto(s)`
+              : visibles.length
+                ? `${visibles.length} de ${parejas.length} pareja(s)`
+                : `Ninguna pareja coincide con "${busqueda.trim()}".`}
           </p>
-          {q && visibles.length === 0 && <p className="muted">Ninguna pareja coincide con "{busqueda.trim()}".</p>}
           <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
             <table>
               <caption className="sr-only">Parejas del {dia}: operador, asistente, recinto y estado en la app</caption>

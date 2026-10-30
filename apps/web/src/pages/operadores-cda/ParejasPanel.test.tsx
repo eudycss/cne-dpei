@@ -349,8 +349,13 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(filas()[0]).toHaveTextContent('957 · UE ATAHUALPA');
 
     await userEvent.clear(buscar);
+    await userEvent.type(buscar, '1712345683');
+    expect(filas()).toHaveLength(1);
+    expect(filas()[0]).toHaveTextContent('SOLÍS PEDRO');
+
+    await userEvent.clear(buscar);
     await userEvent.type(buscar, 'zzz');
-    expect(screen.getByText('Ninguna pareja coincide con "zzz".')).toBeInTheDocument();
+    expect(screen.getByText('Ninguna pareja coincide con "zzz".')).toHaveAttribute('role', 'status');
   });
 
   describe('cambiar operador, asistente o recinto', () => {
