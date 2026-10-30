@@ -201,6 +201,51 @@ describe('KitsPage — CreateKitModal', () => {
     expect(screen.queryByText('30 — Escuela Norte')).not.toBeInTheDocument();
   });
 
+  it('"Este recinto lleva otro dispositivo" muestra también los recintos con kit y lo envía', async () => {
+    recintosOcupadosActuales = ['99999999-9999-9999-9999-999999999999'];
+    const user = await openCreateModal();
+    postMock.mockResolvedValueOnce({ data: {} });
+
+    await user.click(screen.getByLabelText(/Este recinto lleva otro dispositivo/));
+    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByText('30 — Escuela Norte (ya tiene kit)'));
+    await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith(
+        '/kits',
+        expect.objectContaining({ recintoId: '99999999-9999-9999-9999-999999999999', otroDispositivo: true }),
+      ),
+    );
+  });
+
+  it('al quitar la casilla se borra el recinto que ya tenía kit, y el cambio se anuncia', async () => {
+    recintosOcupadosActuales = ['99999999-9999-9999-9999-999999999999'];
+    const user = await openCreateModal();
+
+    const casilla = screen.getByLabelText(/Este recinto lleva otro dispositivo/);
+    expect(casilla).toHaveAccessibleDescription(/Solo se muestran recintos sin kit/);
+    await user.click(casilla);
+    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByText('30 — Escuela Norte (ya tiene kit)'));
+    await user.click(casilla);
+
+    expect(screen.getByRole('button', { name: '— Selecciona un recinto —' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/Se quitó el recinto elegido porque ya tiene kit/);
+  });
+
+  it('sin la casilla no se envía "otro dispositivo"', async () => {
+    const user = await openCreateModal();
+    postMock.mockResolvedValueOnce({ data: {} });
+
+    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByText('28 — Escuela Central'));
+    await user.click(screen.getByRole('button', { name: 'Crear kit' }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalled());
+    expect(postMock.mock.calls[0][1]).not.toHaveProperty('otroDispositivo');
+  });
+
   it('los ítems del catálogo aparecen todos marcados por defecto', async () => {
     await openCreateModal();
 

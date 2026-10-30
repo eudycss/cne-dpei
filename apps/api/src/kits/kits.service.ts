@@ -96,9 +96,22 @@ export class KitsService {
     const recinto = await this.prisma.recinto.findUnique({ where: { id: parsed.recintoId } });
     if (!recinto || recinto.activo === false) throw new NotFoundException('Recinto no encontrado');
 
-    // Un recinto solo puede tener un kit real (no de prueba) por evento —
-    // los kits de prueba no cuentan como "ocupando" el recinto.
-    if (!parsed.esPrueba) {
+    // Un recinto lleva un kit real (no de prueba) por evento — los kits de
+    // prueba no cuentan como "ocupando" el recinto. Si el recinto lleva otro
+    // dispositivo, se acepta un kit más y su nombre lleva el número.
+    let nombre = parsed.nombre;
+    if (!parsed.esPrueba && parsed.otroDispositivo) {
+      const yaTiene = await this.prisma.kitElectoral.count({
+        where: { eventoId: parsed.eventoId, recintoId: parsed.recintoId, esPrueba: false },
+      });
+      if (yaTiene >= MAX_KITS_POR_RECINTO) {
+        throw new ConflictException(`Este recinto ya tiene ${yaTiene} kits (el máximo)`);
+      }
+      if (yaTiene > 0) {
+        const sufijo = ` (kit ${yaTiene + 1})`;
+        nombre = `${parsed.nombre.slice(0, 160 - sufijo.length)}${sufijo}`;
+      }
+    } else if (!parsed.esPrueba) {
       const ocupado = await this.prisma.kitElectoral.findFirst({
         where: { eventoId: parsed.eventoId, recintoId: parsed.recintoId, esPrueba: false },
       });
@@ -126,7 +139,7 @@ export class KitsService {
         eventoId: parsed.eventoId,
         codigoUnico,
         qrPayload,
-        nombre: parsed.nombre,
+        nombre,
         contenidos: parsed.contenidos ?? null,
         recintoId: parsed.recintoId,
         estado: 'ASIGNADO',
@@ -765,6 +778,9 @@ function toKitDto(k: any): Kit {
     creadoEn: k.creadoEn?.toISOString?.() ?? String(k.creadoEn),
   };
 }
+
+/** Kits reales que puede llevar un recinto que "lleva otro dispositivo". */
+const MAX_KITS_POR_RECINTO = 5;
 
 export const MENSAJE_KIT_SIN_ARTICULOS =
   'El kit debe tener al menos un artículo (sin ellos no se puede verificar al retorno)';

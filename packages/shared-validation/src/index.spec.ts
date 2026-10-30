@@ -551,6 +551,11 @@ describe('crearKitConParejaCdaSchema (Nuevo kit en un paso)', () => {
     expect(crearKitConParejaCdaSchema.safeParse({ ...base, asistenteCdaId: base.operadorCdaId }).success).toBe(false);
   });
 
+  it('"otro dispositivo" es un booleano opcional', () => {
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, otroDispositivo: true }).success).toBe(true);
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, otroDispositivo: 'si' }).success).toBe(false);
+  });
+
   it('no acepta campos de más (p. ej. operadorId de Usuarios)', () => {
     expect(crearKitConParejaCdaSchema.safeParse({ ...base, operadorId: base.operadorCdaId }).success).toBe(false);
   });

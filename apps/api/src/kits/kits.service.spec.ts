@@ -167,6 +167,69 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
     });
 
+    it('"otro dispositivo": acepta un segundo kit real en el recinto y lo numera en el nombre', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: '28 — Escuela Central', recintoId, contenidos: 'Acta', otroDispositivo: true } as any);
+
+      expect(prisma.kitElectoral.findFirst).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.count).toHaveBeenCalledWith({ where: { eventoId, recintoId, esPrueba: false } });
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.nombre).toBe('28 — Escuela Central (kit 2)');
+    });
+
+    it('"otro dispositivo" con un nombre largo: recorta el nombre, no el número del kit', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: 'x'.repeat(160), recintoId, contenidos: 'Acta', otroDispositivo: true } as any);
+
+      const nombre = prisma.kitElectoral.create.mock.calls[0][0].data.nombre as string;
+      expect(nombre).toHaveLength(160);
+      expect(nombre.endsWith(' (kit 2)')).toBe(true);
+    });
+
+    it('"otro dispositivo": como máximo 5 kits reales por recinto', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(5);
+
+      await expect(
+        service.create({ eventoId, nombre: 'Kit', recintoId, contenidos: 'Acta', otroDispositivo: true } as any),
+      ).rejects.toThrow('Este recinto ya tiene 5 kits (el máximo)');
+      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+    });
+
+    it('"otro dispositivo" no aplica a un kit de prueba (no cuenta ni cambia el nombre)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId, esPrueba: true }));
+
+      await service.create({ eventoId, nombre: 'Kit', recintoId, contenidos: 'Acta', esPrueba: true, otroDispositivo: true } as any);
+
+      expect(prisma.kitElectoral.count).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.nombre).toBe('Kit');
+    });
+
+    it('"otro dispositivo" en un recinto sin kit: es el primero y no cambia el nombre', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: '28 — Escuela Central', recintoId, contenidos: 'Acta', otroDispositivo: true } as any);
+
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.nombre).toBe('28 — Escuela Central');
+    });
+
     it('permite crear un kit de prueba aunque el recinto ya tenga un kit real', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
