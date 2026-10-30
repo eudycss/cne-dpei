@@ -1167,6 +1167,15 @@ export interface EditarParejaCdaRequest {
   justificacion?: string;
 }
 
+export type CampoParejaCda = 'OPERADOR' | 'ASISTENTE' | 'RECINTO';
+
+/** Intercambiar un campo con otra pareja del mismo día. */
+export interface IntercambiarParejaCdaRequest {
+  conId: string;
+  campo: CampoParejaCda;
+  justificacion?: string;
+}
+
 export interface FilaImportParejaCda {
   fila: number;
   operador: { cedula: string; nombre: string | null; nuevo: boolean };

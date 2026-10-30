@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 import { filaParejaCdaSchema } from '@cne/shared-validation';
 import type {
   AplicarParejasCdaResult,
+  CampoParejaCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
@@ -49,6 +50,9 @@ const MENSAJE_CONGELADO =
   'Las asignaciones están congeladas: ya inició la jornada. Escriba una justificación para pasar esta pareja a la app.';
 const MENSAJE_CONGELADO_KIT =
   'Las asignaciones están congeladas: ya inició la jornada. Escriba una justificación para crear y asignar este kit.';
+
+/** Un kit en estos estados aún no sale de la Delegación: su operador se puede cambiar. */
+const EN_DELEGACION = new Set(['EN_BODEGA', 'ASIGNADO']);
 
 const vacio = (): AplicarParejasCdaResult => ({ enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] });
 
@@ -175,6 +179,84 @@ export class ParejasCdaService {
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion);
     const recintos = [actual.recintoId, ...(cambiaRecinto ? [datos.recintoId as string] : [])];
     return (await this.aplicarDia(fecha, { recintos }, justificacion)) ?? vacio();
+  }
+
+  /**
+   * Intercambia el operador, el asistente o el recinto entre dos parejas del
+   * mismo día. Si cambian operador o recinto, los kits de las dos se sueltan
+   * y se vuelven a asignar según la nueva lista; si alguno ya salió de la
+   * Delegación no se cambia nada (cadena de custodia).
+   */
+  async intercambiar(id: string, conId: string, campo: CampoParejaCda, justificacion?: string): Promise<AplicarParejasCdaResult> {
+    if (id === conId) throw new BadRequestException('Elija otra pareja para intercambiar');
+    const [a, b] = await Promise.all([this.leerPareja(id), this.leerPareja(conId)]);
+    const fecha = diaDeFechaDb(a.fecha);
+    if (fecha !== diaDeFechaDb(b.fecha)) throw new BadRequestException('Las dos parejas deben ser del mismo día');
+
+    if (campo === 'ASISTENTE') {
+      if (a.asistenteCdaId === b.asistenteCdaId) throw new BadRequestException('Las dos parejas ya tienen ese asistente');
+      await this.intercambiarAsistentes(fecha, a, b);
+      return vacio();
+    }
+    if (campo === 'RECINTO' && a.recintoId === b.recintoId) throw new BadRequestException('Las dos parejas ya tienen ese recinto');
+
+    const evento = await this.eventoDeFecha(fecha);
+    if (evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }) && !justificacion?.trim()) {
+      throw new BadRequestException(MENSAJE_CONGELADO);
+    }
+    const kits = evento ? await this.kitsASoltar(evento.id, [a.kitId, b.kitId]) : [];
+    for (const k of kits) await this.kits.quitarOperador(k, justificacion, true);
+    // El kit es del recinto: cada pareja se lleva el vínculo con el kit de su
+    // nuevo recinto (así, en un recinto con dos parejas, no se va a la otra).
+    if (campo === 'RECINTO') {
+      await this.guardar(fecha, () =>
+        this.prisma.$transaction(async (tx) => {
+          await tx.parejaCda.update({ where: { id: a.id }, data: { recintoId: b.recintoId, kitId: b.kitId } });
+          await tx.parejaCda.update({ where: { id: b.id }, data: { recintoId: a.recintoId, kitId: a.kitId } });
+        }),
+      );
+    } else {
+      // Cambiar los operadores equivale a cambiar todo lo demás: así ningún
+      // operador queda dos veces en el día, ni por un instante.
+      await this.intercambiarAsistentes(fecha, a, b, (p) => ({ recintoId: p.recintoId, articulos: p.articulos, kitId: p.kitId }));
+    }
+    for (const k of kits) await this.kits.quitarOperador(k, justificacion);
+    return (await this.aplicarDia(fecha, { recintos: [a.recintoId, b.recintoId] }, justificacion)) ?? vacio();
+  }
+
+  /**
+   * Cambia los asistentes de dos parejas (y `extra` de la otra). El asistente
+   * es único por día: se libera primero el de `a`, todo en una transacción.
+   */
+  private intercambiarAsistentes<P extends { id: string; asistenteCdaId: string | null }>(
+    fecha: string,
+    a: P,
+    b: P,
+    extra: (de: P) => Prisma.ParejaCdaUncheckedUpdateInput = () => ({}),
+  ) {
+    return this.guardar(fecha, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.parejaCda.update({ where: { id: a.id }, data: { asistenteCdaId: null } });
+        await tx.parejaCda.update({ where: { id: b.id }, data: { asistenteCdaId: a.asistenteCdaId, ...extra(a) } });
+        await tx.parejaCda.update({ where: { id: a.id }, data: { asistenteCdaId: b.asistenteCdaId, ...extra(b) } });
+      }),
+    );
+  }
+
+  /**
+   * Kits del evento (el activo de ese día) que hay que soltar; si alguno ya
+   * salió de la Delegación, 409 aunque no tenga operador (es conservador).
+   */
+  private async kitsASoltar(eventoId: string, ids: (string | null)[]): Promise<string[]> {
+    const conKit = ids.filter((k): k is string => !!k);
+    if (!conKit.length) return [];
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { id: { in: conKit }, eventoId },
+      select: { id: true, codigoUnico: true, estado: true, operadorId: true },
+    });
+    const salio = kits.find((k) => !EN_DELEGACION.has(k.estado));
+    if (salio) throw new ConflictException(`El kit ${salio.codigoUnico} ya salió de la Delegación: no se puede cambiar su pareja`);
+    return kits.filter((k) => k.operadorId).map((k) => k.id);
   }
 
   /**
@@ -531,15 +613,20 @@ export class ParejasCdaService {
   ): Promise<'EN_APP' | 'KIT_CREADO'> {
     // La pareja con kit propio en este evento lo conserva; si no, toma el kit
     // del recinto que no sea de otra pareja (un recinto puede llevar dos).
-    let kit = p.kitId
-      ? await this.prisma.kitElectoral.findFirst({ where: { id: p.kitId, eventoId: evento.id }, select: { id: true, operadorId: true } })
+    const campos = { id: true, operadorId: true, estado: true, codigoUnico: true } as const;
+    let kit: { id: string; operadorId: string | null; estado?: string; codigoUnico?: string } | null = p.kitId
+      ? await this.prisma.kitElectoral.findFirst({ where: { id: p.kitId, eventoId: evento.id }, select: campos })
       : null;
     kit ??= await this.prisma.kitElectoral.findFirst({
       where: { eventoId: evento.id, recintoId: p.recintoId, esPrueba: false, parejasCda: { none: {} } },
-      select: { id: true, operadorId: true },
+      select: campos,
       orderBy: { creadoEn: 'asc' },
     });
     const cambia = !kit || kit.operadorId !== usuarioId;
+    // Quien llevó un kit que ya salió queda en su historial: no se reescribe.
+    if (cambia && kit?.estado && !EN_DELEGACION.has(kit.estado)) {
+      throw new ConflictException(`El kit ${kit.codigoUnico} ya salió de la Delegación: no se puede cambiar su operador`);
+    }
     if (cambia && justificacion === null) throw new BadRequestException(MENSAJE_CONGELADO);
     let creado = false;
     if (!kit) {

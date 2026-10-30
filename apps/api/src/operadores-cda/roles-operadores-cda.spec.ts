@@ -48,7 +48,7 @@ describe('RBAC de Operadores CDA', () => {
     expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
 
-  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
+  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'intercambiar', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
     'parejas.%s: solo administrador',
     (metodo) => {
       expect(rolesDe(ParejasCdaController, metodo)).toEqual(['ADMINISTRADOR']);

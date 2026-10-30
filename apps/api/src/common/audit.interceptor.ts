@@ -326,6 +326,8 @@ const AUDIT_TABLE: Array<{
   // Fase 2 — asignaciones operador ↔ supervisor
   { method: 'PUT',    pathRegex: /^\/asignaciones$/,         accion: 'ASIGNACION_UPSERT', entidad: 'asignacion', campos: ['eventoId', 'operadorId', 'supervisorId'] },
   { method: 'DELETE', pathRegex: /^\/asignaciones\/[^/]+$/, accion: 'ASIGNACION_DELETE', entidad: 'asignacion' },
+  // Intercambio entre dos parejas CDA del día: puede reasignar los kits en la app.
+  { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/intercambiar$/, accion: 'PAREJA_CDA_INTERCAMBIAR', entidad: 'pareja_cda', campos: ['conId', 'campo', 'justificacion'] },
   // Fase 3 — kits electorales (HU11)
   { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
   { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },

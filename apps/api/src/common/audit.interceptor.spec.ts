@@ -99,6 +99,23 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('intercambio entre parejas CDA: la pareja, con cuál, qué campo y la justificación', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: `/parejas-cda/${OTRO}/intercambiar`,
+      params: { id: OTRO },
+      body: { conId: ADMIN.sub, campo: 'RECINTO', justificacion: 'Cambio de última hora' },
+      user: ADMIN,
+    });
+
+    expect(data).toMatchObject({
+      accion: 'PAREJA_CDA_INTERCAMBIAR',
+      entidad: 'pareja_cda',
+      entidadId: OTRO,
+      datosDespues: { campos: ['conId', 'campo', 'justificacion'], conId: ADMIN.sub, campo: 'RECINTO', justificacion: 'Cambio de última hora' },
+    });
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',
