@@ -38,7 +38,9 @@ export function AsignarKitModal({
     },
   });
   const errores = asignar.data?.errores ?? [];
-  const iphone = pareja.operador.dispositivo === 'IPHONE';
+  // Lo lleva el de Android del recinto (lo decide la API); sin dato, el operador.
+  const portador = pareja.portador ?? pareja.operador;
+  const iphone = portador.dispositivo === 'IPHONE';
   const puedeAsignar = (!congelado || !!motivo) && !asignar.isPending;
 
   return (
@@ -55,12 +57,13 @@ export function AsignarKitModal({
         <h1 id="asignar-kit-titulo">Asignar kit</h1>
         <p>
           El kit del recinto <strong>{`${pareja.recinto.codigo} · ${pareja.recinto.nombre}`}</strong> quedará en la app de{' '}
-          <strong>{pareja.operador.apellidosNombres}</strong>. Si el recinto aún no tiene kit, se crea con los artículos activos
-          del catálogo.
+          <strong>{portador.apellidosNombres}</strong>
+          {portador.dispositivo === 'ANDROID' && ' (tiene Android)'}, y su nombre sale en el QR. Si el recinto aún no tiene kit, se
+          crea con los artículos activos del catálogo.
         </p>
         {iphone && (
           <p className="banner aviso">
-            {pareja.operador.apellidosNombres} usa iPhone: la APK no se instala ahí. Puede asignarle el kit igual, pero no podrá
+            {portador.apellidosNombres} usa iPhone y nadie del recinto tiene Android: la APK no se instala en iPhone. Puede asignarle el kit igual, pero no podrá
             marcar en la app; considere cambiar el operador.
           </p>
         )}

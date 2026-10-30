@@ -1107,6 +1107,8 @@ export interface RecintoParejaCda {
 }
 
 export interface ParejaCdaFila {
+  /** Quién lleva el kit (la app y el nombre del QR): el primero con Android del recinto; null en la pareja que solo queda registrada. */
+  portador: PersonaParejaCda | null;
   id: string;
   /** AAAA-MM-DD */
   fecha: string;
