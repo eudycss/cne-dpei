@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cambiarDispositivoOperadorCdaSchema,
   copiarParejasCdaSchema,
   crearParejaCdaSchema,
   editarParejaCdaSchema,
@@ -56,6 +57,15 @@ describe('parejas CDA por día', () => {
     expect(filaParejaCdaSchema.safeParse({ cedula_operador: CEDULA_OP, cedula_asistente: CEDULA_OP, codigo_recinto: '957' }).success).toBe(
       false,
     );
+  });
+
+  it('dispositivo: Android, iPhone o ninguno; nada más', () => {
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({ dispositivo: 'ANDROID' }).success).toBe(true);
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({ dispositivo: 'IPHONE' }).success).toBe(true);
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({ dispositivo: null }).success).toBe(true);
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({ dispositivo: 'iPhone' }).success).toBe(false);
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({}).success).toBe(false);
+    expect(cambiarDispositivoOperadorCdaSchema.safeParse({ dispositivo: 'ANDROID', extra: 1 }).success).toBe(false);
   });
 
   it('copiar: dos días válidos y distintos; nada más', () => {

@@ -384,6 +384,20 @@ describe('OperadoresCdaService', () => {
       expect(data).toMatchObject({ telefono: null, unidad: null, fechaInicio: null });
     });
 
+    it('dispositivo: guarda Android, iPhone o ninguno y devuelve solo eso; un id inexistente da 404', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce({ id: 'o1', dispositivo: 'IPHONE' });
+      expect(await service.cambiarDispositivo('o1', 'IPHONE')).toEqual({ id: 'o1', dispositivo: 'IPHONE' });
+      expect(prisma.operadorCda.update).toHaveBeenCalledWith({
+        where: { id: 'o1' },
+        data: { dispositivo: 'IPHONE' },
+        select: { id: true, dispositivo: true },
+      });
+
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      await expect(service.cambiarDispositivo('no-existe', null)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
     it('ocultar y reactivar cambian solo activo; un id inexistente da 404', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
       prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA_BD, activo: false });

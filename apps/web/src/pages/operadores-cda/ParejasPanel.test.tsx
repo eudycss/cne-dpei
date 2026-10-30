@@ -17,9 +17,9 @@ const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 
 const DIA = '2026-10-30';
-const ANA = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null };
-const JUAN = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null };
-const LUIS = { id: 'op2', apellidosNombres: 'MORA LUIS', cedula: '1712345675', telefono: null };
+const ANA = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, dispositivo: null };
+const JUAN = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, dispositivo: null };
+const LUIS = { id: 'op2', apellidosNombres: 'MORA LUIS', cedula: '1712345675', telefono: null, dispositivo: null };
 const R957 = { id: 'r1', codigo: '957', nombre: 'UE ATAHUALPA' };
 
 function fila(over: Partial<ParejaCdaFila> = {}): ParejaCdaFila {
@@ -309,7 +309,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     renderPagina();
     const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
     const cabeceras = within(tabla).getAllByRole('columnheader').map((c) => c.textContent);
-    expect(cabeceras.slice(0, 3)).toEqual(['Operador CDA', 'Asistente CDA', 'Recinto']);
+    expect(cabeceras).toEqual(['N°', 'Operador CDA', 'Asistente CDA', 'Recinto', 'Dispositivo', 'App', 'Acciones']);
   });
 
   it('sin día en la dirección abre el día más reciente que tiene lista', async () => {
@@ -326,7 +326,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
   });
 
   it('busca por nombre de la persona (sin importar tildes), código o nombre del recinto', async () => {
-    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null };
+    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null, dispositivo: null };
     const OTRA = fila({ id: 'p2', operador: LUIS, asistente: PEDRO, recinto: { id: 'r2', codigo: '1126', nombre: 'UE B' } });
     mockApi({ parejas: [fila(), OTRA] });
     renderPagina();
@@ -356,6 +356,106 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     await userEvent.clear(buscar);
     await userEvent.type(buscar, 'zzz');
     expect(screen.getByText('Ninguna pareja coincide con "zzz".')).toHaveAttribute('role', 'status');
+  });
+
+  it('agrupa por recinto con N°, como el Excel: un recinto con dos parejas es un solo bloque', async () => {
+    const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE B' };
+    mockApi({
+      parejas: [
+        fila(),
+        fila({ id: 'p2', operador: LUIS, asistente: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true, kitCodigo: null }),
+        fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, recinto: R1126 }),
+      ],
+    });
+    renderPagina();
+    const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+    const filas = within(tabla).getAllByRole('row').slice(1) as HTMLTableRowElement[];
+    expect(filas[0].cells[0]).toHaveTextContent('1');
+    expect(filas[0].cells[0]).toHaveAttribute('rowspan', '2');
+    expect(filas[1].cells[0]).not.toHaveTextContent(/^\d+$/);
+    expect(filas[2].cells[0]).toHaveTextContent('2');
+    expect(filas[2].cells[0]).toHaveAttribute('rowspan', '1');
+  });
+
+  describe('dispositivo de cada persona', () => {
+    it('se ve y se cambia en la tabla; avisa si quien lleva el kit tiene iPhone', async () => {
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, asistente: { ...JUAN, dispositivo: 'ANDROID' } })] });
+      const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
+      patchMock.mockResolvedValueOnce({ data: { id: 'op1', dispositivo: 'ANDROID' } });
+      renderPagina();
+      const operador = await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
+      expect(operador).toHaveValue('IPHONE');
+      expect(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' })).toHaveValue('ANDROID');
+      expect(screen.getByText('iPhone: la APK no se instala')).toBeInTheDocument();
+
+      await userEvent.selectOptions(operador, 'ANDROID');
+      await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/op1/dispositivo', { dispositivo: 'ANDROID' }));
+      // "—" = no se sabe: se guarda null.
+      patchMock.mockResolvedValueOnce({ data: { id: 'as1', dispositivo: null } });
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' }), '');
+      await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/as1/dispositivo', { dispositivo: null }));
+    });
+
+    it('la segunda pareja del recinto (sin kit) no lleva el aviso de iPhone', async () => {
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'SOLO_REGISTRADA', kitCodigo: null })] });
+      renderPagina();
+      await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
+      expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
+    });
+
+    it('quien no es administrador lo ve como texto', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, asistente: null })] });
+      renderPagina();
+      const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(within(tabla).queryByRole('combobox')).not.toBeInTheDocument();
+      expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Operador: iPhone');
+      expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Asistente: —');
+    });
+  });
+
+  describe('asignar kit desde la fila', () => {
+    const SIN_KIT = fila({ estado: 'SIN_KIT', kitCodigo: null });
+
+    it('solo en las filas "Sin kit"; confirma y asigna el kit de esa pareja', async () => {
+      mockApi({ parejas: [SIN_KIT, fila({ id: 'p2', operador: LUIS, recinto: { id: 'r2', codigo: '1126', nombre: 'UE B' } })] });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
+      expect(screen.queryByRole('button', { name: 'Asignar kit a MORA LUIS' })).not.toBeInTheDocument();
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+      expect(dialogo).toHaveTextContent('957 · UE ATAHUALPA');
+      expect(dialogo).toHaveTextContent('PÉREZ ANA');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/asignar-kit', {}));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('si el kit no se pudo asignar, el motivo queda en el diálogo', async () => {
+      mockApi({ parejas: [SIN_KIT] });
+      postMock.mockResolvedValueOnce({
+        data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'El usuario no es un OPERADOR_CDA activo' }] },
+      });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('El usuario no es un OPERADOR_CDA activo');
+    });
+
+    it('avisa si el operador tiene iPhone y pide justificación si la jornada inició', async () => {
+      mockApi({ congelado: true, parejas: [fila({ estado: 'SIN_KIT', kitCodigo: null, operador: { ...ANA, dispositivo: 'IPHONE' } })] });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+      expect(dialogo).toHaveTextContent('usa iPhone');
+      const boton = within(dialogo).getByRole('button', { name: 'Asignar' });
+      expect(boton).toBeDisabled();
+      await userEvent.type(within(dialogo).getByRole('textbox', { name: /Justificación/ }), 'Cambio de última hora');
+      await userEvent.click(boton);
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/asignar-kit', { justificacion: 'Cambio de última hora' }));
+    });
   });
 
   describe('copiar la lista a otro día', () => {
@@ -413,7 +513,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
   describe('cambiar operador, asistente o recinto', () => {
     const patchMock = () => api.patch as unknown as ReturnType<typeof vi.fn>;
     const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE B' };
-    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null };
+    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null, dispositivo: null };
     const OTRA = fila({ id: 'p2', operador: LUIS, asistente: PEDRO, recinto: R1126, kitCodigo: 'KIT-0002' });
     const OK = { data: { enApp: 2, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } };
 

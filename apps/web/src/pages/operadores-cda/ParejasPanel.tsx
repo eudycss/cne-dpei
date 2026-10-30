@@ -19,6 +19,8 @@ import { ParejaFormModal } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { CopiarParejasModal } from './CopiarParejasModal';
+import { AsignarKitModal } from './AsignarKitModal';
+import { DispositivoPersona } from './DispositivoPersona';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
 
@@ -53,6 +55,7 @@ export function ParejasPanel() {
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
   const [copiando, setCopiando] = useState(false);
+  const [asignandoKit, setAsignandoKit] = useState<ParejaCdaFila | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
   // El último paso a la app queda a la vista (los avisos emergentes desaparecen).
@@ -137,6 +140,17 @@ export function ParejasPanel() {
       )
     : parejas;
   const conKit = parejas.some((p) => p.kitCodigo);
+  // N° por recinto, como el Excel: las parejas del mismo recinto forman un bloque.
+  const numeroRecinto = new Map<string, number>();
+  for (const p of parejas) if (!numeroRecinto.has(p.recinto.id)) numeroRecinto.set(p.recinto.id, numeroRecinto.size + 1);
+  // Orden estable por bloque: aunque dos recintos se llamen igual, sus parejas no se mezclan.
+  const filas = [...visibles].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
+  const inicioBloque = (i: number) => i === 0 || filas[i - 1].recinto.id !== filas[i].recinto.id;
+  const filasDelBloque = (i: number) => {
+    let n = 1;
+    while (filas[i + n]?.recinto.id === filas[i].recinto.id) n++;
+    return n;
+  };
 
   return (
     <section aria-labelledby="parejas-titulo">
@@ -264,19 +278,33 @@ export function ParejasPanel() {
           </p>
           <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
             <table>
-              <caption className="sr-only">Parejas del {dia}: operador, asistente, recinto y estado en la app</caption>
+              <caption className="sr-only">
+                Parejas del {dia} agrupadas por recinto: operador, asistente, recinto, dispositivo y estado en la app
+              </caption>
               <thead>
                 <tr>
+                  <th scope="col">N°</th>
                   <th scope="col">Operador CDA</th>
                   <th scope="col">Asistente CDA</th>
                   <th scope="col">Recinto</th>
+                  <th scope="col">Dispositivo</th>
                   <th scope="col">App</th>
                   {isAdmin && <th scope="col">Acciones</th>}
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((p) => (
-                  <tr key={p.id}>
+                {filas.map((p, i) => (
+                  <tr key={p.id} className={inicioBloque(i) ? undefined : 'ocda-fila-bloque'}>
+                    {inicioBloque(i) && (
+                      <th
+                        scope="row"
+                        rowSpan={filasDelBloque(i)}
+                        className="mono ocda-n-recinto"
+                        style={{ textAlign: 'center', verticalAlign: 'middle' }}
+                      >
+                        {numeroRecinto.get(p.recinto.id)}
+                      </th>
+                    )}
                     <td>
                       {p.operador.apellidosNombres}
                       <br />
@@ -305,8 +333,28 @@ export function ParejasPanel() {
                       {botonCambiar(p, 'RECINTO', 'recinto')}
                     </td>
                     <td>
+                      <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
+                      <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
+                      {/* Quien lleva el kit es el operador; la segunda pareja del recinto no lo lleva. */}
+                      {p.operador.dispositivo === 'IPHONE' && p.estado !== 'SOLO_REGISTRADA' && (
+                        <span className="ocda-estado aviso">iPhone: la APK no se instala</span>
+                      )}
+                    </td>
+                    <td>
                       <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
                       {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
+                      {isAdmin && p.estado === 'SIN_KIT' && (
+                        <div>
+                          <button
+                            type="button"
+                            className="ocda-btn-texto"
+                            aria-label={`Asignar kit a ${p.operador.apellidosNombres}`}
+                            onClick={() => setAsignandoKit(p)}
+                          >
+                            Asignar kit
+                          </button>
+                        </div>
+                      )}
                     </td>
                     {isAdmin && (
                       <td>
@@ -368,6 +416,15 @@ export function ParejasPanel() {
           justificacionInicial={justificacion}
           onResultado={mostrarResultado}
           onClose={() => setCambiando(null)}
+        />
+      )}
+      {asignandoKit && (
+        <AsignarKitModal
+          pareja={asignandoKit}
+          congelado={congelado}
+          justificacionInicial={justificacion}
+          onResultado={mostrarResultado}
+          onClose={() => setAsignandoKit(null)}
         />
       )}
       {copiando && (

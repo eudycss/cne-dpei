@@ -1089,11 +1089,15 @@ export interface OperadorCda {
  */
 export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'SOLO_REGISTRADA' | 'PENDIENTE_EVENTO';
 
+/** Celular de la persona (la APK solo se instala en Android). */
+export type DispositivoCda = 'ANDROID' | 'IPHONE';
+
 export interface PersonaParejaCda {
   id: string;
   apellidosNombres: string;
   cedula: string;
   telefono: string | null;
+  dispositivo: DispositivoCda | null;
 }
 
 export interface RecintoParejaCda {

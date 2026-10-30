@@ -5,6 +5,7 @@ import type {
   BulkUploadRow,
   CambiarCargoOperadorCdaResult,
   CrearOperadorCdaRequest,
+  DispositivoCda,
   EditarOperadorCdaRequest,
   GrupoCda,
   ImportOperadoresCdaResult,
@@ -117,10 +118,18 @@ export class OperadoresCdaService {
     return toOperadorCdaDto(editado);
   }
 
+  /** Celular de la persona (ANDROID/IPHONE, o null si no se sabe). */
+  async cambiarDispositivo(id: string, dispositivo: DispositivoCda | null): Promise<{ id: string; dispositivo: DispositivoCda | null }> {
+    await this.existe(id);
+    const fila = await this.prisma.operadorCda.update({ where: { id }, data: { dispositivo }, select: { id: true, dispositivo: true } });
+    return { id: fila.id, dispositivo: fila.dispositivo as DispositivoCda | null };
+  }
+
   /**
    * Oculta (baja lógica) o reactiva. Nunca se borra la fila: tiene asistencias y
    * actas ligadas. Al ocultar, el cron de la madrugada borra su foto (LOPDP).
    */
+
   async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
     await this.existe(id);
     const passwordHash = activo ? await this.cuentas.hashInicial() : '';

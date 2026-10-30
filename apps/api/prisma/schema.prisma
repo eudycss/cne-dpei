@@ -765,6 +765,8 @@ model OperadorCda {
   fotoKey          String?   @map("foto_key") @db.VarChar(255)
   fotoSubidaEn     DateTime? @map("foto_subida_en") @db.Timestamptz(6)
   activo           Boolean   @default(true)
+  /// Celular de la persona: ANDROID o IPHONE (la APK solo se instala en Android).
+  dispositivo      String?   @db.VarChar(10)
   /// Cuenta de la app (solo grupos OPERADOR y ASISTENTE).
   usuarioId        String?   @unique @map("usuario_id") @db.Uuid
   usuario          Usuario?  @relation(fields: [usuarioId], references: [id], onDelete: SetNull)

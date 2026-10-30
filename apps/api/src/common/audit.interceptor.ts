@@ -326,6 +326,9 @@ const AUDIT_TABLE: Array<{
   // Fase 2 — asignaciones operador ↔ supervisor
   { method: 'PUT',    pathRegex: /^\/asignaciones$/,         accion: 'ASIGNACION_UPSERT', entidad: 'asignacion', campos: ['eventoId', 'operadorId', 'supervisorId'] },
   { method: 'DELETE', pathRegex: /^\/asignaciones\/[^/]+$/, accion: 'ASIGNACION_DELETE', entidad: 'asignacion' },
+  // Botón "Asignar kit" de una pareja CDA y celular de una persona CDA.
+  { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/asignar-kit$/, accion: 'PAREJA_CDA_ASIGNAR_KIT', entidad: 'pareja_cda', campos: ['justificacion'] },
+  { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/dispositivo$/, accion: 'OPERADOR_CDA_DISPOSITIVO', entidad: 'operador_cda', campos: ['dispositivo'] },
   // Copia de la lista de parejas CDA a otro día.
   { method: 'POST', pathRegex: /^\/parejas-cda\/copiar$/, accion: 'PAREJA_CDA_COPIAR', entidad: 'pareja_cda', campos: ['desde', 'hacia'] },
   // Intercambio entre dos parejas CDA del día: puede reasignar los kits en la app.
