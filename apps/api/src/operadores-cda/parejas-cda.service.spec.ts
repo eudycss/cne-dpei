@@ -836,6 +836,25 @@ describe('ParejasCdaService', () => {
     beforeEach(() => {
       prisma.parejaCda.findMany.mockReset();
       prisma.operadorCda.findMany.mockResolvedValue([{ id: 'op1' }, { id: 'as1' }, { id: 'op2' }]);
+      prisma.recinto.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    });
+
+    it('omite la pareja cuyo recinto fue desactivado', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja(), B]).mockResolvedValueOnce([]);
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r1' }]);
+
+      const r = await service.copiar(DIA, HACIA, 'uAdmin');
+
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['r1', 'r2'] }, activo: true, tipo: 'CDA' });
+      expect(r).toEqual({ copiadas: 1, omitidas: [{ pareja: 'MORA LUIS · 1126', motivo: 'El recinto ya no está activo' }] });
+    });
+
+    it('si otro administrador copió al mismo tiempo (choque de únicos): 409, sin copia a medias', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]).mockResolvedValueOnce([]);
+      prisma.parejaCda.createMany.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x', meta: { target: 'uq_parejas_cda_fecha_operador' } }),
+      );
+      await expect(service.copiar(DIA, HACIA, 'uAdmin')).rejects.toThrow(ConflictException);
     });
 
     it('copia operador, asistente, recinto y artículos (sin kit ni paso a la app), en el mismo orden', async () => {

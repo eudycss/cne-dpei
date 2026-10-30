@@ -201,21 +201,29 @@ export class ParejasCdaService {
     const activas = new Set(
       (await this.prisma.operadorCda.findMany({ where: { id: { in: personas }, activo: true }, select: { id: true } })).map((o) => o.id),
     );
+    const recintosOrigen = [...new Set(origen.map((p) => p.recintoId))];
+    const recintosActivos = new Set(
+      (
+        await this.prisma.recinto.findMany({ where: { id: { in: recintosOrigen }, activo: true, tipo: 'CDA' }, select: { id: true } })
+      ).map((r) => r.id),
+    );
 
     const omitidas: CopiarParejasCdaResult['omitidas'] = [];
     const data: Prisma.ParejaCdaCreateManyInput[] = [];
     // Mismo orden que el día de origen (decide qué pareja va a la app en un recinto con dos).
     const base = Date.now();
     for (const p of origen) {
-      const motivo = !activas.has(p.operadorCdaId)
-        ? 'El operador está oculto'
-        : ocupadas.has(p.operadorCdaId)
-          ? 'El operador ya tiene pareja ese día'
-          : p.asistenteCdaId && !activas.has(p.asistenteCdaId)
-            ? 'El asistente está oculto'
-            : p.asistenteCdaId && ocupadas.has(p.asistenteCdaId)
-              ? 'El asistente ya tiene pareja ese día'
-              : null;
+      const motivo = !recintosActivos.has(p.recintoId)
+        ? 'El recinto ya no está activo'
+        : !activas.has(p.operadorCdaId)
+          ? 'El operador está oculto'
+          : ocupadas.has(p.operadorCdaId)
+            ? 'El operador ya tiene pareja ese día'
+            : p.asistenteCdaId && !activas.has(p.asistenteCdaId)
+              ? 'El asistente está oculto'
+              : p.asistenteCdaId && ocupadas.has(p.asistenteCdaId)
+                ? 'El asistente ya tiene pareja ese día'
+                : null;
       if (motivo) {
         omitidas.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`, motivo });
         continue;

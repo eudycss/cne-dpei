@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../../components/Modal';
 import { copiarParejasCda } from '../../lib/queries/operadores-cda';
@@ -29,6 +29,11 @@ export function CopiarParejasModal({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['parejas-cda'] }),
   });
   const r = copiar.data;
+  // El botón "Copiar" desaparece al terminar: el foco pasa a "Ver la lista del …".
+  const verRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (r) verRef.current?.focus();
+  }, [r]);
   const mismoDia = hacia === desde;
   const puedeCopiar = /^\d{4}-\d{2}-\d{2}$/.test(hacia) && !mismoDia && !copiar.isPending && !r;
 
@@ -101,7 +106,7 @@ export function CopiarParejasModal({
             {r ? 'Cerrar' : 'Cancelar'}
           </button>
           {r ? (
-            <button type="button" className="btn" onClick={() => onVerDia(hacia)}>
+            <button ref={verRef} type="button" className="btn" onClick={() => onVerDia(hacia)}>
               Ver la lista del {hacia}
             </button>
           ) : (

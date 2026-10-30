@@ -379,6 +379,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       const resumen = await within(dialogo).findByRole('status');
       expect(resumen).toHaveTextContent('Se copiaron 30 pareja(s) al 2026-11-04');
       expect(resumen).toHaveTextContent('MORA LUIS · 1126: El operador ya tiene pareja ese día');
+      expect(within(dialogo).getByRole('button', { name: 'Ver la lista del 2026-11-04' })).toHaveFocus();
       await userEvent.click(within(dialogo).getByRole('button', { name: 'Ver la lista del 2026-11-04' }));
       await waitFor(() => expect(getMock).toHaveBeenCalledWith('/parejas-cda?fecha=2026-11-04'));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
