@@ -17,10 +17,11 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import {
   cambiarActivoOperadorCdaSchema,
   cambiarCargoOperadorCdaSchema,
+  cambiarDispositivoOperadorCdaSchema,
   crearOperadorCdaSchema,
   editarOperadorCdaSchema,
 } from '@cne/shared-validation';
-import type { CambiarCargoOperadorCdaRequest, CrearOperadorCdaRequest, EditarOperadorCdaRequest } from '@cne/shared-types';
+import type { CambiarCargoOperadorCdaRequest, CrearOperadorCdaRequest, DispositivoCda, EditarOperadorCdaRequest } from '@cne/shared-types';
 
 import { OperadoresCdaService } from './operadores-cda.service';
 import { parsearGrupo } from './grupo-cda';
@@ -106,6 +107,16 @@ export class OperadoresCdaController {
     @Body(new ZodValidationPipe(cambiarActivoOperadorCdaSchema)) body: { activo: boolean },
   ) {
     return this.operadores.cambiarActivo(id, body.activo);
+  }
+
+  @Patch(':id/dispositivo')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Celular de la persona: ANDROID, IPHONE o null (la APK solo se instala en Android)' })
+  cambiarDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(cambiarDispositivoOperadorCdaSchema)) body: { dispositivo: DispositivoCda | null },
+  ) {
+    return this.operadores.cambiarDispositivo(id, body.dispositivo);
   }
 
   @Patch(':id/cargo')

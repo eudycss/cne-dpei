@@ -819,6 +819,42 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  describe('asignar el kit a una pareja (botón en la fila)', () => {
+    beforeEach(() => prisma.parejaCda.findUnique.mockResolvedValue(pareja()));
+
+    it('pasa a la app solo esa pareja: asigna el kit del recinto a su operador', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja(),
+        pareja({ id: 'p2', recintoId: 'r2', recinto: { id: 'r2', codigoRecinto: '1126', nombre: 'UE B' }, operador: { ...OPERADOR, id: 'op2', usuarioId: 'u2' } }),
+      ]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+
+      const r = await service.asignarKit('p1', 'Llegó tarde a la lista');
+
+      expect(kits.asignar).toHaveBeenCalledTimes(1);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
+      expect(r).toMatchObject({ enApp: 1, errores: [] });
+    });
+
+    it('sin evento ACTIVO con jornada ese día: 400 que lo explica', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.asignarKit('p1')).rejects.toThrow(`No hay un evento ACTIVO con jornada el ${DIA}`);
+      expect(kits.asignar).not.toHaveBeenCalled();
+    });
+
+    it('pareja inexistente: 404', async () => {
+      prisma.parejaCda.findUnique.mockResolvedValueOnce(null);
+      await expect(service.asignarKit('nada')).rejects.toThrow('Pareja no encontrada');
+    });
+  });
+
+  it('la lista trae el dispositivo de cada persona', async () => {
+    await service.listar(DIA);
+    const include = prisma.parejaCda.findMany.mock.calls[0][0].include;
+    expect(include.operador.select.dispositivo).toBe(true);
+    expect(include.asistente.select.dispositivo).toBe(true);
+  });
+
   describe('copiar la lista a otro día', () => {
     const HACIA = '2026-11-04';
     const B = pareja({

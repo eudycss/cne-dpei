@@ -6,6 +6,7 @@ import type {
   AplicarParejasCdaResult,
   CampoParejaCda,
   CopiarParejasCdaResult,
+  DispositivoCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
@@ -31,7 +32,7 @@ const CARGO_NUEVO: Record<'OPERADOR' | 'ASISTENTE', string> = {
   ASISTENTE: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - ASISTENTES CDA',
 };
 
-const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true } as const;
+const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true, dispositivo: true } as const;
 
 const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
@@ -125,7 +126,7 @@ export class ParejasCdaService {
         orderBy: { nombre: 'asc' },
       }),
     ]);
-    return { operadores, asistentes, recintos: listaRecintos.map(aRecinto) };
+    return { operadores: operadores.map(aPersona), asistentes: asistentes.map(aPersona), recintos: listaRecintos.map(aRecinto) };
   }
 
   async crear(datos: CrearParejaCdaRequest, usuarioId: string): Promise<AplicarParejasCdaResult> {
@@ -180,6 +181,20 @@ export class ParejasCdaService {
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion);
     const recintos = [actual.recintoId, ...(cambiaRecinto ? [datos.recintoId as string] : [])];
     return (await this.aplicarDia(fecha, { recintos }, justificacion)) ?? vacio();
+  }
+
+  /**
+   * Botón "Asignar kit" de una fila: pasa a la app solo esa pareja (el kit del
+   * recinto a su operador, o lo crea con los artículos por defecto). Las reglas
+   * son las de "Aplicar a la app": evento del día, congelamiento, 1 operador =
+   * 1 recinto; lo que falle vuelve en `errores`.
+   */
+  async asignarKit(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+    const p = await this.leerPareja(id);
+    const fecha = diaDeFechaDb(p.fecha);
+    const r = await this.aplicarDia(fecha, { ids: [id] }, justificacion);
+    if (!r) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para asignar el kit`);
+    return r;
   }
 
   /**
@@ -363,7 +378,7 @@ export class ParejasCdaService {
         orderBy: { nombre: 'asc' },
       }),
     ]);
-    return { operadores, asistentes, recintos: recintos.map(aRecinto) };
+    return { operadores: operadores.map(aPersona), asistentes: asistentes.map(aPersona), recintos: recintos.map(aRecinto) };
   }
 
   /**
@@ -916,6 +931,11 @@ function aRecinto(r: { id: string; codigoRecinto: string; nombre: string }): Rec
   return { id: r.id, codigo: r.codigoRecinto, nombre: r.nombre };
 }
 
+/** La columna es VARCHAR con CHECK: solo puede traer ANDROID, IPHONE o null. */
+function aPersona<P extends { dispositivo: string | null }>(p: P): Omit<P, 'dispositivo'> & { dispositivo: DispositivoCda | null } {
+  return { ...p, dispositivo: p.dispositivo === 'ANDROID' || p.dispositivo === 'IPHONE' ? p.dispositivo : null };
+}
+
 function aFila(p: ParejaConRelaciones, evento: Evento | null, primera: boolean, compartido: boolean): ParejaCdaFila {
   const { usuarioId, ...operador } = p.operador;
   let estado: EstadoParejaCda;
@@ -927,8 +947,8 @@ function aFila(p: ParejaConRelaciones, evento: Evento | null, primera: boolean, 
     id: p.id,
     fecha: diaDeFechaDb(p.fecha),
     recinto: aRecinto(p.recinto),
-    operador,
-    asistente: p.asistente,
+    operador: aPersona(operador),
+    asistente: p.asistente && aPersona(p.asistente),
     kitCodigo: p.kit?.codigoUnico ?? null,
     estado,
     recintoCompartido: compartido,

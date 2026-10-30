@@ -3,6 +3,7 @@ import type {
   AplicarParejasCdaResult,
   CopiarParejasCdaRequest,
   CopiarParejasCdaResult,
+  DispositivoCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
@@ -381,6 +382,17 @@ export async function crearParejaCda(body: CrearParejaCdaRequest): Promise<Aplic
 export async function editarParejaCda(id: string, body: EditarParejaCdaRequest): Promise<AplicarParejasCdaResult> {
   const { data } = await api.patch<AplicarParejasCdaResult>(`/parejas-cda/${id}`, body);
   return data;
+}
+
+/** Botón "Asignar kit" de una pareja: el kit del recinto a su operador. */
+export async function asignarKitParejaCda(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/${id}/asignar-kit`, justificacion ? { justificacion } : {});
+  return data;
+}
+
+/** Celular de una persona CDA (ANDROID, IPHONE o null). */
+export async function cambiarDispositivoOperadorCda(id: string, dispositivo: DispositivoCda | null): Promise<void> {
+  await api.patch(`/operadores-cda/${id}/dispositivo`, { dispositivo });
 }
 
 /** Copia la lista de un día a otro (solo la registra). */

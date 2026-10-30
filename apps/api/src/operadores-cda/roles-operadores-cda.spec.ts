@@ -48,7 +48,7 @@ describe('RBAC de Operadores CDA', () => {
     expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
 
-  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'intercambiar', 'copiar', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
+  it.each(['disponibles', 'plantilla', 'crear', 'editar', 'intercambiar', 'copiar', 'asignarKit', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
     'parejas.%s: solo administrador',
     (metodo) => {
       expect(rolesDe(ParejasCdaController, metodo)).toEqual(['ADMINISTRADOR']);
@@ -121,7 +121,7 @@ describe('RBAC de Operadores CDA', () => {
     expect(buscar.mock.calls[0][0].q).toHaveLength(100);
   });
 
-  it.each(['crear', 'editar', 'cambiarActivo', 'cambiarCargo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {
+  it.each(['crear', 'editar', 'cambiarActivo', 'cambiarCargo', 'cambiarDispositivo'])('agregar, editar u ocultar (%s): solo administrador', (metodo) => {
     expect(rolesDe(OperadoresCdaController, metodo)).toEqual(['ADMINISTRADOR']);
   });
 

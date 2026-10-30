@@ -667,6 +667,10 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-tabla table { width: 100%; min-width: 820px; border-collapse: collapse; }
 .ocda-tabla th, .ocda-tabla td { padding: 0.75rem 1.25rem; text-align: left; border-bottom: 1px solid var(--f-border-subtle); vertical-align: middle; }
 .ocda-tabla thead th { background: var(--f-bg-elevated); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--f-text-muted); }
+/* Parejas: las del mismo recinto forman un bloque (N° combinado y línea punteada entre ellas). */
+.ocda-tabla td[rowspan] { border-right: 1px solid var(--f-border-subtle); font-weight: 600; }
+.ocda-tabla tr:has(+ tr.ocda-fila-bloque) td:not([rowspan]) { border-bottom-style: dashed; }
+.ocda-dispositivo select { padding: 0.15rem 0.35rem; font-size: 0.85rem; min-height: 32px; }
 .ocda-tabla tbody th { background: transparent; }
 .ocda-tabla tbody tr { transition: background 150ms ease; }
 .ocda-tabla tbody tr:hover { background: rgb(22 32 59 / 0.55); }

@@ -730,6 +730,10 @@ export type EditarOperadorCdaInput = z.infer<typeof editarOperadorCdaSchema>;
 
 export const cambiarActivoOperadorCdaSchema = z.object({ activo: z.boolean() }).strict();
 
+/** Celular de la persona (la APK solo se instala en Android). */
+export const dispositivoCdaSchema = z.enum(['ANDROID', 'IPHONE']);
+export const cambiarDispositivoOperadorCdaSchema = z.object({ dispositivo: dispositivoCdaSchema.nullable() }).strict();
+
 /** Pasar a una persona a otro cargo CDA (rige desde hoy). */
 export const cambiarCargoOperadorCdaSchema = z.object({ grupo: grupoCdaSchema }).strict();
 

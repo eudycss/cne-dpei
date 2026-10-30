@@ -174,6 +174,16 @@ export class ParejasCdaController {
     await this.parejas.eliminar(id, body?.justificacion);
   }
 
+  @Post(':id/asignar-kit')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Asigna (o crea) el kit del recinto al operador de esta pareja' })
+  asignarKit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
+  ) {
+    return this.parejas.asignarKit(id, body?.justificacion);
+  }
+
   @Post('copiar')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'Copia la lista de un día a otro (solo la registra; no pasa a la app)' })

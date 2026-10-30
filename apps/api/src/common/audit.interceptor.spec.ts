@@ -99,6 +99,13 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('asignar kit a una pareja y cambiar el dispositivo de una persona', async () => {
+    const kit = await auditar({ method: 'POST', originalUrl: `/parejas-cda/${OTRO}/asignar-kit`, params: { id: OTRO }, body: { justificacion: 'Llegó tarde' }, user: ADMIN });
+    expect(kit.data).toMatchObject({ accion: 'PAREJA_CDA_ASIGNAR_KIT', entidad: 'pareja_cda', entidadId: OTRO, datosDespues: { campos: ['justificacion'], justificacion: 'Llegó tarde' } });
+    const disp = await auditar({ method: 'PATCH', originalUrl: `/operadores-cda/${OTRO}/dispositivo`, params: { id: OTRO }, body: { dispositivo: 'IPHONE' }, user: ADMIN });
+    expect(disp.data).toMatchObject({ accion: 'OPERADOR_CDA_DISPOSITIVO', entidad: 'operador_cda', entidadId: OTRO, datosDespues: { campos: ['dispositivo'], dispositivo: 'IPHONE' } });
+  });
+
   it('copiar la lista de parejas CDA: de qué día a cuál', async () => {
     const { data } = await auditar(
       { method: 'POST', originalUrl: '/parejas-cda/copiar', params: {}, body: { desde: '2026-10-28', hacia: '2026-11-04' }, user: ADMIN },
