@@ -325,6 +325,34 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(otrosDias).toEqual([]);
   });
 
+  it('busca por nombre de la persona (sin importar tildes), código o nombre del recinto', async () => {
+    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null };
+    const OTRA = fila({ id: 'p2', operador: LUIS, asistente: PEDRO, recinto: { id: 'r2', codigo: '1126', nombre: 'UE B' } });
+    mockApi({ parejas: [fila(), OTRA] });
+    renderPagina();
+    const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+    const buscar = screen.getByRole('textbox', { name: 'Buscar por persona, código o nombre de recinto' });
+    const filas = () => within(tabla).getAllByRole('row').slice(1);
+
+    await userEvent.type(buscar, 'solis');
+    expect(filas()).toHaveLength(1);
+    expect(filas()[0]).toHaveTextContent('MORA LUIS');
+    expect(screen.getByText('1 de 2 pareja(s)')).toBeInTheDocument();
+
+    await userEvent.clear(buscar);
+    await userEvent.type(buscar, '957');
+    expect(filas()).toHaveLength(1);
+    expect(filas()[0]).toHaveTextContent('PÉREZ ANA');
+
+    await userEvent.clear(buscar);
+    await userEvent.type(buscar, 'atahualpa');
+    expect(filas()[0]).toHaveTextContent('957 · UE ATAHUALPA');
+
+    await userEvent.clear(buscar);
+    await userEvent.type(buscar, 'zzz');
+    expect(screen.getByText('Ninguna pareja coincide con "zzz".')).toBeInTheDocument();
+  });
+
   describe('cambiar operador, asistente o recinto', () => {
     const patchMock = () => api.patch as unknown as ReturnType<typeof vi.fn>;
     const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE B' };

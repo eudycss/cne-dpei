@@ -6,6 +6,7 @@ import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCd
 import { useAuth } from '../../auth/AuthContext';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
+import { SearchInput } from '../../components/SearchInput';
 import {
   aplicarParejasCda,
   descargarPlantillaParejasCda,
@@ -18,7 +19,7 @@ import { ParejaFormModal } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { resumenApp } from './resumenParejas';
-import { hoyEcuador, mensajeError } from './utils';
+import { hoyEcuador, mensajeError, normalizar } from './utils';
 
 /** Texto y color (clases de .ocda-estado) de cada estado. */
 const ESTADO: Record<EstadoParejaCda, { texto: string; clase: string }> = {
@@ -47,6 +48,7 @@ export function ParejasPanel() {
   // Sin día en la dirección: el más reciente con lista (si no hay ninguna, hoy).
   const dia = diaUrl ?? (fechas?.length ? [...fechas].sort().at(-1)! : hoyEcuador());
   const [agregando, setAgregando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
@@ -124,6 +126,14 @@ export function ParejasPanel() {
       </div>
     );
   const recintos = new Set(parejas.map((p) => p.recinto.id)).size;
+  // Buscador: persona (operador o asistente, nombre o cédula), código o nombre del recinto; sin tildes.
+  const q = normalizar(busqueda.trim());
+  const visibles = q
+    ? parejas.filter((p) =>
+        [p.operador.apellidosNombres, p.operador.cedula, p.asistente?.apellidosNombres, p.asistente?.cedula, p.recinto.codigo, p.recinto.nombre]
+          .some((t) => !!t && normalizar(t).includes(q)),
+      )
+    : parejas;
   const conKit = parejas.some((p) => p.kitCodigo);
 
   return (
@@ -228,9 +238,20 @@ export function ParejasPanel() {
       )}
       {parejas.length > 0 && (
         <>
+          <div className="ocda-filtros">
+            <span className="ocda-campo" style={{ flex: '1 1 260px', maxWidth: 420 }}>
+              <SearchInput
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Buscar por persona, código o recinto…"
+                ariaLabel="Buscar por persona, código o nombre de recinto"
+              />
+            </span>
+          </div>
           <p className="muted" role="status">
-            {parejas.length} pareja(s) en {recintos} recinto(s)
+            {q ? `${visibles.length} de ${parejas.length} pareja(s)` : `${parejas.length} pareja(s) en ${recintos} recinto(s)`}
           </p>
+          {q && visibles.length === 0 && <p className="muted">Ninguna pareja coincide con "{busqueda.trim()}".</p>}
           <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
             <table>
               <caption className="sr-only">Parejas del {dia}: operador, asistente, recinto y estado en la app</caption>
@@ -244,7 +265,7 @@ export function ParejasPanel() {
                 </tr>
               </thead>
               <tbody>
-                {parejas.map((p) => (
+                {visibles.map((p) => (
                   <tr key={p.id}>
                     <td>
                       {p.operador.apellidosNombres}
