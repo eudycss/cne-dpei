@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { crearParejaCdaSchema, editarParejaCdaSchema, fechaParejaCdaSchema, filaParejaCdaSchema, intercambiarParejaCdaSchema } from './index';
+import {
+  copiarParejasCdaSchema,
+  crearParejaCdaSchema,
+  editarParejaCdaSchema,
+  fechaParejaCdaSchema,
+  filaParejaCdaSchema,
+  intercambiarParejaCdaSchema,
+} from './index';
 
 const OP = '11111111-1111-4111-8111-111111111111';
 const AS = '22222222-2222-4222-8222-222222222222';
@@ -49,6 +56,14 @@ describe('parejas CDA por día', () => {
     expect(filaParejaCdaSchema.safeParse({ cedula_operador: CEDULA_OP, cedula_asistente: CEDULA_OP, codigo_recinto: '957' }).success).toBe(
       false,
     );
+  });
+
+  it('copiar: dos días válidos y distintos; nada más', () => {
+    expect(copiarParejasCdaSchema.safeParse({ desde: '2026-10-28', hacia: '2026-11-04' }).success).toBe(true);
+    expect(copiarParejasCdaSchema.safeParse({ desde: '2026-10-28', hacia: '2026-10-28' }).success).toBe(false);
+    expect(copiarParejasCdaSchema.safeParse({ desde: '2026-10-28', hacia: '04/11/2026' }).success).toBe(false);
+    expect(copiarParejasCdaSchema.safeParse({ desde: '2026-10-28' }).success).toBe(false);
+    expect(copiarParejasCdaSchema.safeParse({ desde: '2026-10-28', hacia: '2026-11-04', aplicar: true }).success).toBe(false);
   });
 
   it('intercambiar: con otra pareja y uno de los tres campos; nada más', () => {

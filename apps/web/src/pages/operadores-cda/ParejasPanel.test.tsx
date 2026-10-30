@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -356,6 +356,58 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     await userEvent.clear(buscar);
     await userEvent.type(buscar, 'zzz');
     expect(screen.getByText('Ninguna pareja coincide con "zzz".')).toHaveAttribute('role', 'status');
+  });
+
+  describe('copiar la lista a otro día', () => {
+    it('copia las parejas del día mostrado, dice cuáles no se copiaron y lleva al día nuevo', async () => {
+      mockApi();
+      postMock.mockResolvedValueOnce({
+        data: { copiadas: 30, omitidas: [{ pareja: 'MORA LUIS · 1126', motivo: 'El operador ya tiene pareja ese día' }] },
+      });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Copiar a otro día' }));
+      const dialogo = await screen.findByRole('dialog', { name: 'Copiar la lista a otro día' });
+      expect(dialogo).toHaveTextContent('Aplicar a la app');
+      const boton = within(dialogo).getByRole('button', { name: 'Copiar' });
+      expect(boton).toBeDisabled();
+      fireEvent.change(within(dialogo).getByLabelText('Copiar al día'), { target: { value: DIA } });
+      expect(boton).toBeDisabled();
+      fireEvent.change(within(dialogo).getByLabelText('Copiar al día'), { target: { value: '2026-11-04' } });
+      await userEvent.click(boton);
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/copiar', { desde: DIA, hacia: '2026-11-04' }));
+      const resumen = await within(dialogo).findByRole('status');
+      expect(resumen).toHaveTextContent('Se copiaron 30 pareja(s) al 2026-11-04');
+      expect(resumen).toHaveTextContent('MORA LUIS · 1126: El operador ya tiene pareja ese día');
+      expect(within(dialogo).getByRole('button', { name: 'Ver la lista del 2026-11-04' })).toHaveFocus();
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Ver la lista del 2026-11-04' }));
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith('/parejas-cda?fecha=2026-11-04'));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('si falla, el motivo se ve en el diálogo', async () => {
+      mockApi();
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'El 2026-10-30 no tiene parejas para copiar' } } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Copiar a otro día' }));
+      const dialogo = await screen.findByRole('dialog', { name: 'Copiar la lista a otro día' });
+      fireEvent.change(within(dialogo).getByLabelText('Copiar al día'), { target: { value: '2026-11-04' } });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Copiar' }));
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('no tiene parejas para copiar');
+    });
+
+    it('sin parejas o sin ser administrador no aparece el botón', async () => {
+      mockApi({ parejas: [] });
+      const { unmount } = renderPagina();
+      await screen.findByText(/Aún no hay parejas este día/);
+      expect(screen.queryByRole('button', { name: 'Copiar a otro día' })).not.toBeInTheDocument();
+      unmount();
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi();
+      renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('button', { name: 'Copiar a otro día' })).not.toBeInTheDocument();
+    });
   });
 
   describe('cambiar operador, asistente o recinto', () => {
