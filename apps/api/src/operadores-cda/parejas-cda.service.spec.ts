@@ -842,6 +842,24 @@ describe('ParejasCdaService', () => {
       expect(kits.asignar).not.toHaveBeenCalled();
     });
 
+    it('la segunda pareja del recinto (el kit lo lleva la otra): 409 que lo explica, sin tocar kits', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ id: 'p0', kitId: 'k1', operador: { ...OPERADOR, id: 'op0', usuarioId: 'u0' } }),
+        pareja(),
+      ]);
+      await expect(service.asignarKit('p1')).rejects.toThrow('comparte el recinto con otra que lleva el kit');
+      expect(kits.asignar).not.toHaveBeenCalled();
+    });
+
+    it('si el kit no se puede asignar (p. ej. jornada iniciada sin justificación), el motivo vuelve en errores', async () => {
+      kits.estaCongelado.mockReturnValue(true);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      const r = await service.asignarKit('p1');
+      expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: expect.stringContaining('congeladas') }]);
+      expect(kits.asignar).not.toHaveBeenCalled();
+    });
+
     it('pareja inexistente: 404', async () => {
       prisma.parejaCda.findUnique.mockResolvedValueOnce(null);
       await expect(service.asignarKit('nada')).rejects.toThrow('Pareja no encontrada');

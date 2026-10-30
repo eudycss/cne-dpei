@@ -383,19 +383,23 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
       patchMock.mockResolvedValueOnce({ data: { id: 'op1', dispositivo: 'ANDROID' } });
       renderPagina();
-      const operador = await screen.findByRole('combobox', { name: 'Dispositivo de PÉREZ ANA' });
+      const operador = await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
       expect(operador).toHaveValue('IPHONE');
-      expect(screen.getByRole('combobox', { name: 'Dispositivo de RUIZ JUAN' })).toHaveValue('ANDROID');
+      expect(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' })).toHaveValue('ANDROID');
       expect(screen.getByText('iPhone: la APK no se instala')).toBeInTheDocument();
 
       await userEvent.selectOptions(operador, 'ANDROID');
       await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/op1/dispositivo', { dispositivo: 'ANDROID' }));
+      // "—" = no se sabe: se guarda null.
+      patchMock.mockResolvedValueOnce({ data: { id: 'as1', dispositivo: null } });
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' }), '');
+      await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/as1/dispositivo', { dispositivo: null }));
     });
 
     it('la segunda pareja del recinto (sin kit) no lleva el aviso de iPhone', async () => {
       mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'SOLO_REGISTRADA', kitCodigo: null })] });
       renderPagina();
-      await screen.findByRole('combobox', { name: 'Dispositivo de PÉREZ ANA' });
+      await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
       expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
     });
 

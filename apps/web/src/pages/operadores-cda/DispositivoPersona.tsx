@@ -33,7 +33,7 @@ export function DispositivoPersona({ rol, persona, editable }: { rol: string; pe
         value={valor ?? ''}
         onChange={(e) => cambiar.mutate((e.target.value || null) as DispositivoCda | null)}
         disabled={cambiar.isPending}
-        aria-label={`Dispositivo de ${persona.apellidosNombres}`}
+        aria-label={`${rol}: dispositivo de ${persona.apellidosNombres}`}
       >
         <option value="">—</option>
         <option value="ANDROID">Android</option>

@@ -31,7 +31,7 @@ export function AsignarKitModal({
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['parejas-cda'] });
       // Con error se queda abierto para mostrar el motivo.
-      if (!r.errores.length) {
+      if (!r.errores.length && r.enApp > 0) {
         onResultado(r);
         onClose();
       }

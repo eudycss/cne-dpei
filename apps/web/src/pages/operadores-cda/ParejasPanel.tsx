@@ -296,9 +296,14 @@ export function ParejasPanel() {
                 {filas.map((p, i) => (
                   <tr key={p.id} className={inicioBloque(i) ? undefined : 'ocda-fila-bloque'}>
                     {inicioBloque(i) && (
-                      <td rowSpan={filasDelBloque(i)} className="mono" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      <th
+                        scope="row"
+                        rowSpan={filasDelBloque(i)}
+                        className="mono ocda-n-recinto"
+                        style={{ textAlign: 'center', verticalAlign: 'middle' }}
+                      >
                         {numeroRecinto.get(p.recinto.id)}
-                      </td>
+                      </th>
                     )}
                     <td>
                       {p.operador.apellidosNombres}

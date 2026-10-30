@@ -194,6 +194,11 @@ export class ParejasCdaService {
     const fecha = diaDeFechaDb(p.fecha);
     const r = await this.aplicarDia(fecha, { ids: [id] }, justificacion);
     if (!r) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para asignar el kit`);
+    if (!r.enApp && !r.errores.length) {
+      throw new ConflictException(
+        'Esta pareja comparte el recinto con otra que lleva el kit. Para darle uno propio, cree otro kit del recinto en Kits ("otro dispositivo")',
+      );
+    }
     return r;
   }
 
