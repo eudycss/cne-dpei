@@ -278,6 +278,46 @@ describe('CuentasCdaService', () => {
     });
   });
 
+  describe('al arrancar la API', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => {
+      jest.useRealTimers();
+      delete process.env.CUENTAS_CDA_AUTO_SYNC;
+    });
+
+    it('crea o vincula las cuentas pendientes 20 s después, sin bloquear el arranque', async () => {
+      const sincronizar = jest.spyOn(service, 'sincronizar').mockResolvedValue({ vinculadas: 2, creadas: 1, fallidas: 0 });
+
+      expect(service.onApplicationBootstrap()).toBeUndefined();
+      jest.advanceTimersByTime(19_999);
+      expect(sincronizar).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await service.sincronizacionInicial;
+
+      expect(sincronizar).toHaveBeenCalledWith();
+    });
+
+    it('si la sincronización falla, la API sigue arrancando (solo se registra el error)', async () => {
+      jest.spyOn(service, 'sincronizar').mockRejectedValue(new Error('BD caída'));
+
+      service.onApplicationBootstrap();
+      jest.advanceTimersByTime(20_000);
+
+      await expect(service.sincronizacionInicial).resolves.toBeUndefined();
+    });
+
+    it('CUENTAS_CDA_AUTO_SYNC=false la apaga', () => {
+      process.env.CUENTAS_CDA_AUTO_SYNC = 'false';
+      const sincronizar = jest.spyOn(service, 'sincronizar');
+
+      service.onApplicationBootstrap();
+      jest.advanceTimersByTime(60_000);
+
+      expect(sincronizar).not.toHaveBeenCalled();
+      expect(service.sincronizacionInicial).toBeUndefined();
+    });
+  });
+
   describe('resumen', () => {
     it('devuelve los conteos de cuentas', async () => {
       prisma.operadorCda.count

@@ -77,6 +77,36 @@ describe('UsersService', () => {
     service = moduleRef.get(UsersService);
   });
 
+  describe('list', () => {
+    it('trae hasta 500 por página (todos los operadores CDA para los combos de Kits)', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.count.mockResolvedValueOnce(0);
+
+      const r = await service.list({ role: 'OPERADOR_CDA', activo: true, pageSize: 500 });
+
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 500 }));
+      expect(r.pageSize).toBe(500);
+    });
+
+    it('no pasa de 500 aunque se pidan más', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.count.mockResolvedValueOnce(0);
+
+      await service.list({ pageSize: 10000 });
+
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 500 }));
+    });
+
+    it('un pageSize que no es número usa el valor por defecto (no un 500)', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.count.mockResolvedValueOnce(0);
+
+      await service.list({ pageSize: Number('abc') });
+
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
+    });
+  });
+
   describe('create', () => {
     it('crea el usuario, envía la contraseña inicial y la devuelve', async () => {
       prisma.usuario.findUnique.mockResolvedValue(null); // email y cédula libres
