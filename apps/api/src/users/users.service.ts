@@ -43,8 +43,10 @@ export class UsersService {
     role?: string;
     activo?: boolean;
   }): Promise<Paginated<User>> {
-    const page = Math.max(1, opts.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
+    const numero = (v: number | undefined, defecto: number) => (Number.isFinite(v) ? Math.trunc(v as number) : defecto);
+    const page = Math.max(1, numero(opts.page, 1));
+    // 500: los combos de Kits necesitan a todos los operadores CDA (más de 100).
+    const pageSize = Math.min(500, Math.max(1, numero(opts.pageSize, 20)));
     const where: any = opts.search
       ? {
           OR: [

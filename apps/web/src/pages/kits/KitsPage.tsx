@@ -133,7 +133,7 @@ export function KitsPage() {
   const { data: operadores } = useQuery({
     queryKey: ['users', { role: 'OPERADOR_CDA' }],
     queryFn: async () =>
-      (await api.get<Paginated<User>>('/users?role=OPERADOR_CDA&activo=true&pageSize=100')).data.items,
+      (await api.get<Paginated<User>>('/users?role=OPERADOR_CDA&activo=true&pageSize=500')).data.items,
   });
   const { data: recintos } = useQuery({
     queryKey: ['recintos', { tipo: 'CDA' }],

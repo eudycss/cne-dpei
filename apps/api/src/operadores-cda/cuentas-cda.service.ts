@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import type { GrupoCda, ResultadoSincronizarCuentasCda, ResumenCuentasCda } from '@cne/shared-types';
@@ -9,6 +9,7 @@ import { partirNombre } from './nombre-cda';
 /** Solo estos grupos usan la app de campo (parejas operador + asistente). */
 export const GRUPOS_CON_CUENTA: readonly GrupoCda[] = ['OPERADOR', 'ASISTENTE'];
 const ROL_CDA = 'OPERADOR_CDA';
+const ESPERA_SINCRONIZACION_MS = 20_000;
 
 export type ResultadoAsegurar = 'CREADA' | 'VINCULADA' | 'YA_TENIA' | 'NO_APLICA';
 
@@ -20,11 +21,31 @@ type Tx = Prisma.TransactionClient;
  * misma contraseña inicial que el reseteo de Usuarios, con cambio obligatorio.
  */
 @Injectable()
-export class CuentasCdaService {
+export class CuentasCdaService implements OnApplicationBootstrap {
   private readonly log = new Logger(CuentasCdaService.name);
   private hashInicialPromise?: Promise<string>;
+  /** Sincronización lanzada al arrancar (expuesta para las pruebas). */
+  sincronizacionInicial?: Promise<void>;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Al arrancar, toda persona de Operadores CDA o Asistentes CDA activa queda
+   * con su cuenta (así aparece en Usuarios y en los combos de Kits). Empieza
+   * 20 s después, con la API ya en línea (argon2 pesa con 0.1 vCPU), y un fallo
+   * solo se registra. Con CUENTAS_CDA_AUTO_SYNC=false se apaga.
+   */
+  onApplicationBootstrap(): void {
+    if (process.env.CUENTAS_CDA_AUTO_SYNC === 'false') return;
+    setTimeout(() => {
+      this.sincronizacionInicial = this.sincronizar().then(
+        (r) => {
+          if (r.creadas || r.vinculadas || r.fallidas) this.log.log(`Cuentas CDA al arrancar: ${JSON.stringify(r)}`);
+        },
+        (e) => this.log.error(`No se pudieron sincronizar las cuentas CDA al arrancar: ${(e as Error)?.message}`),
+      );
+    }, ESPERA_SINCRONIZACION_MS).unref?.();
+  }
 
   /**
    * Hash de la contraseña inicial (la misma del reseteo de Usuarios), calculado
