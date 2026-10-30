@@ -1,6 +1,7 @@
 import type {
   ActaCdaFila,
   AplicarParejasCdaResult,
+  CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
@@ -356,6 +357,17 @@ export async function getFechasParejasCda(): Promise<string[]> {
 export async function getDisponiblesParejasCda(fecha: string, todos: boolean): Promise<DisponiblesParejasCda> {
   const { data } = await api.get<DisponiblesParejasCda>(`/parejas-cda/disponibles?fecha=${fecha}${todos ? '&todos=true' : ''}`);
   return data;
+}
+
+/** "Nuevo kit" de Kits: personas sin kit ni pareja en el evento y recintos CDA sin kit. */
+export async function getDisponiblesKitCda(eventoId: string): Promise<DisponiblesParejasCda> {
+  const { data } = await api.get<DisponiblesParejasCda>(`/parejas-cda/disponibles-kit?eventoId=${eventoId}`);
+  return data;
+}
+
+/** Crea el kit del recinto, lo asigna al operador y registra la pareja (un solo paso). */
+export async function crearKitConParejaCda(body: CrearKitConParejaCdaRequest): Promise<void> {
+  await api.post('/parejas-cda/kit', body);
 }
 
 export async function crearParejaCda(body: CrearParejaCdaRequest): Promise<AplicarParejasCdaResult> {

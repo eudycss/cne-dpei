@@ -1124,6 +1124,21 @@ export interface DisponiblesParejasCda {
   recintos: RecintoParejaCda[];
 }
 
+/**
+ * "Nuevo kit" de la página Kits: crea el kit del recinto, lo asigna al
+ * operador y registra la pareja en la fecha de la jornada del evento.
+ */
+export interface CrearKitConParejaCdaRequest {
+  eventoId: string;
+  recintoId: string;
+  operadorCdaId: string;
+  asistenteCdaId?: string | null;
+  /** Sin artículos, el kit lleva todos los activos del catálogo. */
+  detalleItems?: { itemId: string; serie?: string | null; estado?: EstadoItemKit }[];
+  /** Obligatoria si la jornada ya inició (asignaciones congeladas). */
+  justificacion?: string;
+}
+
 export interface CrearParejaCdaRequest {
   fecha: string;
   operadorCdaId: string;

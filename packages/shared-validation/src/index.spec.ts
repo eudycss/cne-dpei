@@ -42,6 +42,7 @@ import {
   generarActasCdaSchema,
   descargarActasCdaSchema,
   diaAsistenciaSchema,
+  crearKitConParejaCdaSchema,
 } from './index';
 
 describe('configAlertasSchema', () => {
@@ -523,5 +524,34 @@ describe('cargos CDA/CPE (gestión)', () => {
   it('activar o desactivar: solo el booleano', () => {
     expect(cambiarActivoCargoCdaSchema.safeParse({ activo: false }).success).toBe(true);
     expect(cambiarActivoCargoCdaSchema.safeParse({ activo: 'no' }).success).toBe(false);
+  });
+});
+
+describe('crearKitConParejaCdaSchema (Nuevo kit en un paso)', () => {
+  const base = {
+    eventoId: '11111111-1111-4111-8111-111111111111',
+    recintoId: '22222222-2222-4222-8222-222222222222',
+    operadorCdaId: '33333333-3333-4333-8333-333333333333',
+  };
+
+  it('el asistente y los artículos son opcionales', () => {
+    expect(crearKitConParejaCdaSchema.safeParse(base).success).toBe(true);
+    expect(
+      crearKitConParejaCdaSchema.safeParse({
+        ...base,
+        asistenteCdaId: '44444444-4444-4444-8444-444444444444',
+        detalleItems: [{ itemId: '55555555-5555-4555-8555-555555555555', serie: 'ABC123', estado: 'BUENO' }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('exige recinto y operador, y que el asistente no sea el mismo operador', () => {
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, recintoId: '' }).success).toBe(false);
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, operadorCdaId: undefined }).success).toBe(false);
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, asistenteCdaId: base.operadorCdaId }).success).toBe(false);
+  });
+
+  it('no acepta campos de más (p. ej. operadorId de Usuarios)', () => {
+    expect(crearKitConParejaCdaSchema.safeParse({ ...base, operadorId: base.operadorCdaId }).success).toBe(false);
   });
 });

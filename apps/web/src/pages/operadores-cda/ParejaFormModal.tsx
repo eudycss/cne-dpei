@@ -204,7 +204,8 @@ export function ParejaFormModal({
               autoComplete="off"
             />
             <p id="pareja-articulos-ayuda" className="muted" style={{ margin: '0.25rem 0 0' }}>
-              Códigos del catálogo separados por coma; la serie va después de dos puntos.
+              Códigos del catálogo separados por coma; la serie va después de dos puntos. Si lo deja vacío, el kit
+              lleva todos los artículos activos del catálogo.
             </p>
           </div>
         )}

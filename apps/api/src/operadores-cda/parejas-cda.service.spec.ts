@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
@@ -50,14 +50,15 @@ describe('ParejasCdaService', () => {
     parejaCda: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
     operadorCda: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
     recinto: { findMany: jest.fn(), findUnique: jest.fn() },
-    eventoElectoral: { findFirst: jest.fn() },
-    kitElectoral: { findFirst: jest.fn(), update: jest.fn() },
+    eventoElectoral: { findFirst: jest.fn(), findUnique: jest.fn() },
+    kitElectoral: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
     itemKitCatalog: { findMany: jest.fn() },
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
   };
@@ -85,6 +86,9 @@ describe('ParejasCdaService', () => {
     ]);
     prisma.eventoElectoral.findFirst.mockResolvedValue(EVENTO);
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
+    prisma.kitElectoral.findMany.mockResolvedValue([]);
+    prisma.kitElectoral.delete.mockResolvedValue({});
+    prisma.parejaCda.findFirst.mockResolvedValue(null);
     const moduleRef = await Test.createTestingModule({
       providers: [
         ParejasCdaService,
@@ -255,7 +259,7 @@ describe('ParejasCdaService', () => {
       await expect(service.aplicar(DIA)).rejects.toThrow(BadRequestException);
     });
 
-    it('asigna el kit existente al operador (creándole la cuenta), cuenta la segunda pareja y reporta errores sin cortar', async () => {
+    it('asigna el kit existente al operador (creándole la cuenta), crea el que falta, cuenta la segunda pareja y reporta errores sin cortar', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja({ operador: { ...OPERADOR, usuarioId: null } }),
         pareja({ id: 'p2', operadorCdaId: 'op2', operador: { ...OPERADOR, id: 'op2', apellidosNombres: 'SEGUNDO' }, creadoEn: new Date('2026-10-29T12:00:00Z') }),
@@ -274,13 +278,130 @@ describe('ParejasCdaService', () => {
       expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'op1', 'hash');
       expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false });
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'uNuevo' });
+      // Recinto sin kit y pareja sin artículos: el kit se crea con los artículos por defecto del catálogo.
+      expect(kits.create).toHaveBeenCalledWith({ eventoId: 'ev2', nombre: 'Kit Recinto 1225', recintoId: 'r3' });
+      expect(kits.asignar).toHaveBeenNthCalledWith(3, 'kNuevo', { operadorId: 'u4' });
       expect(r).toEqual({
-        enApp: 1,
-        kitsCreados: 0,
-        sinKit: 1,
+        enApp: 2,
+        kitsCreados: 1,
+        sinKit: 0,
         soloRegistradas: 1,
         errores: [{ pareja: 'TERCERO · 1126', error: 'Este operador ya tiene kits asignados a otro recinto en este evento' }],
       });
+    });
+  });
+
+  describe('Nuevo kit en un paso (página Kits)', () => {
+    const EVENTO_KITS = { id: 'ev2', estado: 'ACTIVO', fechaJornada: FECHA };
+    const DATOS = { eventoId: 'ev2', recintoId: 'r1', operadorCdaId: 'op1', asistenteCdaId: 'as1' };
+
+    beforeEach(() => {
+      prisma.eventoElectoral.findUnique.mockResolvedValue(EVENTO_KITS);
+      prisma.operadorCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === 'op1'
+            ? { grupo: 'OPERADOR', activo: true, usuarioId: 'u1' }
+            : { grupo: 'ASISTENTE', activo: true, usuarioId: null },
+        ),
+      );
+      prisma.recinto.findUnique.mockResolvedValue({ activo: true, tipo: 'CDA', codigoRecinto: '957', nombre: 'UE ATAHUALPA' });
+      kits.asignar.mockResolvedValue({ id: 'kNuevo', operadorId: 'u1' });
+    });
+    afterEach(() => prisma.operadorCda.findUnique.mockReset());
+
+    it('disponibles: sin pareja en la jornada del evento, sin kit en el evento, y recintos sin kit', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([{ operadorCdaId: 'opP', asistenteCdaId: 'asP' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { recintoId: 'rK', operadorId: 'uK' },
+        { recintoId: 'rL', operadorId: null },
+      ]);
+
+      await service.disponiblesParaKit('ev2');
+
+      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA });
+      expect(prisma.kitElectoral.findMany.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', esPrueba: false });
+      const sinKitNiPareja = {
+        activo: true,
+        id: { notIn: ['opP', 'asP'] },
+        OR: [{ usuarioId: null }, { usuarioId: { notIn: ['uK'] } }],
+      };
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ grupo: 'OPERADOR', ...sinKitNiPareja });
+      expect(prisma.operadorCda.findMany.mock.calls[1][0].where).toEqual({ grupo: 'ASISTENTE', ...sinKitNiPareja });
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: ['rK', 'rL'] } });
+    });
+
+    it('crea el kit (artículos por defecto), lo asigna al operador y registra la pareja en la fecha de la jornada', async () => {
+      const kit = await service.crearKitConPareja(DATOS, 'admin');
+
+      expect(kits.create).toHaveBeenCalledWith({ eventoId: 'ev2', nombre: '957 — UE ATAHUALPA', recintoId: 'r1' });
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u1' });
+      expect(prisma.parejaCda.create).toHaveBeenCalledWith({
+        data: { fecha: FECHA, operadorCdaId: 'op1', asistenteCdaId: 'as1', recintoId: 'r1', kitId: 'kNuevo', creadoPorId: 'admin' },
+      });
+      expect(kit).toEqual({ id: 'kNuevo', operadorId: 'u1' });
+    });
+
+    it('pasa los artículos elegidos y crea la cuenta del operador si no la tiene', async () => {
+      prisma.operadorCda.findUnique
+        .mockResolvedValueOnce({ grupo: 'OPERADOR', activo: true }) // validar integrantes
+        .mockResolvedValueOnce({ usuarioId: null }) // sin cuenta todavía
+        .mockResolvedValueOnce({ usuarioId: 'uNuevo' }); // tras asegurarCuenta
+      const detalleItems = [{ itemId: 'iLap', serie: 'S1', estado: 'BUENO' as const }];
+
+      await service.crearKitConPareja({ eventoId: 'ev2', recintoId: 'r1', operadorCdaId: 'op1', detalleItems }, 'admin');
+
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'op1', 'hash');
+      expect(kits.create).toHaveBeenCalledWith(expect.objectContaining({ detalleItems }));
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'uNuevo' });
+      expect(prisma.parejaCda.create.mock.calls[0][0].data.asistenteCdaId).toBeNull();
+    });
+
+    it('si el operador o el asistente ya tiene pareja ese día, no crea nada', async () => {
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'otro', asistenteCdaId: 'as1' });
+
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow(
+        new ConflictException('El asistente ya tiene pareja el 2026-10-30'),
+      );
+      expect(kits.create).not.toHaveBeenCalled();
+    });
+
+    it('jornada iniciada sin justificación: lo explica sin crear el kit', async () => {
+      kits.estaCongelado.mockReturnValue(true);
+
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow(BadRequestException);
+      expect(kits.create).not.toHaveBeenCalled();
+    });
+
+    it('si falla la asignación, borra el kit recién creado (no queda un kit suelto)', async () => {
+      kits.asignar.mockRejectedValueOnce(new ConflictException('Este operador ya tiene kits asignados a otro recinto en este evento'));
+
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow(ConflictException);
+      expect(prisma.kitElectoral.delete).toHaveBeenCalledWith({ where: { id: 'kNuevo' } });
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+    });
+
+    it('si además falla el borrado del kit, lo registra en el log y devuelve el error original', async () => {
+      const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      kits.asignar.mockRejectedValueOnce(new ConflictException('choque'));
+      prisma.kitElectoral.delete.mockRejectedValueOnce(new Error('FK'));
+
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow('choque');
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('kNuevo'));
+      log.mockRestore();
+    });
+
+    it('recinto que ya tiene kit real: KitsService lo rechaza y no se registra la pareja ni se borra nada', async () => {
+      kits.create.mockRejectedValueOnce(new ConflictException('Este recinto ya tiene un kit asignado en este evento'));
+
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow('Este recinto ya tiene un kit asignado');
+      expect(kits.asignar).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.delete).not.toHaveBeenCalled();
+    });
+
+    it('evento inexistente: 404', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(null);
+      await expect(service.crearKitConPareja(DATOS, 'admin')).rejects.toThrow('Evento no encontrado');
     });
   });
 

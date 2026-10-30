@@ -121,6 +121,8 @@ describe('KitsService', () => {
   });
 
   describe('create', () => {
+    const itemA = '55555555-5555-5555-5555-555555555555';
+    const itemB = '66666666-6666-6666-6666-666666666666';
     it('lanza NotFoundException si el evento no existe', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(null);
       await expect(
@@ -196,9 +198,28 @@ describe('KitsService', () => {
       expect(data.qrPayload).toBe(data.codigoUnico); // CA2: el QR codifica el código único
     });
 
-    it('rechaza un kit sin artículos ni contenidos (no se podría verificar al retorno)', async () => {
+    it('sin artículos ni contenidos, el kit nace con todos los artículos activos del catálogo', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([{ id: itemA }, { id: itemB }]);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow());
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, itemIds: [], contenidos: '  ' } as any);
+
+      expect(prisma.itemKitCatalog.findMany).toHaveBeenCalledWith({ where: { activo: true }, select: { id: true } });
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.itemsContenido).toEqual({
+        create: [
+          { item: { connect: { id: itemA } }, serie: null, estado: 'BUENO' },
+          { item: { connect: { id: itemB } }, serie: null, estado: 'BUENO' },
+        ],
+      });
+    });
+
+    it('sin artículos y con el catálogo vacío, se rechaza (no se podría verificar al retorno)', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([]);
 
       await expect(
         service.create({ eventoId, nombre: 'Kit 1', recintoId, itemIds: [], contenidos: '  ' } as any),
@@ -468,20 +489,28 @@ describe('KitsService', () => {
       );
     });
 
-    it('carga masiva: una fila sin artículos ni contenidos es error de esa fila', async () => {
+    it('carga masiva: una fila sin artículos ni contenidos lleva todos los artículos activos', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
       prisma.usuario.findMany.mockResolvedValueOnce([]);
       prisma.recinto.findMany.mockResolvedValueOnce([]);
-      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([{ id: itemA, codigo: 'COMPUTADOR' }]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([
+        { id: itemA, codigo: 'COMPUTADOR' },
+        { id: itemB, codigo: 'ESCANER' },
+      ]);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
 
       const csv = ['nombre,items,contenidos', 'Kit A,,'].join('\n');
       const result = await service.bulkUpload(csvFile(csv), eventoId);
 
-      expect(result.creados).toBe(0);
-      expect(result.errores[0].error).toMatch(/al menos un artículo/i);
-      expect(prisma.kitElectoral.create).not.toHaveBeenCalled();
+      expect(result.creados).toBe(1);
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.itemsContenido).toEqual({
+        create: [
+          { item: { connect: { id: itemA } }, serie: null, estado: 'BUENO' },
+          { item: { connect: { id: itemB } }, serie: null, estado: 'BUENO' },
+        ],
+      });
     });
 
     it('carga masiva: una serie de más de 60 caracteres es error de esa fila', async () => {
