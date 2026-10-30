@@ -1,6 +1,8 @@
 import type {
   ActaCdaFila,
   AplicarParejasCdaResult,
+  CopiarParejasCdaRequest,
+  CopiarParejasCdaResult,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
@@ -378,6 +380,12 @@ export async function crearParejaCda(body: CrearParejaCdaRequest): Promise<Aplic
 
 export async function editarParejaCda(id: string, body: EditarParejaCdaRequest): Promise<AplicarParejasCdaResult> {
   const { data } = await api.patch<AplicarParejasCdaResult>(`/parejas-cda/${id}`, body);
+  return data;
+}
+
+/** Copia la lista de un día a otro (solo la registra). */
+export async function copiarParejasCda(body: CopiarParejasCdaRequest): Promise<CopiarParejasCdaResult> {
+  const { data } = await api.post<CopiarParejasCdaResult>('/parejas-cda/copiar', body);
   return data;
 }
 

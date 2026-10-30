@@ -18,6 +18,7 @@ import {
 import { ParejaFormModal } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
+import { CopiarParejasModal } from './CopiarParejasModal';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
 
@@ -51,6 +52,7 @@ export function ParejasPanel() {
   const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
+  const [copiando, setCopiando] = useState(false);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
   // El último paso a la app queda a la vista (los avisos emergentes desaparecen).
@@ -192,6 +194,11 @@ export function ParejasPanel() {
             <button type="button" className="btn secondary" onClick={() => plantilla.mutate()} disabled={plantilla.isPending}>
               Descargar plantilla
             </button>
+            {parejas.length > 0 && (
+              <button type="button" className="btn secondary" onClick={() => setCopiando(true)}>
+                Copiar a otro día
+              </button>
+            )}
             <button
               type="button"
               className="btn secondary"
@@ -361,6 +368,17 @@ export function ParejasPanel() {
           justificacionInicial={justificacion}
           onResultado={mostrarResultado}
           onClose={() => setCambiando(null)}
+        />
+      )}
+      {copiando && (
+        <CopiarParejasModal
+          desde={dia}
+          total={parejas.length}
+          onVerDia={(d) => {
+            setCopiando(false);
+            elegirDia(d);
+          }}
+          onClose={() => setCopiando(false)}
         />
       )}
       {importando && (

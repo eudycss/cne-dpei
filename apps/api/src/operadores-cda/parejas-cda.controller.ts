@@ -20,6 +20,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
+  copiarParejasCdaSchema,
   crearKitConParejaCdaSchema,
   crearParejaCdaSchema,
   editarParejaCdaSchema,
@@ -29,6 +30,7 @@ import {
   justificacionParejaCdaSchema,
 } from '@cne/shared-validation';
 import type {
+  CopiarParejasCdaRequest,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   EditarParejaCdaRequest,
@@ -170,6 +172,13 @@ export class ParejasCdaController {
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
     await this.parejas.eliminar(id, body?.justificacion);
+  }
+
+  @Post('copiar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Copia la lista de un día a otro (solo la registra; no pasa a la app)' })
+  copiar(@Body(new ZodValidationPipe(copiarParejasCdaSchema)) body: CopiarParejasCdaRequest, @CurrentUser() user: AuthenticatedUser) {
+    return this.parejas.copiar(body.desde, body.hacia, user.sub);
   }
 
   @Post('aplicar')

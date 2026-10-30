@@ -5,6 +5,7 @@ import { filaParejaCdaSchema } from '@cne/shared-validation';
 import type {
   AplicarParejasCdaResult,
   CampoParejaCda,
+  CopiarParejasCdaResult,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
@@ -179,6 +180,60 @@ export class ParejasCdaService {
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion);
     const recintos = [actual.recintoId, ...(cambiaRecinto ? [datos.recintoId as string] : [])];
     return (await this.aplicarDia(fecha, { recintos }, justificacion)) ?? vacio();
+  }
+
+  /**
+   * Copia la lista de `desde` a `hacia` (mismo operador, asistente, recinto y
+   * artículos). Solo la registra: el kit y la app quedan para "Aplicar a la
+   * app", así se puede revisar antes. Omite a quien ya tiene pareja ese día
+   * o está oculto, y dice por qué.
+   */
+  async copiar(desde: string, hacia: string, usuarioId: string): Promise<CopiarParejasCdaResult> {
+    if (desde === hacia) throw new BadRequestException('Elija un día distinto');
+    const origen = await this.parejasDelDia(desde);
+    if (!origen.length) throw new BadRequestException(`El ${desde} no tiene parejas para copiar`);
+    const destino = await this.prisma.parejaCda.findMany({
+      where: { fecha: fechaDb(hacia) },
+      select: { operadorCdaId: true, asistenteCdaId: true },
+    });
+    const ocupadas = new Set(destino.flatMap((d) => [d.operadorCdaId, d.asistenteCdaId]).filter((id): id is string => !!id));
+    const personas = [...new Set(origen.flatMap((p) => [p.operadorCdaId, p.asistenteCdaId]).filter((id): id is string => !!id))];
+    const activas = new Set(
+      (await this.prisma.operadorCda.findMany({ where: { id: { in: personas }, activo: true }, select: { id: true } })).map((o) => o.id),
+    );
+
+    const omitidas: CopiarParejasCdaResult['omitidas'] = [];
+    const data: Prisma.ParejaCdaCreateManyInput[] = [];
+    // Mismo orden que el día de origen (decide qué pareja va a la app en un recinto con dos).
+    const base = Date.now();
+    for (const p of origen) {
+      const motivo = !activas.has(p.operadorCdaId)
+        ? 'El operador está oculto'
+        : ocupadas.has(p.operadorCdaId)
+          ? 'El operador ya tiene pareja ese día'
+          : p.asistenteCdaId && !activas.has(p.asistenteCdaId)
+            ? 'El asistente está oculto'
+            : p.asistenteCdaId && ocupadas.has(p.asistenteCdaId)
+              ? 'El asistente ya tiene pareja ese día'
+              : null;
+      if (motivo) {
+        omitidas.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`, motivo });
+        continue;
+      }
+      ocupadas.add(p.operadorCdaId);
+      if (p.asistenteCdaId) ocupadas.add(p.asistenteCdaId);
+      data.push({
+        fecha: fechaDb(hacia),
+        recintoId: p.recintoId,
+        operadorCdaId: p.operadorCdaId,
+        asistenteCdaId: p.asistenteCdaId,
+        articulos: p.articulos,
+        creadoPorId: usuarioId,
+        creadoEn: new Date(base + data.length),
+      });
+    }
+    if (data.length) await this.guardar(hacia, () => this.prisma.parejaCda.createMany({ data }));
+    return { copiadas: data.length, omitidas };
   }
 
   /**

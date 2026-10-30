@@ -99,6 +99,18 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('copiar la lista de parejas CDA: de qué día a cuál', async () => {
+    const { data } = await auditar(
+      { method: 'POST', originalUrl: '/parejas-cda/copiar', params: {}, body: { desde: '2026-10-28', hacia: '2026-11-04' }, user: ADMIN },
+      { copiadas: 31, omitidas: [] },
+    );
+    expect(data).toMatchObject({
+      accion: 'PAREJA_CDA_COPIAR',
+      entidad: 'pareja_cda',
+      datosDespues: { campos: ['desde', 'hacia'], desde: '2026-10-28', hacia: '2026-11-04' },
+    });
+  });
+
   it('intercambio entre parejas CDA: la pareja, con cuál, qué campo y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',

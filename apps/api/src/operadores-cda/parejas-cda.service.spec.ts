@@ -52,6 +52,7 @@ describe('ParejasCdaService', () => {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      createMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -815,6 +816,78 @@ describe('ParejasCdaService', () => {
       );
       await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow('Las dos parejas deben ser del mismo día');
       expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('copiar la lista a otro día', () => {
+    const HACIA = '2026-11-04';
+    const B = pareja({
+      id: 'p2',
+      recintoId: 'r2',
+      recinto: { id: 'r2', codigoRecinto: '1126', nombre: 'UE B' },
+      operadorCdaId: 'op2',
+      asistenteCdaId: null,
+      articulos: 'LAP',
+      kitId: 'k2',
+      operador: { ...OPERADOR, id: 'op2', apellidosNombres: 'MORA LUIS' },
+      asistente: null,
+    });
+
+    beforeEach(() => {
+      prisma.parejaCda.findMany.mockReset();
+      prisma.operadorCda.findMany.mockResolvedValue([{ id: 'op1' }, { id: 'as1' }, { id: 'op2' }]);
+    });
+
+    it('copia operador, asistente, recinto y artículos (sin kit ni paso a la app), en el mismo orden', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ kitId: 'k1' }), B]).mockResolvedValueOnce([]);
+
+      const r = await service.copiar(DIA, HACIA, 'uAdmin');
+
+      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA });
+      expect(prisma.parejaCda.findMany.mock.calls[1][0].where).toEqual({ fecha: new Date(`${HACIA}T00:00:00Z`) });
+      const data = prisma.parejaCda.createMany.mock.calls[0][0].data;
+      expect(data.map(({ creadoEn, ...d }: { creadoEn: Date }) => d)).toEqual([
+        { fecha: new Date(`${HACIA}T00:00:00Z`), recintoId: 'r1', operadorCdaId: 'op1', asistenteCdaId: 'as1', articulos: null, creadoPorId: 'uAdmin' },
+        { fecha: new Date(`${HACIA}T00:00:00Z`), recintoId: 'r2', operadorCdaId: 'op2', asistenteCdaId: null, articulos: 'LAP', creadoPorId: 'uAdmin' },
+      ]);
+      expect(data[0].creadoEn.getTime()).toBeLessThan(data[1].creadoEn.getTime());
+      expect(kits.asignar).not.toHaveBeenCalled();
+      expect(kits.create).not.toHaveBeenCalled();
+      expect(r).toEqual({ copiadas: 2, omitidas: [] });
+    });
+
+    it('omite, con el motivo, a quien ya tiene pareja ese día o está oculto', async () => {
+      const C = pareja({ id: 'p3', operadorCdaId: 'op3', asistenteCdaId: 'as3', operador: { ...OPERADOR, id: 'op3', apellidosNombres: 'VEGA RITA' } });
+      const D = pareja({ id: 'p4', operadorCdaId: 'op4', asistenteCdaId: null, asistente: null, operador: { ...OPERADOR, id: 'op4', apellidosNombres: 'OCULTO' } });
+      prisma.parejaCda.findMany
+        .mockResolvedValueOnce([pareja(), B, C, D])
+        .mockResolvedValueOnce([{ operadorCdaId: 'op2', asistenteCdaId: 'as3' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'op1' }, { id: 'as1' }, { id: 'op2' }, { id: 'op3' }, { id: 'as3' }]);
+
+      const r = await service.copiar(DIA, HACIA, 'uAdmin');
+
+      expect(prisma.parejaCda.createMany.mock.calls[0][0].data).toHaveLength(1);
+      expect(r).toEqual({
+        copiadas: 1,
+        omitidas: [
+          { pareja: 'MORA LUIS · 1126', motivo: 'El operador ya tiene pareja ese día' },
+          { pareja: 'VEGA RITA · 957', motivo: 'El asistente ya tiene pareja ese día' },
+          { pareja: 'OCULTO · 957', motivo: 'El operador está oculto' },
+        ],
+      });
+    });
+
+    it('si nada se puede copiar, no escribe', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]).mockResolvedValueOnce([{ operadorCdaId: 'op1', asistenteCdaId: null }]);
+      const r = await service.copiar(DIA, HACIA, 'uAdmin');
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+      expect(r.copiadas).toBe(0);
+    });
+
+    it('el mismo día o un día sin parejas: 400', async () => {
+      await expect(service.copiar(DIA, DIA, 'uAdmin')).rejects.toThrow(BadRequestException);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([]);
+      await expect(service.copiar(DIA, HACIA, 'uAdmin')).rejects.toThrow(`El ${DIA} no tiene parejas para copiar`);
     });
   });
 

@@ -1169,6 +1169,18 @@ export interface EditarParejaCdaRequest {
 
 export type CampoParejaCda = 'OPERADOR' | 'ASISTENTE' | 'RECINTO';
 
+/** Copiar la lista de un día a otro. */
+export interface CopiarParejasCdaRequest {
+  desde: string;
+  hacia: string;
+}
+
+export interface CopiarParejasCdaResult {
+  copiadas: number;
+  /** Las que no se copiaron y por qué ("OPERADOR · CÓDIGO"). */
+  omitidas: { pareja: string; motivo: string }[];
+}
+
 /** Intercambiar un campo con otra pareja del mismo día. */
 export interface IntercambiarParejaCdaRequest {
   conId: string;

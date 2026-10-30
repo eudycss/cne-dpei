@@ -966,6 +966,13 @@ export const editarParejaCdaSchema = z
   .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
 export type EditarParejaCdaInput = z.infer<typeof editarParejaCdaSchema>;
 
+/** Copiar la lista de parejas de un día a otro (solo se registra; no pasa a la app). */
+export const copiarParejasCdaSchema = z
+  .object({ desde: fechaParejaCdaSchema, hacia: fechaParejaCdaSchema })
+  .strict()
+  .refine((d) => d.desde !== d.hacia, { message: 'Elija un día distinto', path: ['hacia'] });
+export type CopiarParejasCdaInput = z.infer<typeof copiarParejasCdaSchema>;
+
 /**
  * Intercambia el operador, el asistente o el recinto con otra pareja del
  * mismo día (lo elegido ya era de esa pareja).
