@@ -326,6 +326,8 @@ export const createKitSchema = z.object({
   // Si viene, reemplaza a itemIds y además guarda serie/estado de cada ítem.
   detalleItems: z.array(itemKitDetalleSchema).optional(),
   recintoId: z.string().uuid('Selecciona un recinto'),
+  // El recinto lleva otro dispositivo: acepta un segundo kit real en él.
+  otroDispositivo: z.boolean().optional(),
 });
 
 // --- Catálogo de ítems de kit ---
@@ -937,6 +939,7 @@ export const crearKitConParejaCdaSchema = z
     operadorCdaId: z.string().uuid('Elija un operador'),
     asistenteCdaId: z.string().uuid('Asistente inválido').nullable().optional(),
     detalleItems: z.array(itemKitDetalleSchema).max(100).optional(),
+    otroDispositivo: z.boolean().optional(),
     justificacion: justificacionParejaCdaSchema,
   })
   .strict()

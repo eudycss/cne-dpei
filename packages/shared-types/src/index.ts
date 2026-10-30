@@ -389,6 +389,8 @@ export interface CreateKitRequest {
   itemIds?: string[];
   detalleItems?: KitItemDetalleInput[];
   recintoId: string;
+  /** El recinto lleva otro dispositivo: acepta un segundo kit real en él. */
+  otroDispositivo?: boolean;
 }
 
 export interface EditKitRequest {
@@ -1135,6 +1137,8 @@ export interface CrearKitConParejaCdaRequest {
   asistenteCdaId?: string | null;
   /** Sin artículos, el kit lleva todos los activos del catálogo. */
   detalleItems?: { itemId: string; serie?: string | null; estado?: EstadoItemKit }[];
+  /** El recinto lleva otro dispositivo: acepta un segundo kit real en él. */
+  otroDispositivo?: boolean;
   /** Obligatoria si la jornada ya inició (asignaciones congeladas). */
   justificacion?: string;
 }

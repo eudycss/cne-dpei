@@ -632,6 +632,9 @@ function CreateKitModal({
   const [justificacion, setJustificacion] = useState('');
   const [frozen, setFrozen] = useState(false);
   const [esPrueba, setEsPrueba] = useState(false);
+  // El recinto lleva otro dispositivo: se puede elegir uno que ya tiene kit.
+  const [otroDispositivo, setOtroDispositivo] = useState(false);
+  const [avisoRecinto, setAvisoRecinto] = useState('');
   const [contenidos, setContenidos] = useState<ContenidosKit>(() => contenidosDesdeCatalogo(itemsCatalog));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -652,12 +655,12 @@ function CreateKitModal({
   const recintoOptions = useMemo(() => {
     const ocupados = new Set(recintosOcupados);
     return recintos
-      .filter((r) => !ocupados.has(r.id))
+      .filter((r) => otroDispositivo || !ocupados.has(r.id))
       .map((r) => ({
         value: r.id,
-        label: `${r.codigoRecinto} — ${r.nombre}`,
+        label: `${r.codigoRecinto} — ${r.nombre}${ocupados.has(r.id) ? ' (ya tiene kit)' : ''}`,
       }));
-  }, [recintos, recintosOcupados]);
+  }, [recintos, recintosOcupados, otroDispositivo]);
 
   // Cuando el catálogo crece (ej. por "+ Agregar otro"), el ítem nuevo entra marcado.
   useEffect(() => {
@@ -693,6 +696,7 @@ function CreateKitModal({
           operadorCdaId,
           ...(asistenteCdaId && { asistenteCdaId }),
           detalleItems: aDetalleItems(contenidos),
+          ...(otroDispositivo && { otroDispositivo: true }),
           ...(frozen && { justificacion: justificacion.trim() }),
         });
         onDone();
@@ -712,6 +716,7 @@ function CreateKitModal({
       esPrueba,
       detalleItems: aDetalleItems(contenidos),
       recintoId,
+      ...(otroDispositivo && !esPrueba && { otroDispositivo: true }),
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Datos inválidos');
@@ -746,8 +751,32 @@ function CreateKitModal({
             searchPlaceholder="Busca por nombre o código…"
             required
           />
-          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-            Solo se muestran recintos sin kit asignado todavía.
+          <p id="kit-nuevo-recinto-ayuda" className="muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            {otroDispositivo
+              ? 'Se muestran todos los recintos; los que ya tienen kit recibirán uno más.'
+              : 'Solo se muestran recintos sin kit asignado todavía.'}
+          </p>
+          {!esPrueba && (
+            <label className="row" style={{ margin: '0.35rem 0 0', gap: '0.35rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={otroDispositivo}
+                aria-describedby="kit-nuevo-recinto-ayuda"
+                onChange={(e) => {
+                  setOtroDispositivo(e.target.checked);
+                  setAvisoRecinto('');
+                  // Sin la casilla, un recinto que ya tiene kit deja de ser válido.
+                  if (!e.target.checked && recintosOcupados.includes(recintoId)) {
+                    setRecintoId('');
+                    setAvisoRecinto('Se quitó el recinto elegido porque ya tiene kit. Elija otro.');
+                  }
+                }}
+              />
+              Este recinto lleva otro dispositivo (dos o más kits)
+            </label>
+          )}
+          <p role="status" className="muted" style={{ fontSize: '0.8rem', margin: avisoRecinto ? '0.25rem 0 0' : 0 }}>
+            {avisoRecinto}
           </p>
         </div>
 
@@ -828,6 +857,7 @@ function CreateKitModal({
               setEsPrueba(e.target.checked);
               setOperadorCdaId('');
               setAsistenteCdaId('');
+              setOtroDispositivo(false);
             }}
           />
           Es un kit de prueba (no aparecerá en el listado por defecto)

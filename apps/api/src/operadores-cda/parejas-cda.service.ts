@@ -77,13 +77,14 @@ export class ParejasCdaService {
   async listar(fecha: string): Promise<ParejasCdaDia> {
     const [evento, parejas] = await Promise.all([this.eventoDeFecha(fecha), this.parejasDelDia(fecha)]);
     const primeras = primerasPorRecinto(parejas);
-    const porRecinto = contarPorRecinto(parejas);
+    // "Compartido": el recinto tiene alguna pareja que solo queda registrada.
+    const conSobrante = new Set(parejas.filter((p) => !primeras.has(p.id)).map((p) => p.recintoId));
     return {
       fecha,
       evento,
       congelado: !!evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }),
       parejas: parejas
-        .map((p) => aFila(p, evento, primeras.has(p.id), (porRecinto.get(p.recintoId) ?? 0) > 1))
+        .map((p) => aFila(p, evento, primeras.has(p.id), conSobrante.has(p.recintoId)))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
     };
   }
@@ -245,6 +246,7 @@ export class ParejasCdaService {
       nombre: `${recinto.codigoRecinto} — ${recinto.nombre}`,
       recintoId: datos.recintoId,
       ...(datos.detalleItems && { detalleItems: datos.detalleItems }),
+      ...(datos.otroDispositivo && { otroDispositivo: true }),
     });
     try {
       const kit = await this.kits.asignar(nuevo.id, justificacion ? { operadorId: cuenta, justificacion } : { operadorId: cuenta });
@@ -527,9 +529,15 @@ export class ParejasCdaService {
     /** undefined = no congelado; null = congelado sin justificación. */
     justificacion: string | null | undefined,
   ): Promise<'EN_APP' | 'KIT_CREADO'> {
-    let kit = await this.prisma.kitElectoral.findFirst({
-      where: { eventoId: evento.id, recintoId: p.recintoId, esPrueba: false },
+    // La pareja con kit propio en este evento lo conserva; si no, toma el kit
+    // del recinto que no sea de otra pareja (un recinto puede llevar dos).
+    let kit = p.kitId
+      ? await this.prisma.kitElectoral.findFirst({ where: { id: p.kitId, eventoId: evento.id }, select: { id: true, operadorId: true } })
+      : null;
+    kit ??= await this.prisma.kitElectoral.findFirst({
+      where: { eventoId: evento.id, recintoId: p.recintoId, esPrueba: false, parejasCda: { none: {} } },
       select: { id: true, operadorId: true },
+      orderBy: { creadoEn: 'asc' },
     });
     const cambia = !kit || kit.operadorId !== usuarioId;
     if (cambia && justificacion === null) throw new BadRequestException(MENSAJE_CONGELADO);
@@ -737,21 +745,21 @@ function normalizarFila(raw: Record<string, string>) {
 }
 
 /** La primera pareja (por orden de registro) de cada recinto es la que va a la app. */
-function primerasPorRecinto(parejas: { id: string; recintoId: string }[]): Set<string> {
+/**
+ * Parejas que van a la app: las que tienen kit propio (un recinto puede
+ * llevar dos dispositivos) y, en un recinto donde ninguna lo tiene todavía,
+ * la primera. Las demás quedan solo registradas.
+ */
+function primerasPorRecinto(parejas: { id: string; recintoId: string; kitId: string | null }[]): Set<string> {
+  const conKit = new Set(parejas.filter((p) => p.kitId).map((p) => p.recintoId));
   const vistos = new Set<string>();
   const primeras = new Set<string>();
   for (const p of parejas) {
-    if (vistos.has(p.recintoId)) continue;
+    if (p.kitId) primeras.add(p.id);
+    else if (!conKit.has(p.recintoId) && !vistos.has(p.recintoId)) primeras.add(p.id);
     vistos.add(p.recintoId);
-    primeras.add(p.id);
   }
   return primeras;
-}
-
-function contarPorRecinto(parejas: { recintoId: string }[]): Map<string, number> {
-  const n = new Map<string, number>();
-  for (const p of parejas) n.set(p.recintoId, (n.get(p.recintoId) ?? 0) + 1);
-  return n;
 }
 
 function aRecinto(r: { id: string; codigoRecinto: string; nombre: string }): RecintoParejaCda {
