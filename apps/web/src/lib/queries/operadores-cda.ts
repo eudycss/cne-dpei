@@ -6,6 +6,7 @@ import type {
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
   ImportParejasCdaResult,
+  IntercambiarParejaCdaRequest,
   ParejasCdaDia,
   ActaEntregaCda,
   AsistenciaCdaDia,
@@ -377,6 +378,12 @@ export async function crearParejaCda(body: CrearParejaCdaRequest): Promise<Aplic
 
 export async function editarParejaCda(id: string, body: EditarParejaCdaRequest): Promise<AplicarParejasCdaResult> {
   const { data } = await api.patch<AplicarParejasCdaResult>(`/parejas-cda/${id}`, body);
+  return data;
+}
+
+/** Intercambia operador, asistente o recinto con otra pareja del mismo día. */
+export async function intercambiarParejaCda(id: string, body: IntercambiarParejaCdaRequest): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/${id}/intercambiar`, body);
   return data;
 }
 

@@ -304,17 +304,158 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent('ya salió de la Delegación');
   });
 
-  it('cambiar una pareja: solo manda lo que cambió', async () => {
-    mockApi({}, { operadores: [LUIS], asistentes: [], recintos: [] });
-    const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
-    patchMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+  it('la tabla muestra Operador, Asistente y Recinto (código y nombre), en ese orden', async () => {
+    mockApi();
     renderPagina();
-    await userEvent.click(await screen.findByRole('button', { name: 'Cambiar la pareja de PÉREZ ANA' }));
-    const dialogo = await screen.findByRole('dialog', { name: 'Cambiar pareja' });
-    const combo = within(dialogo).getByRole('combobox', { name: 'Operador CDA' });
-    await waitFor(() => expect(within(combo).getAllByRole('option').length).toBe(3));
-    await userEvent.selectOptions(combo, 'op2');
-    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/parejas-cda/p1', { operadorCdaId: 'op2' }));
+    const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+    const cabeceras = within(tabla).getAllByRole('columnheader').map((c) => c.textContent);
+    expect(cabeceras.slice(0, 3)).toEqual(['Operador CDA', 'Asistente CDA', 'Recinto']);
+  });
+
+  it('sin día en la dirección abre el día más reciente que tiene lista', async () => {
+    mockApi();
+    const base = getMock.getMockImplementation() as (url: string) => Promise<unknown>;
+    // La única lista es de otro día (no la de hoy).
+    getMock.mockImplementation((url: string) =>
+      url.startsWith('/parejas-cda/fechas') ? Promise.resolve({ data: ['2026-10-28'] }) : base(url),
+    );
+    renderPagina('/operadores-cda?tab=parejas');
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/parejas-cda?fecha=2026-10-28'));
+    const otrosDias = getMock.mock.calls.filter(([url]) => /^\/parejas-cda\?fecha=/.test(url) && url !== '/parejas-cda?fecha=2026-10-28');
+    expect(otrosDias).toEqual([]);
+  });
+
+  describe('cambiar operador, asistente o recinto', () => {
+    const patchMock = () => api.patch as unknown as ReturnType<typeof vi.fn>;
+    const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE B' };
+    const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null };
+    const OTRA = fila({ id: 'p2', operador: LUIS, asistente: PEDRO, recinto: R1126, kitCodigo: 'KIT-0002' });
+    const OK = { data: { enApp: 2, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } };
+
+    async function abrir(campo: 'operador' | 'asistente' | 'recinto') {
+      await userEvent.click(await screen.findByRole('button', { name: `Cambiar ${campo} de PÉREZ ANA` }));
+      return screen.findByRole('dialog', { name: `Cambiar ${campo}` });
+    }
+
+    it('elegir un recinto libre lo cambia sin intercambiar', async () => {
+      mockApi({}, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+      patchMock().mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('recinto');
+      const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo recinto' });
+      await waitFor(() => expect(within(combo).getByRole('option', { name: '1126 · UE B' })).toBeInTheDocument());
+      await userEvent.selectOptions(combo, 'r2');
+      expect(within(dialogo).getByRole('status')).toHaveTextContent('PÉREZ ANA – RUIZ JUAN pasa a 1126 · UE B');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(patchMock()).toHaveBeenCalledWith('/parejas-cda/p1', { recintoId: 'r2' }));
+    });
+
+    it('elegir el recinto de otra pareja muestra el intercambio y lo envía', async () => {
+      mockApi({ parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+      postMock.mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('recinto');
+      const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo recinto' });
+      await waitFor(() => expect(within(combo).getByRole('option', { name: /1126 · UE B · lo tiene MORA LUIS/ })).toBeInTheDocument());
+      await userEvent.selectOptions(combo, 'r2');
+      const resumen = within(dialogo).getByRole('status');
+      expect(resumen).toHaveTextContent('Se intercambian');
+      expect(resumen).toHaveTextContent('PÉREZ ANA – RUIZ JUAN pasa a 1126 · UE B');
+      expect(resumen).toHaveTextContent('MORA LUIS – SOLÍS PEDRO pasa a 957 · UE ATAHUALPA');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'RECINTO' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('elegir un operador que ya tiene pareja intercambia los operadores', async () => {
+      mockApi({ parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [] });
+      postMock.mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('operador');
+      await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Nuevo operador' }), 'op2');
+      const resumen = within(dialogo).getByRole('status');
+      expect(resumen).toHaveTextContent('MORA LUIS – RUIZ JUAN pasa a 957 · UE ATAHUALPA');
+      expect(resumen).toHaveTextContent('PÉREZ ANA – SOLÍS PEDRO pasa a 1126 · UE B');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'OPERADOR' }));
+    });
+
+    it('elegir el asistente de otra pareja intercambia los asistentes', async () => {
+      mockApi({ parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [] });
+      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+      const dialogo = await abrir('asistente');
+      await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Nuevo asistente' }), 'as2');
+      const resumen = within(dialogo).getByRole('status');
+      expect(resumen).toHaveTextContent('PÉREZ ANA – SOLÍS PEDRO pasa a 957 · UE ATAHUALPA');
+      expect(resumen).toHaveTextContent('MORA LUIS – RUIZ JUAN pasa a 1126 · UE B');
+      expect(resumen).not.toHaveTextContent('En la app, cada kit');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'ASISTENTE' }));
+    });
+
+    it('recinto con dos parejas: se intercambia con la que tiene el kit', async () => {
+      const SOLO = fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, asistente: null, recinto: R1126, estado: 'SOLO_REGISTRADA', kitCodigo: null });
+      mockApi({ parejas: [fila(), SOLO, OTRA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+      postMock.mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('recinto');
+      const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo recinto' });
+      await waitFor(() => expect(within(combo).getByRole('option', { name: /1126 · UE B · lo tiene MORA LUIS/ })).toBeInTheDocument());
+      await userEvent.selectOptions(combo, 'r2');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'RECINTO' }));
+    });
+
+    it('el asistente se puede dejar vacío', async () => {
+      mockApi({}, { operadores: [], asistentes: [PEDRO], recintos: [] });
+      patchMock().mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('asistente');
+      await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Nuevo asistente' }), '');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(patchMock()).toHaveBeenCalledWith('/parejas-cda/p1', { asistenteCdaId: null }));
+    });
+
+    it('jornada iniciada: pide justificación antes de guardar y la envía', async () => {
+      mockApi({ congelado: true, parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+      postMock.mockResolvedValueOnce(OK);
+      renderPagina();
+      const dialogo = await abrir('recinto');
+      const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo recinto' });
+      await waitFor(() => expect(within(combo).getByRole('option', { name: /1126/ })).toBeInTheDocument());
+      await userEvent.selectOptions(combo, 'r2');
+      const boton = within(dialogo).getByRole('button', { name: 'Intercambiar' });
+      expect(boton).toBeDisabled();
+      await userEvent.type(within(dialogo).getByRole('textbox', { name: /Justificación/ }), 'Cambio de última hora');
+      await userEvent.click(boton);
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', {
+          conId: 'p2',
+          campo: 'RECINTO',
+          justificacion: 'Cambio de última hora',
+        }),
+      );
+    });
+
+    it('si el kit ya salió, el motivo se ve en el diálogo', async () => {
+      mockApi({ parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'El kit KIT-0002 ya salió de la Delegación: no se puede cambiar su pareja' } } });
+      renderPagina();
+      const dialogo = await abrir('recinto');
+      const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo recinto' });
+      await waitFor(() => expect(within(combo).getByRole('option', { name: /1126/ })).toBeInTheDocument());
+      await userEvent.selectOptions(combo, 'r2');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('ya salió de la Delegación');
+    });
+
+    it('quien no es administrador no ve los botones de cambiar', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi();
+      renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('button', { name: /^Cambiar / })).not.toBeInTheDocument();
+    });
   });
 });

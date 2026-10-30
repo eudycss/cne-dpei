@@ -14,7 +14,7 @@ function conActual<T extends { id: string }>(lista: T[] | undefined, actual: T |
 }
 
 /** Combo con un campo para filtrar (son ~60 personas por grupo). */
-function ComboFiltrable<T extends { id: string }>({
+export function ComboFiltrable<T extends { id: string }>({
   id,
   etiqueta,
   opciones,
@@ -62,8 +62,8 @@ function ComboFiltrable<T extends { id: string }>({
   );
 }
 
-const textoPersona = (p: PersonaParejaCda) => `${p.apellidosNombres} · ${p.cedula}`;
-const textoRecinto = (r: RecintoParejaCda) => `${r.codigo} · ${r.nombre}`;
+export const textoPersona = (p: PersonaParejaCda) => `${p.apellidosNombres} · ${p.cedula}`;
+export const textoRecinto = (r: RecintoParejaCda) => `${r.codigo} · ${r.nombre}`;
 
 /**
  * Agregar o cambiar una pareja. Por defecto solo se ofrecen quienes no han

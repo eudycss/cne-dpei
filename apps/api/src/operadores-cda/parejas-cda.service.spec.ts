@@ -375,6 +375,26 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  it('aplicar: la pareja que ya tiene su kit (aunque haya salido) no da error', async () => {
+    prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ kitId: 'k1' })]);
+    prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', codigoUnico: 'KIT-1', estado: 'RETORNADO', operadorId: 'u1' });
+
+    const r = await service.aplicar(DIA);
+
+    expect(kits.asignar).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ enApp: 1, errores: [] });
+  });
+
+  it('aplicar no reasigna un kit que ya salió de la Delegación: lo reporta', async () => {
+    prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+    prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', codigoUnico: 'KIT-1', estado: 'RETORNADO', operadorId: 'uOtro' });
+
+    const r = await service.aplicar(DIA);
+
+    expect(kits.asignar).not.toHaveBeenCalled();
+    expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: 'El kit KIT-1 ya salió de la Delegación: no se puede cambiar su operador' }]);
+  });
+
   describe('Nuevo kit en un paso (página Kits)', () => {
     const EVENTO_KITS = { id: 'ev2', estado: 'ACTIVO', fechaJornada: FECHA };
     const DATOS = { eventoId: 'ev2', recintoId: 'r1', operadorCdaId: 'op1', asistenteCdaId: 'as1' };
@@ -646,6 +666,155 @@ describe('ParejasCdaService', () => {
       expect(kits.quitarOperador).not.toHaveBeenCalled();
       expect(kits.asignar).toHaveBeenCalledTimes(1);
       expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u9' });
+    });
+  });
+
+  describe('intercambiar con otra pareja del mismo día', () => {
+    const P1 = pareja({ kitId: 'k1', kit: { id: 'k1', operadorId: 'u1', eventoId: 'ev2' } });
+    const P2 = pareja({
+      id: 'p2',
+      recintoId: 'r2',
+      operadorCdaId: 'op2',
+      asistenteCdaId: 'as2',
+      articulos: 'LAP',
+      kitId: 'k2',
+      operador: { ...OPERADOR, id: 'op2', usuarioId: 'u2' },
+      kit: { id: 'k2', operadorId: 'u2', eventoId: 'ev2' },
+    });
+
+    beforeEach(() => {
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? P1 : where.id === 'p2' ? P2 : null),
+      );
+      prisma.kitElectoral.findMany.mockResolvedValue([
+        { id: 'k1', codigoUnico: 'KIT-1', estado: 'ASIGNADO', operadorId: 'u1' },
+        { id: 'k2', codigoUnico: 'KIT-2', estado: 'ASIGNADO', operadorId: 'u2' },
+      ]);
+    });
+
+    it('recinto: suelta los dos kits (antes comprueba que se pueda), intercambia los recintos y reaplica los dos', async () => {
+      await service.intercambiar('p1', 'p2', 'RECINTO', 'Cambio de sede');
+
+      expect(prisma.kitElectoral.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['k1', 'k2'] }, eventoId: 'ev2' });
+      expect(kits.quitarOperador.mock.calls).toEqual([
+        ['k1', 'Cambio de sede', true],
+        ['k2', 'Cambio de sede', true],
+        ['k1', 'Cambio de sede'],
+        ['k2', 'Cambio de sede'],
+      ]);
+      expect(prisma.parejaCda.update.mock.calls.map((c) => c[0])).toEqual([
+        { where: { id: 'p1' }, data: { recintoId: 'r2', kitId: 'k2' } },
+        { where: { id: 'p2' }, data: { recintoId: 'r1', kitId: 'k1' } },
+      ]);
+      expect(prisma.parejaCda.update.mock.invocationCallOrder[1]).toBeLessThan(kits.quitarOperador.mock.invocationCallOrder[2]);
+      expect(prisma.parejaCda.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { fecha: FECHA } }));
+    });
+
+    it('operador: cada operador queda con el asistente y el recinto del otro, sin chocar con "ya tiene pareja ese día"', async () => {
+      await service.intercambiar('p1', 'p2', 'OPERADOR');
+
+      expect(prisma.parejaCda.update.mock.calls.map((c) => c[0])).toEqual([
+        { where: { id: 'p1' }, data: { asistenteCdaId: null } },
+        { where: { id: 'p2' }, data: { asistenteCdaId: 'as1', recintoId: 'r1', articulos: null, kitId: 'k1' } },
+        { where: { id: 'p1' }, data: { asistenteCdaId: 'as2', recintoId: 'r2', articulos: 'LAP', kitId: 'k2' } },
+      ]);
+      expect(kits.quitarOperador).toHaveBeenCalledTimes(4);
+    });
+
+    it('asistente: intercambia solo los asistentes y no toca los kits', async () => {
+      const r = await service.intercambiar('p1', 'p2', 'ASISTENTE');
+
+      expect(prisma.parejaCda.update.mock.calls.map((c) => c[0])).toEqual([
+        { where: { id: 'p1' }, data: { asistenteCdaId: null } },
+        { where: { id: 'p2' }, data: { asistenteCdaId: 'as1' } },
+        { where: { id: 'p1' }, data: { asistenteCdaId: 'as2' } },
+      ]);
+      expect(kits.quitarOperador).not.toHaveBeenCalled();
+      expect(kits.asignar).not.toHaveBeenCalled();
+      expect(r).toEqual({ enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] });
+    });
+
+    it('si un kit ya salió de la Delegación, no cambia nada y dice cuál', async () => {
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: 'k1', codigoUnico: 'KIT-1', estado: 'ASIGNADO', operadorId: 'u1' },
+        { id: 'k2', codigoUnico: 'KIT-2', estado: 'RETORNADO', operadorId: 'u2' },
+      ]);
+
+      await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow(
+        'El kit KIT-2 ya salió de la Delegación: no se puede cambiar su pareja',
+      );
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      expect(kits.quitarOperador).not.toHaveBeenCalled();
+    });
+
+    it('cada pareja se lleva el kit de su nuevo recinto (con dos parejas en el recinto, el kit no se va a la otra)', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ id: 'p3', creadoEn: new Date('2026-10-28T08:00:00Z'), recintoId: 'r2', operador: { ...OPERADOR, id: 'op3', usuarioId: 'u3' } }),
+        pareja({ recintoId: 'r2', kitId: 'k2', operador: { ...OPERADOR, usuarioId: 'u1' } }),
+      ]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'ASIGNADO' });
+
+      await service.intercambiar('p1', 'p2', 'RECINTO');
+
+      expect(kits.asignar).toHaveBeenCalledTimes(1);
+      expect(kits.asignar).toHaveBeenCalledWith('k2', { operadorId: 'u1' });
+    });
+
+    it('jornada iniciada: sin justificación no cambia nada, aunque las parejas no tengan kit', async () => {
+      kits.estaCongelado.mockReturnValue(true);
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? { ...P1, kitId: null } : { ...P2, kitId: null }),
+      );
+
+      await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow(BadRequestException);
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+
+    it('intercambios que no cambian nada: 400', async () => {
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? P1 : { ...P2, recintoId: 'r1', asistenteCdaId: 'as1' }),
+      );
+      await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow('Las dos parejas ya tienen ese recinto');
+      await expect(service.intercambiar('p1', 'p2', 'ASISTENTE')).rejects.toThrow('Las dos parejas ya tienen ese asistente');
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+
+    it('si no se puede soltar un kit (jornada, evento reabierto), no se guarda nada', async () => {
+      kits.quitarOperador.mockRejectedValueOnce(new BadRequestException('Las asignaciones están congeladas'));
+      await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow('congeladas');
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+
+    it('si la transacción choca (asistente ya emparejado), ningún kit queda suelto', async () => {
+      prisma.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x', meta: { target: 'uq_parejas_cda_fecha_asistente' } }),
+      );
+      await expect(service.intercambiar('p1', 'p2', 'OPERADOR')).rejects.toThrow('Ese asistente ya tiene pareja el 2026-10-30');
+      expect(kits.quitarOperador.mock.calls).toEqual([
+        ['k1', undefined, true],
+        ['k2', undefined, true],
+      ]);
+    });
+
+    it('pareja sin asistente: el otro pasa a tenerlo y ella queda sin asistente', async () => {
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? { ...P1, asistenteCdaId: null } : P2),
+      );
+      await service.intercambiar('p1', 'p2', 'ASISTENTE');
+      expect(prisma.parejaCda.update.mock.calls.map((c) => c[0].data)).toEqual([
+        { asistenteCdaId: null },
+        { asistenteCdaId: null },
+        { asistenteCdaId: 'as2' },
+      ]);
+    });
+
+    it('solo entre dos parejas distintas del mismo día', async () => {
+      await expect(service.intercambiar('p1', 'p1', 'RECINTO')).rejects.toThrow(BadRequestException);
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? P1 : { ...P2, fecha: new Date('2026-10-28T00:00:00Z') }),
+      );
+      await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow('Las dos parejas deben ser del mismo día');
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
     });
   });
 

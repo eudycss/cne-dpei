@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crearParejaCdaSchema, editarParejaCdaSchema, fechaParejaCdaSchema, filaParejaCdaSchema } from './index';
+import { crearParejaCdaSchema, editarParejaCdaSchema, fechaParejaCdaSchema, filaParejaCdaSchema, intercambiarParejaCdaSchema } from './index';
 
 const OP = '11111111-1111-4111-8111-111111111111';
 const AS = '22222222-2222-4222-8222-222222222222';
@@ -49,5 +49,15 @@ describe('parejas CDA por día', () => {
     expect(filaParejaCdaSchema.safeParse({ cedula_operador: CEDULA_OP, cedula_asistente: CEDULA_OP, codigo_recinto: '957' }).success).toBe(
       false,
     );
+  });
+
+  it('intercambiar: con otra pareja y uno de los tres campos; nada más', () => {
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'RECINTO' }).success).toBe(true);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'OPERADOR', justificacion: 'Cambio de última hora' }).success).toBe(true);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'ASISTENTE' }).success).toBe(true);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: 'x', campo: 'RECINTO' }).success).toBe(false);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'KIT' }).success).toBe(false);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP }).success).toBe(false);
+    expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'RECINTO', extra: 1 }).success).toBe(false);
   });
 });

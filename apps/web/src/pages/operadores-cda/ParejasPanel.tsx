@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { AplicarParejasCdaResult, EstadoParejaCda, ParejaCdaFila } from '@cne/shared-types';
+import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCdaFila } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
@@ -15,6 +15,7 @@ import {
   quitarParejaCda,
 } from '../../lib/queries/operadores-cda';
 import { ParejaFormModal } from './ParejaFormModal';
+import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError } from './utils';
@@ -32,7 +33,7 @@ const fechaLarga = (dia: string) =>
 
 /**
  * Parejas Operador CDA + Asistente CDA que van a cada recinto, una lista por
- * día (?dia= en la URL). La lista pasa a la app solo si el evento ACTIVO es
+ * día (?dia= en la URL; sin él, el más reciente con lista). La lista pasa a la app solo si el evento ACTIVO es
  * de ese día: el kit del recinto se asigna al operador. Si la jornada ya
  * inició, cada cambio que llega a la app pide justificación (HU12).
  */
@@ -41,8 +42,12 @@ export function ParejasPanel() {
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const dia = /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia') ?? '') ? (params.get('dia') as string) : hoyEcuador();
-  const [formulario, setFormulario] = useState<ParejaCdaFila | 'nueva' | null>(null);
+  const diaUrl = /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia') ?? '') ? (params.get('dia') as string) : null;
+  const { data: fechas, isFetched: fechasCargadas } = useQuery({ queryKey: ['parejas-cda', 'fechas'], queryFn: getFechasParejasCda });
+  // Sin día en la dirección: el más reciente con lista (si no hay ninguna, hoy).
+  const dia = diaUrl ?? (fechas?.length ? [...fechas].sort().at(-1)! : hoyEcuador());
+  const [agregando, setAgregando] = useState(false);
+  const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
@@ -62,8 +67,11 @@ export function ParejasPanel() {
     );
   };
 
-  const { data, isLoading, error } = useQuery({ queryKey: ['parejas-cda', dia], queryFn: () => getParejasCda(dia) });
-  const { data: fechas } = useQuery({ queryKey: ['parejas-cda', 'fechas'], queryFn: getFechasParejasCda });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['parejas-cda', dia],
+    queryFn: () => getParejasCda(dia),
+    enabled: !!diaUrl || fechasCargadas,
+  });
   const refrescar = () => qc.invalidateQueries({ queryKey: ['parejas-cda'] });
   const congelado = !!data?.congelado;
   const motivo = justificacion.trim() || undefined;
@@ -99,6 +107,22 @@ export function ParejasPanel() {
   });
 
   const parejas = data?.parejas ?? [];
+
+  /** Botón "Cambiar" de una celda (solo administrador). */
+  const botonCambiar = (p: ParejaCdaFila, campo: CampoParejaCda, nombre: string) =>
+    isAdmin && (
+      <div>
+        <button
+          type="button"
+          className="ocda-btn-texto"
+          aria-label={`Cambiar ${nombre} de ${p.operador.apellidosNombres}`}
+          title={`Cambiar ${nombre} (si ya lo tiene otra pareja, se intercambian)`}
+          onClick={() => setCambiando({ pareja: p, campo })}
+        >
+          Cambiar
+        </button>
+      </div>
+    );
   const recintos = new Set(parejas.map((p) => p.recinto.id)).size;
   const conKit = parejas.some((p) => p.kitCodigo);
 
@@ -149,7 +173,7 @@ export function ParejasPanel() {
       <div className="row" style={{ gap: '0.5rem', flexWrap: 'wrap', margin: '0.75rem 0 1rem' }}>
         {isAdmin && (
           <>
-            <button type="button" className="btn" onClick={() => setFormulario('nueva')}>
+            <button type="button" className="btn" onClick={() => setAgregando(true)}>
               Agregar pareja
             </button>
             <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
@@ -209,12 +233,12 @@ export function ParejasPanel() {
           </p>
           <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
             <table>
-              <caption className="sr-only">Parejas del {dia}: recinto, operador, asistente y estado en la app</caption>
+              <caption className="sr-only">Parejas del {dia}: operador, asistente, recinto y estado en la app</caption>
               <thead>
                 <tr>
-                  <th scope="col">Recinto</th>
                   <th scope="col">Operador CDA</th>
                   <th scope="col">Asistente CDA</th>
+                  <th scope="col">Recinto</th>
                   <th scope="col">App</th>
                   {isAdmin && <th scope="col">Acciones</th>}
                 </tr>
@@ -223,17 +247,10 @@ export function ParejasPanel() {
                 {parejas.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
-                      {p.recintoCompartido && (
-                        <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
-                          2 parejas
-                        </span>
-                      )}
-                    </td>
-                    <td>
                       {p.operador.apellidosNombres}
                       <br />
                       <span className="muted mono">{p.operador.cedula}</span>
+                      {botonCambiar(p, 'OPERADOR', 'operador')}
                     </td>
                     <td>
                       {p.asistente ? (
@@ -245,6 +262,16 @@ export function ParejasPanel() {
                       ) : (
                         <span className="muted">Sin asistente</span>
                       )}
+                      {botonCambiar(p, 'ASISTENTE', 'asistente')}
+                    </td>
+                    <td>
+                      <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
+                      {p.recintoCompartido && (
+                        <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
+                          2 parejas
+                        </span>
+                      )}
+                      {botonCambiar(p, 'RECINTO', 'recinto')}
                     </td>
                     <td>
                       <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
@@ -252,14 +279,6 @@ export function ParejasPanel() {
                     </td>
                     {isAdmin && (
                       <td>
-                        <button
-                          type="button"
-                          className="ocda-btn-texto"
-                          aria-label={`Cambiar la pareja de ${p.operador.apellidosNombres}`}
-                          onClick={() => setFormulario(p)}
-                        >
-                          Cambiar
-                        </button>
                         <button
                           type="button"
                           className="ocda-btn-texto peligro"
@@ -305,13 +324,19 @@ export function ParejasPanel() {
           </div>
         </Modal>
       )}
-      {formulario && (
-        <ParejaFormModal
+      {agregando && (
+        <ParejaFormModal dia={dia} pareja={null} congelado={congelado} onResultado={mostrarResultado} onClose={() => setAgregando(false)} />
+      )}
+      {cambiando && (
+        <CambiarEnParejaModal
           dia={dia}
-          pareja={formulario === 'nueva' ? null : formulario}
+          pareja={cambiando.pareja}
+          campo={cambiando.campo}
+          parejas={parejas}
           congelado={congelado}
+          justificacionInicial={justificacion}
           onResultado={mostrarResultado}
-          onClose={() => setFormulario(null)}
+          onClose={() => setCambiando(null)}
         />
       )}
       {importando && (

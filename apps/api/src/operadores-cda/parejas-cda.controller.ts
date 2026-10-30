@@ -24,10 +24,16 @@ import {
   crearParejaCdaSchema,
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
+  intercambiarParejaCdaSchema,
   justificacionBodyParejaCdaSchema,
   justificacionParejaCdaSchema,
 } from '@cne/shared-validation';
-import type { CrearKitConParejaCdaRequest, CrearParejaCdaRequest, EditarParejaCdaRequest } from '@cne/shared-types';
+import type {
+  CrearKitConParejaCdaRequest,
+  CrearParejaCdaRequest,
+  EditarParejaCdaRequest,
+  IntercambiarParejaCdaRequest,
+} from '@cne/shared-types';
 
 import { ParejasCdaService } from './parejas-cda.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -143,6 +149,16 @@ export class ParejasCdaController {
   editar(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(editarParejaCdaSchema)) body: EditarParejaCdaRequest) {
     const { justificacion, ...cambios } = body;
     return this.parejas.editar(id, cambios, justificacion);
+  }
+
+  @Post(':id/intercambiar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Intercambia el operador, el asistente o el recinto con otra pareja del mismo día' })
+  intercambiar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(intercambiarParejaCdaSchema)) body: IntercambiarParejaCdaRequest,
+  ) {
+    return this.parejas.intercambiar(id, body.conId, body.campo, body.justificacion);
   }
 
   @Delete(':id')

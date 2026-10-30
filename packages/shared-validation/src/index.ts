@@ -966,6 +966,19 @@ export const editarParejaCdaSchema = z
   .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
 export type EditarParejaCdaInput = z.infer<typeof editarParejaCdaSchema>;
 
+/**
+ * Intercambia el operador, el asistente o el recinto con otra pareja del
+ * mismo día (lo elegido ya era de esa pareja).
+ */
+export const intercambiarParejaCdaSchema = z
+  .object({
+    conId: z.string().uuid('Pareja inválida'),
+    campo: z.enum(['OPERADOR', 'ASISTENTE', 'RECINTO']),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict();
+export type IntercambiarParejaCdaInput = z.infer<typeof intercambiarParejaCdaSchema>;
+
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 
