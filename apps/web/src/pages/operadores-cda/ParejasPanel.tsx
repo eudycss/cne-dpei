@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCdaFila } from '@cne/shared-types';
+import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCdaFila, PersonaParejaCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
@@ -15,7 +15,7 @@ import {
   getParejasCda,
   quitarParejaCda,
 } from '../../lib/queries/operadores-cda';
-import { ParejaFormModal } from './ParejaFormModal';
+import { ParejaFormModal, cargoPareja } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { CopiarParejasModal } from './CopiarParejasModal';
@@ -23,6 +23,17 @@ import { AsignarKitModal } from './AsignarKitModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
+
+/** Pareja de dos operadores o dos asistentes: el cargo real de quien no es el de su columna. */
+function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; columna: 'OPERADOR' | 'ASISTENTE' }) {
+  if (persona.grupo === columna) return null;
+  return (
+    <>
+      <br />
+      <span className="ocda-estado aviso">{cargoPareja(persona)}</span>
+    </>
+  );
+}
 
 /** Texto y color (clases de .ocda-estado) de cada estado. */
 const ESTADO: Record<EstadoParejaCda, { texto: string; clase: string }> = {
@@ -309,6 +320,7 @@ export function ParejasPanel() {
                       {p.operador.apellidosNombres}
                       <br />
                       <span className="muted mono">{p.operador.cedula}</span>
+                      <CargoDistinto persona={p.operador} columna="OPERADOR" />
                       {botonCambiar(p, 'OPERADOR', 'operador')}
                     </td>
                     <td>
@@ -317,6 +329,7 @@ export function ParejasPanel() {
                           {p.asistente.apellidosNombres}
                           <br />
                           <span className="muted mono">{p.asistente.cedula}</span>
+                          <CargoDistinto persona={p.asistente} columna="ASISTENTE" />
                         </>
                       ) : (
                         <span className="muted">Sin asistente</span>

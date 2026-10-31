@@ -32,7 +32,12 @@ const CARGO_NUEVO: Record<'OPERADOR' | 'ASISTENTE', string> = {
   ASISTENTE: 'ASISTENTE ADMINISTRATIVO ELECTORAL PROVINCIAL - ASISTENTES CDA',
 };
 
-const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true, dispositivo: true } as const;
+const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true, dispositivo: true, grupo: true } as const;
+
+/** Cargos que forman pareja. Lo normal es un operador con un asistente, pero
+ * por disponibilidad de Android pueden ir dos operadores o dos asistentes. */
+const GRUPOS_PAREJA = new Set(['OPERADOR', 'ASISTENTE']);
+const NO_ES_DE_PAREJA = 'no de Operadores ni Asistentes CDA';
 
 const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
@@ -134,6 +139,7 @@ export class ParejasCdaService {
   async crear(datos: CrearParejaCdaRequest, usuarioId: string): Promise<AplicarParejasCdaResult> {
     await this.validarIntegrantes(datos.operadorCdaId, datos.asistenteCdaId ?? null);
     await this.validarRecinto(datos.recintoId);
+    await this.libresEseDia(fechaDb(datos.fecha), datos.fecha, datos.operadorCdaId, datos.asistenteCdaId ?? null);
     const articulos = datos.articulos?.trim() || null;
     if (articulos) await this.detalleDeArticulos(articulos);
 
@@ -163,6 +169,8 @@ export class ParejasCdaService {
     const operadorCdaId = datos.operadorCdaId ?? actual.operadorCdaId;
     const asistenteCdaId = datos.asistenteCdaId === undefined ? actual.asistenteCdaId : datos.asistenteCdaId;
     await this.validarIntegrantes(operadorCdaId, asistenteCdaId);
+    // Los únicos de la base son por columna: aquí se mira también la otra columna.
+    await this.libresEseDia(actual.fecha, diaDeFechaDb(actual.fecha), operadorCdaId, asistenteCdaId, id);
     const cambiaRecinto = !!datos.recintoId && datos.recintoId !== actual.recintoId;
     if (cambiaRecinto) await this.validarRecinto(datos.recintoId as string);
 
@@ -221,7 +229,12 @@ export class ParejasCdaService {
     const ocupadas = new Set(destino.flatMap((d) => [d.operadorCdaId, d.asistenteCdaId]).filter((id): id is string => !!id));
     const personas = [...new Set(origen.flatMap((p) => [p.operadorCdaId, p.asistenteCdaId]).filter((id): id is string => !!id))];
     const activas = new Set(
-      (await this.prisma.operadorCda.findMany({ where: { id: { in: personas }, activo: true }, select: { id: true } })).map((o) => o.id),
+      (
+        await this.prisma.operadorCda.findMany({
+          where: { id: { in: personas }, activo: true, grupo: { in: [...GRUPOS_PAREJA] } },
+          select: { id: true },
+        })
+      ).map((o) => o.id),
     );
     const recintosOrigen = [...new Set(origen.map((p) => p.recintoId))];
     const recintosActivos = new Set(
@@ -238,11 +251,11 @@ export class ParejasCdaService {
       const motivo = !recintosActivos.has(p.recintoId)
         ? 'El recinto ya no está activo'
         : !activas.has(p.operadorCdaId)
-          ? 'El operador está oculto'
+          ? 'El operador ya no está disponible (oculto o cambió de cargo)'
           : ocupadas.has(p.operadorCdaId)
             ? 'El operador ya tiene pareja ese día'
             : p.asistenteCdaId && !activas.has(p.asistenteCdaId)
-              ? 'El asistente está oculto'
+              ? 'El asistente ya no está disponible (oculto o cambió de cargo)'
               : p.asistenteCdaId && ocupadas.has(p.asistenteCdaId)
                 ? 'El asistente ya tiene pareja ese día'
                 : null;
@@ -567,7 +580,7 @@ export class ParejasCdaService {
       }
       errores.push(...textosInvalidos(datos));
 
-      const integrante = (cedula: string, nombre: string | undefined, grupo: 'OPERADOR' | 'ASISTENTE', columna: string) => {
+      const integrante = (cedula: string, nombre: string | undefined, columna: string) => {
         if (!cedula) return null;
         const repetida = filaDeCedula.get(cedula);
         if (repetida) errores.push(`La cédula ${cedula} está repetida (fila ${repetida})`);
@@ -577,19 +590,19 @@ export class ParejasCdaService {
           if (!nombre) errores.push(`Cédula nueva ${cedula}: falta ${columna}`);
           return { cedula, nombre: nombre ?? null, nuevo: true };
         }
-        if (p.grupo !== grupo) errores.push(`La cédula ${cedula} es de ${textosGrupo(p.grupo).titulo}, no de ${textosGrupo(grupo).titulo}`);
-        else if (!p.activo) errores.push(`${p.apellidosNombres} está oculto en ${textosGrupo(grupo).titulo}`);
+        if (!GRUPOS_PAREJA.has(p.grupo)) errores.push(`La cédula ${cedula} es de ${textosGrupo(p.grupo).titulo}, ${NO_ES_DE_PAREJA}`);
+        else if (!p.activo) errores.push(`${p.apellidosNombres} está oculto en ${textosGrupo(p.grupo).titulo}`);
         if (personasHoy.has(p.id)) errores.push(`${p.apellidosNombres} ya tiene pareja el ${fecha}`);
         const otro = otroDia.get(p.id);
         if (otro) avisos.push(`${p.apellidosNombres} ya fue el ${otro}`);
         return { cedula, nombre: p.apellidosNombres, nuevo: false };
       };
-      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'OPERADOR', 'nombre_operador') ?? {
+      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'nombre_operador') ?? {
         cedula: datos.cedula_operador,
         nombre: null,
         nuevo: false,
       };
-      const asistente = integrante(datos.cedula_asistente, datos.nombre_asistente, 'ASISTENTE', 'nombre_asistente');
+      const asistente = integrante(datos.cedula_asistente, datos.nombre_asistente, 'nombre_asistente');
 
       const r = datos.codigo_recinto ? recintoPorCodigo.get(datos.codigo_recinto.toLowerCase()) : undefined;
       if (datos.codigo_recinto && !r) errores.push(`Recinto no encontrado: ${datos.codigo_recinto}`);
@@ -778,14 +791,17 @@ export class ParejasCdaService {
   }
 
   private async validarIntegrantes(operadorCdaId: string, asistenteCdaId: string | null) {
-    const comprobar = async (id: string, grupo: 'OPERADOR' | 'ASISTENTE', rol: string) => {
+    if (operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
+    const comprobar = async (id: string, rol: string) => {
       const p = await this.prisma.operadorCda.findUnique({ where: { id }, select: { grupo: true, activo: true } });
       if (!p) throw new NotFoundException(`No se encontró al ${rol}`);
-      if (p.grupo !== grupo) throw new BadRequestException(`La persona elegida como ${rol} no es de ${textosGrupo(grupo).titulo}`);
+      if (!GRUPOS_PAREJA.has(p.grupo)) {
+        throw new BadRequestException(`La persona elegida como ${rol} es de ${textosGrupo(p.grupo).titulo}, ${NO_ES_DE_PAREJA}`);
+      }
       if (!p.activo) throw new BadRequestException(`La persona elegida como ${rol} está oculta`);
     };
-    await comprobar(operadorCdaId, 'OPERADOR', 'operador');
-    if (asistenteCdaId) await comprobar(asistenteCdaId, 'ASISTENTE', 'asistente');
+    await comprobar(operadorCdaId, 'operador');
+    if (asistenteCdaId) await comprobar(asistenteCdaId, 'asistente');
   }
 
   private async validarRecinto(recintoId: string) {
@@ -804,11 +820,19 @@ export class ParejasCdaService {
     return evento;
   }
 
-  /** Antes de crear el kit: ni el operador ni el asistente pueden tener ya pareja ese día. */
-  private async libresEseDia(fecha: Date, dia: string, operadorCdaId: string, asistenteCdaId: string | null) {
+  /**
+   * Ni el operador ni el asistente pueden tener ya otra pareja ese día (en
+   * cualquier columna). Los únicos de la base solo cubren cada columna: dos
+   * administradores guardando a la vez podrían cruzarse; se acepta (uso interno).
+   */
+  private async libresEseDia(fecha: Date, dia: string, operadorCdaId: string, asistenteCdaId: string | null, excepto?: string) {
     const personas = [operadorCdaId, ...(asistenteCdaId ? [asistenteCdaId] : [])];
     const ocupada = await this.prisma.parejaCda.findFirst({
-      where: { fecha, OR: [{ operadorCdaId: { in: personas } }, { asistenteCdaId: { in: personas } }] },
+      where: {
+        fecha,
+        ...(excepto && { id: { not: excepto } }),
+        OR: [{ operadorCdaId: { in: personas } }, { asistenteCdaId: { in: personas } }],
+      },
       select: { operadorCdaId: true, asistenteCdaId: true },
     });
     if (!ocupada) return;

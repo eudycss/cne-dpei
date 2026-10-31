@@ -1098,6 +1098,8 @@ export interface PersonaParejaCda {
   cedula: string;
   telefono: string | null;
   dispositivo: DispositivoCda | null;
+  /** OPERADOR o ASISTENTE: una pareja puede ser de dos operadores o de dos asistentes. */
+  grupo: GrupoCda;
 }
 
 export interface RecintoParejaCda {
