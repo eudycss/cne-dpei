@@ -43,7 +43,7 @@ describe('RBAC de Operadores CDA', () => {
     ]);
   });
 
-  it.each(['listar', 'fechas', 'qr'])('parejas.%s: los mismos tres roles y el módulo operadores-cda', (metodo) => {
+  it.each(['listar', 'fechas', 'qr', 'reporteXlsx', 'reportePdf'])('parejas.%s: los mismos tres roles y el módulo operadores-cda', (metodo) => {
     expect(rolesDe(ParejasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
     expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
@@ -99,6 +99,15 @@ describe('RBAC de Operadores CDA', () => {
     for (const f of [undefined, '', '30/10/2026', ['2026-10-30', '2026-10-31']]) {
       expect(() => parsearFecha(f)).toThrow(BadRequestException);
     }
+  });
+
+  it.each(['reportePdf', 'reporteXlsx'])('parejas.%s: fecha inválida responde 400 sin armar el reporte', async (metodo) => {
+    const reporte = jest.fn();
+    const ctrl = new ParejasCdaController({ reporte } as never) as any;
+    for (const f of [undefined, '2026-13-40', 'abc', ['2026-11-01', '2026-11-02']]) {
+      await expect(ctrl[metodo](f, {} as never)).rejects.toThrow(BadRequestException);
+    }
+    expect(reporte).not.toHaveBeenCalled();
   });
 
   it('buscar exige el módulo operadores-cda, igual que el listado', () => {

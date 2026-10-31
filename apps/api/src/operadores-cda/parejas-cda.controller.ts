@@ -16,6 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -38,6 +39,7 @@ import type {
 } from '@cne/shared-types';
 
 import { ParejasCdaService } from './parejas-cda.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -113,6 +115,26 @@ export class ParejasCdaController {
     res.setHeader('Content-Disposition', `attachment; filename="kits-qr-parejas_${dia}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
     res.send(buffer);
+  }
+
+  @Get('reporte.xlsx')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel de las parejas de ?fecha= (recinto, celular de cada uno y quién lleva el kit)' })
+  async reporteXlsx(@Query('fecha') fecha: unknown, @Res() res: Response) {
+    enviarReporte(res, await this.parejas.reporte(parsearFecha(fecha), 'xlsx'));
+  }
+
+  @Get('reporte.pdf')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF para imprimir de las parejas de ?fecha= (recinto, celular de cada uno y quién lleva el kit)' })
+  async reportePdf(@Query('fecha') fecha: unknown, @Res() res: Response) {
+    enviarReporte(res, await this.parejas.reporte(parsearFecha(fecha), 'pdf'));
   }
 
   @Post()

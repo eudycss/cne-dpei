@@ -150,7 +150,7 @@ export async function generarReporte(r: ReporteCda, formato: FormatoReporteCda):
 export function enviarReporte(res: Response, a: ArchivoReporte): void {
   res.setHeader('Content-Type', a.tipo);
   res.setHeader('Content-Disposition', `attachment; filename="${a.nombre}"`);
-  // Llevan cédulas: que ningún caché los guarde.
+  // Llevan datos personales: que ningún caché los guarde.
   res.setHeader('Cache-Control', 'no-store');
   res.send(a.contenido);
 }

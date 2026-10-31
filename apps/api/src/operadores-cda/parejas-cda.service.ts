@@ -13,6 +13,7 @@ import type {
   EditarParejaCdaRequest,
   EstadoParejaCda,
   FilaImportParejaCda,
+  FormatoReporteCda,
   ImportParejasCdaResult,
   Kit,
   ParejaCdaFila,
@@ -25,6 +26,8 @@ import { parseUploadRows } from '../common/parse-upload-rows';
 import { CuentasCdaService } from './cuentas-cda.service';
 import { textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, fechaDb } from './dia-ecuador';
+import { type ArchivoReporte, generarReporte } from './reporte-cda';
+import { reporteParejas } from './reporte-parejas-cda';
 
 /** Cargo con el que se registra a quien llega nuevo en la plantilla. */
 const CARGO_NUEVO: Record<'OPERADOR' | 'ASISTENTE', string> = {
@@ -476,6 +479,11 @@ export class ParejasCdaService {
     const kitIds = [...new Set(conKit.map((p) => p.kitId as string))];
     if (kitIds.length === 0) throw new BadRequestException('Ninguna pareja de esta lista tiene kit todavía');
     return this.kits.generatePdfQr({ kitIds });
+  }
+
+  /** Reporte imprimible (Excel o PDF) de la lista del día, tal como la ve la pestaña Parejas. */
+  async reporte(fecha: string, formato: FormatoReporteCda): Promise<ArchivoReporte> {
+    return generarReporte(reporteParejas(await this.listar(fecha)), formato);
   }
 
   /** Plantilla: hoja de parejas, recintos CDA con su código e instrucciones. */

@@ -1276,4 +1276,23 @@ describe('ParejasCdaService', () => {
       await expect(service.qr(DIA)).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('reporte imprimible de la lista', () => {
+    it('arma el Excel y el PDF con la lista del día (la misma que ve la pestaña)', async () => {
+      prisma.parejaCda.findMany.mockResolvedValue([pareja({ kitId: 'k1', kit: { codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: 'u1' } })]);
+
+      const xlsx = await service.reporte(DIA, 'xlsx');
+      const pdf = await service.reporte(DIA, 'pdf');
+
+      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA });
+      expect(xlsx.nombre).toBe(`parejas_cda_${DIA}_${DIA}.xlsx`);
+      expect(pdf.tipo).toBe('application/pdf');
+      expect(pdf.contenido.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    it('día sin parejas: 400', async () => {
+      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [] });
+      await expect(service.reporte(DIA, 'pdf')).rejects.toThrow(BadRequestException);
+    });
+  });
 });
