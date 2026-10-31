@@ -304,7 +304,7 @@ describe('ParejasCdaService', () => {
       });
       expect(kits.create).toHaveBeenCalledWith({
         eventoId: 'ev2',
-        nombre: 'Kit Recinto 957',
+        nombre: '957 — UE ATAHUALPA',
         recintoId: 'r1',
         detalleItems: [
           { itemId: 'iLap', serie: '123' },
@@ -337,6 +337,17 @@ describe('ParejasCdaService', () => {
   });
 
   describe('aplicar', () => {
+    it('el kit nuevo se llama "código — recinto", recortado a los 160 caracteres de la columna', async () => {
+      const largo = 'U'.repeat(200);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ recinto: { id: 'r1', codigoRecinto: '957', nombre: largo }, operador: { ...OPERADOR, usuarioId: 'u1' } })]);
+      prisma.kitElectoral.findFirst.mockResolvedValue(null);
+
+      await service.aplicar(DIA);
+
+      expect(kits.create.mock.calls[0][0].nombre).toBe(`957 — ${largo}`.slice(0, 160));
+      expect(kits.create.mock.calls[0][0].nombre).toHaveLength(160);
+    });
+
     it('sin evento ACTIVO de esa fecha responde 400', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
       await expect(service.aplicar(DIA)).rejects.toThrow(BadRequestException);
@@ -362,7 +373,7 @@ describe('ParejasCdaService', () => {
       expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} } });
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'uNuevo' });
       // Recinto sin kit y pareja sin artículos: el kit se crea con los artículos por defecto del catálogo.
-      expect(kits.create).toHaveBeenCalledWith({ eventoId: 'ev2', nombre: 'Kit Recinto 1225', recintoId: 'r3' });
+      expect(kits.create).toHaveBeenCalledWith({ eventoId: 'ev2', nombre: '1225 — UE C', recintoId: 'r3' });
       expect(kits.asignar).toHaveBeenNthCalledWith(3, 'kNuevo', { operadorId: 'u4' });
       expect(r).toEqual({
         enApp: 2,

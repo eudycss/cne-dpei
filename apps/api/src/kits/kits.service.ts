@@ -53,9 +53,13 @@ export class KitsService {
     const where: any = { eventoId: opts.eventoId };
     if (!opts.incluirPrueba) where.esPrueba = false;
     if (opts.search) {
+      const contiene = { contains: opts.search, mode: 'insensitive' };
+      // El nombre del kit solo trae el código del recinto ("Kit Recinto 1198"): también por su recinto.
       where.OR = [
-        { nombre: { contains: opts.search, mode: 'insensitive' } },
-        { codigoUnico: { contains: opts.search, mode: 'insensitive' } },
+        { nombre: contiene },
+        { codigoUnico: contiene },
+        { recinto: { nombre: contiene } },
+        { recinto: { codigoRecinto: contiene } },
       ];
     }
     const [total, items] = await this.prisma.$transaction([

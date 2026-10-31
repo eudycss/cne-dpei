@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ItemKitCatalog, Kit, RoleName } from '@cne/shared-types';
@@ -490,6 +490,16 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     renderKitsPage();
     await screen.findByText('ABCD2345');
     expect(screen.queryByText('Recinto')).not.toBeInTheDocument();
+  });
+
+  it('el buscador se ofrece por kit, código o recinto y manda lo escrito a la API', async () => {
+    renderKitsPage();
+    await screen.findByText('ABCD2345');
+    const buscador = screen.getByRole('textbox', { name: 'Buscar kit por nombre, código o recinto' });
+    fireEvent.change(buscador, { target: { value: 'juan montalvo' } });
+    await waitFor(() =>
+      expect(getMock.mock.calls.some(([url]) => String(url).startsWith('/kits?') && String(url).includes('search=juan+montalvo'))).toBe(true),
+    );
   });
 
   it('el botón "Asignar" está deshabilitado si el kit no tiene recinto', async () => {
