@@ -10,7 +10,7 @@ interface Props {
 
 /**
  * Restablece la contraseña de un usuario. Tras confirmar, muestra la
- * contraseña temporal generada para que el administrador la entregue.
+ * contraseña temporal (su cédula) para que el administrador se la avise.
  */
 export function ResetPasswordModal({ user, onClose, onDone }: Props) {
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,7 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
         {!tempPassword ? (
           <>
             <p className="muted">
-              Se asignará la contraseña por defecto a{' '}
+              Su contraseña pasará a ser su cédula:{' '}
               <strong>{user.nombres} {user.apellidos}</strong> ({user.email ?? `cédula ${user.cedula}`}).
               El usuario deberá cambiarla en su próximo inicio de sesión y sus
               sesiones activas se cerrarán.
@@ -70,8 +70,8 @@ export function ResetPasswordModal({ user, onClose, onDone }: Props) {
         ) : (
           <>
             <div className="banner success">
-              Contraseña restablecida. Entrégale al usuario la contraseña por
-              defecto; deberá cambiarla al ingresar.
+              Contraseña restablecida: ahora es su cédula. Avísele que
+              deberá cambiarla al ingresar.
             </div>
             <div
               className="row"

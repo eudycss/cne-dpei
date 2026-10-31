@@ -17,13 +17,13 @@ type Tx = Prisma.TransactionClient;
 
 /**
  * Cuentas de la app para las personas de Operadores CDA (grupos OPERADOR y
- * ASISTENTE). Entran con su cédula; la cuenta nueva no tiene correo y usa la
- * misma contraseña inicial que el reseteo de Usuarios, con cambio obligatorio.
+ * ASISTENTE). Entran con su cédula; la cuenta nueva no tiene correo y su
+ * contraseña inicial también es la cédula (como el reseteo de Usuarios), con
+ * cambio obligatorio al primer ingreso.
  */
 @Injectable()
 export class CuentasCdaService implements OnApplicationBootstrap {
   private readonly log = new Logger(CuentasCdaService.name);
-  private hashInicialPromise?: Promise<string>;
   /** Sincronización lanzada al arrancar (expuesta para las pruebas). */
   sincronizacionInicial?: Promise<void>;
 
@@ -48,13 +48,19 @@ export class CuentasCdaService implements OnApplicationBootstrap {
   }
 
   /**
-   * Hash de la contraseña inicial (la misma del reseteo de Usuarios), calculado
-   * una vez por proceso. Se pide ANTES de abrir una transacción: argon2 usa
-   * ~64 MB y con 0.1 vCPU puede pasar el timeout de 5 s de $transaction.
+   * Hash de la contraseña inicial: la cédula de la persona. Se pide ANTES de
+   * abrir una transacción: argon2 usa ~64 MB y con 0.1 vCPU puede pasar el
+   * timeout de 5 s de $transaction.
    */
-  hashInicial(): Promise<string> {
-    this.hashInicialPromise ??= argon2.hash(process.env.DEFAULT_RESET_PASSWORD ?? 'Cne2026!');
-    return this.hashInicialPromise;
+  hashInicial(cedula: string): Promise<string> {
+    return argon2.hash(cedula);
+  }
+
+  /** Crea o vincula la cuenta de una persona (hash de su cédula fuera de la transacción). */
+  async crearOVincular(operadorId: string): Promise<ResultadoAsegurar> {
+    const op = await this.prisma.operadorCda.findUnique({ where: { id: operadorId }, select: { cedula: true } });
+    if (!op) return 'NO_APLICA';
+    return this.asegurarConReintento(operadorId, await this.hashInicial(op.cedula));
   }
 
   tieneCuenta(grupo: GrupoCda): boolean {
@@ -138,16 +144,14 @@ export class CuentasCdaService implements OnApplicationBootstrap {
         ...(filtro.ids && { id: { in: filtro.ids } }),
         ...(filtro.cedulas && { cedula: { in: filtro.cedulas } }),
       },
-      select: { id: true },
+      select: { id: true, cedula: true },
       orderBy: { apellidosNombres: 'asc' },
     });
     const conteo = { vinculadas: 0, creadas: 0, fallidas: 0 };
-    if (pendientes.length === 0) return conteo;
-    const passwordHash = await this.hashInicial();
     // Una transacción por persona: si una falla, se cuenta y se sigue con las demás.
-    for (const { id } of pendientes) {
+    for (const { id, cedula } of pendientes) {
       try {
-        const r = await this.asegurarConReintento(id, passwordHash);
+        const r = await this.asegurarConReintento(id, await this.hashInicial(cedula));
         if (r === 'CREADA') conteo.creadas++;
         if (r === 'VINCULADA') conteo.vinculadas++;
       } catch (e) {

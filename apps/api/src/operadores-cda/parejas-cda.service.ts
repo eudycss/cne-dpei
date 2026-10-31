@@ -625,13 +625,12 @@ export class ParejasCdaService {
 
     if (!guardar) return { fecha, guardado: false, filas: resultado, guardadas: 0, app: null };
 
-    const hash = validas.some((v) => v.fila.operador.nuevo || v.fila.asistente?.nuevo) ? await this.cuentas.hashInicial() : '';
     const ids: string[] = [];
     for (const { fila, datos, recintoId } of validas) {
       try {
-        const operadorCdaId = await this.personaDe(fila.operador, datos.telefono_operador, 'OPERADOR', personaPorCedula, hash);
+        const operadorCdaId = await this.personaDe(fila.operador, datos.telefono_operador, 'OPERADOR', personaPorCedula);
         const asistenteCdaId = fila.asistente
-          ? await this.personaDe(fila.asistente, datos.telefono_asistente, 'ASISTENTE', personaPorCedula, hash)
+          ? await this.personaDe(fila.asistente, datos.telefono_asistente, 'ASISTENTE', personaPorCedula)
           : null;
         const creada = await this.guardar(fecha, () =>
           this.prisma.parejaCda.create({
@@ -819,8 +818,7 @@ export class ParejasCdaService {
 
   /** Crea (o vincula) la cuenta de la app del operador y devuelve su usuario. */
   private async crearCuentaOperador(operadorCdaId: string): Promise<string> {
-    const hash = await this.cuentas.hashInicial();
-    await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, operadorCdaId, hash));
+    await this.cuentas.crearOVincular(operadorCdaId);
     const op = await this.prisma.operadorCda.findUnique({ where: { id: operadorCdaId }, select: { usuarioId: true } });
     if (!op?.usuarioId) throw new BadRequestException('El operador está oculto: no tiene cuenta de la app');
     return op.usuarioId;
@@ -844,7 +842,6 @@ export class ParejasCdaService {
     telefono: string,
     grupo: 'OPERADOR' | 'ASISTENTE',
     existentes: Map<string, { id: string }>,
-    hash: string,
   ): Promise<string> {
     const ya = existentes.get(p.cedula);
     if (ya) return ya.id;
@@ -853,6 +850,8 @@ export class ParejasCdaService {
       select: { id: true },
     });
     existentes.set(p.cedula, creada);
+    // Su contraseña inicial es su cédula; el hash (argon2, lento) va antes de la transacción.
+    const hash = await this.cuentas.hashInicial(p.cedula);
     await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, creada.id, hash));
     return creada.id;
   }

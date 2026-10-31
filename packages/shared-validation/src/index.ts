@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
 // Política de contraseña fuerte (HU1-CA3)
-// - Entre 6 y 8 caracteres
+// - Entre 6 y 12 caracteres
 // - Al menos una mayúscula, una minúscula, un dígito y un carácter especial
 export const strongPasswordSchema = z
   .string()
   .min(6, 'La contraseña debe tener al menos 6 caracteres')
-  .max(8, 'La contraseña no puede exceder 8 caracteres')
+  .max(12, 'La contraseña no puede exceder 12 caracteres')
   .refine((v) => /[A-Z]/.test(v), 'Debe incluir al menos una mayúscula')
   .refine((v) => /[a-z]/.test(v), 'Debe incluir al menos una minúscula')
   .refine((v) => /\d/.test(v), 'Debe incluir al menos un dígito')

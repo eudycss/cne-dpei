@@ -56,7 +56,7 @@ export function ResetPassword() {
         </div>
         <h1>Restablecer contraseña</h1>
         <p className="muted" style={{ marginBottom: '1rem' }}>
-          Entre 6 y 8 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
+          Entre 6 y 12 caracteres con mayúsculas, minúsculas, dígitos y símbolos.
         </p>
         <PasswordField
           label="Nueva contraseña"
