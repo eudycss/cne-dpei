@@ -438,6 +438,16 @@ export interface MiAsignacionMilitar {
   cedula: string;
 }
 
+/** Una persona de la pareja CDA del recinto (se ve en la app). */
+export interface MiAsignacionCompanero {
+  nombre: string;
+  /** "Operador CDA" o "Asistente CDA". */
+  cargo: string;
+  telefono: string | null;
+  /** Es quien tiene la sesión abierta. */
+  esUsted: boolean;
+}
+
 export interface MiAsignacionKit {
   id: string;
   codigoUnico: string;
@@ -453,6 +463,8 @@ export interface MiAsignacionResponse {
   recinto: MiAsignacionRecinto;
   noCdas: MiAsignacionRecinto[];
   militar: MiAsignacionMilitar | null;
+  /** Pareja CDA de la jornada en este recinto (vacía si no hay; ausente en APIs antiguas). */
+  pareja?: MiAsignacionCompanero[];
   kits: MiAsignacionKit[];
   yaRegistroSalida: boolean;
   yaRegistroLlegada: boolean;

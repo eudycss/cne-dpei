@@ -202,6 +202,31 @@ export class TrackingService {
       orderBy: { creadoEn: 'asc' },
     });
 
+    // Su pareja CDA de la jornada en este recinto (puede ser de dos operadores o dos asistentes).
+    const persona = { select: { apellidosNombres: true, telefono: true, grupo: true, usuarioId: true } };
+    const parejaCda = await this.prisma.parejaCda.findFirst({
+      where: {
+        fecha: evento.fechaJornada,
+        recintoId,
+        OR: [{ operador: { usuarioId: operadorId } }, { asistente: { usuarioId: operadorId } }],
+      },
+      orderBy: { creadoEn: 'asc' },
+      select: { operador: persona, asistente: persona },
+    });
+    const pareja = parejaCda
+      ? [parejaCda.operador, parejaCda.asistente]
+          .filter((p): p is NonNullable<typeof p> => !!p)
+          .map((p) => {
+            const esUsted = p.usuarioId === operadorId;
+            return {
+              nombre: p.apellidosNombres,
+              cargo: p.grupo === 'ASISTENTE' ? 'Asistente CDA' : 'Operador CDA',
+              telefono: esUsted ? null : (p.telefono ?? null),
+              esUsted,
+            };
+          })
+      : [];
+
     const [
       salidaPrevia,
       llegadaPrevia,
@@ -289,6 +314,7 @@ export class TrackingService {
             cedula: militar.cedula,
           }
         : null,
+      pareja,
       kits: kits.map((k) => ({
         id: k.id,
         codigoUnico: k.codigoUnico,

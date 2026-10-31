@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { Ionicons } from '@expo/vector-icons';
 import type { MiAsignacionRecinto, MiAsignacionResponse } from '@cne/shared-types';
 import { getMiAsignacion, postLlegadaNoCda } from '../lib/queries/tracking';
+import { SuParejaCard } from './SuParejaCard';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
 import { Colors } from '../theme/colors';
@@ -72,7 +73,11 @@ export function MiRecintoModal({ visible, onClose }: Props) {
                 JF: {data.recinto.juntasFemeninas ?? '—'} · JM: {data.recinto.juntasMasculinas ?? '—'} · JT: {jt(data.recinto)}
               </Text>
 
-              <Text style={[styles.sectionLabel, { marginTop: 18 }]}>NO-CDAs a mi cargo</Text>
+              <View style={{ marginTop: 14 }}>
+                <SuParejaCard pareja={data.pareja} />
+              </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 4 }]}>NO-CDAs a mi cargo</Text>
               {data.noCdas.length === 0 ? (
                 <Text style={styles.muted}>Sin NO-CDAs asignados a este CDA.</Text>
               ) : (
