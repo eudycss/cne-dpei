@@ -230,7 +230,11 @@ describe('ParejasCdaService', () => {
             ? { ...OPERADOR, grupo: 'OPERADOR', activo: true }
             : where.id === 'as1'
               ? { ...ASISTENTE, grupo: 'ASISTENTE', activo: true }
-              : where.id === 'dig1'
+              : where.id === 'op2'
+                ? { id: 'op2', grupo: 'OPERADOR', activo: true }
+                : where.id === 'as2'
+                  ? { id: 'as2', grupo: 'ASISTENTE', activo: true }
+                  : where.id === 'dig1'
                 ? { id: 'dig1', grupo: 'DIGITADOR', activo: true }
                 : null,
         ),
@@ -239,11 +243,39 @@ describe('ParejasCdaService', () => {
       prisma.parejaCda.create.mockResolvedValue({ id: 'p1' });
     });
 
-    it('el operador debe ser de Operadores CDA y el asistente de Asistentes CDA', async () => {
-      await expect(service.crear({ fecha: DIA, operadorCdaId: 'as1', recintoId: 'r1' }, 'admin')).rejects.toThrow(BadRequestException);
+    it('por disponibilidad de Android, la pareja puede ser de dos operadores o de dos asistentes', async () => {
+      await service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'op2', recintoId: 'r1' }, 'admin');
+      await service.crear({ fecha: DIA, operadorCdaId: 'as1', asistenteCdaId: 'as2', recintoId: 'r1' }, 'admin');
+      expect(prisma.parejaCda.create.mock.calls.map((c) => [c[0].data.operadorCdaId, c[0].data.asistenteCdaId])).toEqual([
+        ['op1', 'op2'],
+        ['as1', 'as2'],
+      ]);
+    });
+
+    it('solo Operadores o Asistentes CDA: otros cargos no forman pareja', async () => {
       await expect(
         service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'dig1', recintoId: 'r1' }, 'admin'),
-      ).rejects.toThrow('no es de Asistentes CDA');
+      ).rejects.toThrow('es de Digitadores, no de Operadores ni Asistentes CDA');
+      await expect(service.crear({ fecha: DIA, operadorCdaId: 'dig1', recintoId: 'r1' }, 'admin')).rejects.toThrow(BadRequestException);
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+    });
+
+    it('la misma persona no puede ir dos veces en la pareja', async () => {
+      await expect(
+        service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'op1', recintoId: 'r1' }, 'admin'),
+      ).rejects.toThrow('Elija dos personas distintas');
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+    });
+
+    it('nadie está en dos parejas el mismo día, aunque en la otra vaya en la otra columna', async () => {
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'opX', asistenteCdaId: 'op2' });
+      await expect(
+        service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'op2', recintoId: 'r1' }, 'admin'),
+      ).rejects.toThrow(new ConflictException('El asistente ya tiene pareja el 2026-10-30'));
+      expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
+        fecha: FECHA,
+        OR: [{ operadorCdaId: { in: ['op1', 'op2'] } }, { asistenteCdaId: { in: ['op1', 'op2'] } }],
+      });
       expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
 
@@ -474,6 +506,14 @@ describe('ParejasCdaService', () => {
       expect(prisma.parejaCda.create.mock.calls[0][0].data.asistenteCdaId).toBeNull();
     });
 
+    it('dos operadores: crea el kit y registra la pareja; la misma persona dos veces no', async () => {
+      prisma.operadorCda.findUnique.mockImplementation(() => Promise.resolve({ grupo: 'OPERADOR', activo: true, usuarioId: 'u1' }));
+      await service.crearKitConPareja({ ...DATOS, asistenteCdaId: 'op2' }, 'admin');
+      expect(prisma.parejaCda.create.mock.calls[0][0].data).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
+
+      await expect(service.crearKitConPareja({ ...DATOS, asistenteCdaId: 'op1' }, 'admin')).rejects.toThrow('Elija dos personas distintas');
+    });
+
     it('si el operador o el asistente ya tiene pareja ese día, no crea nada', async () => {
       prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'otro', asistenteCdaId: 'as1' });
 
@@ -563,7 +603,7 @@ describe('ParejasCdaService', () => {
         recinto: { codigo: '957', nombre: 'UE ATAHUALPA' },
         errores: [],
       });
-      expect(f2.errores).toContain('La cédula 1002003000 es de Digitadores, no de Operadores CDA');
+      expect(f2.errores).toContain('La cédula 1002003000 es de Digitadores, no de Operadores ni Asistentes CDA');
       expect(f3.errores).toContain('La cédula 1713175071 está repetida (fila 2)');
       expect(f4.errores).toEqual(
         expect.arrayContaining(['Cédula nueva 0401234562: falta nombre_operador', 'El recinto 20 no es CDA']),
@@ -594,6 +634,43 @@ describe('ParejasCdaService', () => {
       expect(prisma.parejaCda.create.mock.calls[0][0].data).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'asNuevo', recintoId: 'r1' });
       expect(r).toMatchObject({ guardado: true, guardadas: 1 });
       expect(r.app).not.toBeNull();
+    });
+
+    it('acepta dos operadores (o un asistente en la columna del operador) y guarda a cada uno con su cargo', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        { id: 'op1', cedula: '1710034065', grupo: 'OPERADOR', activo: true, apellidosNombres: 'PÉREZ ANA' },
+        { id: 'op2', cedula: '1712345675', grupo: 'OPERADOR', activo: true, apellidosNombres: 'MORA LUIS' },
+        { id: 'as1', cedula: '1713175071', grupo: 'ASISTENTE', activo: true, apellidosNombres: 'RUIZ JUAN' },
+      ]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA', tipo: 'CDA' },
+        { id: 'r2', codigoRecinto: '958', nombre: 'UE B', tipo: 'CDA' },
+      ]);
+      const file = await plantilla([
+        { cedula_operador: '1710034065', cedula_asistente: '1712345675', codigo_recinto: '957' },
+        { cedula_operador: '1713175071', codigo_recinto: '958' },
+      ]);
+      prisma.parejaCda.create.mockResolvedValueOnce({ id: 'p1' }).mockResolvedValueOnce({ id: 'p2' });
+
+      const r = await service.importar(file, DIA, true, 'admin', false);
+
+      expect(r.filas.map((f) => f.errores)).toEqual([[], []]);
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.create.mock.calls.map((c) => [c[0].data.operadorCdaId, c[0].data.asistenteCdaId])).toEqual([
+        ['op1', 'op2'],
+        ['as1', null],
+      ]);
+    });
+
+    it('la misma cédula en las dos columnas de una fila es un error; también quien ya está hoy en la otra columna', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([{ fecha: FECHA, operadorCdaId: 'opHoy', asistenteCdaId: 'op1', recintoId: 'r9' }]);
+      const file = await plantilla([
+        { cedula_operador: '1710034065', cedula_asistente: '1710034065', codigo_recinto: '957' },
+      ]);
+      const r = await service.importar(file, DIA, false, 'admin');
+      expect(r.filas[0].errores).toEqual(
+        expect.arrayContaining(['La cédula 1710034065 está repetida (fila 2)', 'PÉREZ ANA ya tiene pareja el 2026-10-30']),
+      );
     });
 
     it('guardar sin pasar a la app (lista histórica): no toca kits aunque haya evento activo de ese día', async () => {
@@ -643,6 +720,31 @@ describe('ParejasCdaService', () => {
       );
       prisma.recinto.findUnique.mockResolvedValue({ activo: true, tipo: 'CDA' });
       prisma.parejaCda.findUnique.mockResolvedValue(pareja({ kitId: 'k1', kit: { id: 'k1', operadorId: 'u1', eventoId: 'ev2' } }));
+    });
+
+    it('el asistente puede cambiarse por otro operador; se comprueba que no tenga pareja ese día (sin contar esta)', async () => {
+      await service.editar('p1', { asistenteCdaId: 'op2' });
+      expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
+        fecha: FECHA,
+        id: { not: 'p1' },
+        OR: [{ operadorCdaId: { in: ['op1', 'op2'] } }, { asistenteCdaId: { in: ['op1', 'op2'] } }],
+      });
+      expect(prisma.parejaCda.update.mock.calls[0][0].data).toEqual({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
+    });
+
+    it('si el nuevo integrante ya va en otra pareja del día, no guarda ni suelta el kit', async () => {
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'op2', asistenteCdaId: null });
+      await expect(service.editar('p1', { asistenteCdaId: 'op2', recintoId: 'r2' })).rejects.toThrow(
+        new ConflictException('El asistente ya tiene pareja el 2026-10-30'),
+      );
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      expect(kits.quitarOperador).not.toHaveBeenCalled();
+    });
+
+    it('cambiar solo el recinto también comprueba a los dos integrantes (sin contar esta pareja)', async () => {
+      await service.editar('p1', { recintoId: 'r2' });
+      expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toMatchObject({ id: { not: 'p1' } });
+      expect(prisma.parejaCda.update).toHaveBeenCalled();
     });
 
     it('cambiar solo el asistente no toca el kit', async () => {
@@ -844,6 +946,24 @@ describe('ParejasCdaService', () => {
       expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u2' });
     });
 
+    it('pareja de dos asistentes: el kit va al de Android; si nadie lo tiene, al de la primera columna', async () => {
+      const AS2 = { ...ASISTENTE, id: 'as2', usuarioId: 'u5' };
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operadorCdaId: 'as1', asistenteCdaId: 'as2', operador: IPHONE(ASISTENTE), asistente: ANDROID(AS2) }),
+      ]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u5' });
+
+      kits.asignar.mockClear();
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operadorCdaId: 'as1', asistenteCdaId: 'as2', operador: IPHONE(ASISTENTE), asistente: IPHONE(AS2) }),
+      ]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u2' });
+    });
+
     it('operador con Android: el kit es del operador aunque el asistente también tenga Android', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ operador: ANDROID(OPERADOR), asistente: ANDROID(ASISTENTE) })]);
       prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
@@ -1034,6 +1154,21 @@ describe('ParejasCdaService', () => {
       prisma.recinto.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
     });
 
+    it('copia una pareja de dos operadores tal cual y omite a quien ya no es Operador ni Asistente CDA', async () => {
+      const DOS_OP = pareja({ asistenteCdaId: 'op2', asistente: { ...OPERADOR, id: 'op2', apellidosNombres: 'MORA LUIS' } });
+      prisma.parejaCda.findMany.mockResolvedValueOnce([DOS_OP]).mockResolvedValueOnce([]);
+
+      const r = await service.copiar(DIA, HACIA, 'uAdmin');
+
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['op1', 'op2'] },
+        activo: true,
+        grupo: { in: ['OPERADOR', 'ASISTENTE'] },
+      });
+      expect(prisma.parejaCda.createMany.mock.calls[0][0].data[0]).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
+      expect(r.copiadas).toBe(1);
+    });
+
     it('omite la pareja cuyo recinto fue desactivado', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([pareja(), B]).mockResolvedValueOnce([]);
       prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r1' }]);
@@ -1086,7 +1221,7 @@ describe('ParejasCdaService', () => {
         omitidas: [
           { pareja: 'MORA LUIS · 1126', motivo: 'El operador ya tiene pareja ese día' },
           { pareja: 'VEGA RITA · 957', motivo: 'El asistente ya tiene pareja ese día' },
-          { pareja: 'OCULTO · 957', motivo: 'El operador está oculto' },
+          { pareja: 'OCULTO · 957', motivo: 'El operador ya no está disponible (oculto o cambió de cargo)' },
         ],
       });
     });

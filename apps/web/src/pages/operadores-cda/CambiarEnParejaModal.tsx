@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AplicarParejasCdaResult, CampoParejaCda, ParejaCdaFila, PersonaParejaCda, RecintoParejaCda } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { editarParejaCda, getDisponiblesParejasCda, intercambiarParejaCda } from '../../lib/queries/operadores-cda';
-import { ComboFiltrable, textoPersona, textoRecinto } from './ParejaFormModal';
+import { ComboFiltrable, cargoPareja, textoPersona, textoRecinto } from './ParejaFormModal';
 import { mensajeError } from './utils';
 
 type Opcion = PersonaParejaCda | RecintoParejaCda;
@@ -76,7 +76,10 @@ export function CambiarEnParejaModal({
     const con = otras.filter((p) => valorDe(p, campo)?.id === id);
     return con.find((p) => p.estado !== 'SOLO_REGISTRADA') ?? con[0] ?? null;
   };
-  const textoBase = (o: Opcion) => ('cedula' in o ? textoPersona(o) : textoRecinto(o));
+  // Quien no es del cargo de la columna (pareja de dos operadores o dos asistentes) lleva su cargo.
+  const grupoColumna = campo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
+  const textoBase = (o: Opcion) =>
+    'cedula' in o ? `${textoPersona(o)}${o.grupo === grupoColumna ? '' : ` · ${cargoPareja(o)}`}` : textoRecinto(o);
   const texto = (o: Opcion) => {
     const dueno = o.id === actualId ? null : duenoDe(o.id);
     if (!dueno) return textoBase(o);
@@ -84,8 +87,12 @@ export function CambiarEnParejaModal({
       ? `${textoBase(o)} · lo tiene ${dueno.operador.apellidosNombres} (se intercambian)`
       : `${textoBase(o)} · en ${dueno.recinto.codigo} (se intercambian)`;
   };
-  const deData = campo === 'OPERADOR' ? data?.operadores : campo === 'ASISTENTE' ? data?.asistentes : data?.recintos;
-  const opciones = unir([deData ?? [], otras.map((p) => valorDe(p, campo)), [valorDe(pareja, campo)]], textoBase);
+  // Para personas se ofrecen los dos cargos libres; el compañero de la pareja no se ofrece.
+  const companero = campo === 'OPERADOR' ? pareja.asistente?.id : campo === 'ASISTENTE' ? pareja.operador.id : undefined;
+  const deData = campo === 'RECINTO' ? (data?.recintos ?? []) : [...(data?.operadores ?? []), ...(data?.asistentes ?? [])];
+  const opciones = unir([deData, otras.map((p) => valorDe(p, campo)), [valorDe(pareja, campo)]], textoBase).filter(
+    (o) => o.id !== companero,
+  );
 
   const sinCambios = valor === actualId;
   const otra = sinCambios || !valor ? null : duenoDe(valor);
