@@ -44,6 +44,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
   const leido = (over: Record<string, unknown> = {}) => ({
     grupo: 'ASISTENTE',
     activo: true,
+    cedula: '1710034065',
     _count: { credenciales: 0, actas: 0 },
     ...over,
   });
@@ -161,6 +162,8 @@ describe('OperadoresCdaService.cambiarCargo', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'DIGITADOR' }));
       await service.cambiarCargo(OP, 'OPERADOR', USR);
       expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP, 'hash-inicial');
+      // Arranca con su cédula como contraseña.
+      expect(cuentas.hashInicial).toHaveBeenCalledWith('1710034065');
       expect(cuentas.retirarCuenta).not.toHaveBeenCalled();
     });
 

@@ -66,6 +66,7 @@ describe('ParejasCdaService', () => {
   const cuentas = {
     asegurarCuenta: jest.fn().mockResolvedValue('CREADA'),
     hashInicial: jest.fn().mockResolvedValue('hash'),
+    crearOVincular: jest.fn().mockResolvedValue('CREADA'),
   };
   const kits = {
     create: jest.fn().mockResolvedValue({ id: 'kNuevo' }),
@@ -324,7 +325,7 @@ describe('ParejasCdaService', () => {
 
       const r = await service.aplicar(DIA);
 
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'op1', 'hash');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1');
       expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} } });
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'uNuevo' });
       // Recinto sin kit y pareja sin artículos: el kit se crea con los artículos por defecto del catálogo.
@@ -467,7 +468,7 @@ describe('ParejasCdaService', () => {
 
       await service.crearKitConPareja({ eventoId: 'ev2', recintoId: 'r1', operadorCdaId: 'op1', detalleItems }, 'admin');
 
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'op1', 'hash');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1');
       expect(kits.create).toHaveBeenCalledWith(expect.objectContaining({ detalleItems }));
       expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'uNuevo' });
       expect(prisma.parejaCda.create.mock.calls[0][0].data.asistenteCdaId).toBeNull();
@@ -587,6 +588,8 @@ describe('ParejasCdaService', () => {
         grupo: 'ASISTENTE',
       });
       expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'asNuevo', 'hash');
+      // La persona nueva arranca con su cédula como contraseña.
+      expect(cuentas.hashInicial).toHaveBeenCalledWith('1713175071');
       expect(prisma.parejaCda.create).toHaveBeenCalledTimes(1);
       expect(prisma.parejaCda.create.mock.calls[0][0].data).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'asNuevo', recintoId: 'r1' });
       expect(r).toMatchObject({ guardado: true, guardadas: 1 });
@@ -866,7 +869,7 @@ describe('ParejasCdaService', () => {
       const r = await service.aplicar(DIA);
 
       // Le crea la cuenta de la app a ese asistente y el kit queda a su nombre.
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'as2', 'hash');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('as2');
       expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u4' });
       expect(r).toMatchObject({ enApp: 1, soloRegistradas: 1 });
     });

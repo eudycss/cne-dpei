@@ -234,8 +234,8 @@ describe('UsersService', () => {
 
       const { temporaryPassword } = await service.resetPassword(id);
 
-      expect(typeof temporaryPassword).toBe('string');
-      expect(temporaryPassword.length).toBeGreaterThan(0);
+      // La temporal es la cédula del usuario (con cambio obligatorio al entrar).
+      expect(temporaryPassword).toBe(userRow({ id }).cedula);
       expect(prisma.usuario.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id },

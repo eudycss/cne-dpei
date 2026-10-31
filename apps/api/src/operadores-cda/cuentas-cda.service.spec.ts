@@ -77,17 +77,15 @@ describe('CuentasCdaService', () => {
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
 
-    it('hashInicial: la contraseña inicial por defecto, calculada una sola vez', async () => {
-      await expect(service.hashInicial()).resolves.toBe('hash-inicial');
-      await service.hashInicial();
-      expect(argon2.hash).toHaveBeenCalledTimes(1);
-      expect(argon2.hash).toHaveBeenCalledWith('Cne2026!');
+    it('hashInicial: la contraseña inicial es la cédula de la persona', async () => {
+      await expect(service.hashInicial('1710034065')).resolves.toBe('hash-inicial');
+      expect(argon2.hash).toHaveBeenCalledWith('1710034065');
     });
 
-    it('hashInicial usa DEFAULT_RESET_PASSWORD si está configurada', async () => {
+    it('hashInicial ignora DEFAULT_RESET_PASSWORD: siempre la cédula', async () => {
       process.env.DEFAULT_RESET_PASSWORD = 'OtraClave1!';
-      await service.hashInicial();
-      expect(argon2.hash).toHaveBeenCalledWith('OtraClave1!');
+      await service.hashInicial('1002003000');
+      expect(argon2.hash).toHaveBeenCalledWith('1002003000');
     });
 
     it('cuenta vieja con la misma cédula: la vincula, agrega el rol y NO toca la contraseña', async () => {
@@ -207,9 +205,48 @@ describe('CuentasCdaService', () => {
     });
   });
 
+  describe('crearOVincular', () => {
+    it('lee la cédula, calcula su hash fuera de la transacción y crea la cuenta', async () => {
+      prisma.operadorCda.findUnique
+        .mockResolvedValueOnce({ cedula: '1710034065' })
+        .mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.crearOVincular(OP_ID)).resolves.toBe('CREADA');
+      expect(argon2.hash).toHaveBeenCalledWith('1710034065');
+      expect(prisma.usuario.create.mock.calls[0][0].data.passwordHash).toBe('hash-inicial');
+    });
+
+    it('el hash (argon2) se calcula antes de abrir la transacción', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ cedula: '1710034065' }).mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+
+      await service.crearOVincular(OP_ID);
+
+      const hash = (argon2.hash as jest.Mock).mock.invocationCallOrder[0];
+      const tx = prisma.$transaction.mock.invocationCallOrder[0];
+      expect(hash).toBeLessThan(tx);
+    });
+
+    it('si otra pulsación ya creó la cuenta (P2002), reintenta con el mismo hash y la vincula', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ cedula: '1710034065' }).mockResolvedValue(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: USR_ID, activo: true });
+      prisma.usuario.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+
+      await expect(service.crearOVincular(OP_ID)).resolves.toBe('VINCULADA');
+      expect(argon2.hash).toHaveBeenCalledTimes(1);
+    });
+
+    it('persona inexistente: NO_APLICA sin calcular hash', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      await expect(service.crearOVincular(OP_ID)).resolves.toBe('NO_APLICA');
+      expect(argon2.hash).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sincronizar', () => {
     it('procesa a cada operador/asistente activo sin cuenta y cuenta vinculadas y creadas', async () => {
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a', cedula: '1710034065' }, { id: 'b', cedula: '1002003000' }]);
       prisma.operadorCda.findUnique
         .mockResolvedValueOnce(operador({ id: 'a' }))
         .mockResolvedValueOnce(operador({ id: 'b', cedula: '1002003000' }));
@@ -219,14 +256,14 @@ describe('CuentasCdaService', () => {
 
       expect(prisma.operadorCda.findMany).toHaveBeenCalledWith({
         where: { grupo: { in: ['OPERADOR', 'ASISTENTE'] }, activo: true, usuarioId: null },
-        select: { id: true },
+        select: { id: true, cedula: true },
         orderBy: { apellidosNombres: 'asc' },
       });
       expect(r).toEqual({ vinculadas: 1, creadas: 1, fallidas: 0 });
     });
 
     it('una persona que falla no detiene a las demás: se cuenta como fallida', async () => {
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a', cedula: '1710034065' }, { id: 'b', cedula: '1002003000' }]);
       prisma.operadorCda.findUnique
         .mockRejectedValueOnce(new Error('se cayó la conexión'))
         .mockResolvedValueOnce(operador({ id: 'b' }));
@@ -237,17 +274,18 @@ describe('CuentasCdaService', () => {
       expect(r).toEqual({ vinculadas: 0, creadas: 1, fallidas: 1 });
     });
 
-    it('calcula el hash una sola vez para todo el lote, fuera de las transacciones', async () => {
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+    it('cada cuenta nueva arranca con su propia cédula como contraseña (hash fuera de la transacción)', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a', cedula: '1710034065' }, { id: 'b', cedula: '1002003000' }]);
       prisma.operadorCda.findUnique
         .mockResolvedValueOnce(operador({ id: 'a' }))
         .mockResolvedValueOnce(operador({ id: 'b', cedula: '1002003000' }));
       prisma.usuario.findUnique.mockResolvedValue(null);
+      (argon2.hash as jest.Mock).mockImplementation((v: string) => Promise.resolve(`hash-${v}`));
 
       await service.sincronizar();
 
-      expect(argon2.hash).toHaveBeenCalledTimes(1);
-      expect(prisma.usuario.create).toHaveBeenCalledTimes(2);
+      expect((argon2.hash as jest.Mock).mock.calls.map((c) => c[0])).toEqual(['1710034065', '1002003000']);
+      expect(prisma.usuario.create.mock.calls.map((c) => c[0].data.passwordHash)).toEqual(['hash-1710034065', 'hash-1002003000']);
     });
 
     it('sin pendientes no calcula el hash', async () => {
@@ -267,7 +305,7 @@ describe('CuentasCdaService', () => {
     });
 
     it('si otra pulsación simultánea ya creó la cuenta (P2002), reintenta y la vincula', async () => {
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'a', cedula: '1710034065' }]);
       prisma.operadorCda.findUnique.mockResolvedValue(operador({ id: 'a' }));
       prisma.usuario.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: USR_ID, activo: true });
       prisma.usuario.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));

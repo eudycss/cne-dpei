@@ -131,8 +131,8 @@ export class OperadoresCdaService {
    */
 
   async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
-    await this.existe(id);
-    const passwordHash = activo ? await this.cuentas.hashInicial() : '';
+    const { cedula } = await this.existe(id);
+    const passwordHash = activo ? await this.cuentas.hashInicial(cedula) : '';
     // Misma transacción: ocultar a alguien nunca le deja la app abierta.
     const editado = await this.prisma.$transaction(async (tx) => {
       const fila = await tx.operadorCda.update({ where: { id }, data: { activo } });
@@ -156,6 +156,7 @@ export class OperadoresCdaService {
       select: {
         grupo: true,
         activo: true,
+        cedula: true,
         _count: { select: { credenciales: { where: { revocadaEn: null } }, actas: true } },
       },
     });
@@ -173,7 +174,7 @@ export class OperadoresCdaService {
     const teniaCuenta = this.cuentas.tieneCuenta(o.grupo);
     const tendraCuenta = this.cuentas.tieneCuenta(grupo);
     // El hash (argon2, lento) se calcula antes de abrir la transacción.
-    const passwordHash = !teniaCuenta && tendraCuenta ? await this.cuentas.hashInicial() : '';
+    const passwordHash = !teniaCuenta && tendraCuenta ? await this.cuentas.hashInicial(o.cedula) : '';
 
     const editado = await this.prisma.$transaction(async (tx) => {
       // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
@@ -196,9 +197,10 @@ export class OperadoresCdaService {
     };
   }
 
-  private async existe(id: string): Promise<void> {
-    const o = await this.prisma.operadorCda.findUnique({ where: { id }, select: { id: true } });
+  private async existe(id: string): Promise<{ cedula: string }> {
+    const o = await this.prisma.operadorCda.findUnique({ where: { id }, select: { id: true, cedula: true } });
     if (!o) throw new NotFoundException('Operador no encontrado');
+    return o;
   }
 
   /**

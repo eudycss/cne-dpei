@@ -144,9 +144,9 @@ export class UsersService {
 
   /**
    * Restablece la contraseña de un usuario (acción de administrador).
-   * Genera una contraseña temporal fuerte, fuerza el cambio en el próximo
+   * La temporal es la cédula del usuario; fuerza el cambio en el próximo
    * login (debeCambiarPwd) y revoca las sesiones activas. Devuelve la
-   * contraseña temporal para que el administrador la entregue al usuario.
+   * temporal para que el administrador se la avise al usuario.
    */
   async resetPassword(id: string): Promise<{ user: User; temporaryPassword: string }> {
     const existing = await this.prisma.usuario.findUnique({
@@ -155,8 +155,8 @@ export class UsersService {
     });
     if (!existing) throw new NotFoundException('Usuario no encontrado');
 
-    // Contraseña por defecto fija (configurable por entorno).
-    const temporaryPassword = process.env.DEFAULT_RESET_PASSWORD ?? 'Cne2026!';
+    // La temporal es la cédula del usuario; al entrar se le obliga a cambiarla.
+    const temporaryPassword = existing.cedula;
     const passwordHash = await argon2.hash(temporaryPassword);
 
     await this.prisma.$transaction([

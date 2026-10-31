@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  strongPasswordSchema,
   MARGEN_LLEGADA_MAX_METROS,
   verificarKitRetornoSchema as verificarKitRetornoSchemaRetorno,
   bulkRecintoRowSchema,
@@ -572,5 +573,33 @@ describe('llegadaDpiManualSchema (llegada al DPEI desde la web)', () => {
 
   it('no acepta otros campos (la hora y quién la registra los pone el servidor)', () => {
     expect(llegadaDpiManualSchema.safeParse({ motivo: 'Olvidó marcarla', ocurridoEn: '2026-10-30T10:00:00Z' }).success).toBe(false);
+  });
+});
+
+describe('strongPasswordSchema (contraseña nueva: 6 a 12 caracteres)', () => {
+  it.each([
+    ['Ab1!xy', '6 caracteres (mínimo)'],
+    ['Ab1!xyzw', '8 caracteres'],
+    ['Ab1!xyzwvuts', '12 caracteres (máximo)'],
+  ])('acepta %s (%s)', (v) => {
+    expect(strongPasswordSchema.safeParse(v).success).toBe(true);
+  });
+
+  it.each([
+    ['Ab1!x', 'menos de 6'],
+    ['Ab1!xyzwvutsr', 'más de 12'],
+    ['ab1!xyzw', 'sin mayúscula'],
+    ['AB1!XYZW', 'sin minúscula'],
+    ['Abc!xyzw', 'sin dígito'],
+    ['Ab12xyzw', 'sin carácter especial'],
+    ['1004277248', 'la cédula sola (solo dígitos)'],
+  ])('rechaza %s (%s)', (v) => {
+    expect(strongPasswordSchema.safeParse(v).success).toBe(false);
+  });
+
+  it('el mensaje de exceso dice 12', () => {
+    const r = strongPasswordSchema.safeParse('Ab1!xyzwvutsr');
+    expect(r.success).toBe(false);
+    expect(!r.success && r.error.issues[0].message).toBe('La contraseña no puede exceder 12 caracteres');
   });
 });

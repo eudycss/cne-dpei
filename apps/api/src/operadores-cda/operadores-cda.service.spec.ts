@@ -494,10 +494,12 @@ describe('OperadoresCdaService', () => {
       expect(cuentas.retirarCuenta).toHaveBeenCalledWith(prisma, 'o1');
       expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
 
-      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1', cedula: '1710034065' });
       prisma.operadorCda.update.mockResolvedValueOnce(FILA);
       await service.cambiarActivo('o1', true);
       expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1', 'hash-inicial');
+      // Arranca con su cédula como contraseña.
+      expect(cuentas.hashInicial).toHaveBeenCalledWith('1710034065');
     });
 
     it('si retirar la cuenta falla, falla todo (misma transacción)', async () => {
