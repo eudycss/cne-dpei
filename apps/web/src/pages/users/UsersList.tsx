@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
+import { ResetPasswordBulkModal } from './ResetPasswordBulkModal';
 import { SearchInput } from '../../components/SearchInput';
 import { ExcelUploadButton } from '../../components/ExcelUploadButton';
 import { PasoFlujo } from '../../components/PasoFlujo';
@@ -20,8 +21,12 @@ export function UsersList() {
   const [debounced, setDebounced] = useState('');
   // Desactivar no borra al usuario: por defecto se ocultan para no confundirlos con los vigentes.
   const [mostrarInactivos, setMostrarInactivos] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rol, setRol] = useState('');
+  // Map y no Set: el modal masivo muestra cuántos hay de cada rol.
+  const [selected, setSelected] = useState<Map<string, User>>(new Map());
   const [showAssign, setShowAssign] = useState(false);
+  const [showResetBulk, setShowResetBulk] = useState(false);
+  const [seleccionandoTodos, setSeleccionandoTodos] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -34,13 +39,29 @@ export function UsersList() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Con otro filtro, lo marcado ya no se ve: se limpia para no restablecer ni cambiar roles a ciegas.
+  useEffect(() => {
+    setSelected(new Map());
+  }, [debounced, rol, mostrarInactivos]);
+
+  const { data: roles } = useQuery({
+    queryKey: ['roles'],
+    queryFn: async () => (await api.get<Role[]>('/roles')).data,
+    enabled: isAdmin,
+  });
+
+  function filtros(pagina: number, tamano: number) {
+    const params = new URLSearchParams({ page: String(pagina), pageSize: String(tamano) });
+    if (debounced) params.set('search', debounced);
+    if (rol) params.set('role', rol);
+    if (!mostrarInactivos) params.set('activo', 'true');
+    return params;
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ['users', { page, search: debounced, mostrarInactivos }],
+    queryKey: ['users', { page, search: debounced, rol, mostrarInactivos }],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), pageSize: '20' });
-      if (debounced) params.set('search', debounced);
-      if (!mostrarInactivos) params.set('activo', 'true');
-      const res = await api.get<Paginated<User>>(`/users?${params}`);
+      const res = await api.get<Paginated<User>>(`/users?${filtros(page, 20)}`);
       return res.data;
     },
   });
@@ -50,18 +71,34 @@ export function UsersList() {
     return Math.max(1, Math.ceil(data.total / data.pageSize));
   }, [data]);
 
-  function toggle(id: string) {
+  function toggle(u: User) {
     setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
+      const n = new Map(s);
+      n.has(u.id) ? n.delete(u.id) : n.set(u.id, u);
       return n;
     });
   }
 
   function toggleAll() {
-    const ids = data?.items.map((u) => u.id) ?? [];
-    const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
-    setSelected(allSelected ? new Set() : new Set(ids));
+    const items = data?.items ?? [];
+    const allSelected = items.length > 0 && items.every((u) => selected.has(u.id));
+    setSelected(allSelected ? new Map() : new Map(items.map((u) => [u.id, u])));
+  }
+
+  const paginaCompleta = !!data?.items.length && data.items.every((u) => selected.has(u.id));
+  // El API devuelve como mucho 500 por página (el mismo tope que el restablecimiento masivo).
+  const ofrecerTodos = paginaCompleta && !!data && data.total > data.items.length && selected.size < Math.min(data.total, 500);
+
+  async function seleccionarTodosDelFiltro() {
+    setSeleccionandoTodos(true);
+    try {
+      const res = await api.get<Paginated<User>>(`/users?${filtros(1, 500)}`);
+      setSelected(new Map(res.data.items.map((u) => [u.id, u])));
+    } catch (e: any) {
+      sileo.error({ title: e?.response?.data?.message ?? 'No se pudo seleccionar a todos' });
+    } finally {
+      setSeleccionandoTodos(false);
+    }
   }
 
   async function toggleActivo(u: User) {
@@ -133,6 +170,18 @@ export function UsersList() {
             Mostrar inactivos
           </label>
           {isAdmin && (
+            <select
+              aria-label="Filtrar por rol"
+              value={rol}
+              onChange={(e) => { setRol(e.target.value); setPage(1); }}
+            >
+              <option value="">Todos los roles</option>
+              {roles?.map((r) => (
+                <option key={r.id} value={r.nombre}>{r.nombre}</option>
+              ))}
+            </select>
+          )}
+          {isAdmin && (
             <>
               <Link to="/users/new" className="btn">+ Nuevo</Link>
               <ExcelUploadButton to="/users/upload" />
@@ -143,9 +192,31 @@ export function UsersList() {
               >
                 Asignar roles ({selected.size})
               </button>
+              <button
+                className="btn secondary"
+                disabled={selected.size === 0}
+                onClick={() => setShowResetBulk(true)}
+              >
+                Restablecer clave ({selected.size})
+              </button>
             </>
           )}
         </div>
+
+        {isAdmin && ofrecerTodos && (
+          <div className="banner row" style={{ marginTop: '0.5rem', alignItems: 'center' }}>
+            <span role="status">{selected.size} usuario(s) marcados en esta página.</span>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={seleccionandoTodos}
+              onClick={seleccionarTodosDelFiltro}
+            >
+              {`Seleccionar los ${Math.min(data!.total, 500)} usuarios del filtro`}
+            </button>
+            {data!.total > 500 && <span className="muted"> (como máximo 500 a la vez)</span>}
+          </div>
+        )}
 
         {isLoading ? (
           <p className="muted">Cargando…</p>
@@ -158,7 +229,8 @@ export function UsersList() {
                     <th style={{ width: 30 }}>
                       <input
                         type="checkbox"
-                        checked={!!data?.items.length && data.items.every((u) => selected.has(u.id))}
+                        aria-label="Seleccionar los de esta página"
+                        checked={paginaCompleta}
                         ref={(el) => {
                           if (el) el.indeterminate =
                             !!data?.items.some((u) => selected.has(u.id)) &&
@@ -184,8 +256,9 @@ export function UsersList() {
                       <td>
                         <input
                           type="checkbox"
+                          aria-label={`Seleccionar a ${u.nombres} ${u.apellidos}`}
                           checked={selected.has(u.id)}
-                          onChange={() => toggle(u.id)}
+                          onChange={() => toggle(u)}
                         />
                       </td>
                     )}
@@ -301,11 +374,23 @@ export function UsersList() {
 
       {showAssign && (
         <AssignRolesModal
-          userIds={[...selected]}
+          userIds={[...selected.keys()]}
           onClose={() => setShowAssign(false)}
           onDone={() => {
             setShowAssign(false);
-            setSelected(new Set());
+            setSelected(new Map());
+            qc.invalidateQueries({ queryKey: ['users'] });
+          }}
+        />
+      )}
+
+      {showResetBulk && (
+        <ResetPasswordBulkModal
+          users={[...selected.values()]}
+          onClose={() => setShowResetBulk(false)}
+          onDone={() => {
+            setShowResetBulk(false);
+            setSelected(new Map());
             qc.invalidateQueries({ queryKey: ['users'] });
           }}
         />

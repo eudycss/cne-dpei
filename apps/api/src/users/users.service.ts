@@ -13,6 +13,7 @@ import { parse as csvParse } from 'csv-parse/sync';
 import {
   bulkUserRowSchema,
   createUserSchema,
+  resetPasswordBulkSchema,
   updateUserSchema,
 } from '@cne/shared-validation';
 import type {
@@ -20,6 +21,8 @@ import type {
   BulkUploadRow,
   CreateUserRequest,
   Paginated,
+  ResetPasswordBulkRequest,
+  ResetPasswordBulkResult,
   UpdateUserRequest,
   User,
 } from '@cne/shared-types';
@@ -155,19 +158,65 @@ export class UsersService {
     });
     if (!existing) throw new NotFoundException('Usuario no encontrado');
 
-    // La temporal es la cédula del usuario; al entrar se le obliga a cambiarla.
+    const temporaryPassword = await this.restablecer(existing);
+    return { user: toUserDto(existing), temporaryPassword };
+  }
+
+  /**
+   * Restablece la contraseña de varios usuarios a su cédula (p. ej. todos los
+   * de un rol filtrado en la web). Salta la cuenta de quien lo pide para no
+   * cerrarle la sesión, y si uno falla sigue con los demás.
+   */
+  async resetPasswordBulk(input: ResetPasswordBulkRequest, solicitanteId: string): Promise<ResetPasswordBulkResult> {
+    const { userIds } = resetPasswordBulkSchema.parse(input);
+    const ids = [...new Set(userIds)];
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, cedula: true, email: true, nombres: true, apellidos: true },
+    });
+    const porId = new Map(usuarios.map((u) => [u.id, u]));
+
+    const omitidos: ResetPasswordBulkResult['omitidos'] = [];
+    let restablecidos = 0;
+    for (const id of ids) {
+      const u = porId.get(id);
+      if (!u) {
+        omitidos.push({ id, nombre: null, motivo: 'Usuario no encontrado' });
+        continue;
+      }
+      const nombre = `${u.nombres} ${u.apellidos}`;
+      if (id === solicitanteId) {
+        omitidos.push({ id, nombre, motivo: 'Es su propia cuenta' });
+        continue;
+      }
+      try {
+        await this.restablecer(u);
+        restablecidos++;
+      } catch (e) {
+        this.log.error(`No se pudo restablecer la clave de ${id}: ${(e as Error)?.message}`);
+        omitidos.push({ id, nombre, motivo: 'No se pudo restablecer' });
+      }
+    }
+    return { restablecidos, omitidos };
+  }
+
+  /**
+   * Deja la cédula como contraseña temporal: fuerza el cambio en el próximo
+   * login, levanta el bloqueo y revoca las sesiones. Devuelve la temporal.
+   */
+  private async restablecer(existing: { id: string; cedula: string; email: string | null }): Promise<string> {
     const temporaryPassword = existing.cedula;
     const passwordHash = await argon2.hash(temporaryPassword);
 
     await this.prisma.$transaction([
       this.prisma.usuario.update({
-        where: { id },
+        where: { id: existing.id },
         // Restablecer también levanta el bloqueo por intentos fallidos.
         data: { passwordHash, debeCambiarPwd: true, intentosFallidos: 0, bloqueadoHasta: null },
       }),
       // Revoca refresh tokens activos: las sesiones existentes quedan invalidadas
       this.prisma.refreshToken.updateMany({
-        where: { usuarioId: id, revocadoEn: null },
+        where: { usuarioId: existing.id, revocadoEn: null },
         data: { revocadoEn: new Date() },
       }),
     ]);
@@ -179,7 +228,7 @@ export class UsersService {
         this.log.error(`No se pudo enviar correo a ${email}: ${e?.message}`),
       );
     }
-    return { user: toUserDto(existing), temporaryPassword };
+    return temporaryPassword;
   }
 
   /** Levanta el bloqueo por contraseñas erróneas antes de que venza. */
