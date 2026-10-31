@@ -94,17 +94,20 @@ export class RecintosService {
     await this.assertCodigoDisponible(parsed.codigoRecinto);
 
     const id = crypto.randomUUID();
+    const esCda = parsed.tipo === 'CDA'; // solo un CDA tiene unidad de contingencia
     await this.prisma.$executeRaw`
       INSERT INTO recintos (
         id, codigo_recinto, nombre, direccion, canton_id, parroquia, zona, tipo,
         ubicacion, tiene_internet, cobertura_movil, numero_electores,
-        juntas_femeninas, juntas_masculinas, es_dificil_acceso
+        juntas_femeninas, juntas_masculinas, es_dificil_acceso,
+        contingencia_nombre, contingencia_direccion
       ) VALUES (
         ${id}::uuid, ${parsed.codigoRecinto}, ${parsed.nombre}, ${parsed.direccion ?? null},
         ${parsed.cantonId}, ${parsed.parroquia ?? null}, ${parsed.zona ?? null}, ${parsed.tipo}::tipo_recinto,
         ST_SetSRID(ST_MakePoint(${parsed.longitud}, ${parsed.latitud}), 4326)::geography,
         ${parsed.tieneInternet ?? false}, ${parsed.coberturaMovil ?? false}, ${parsed.numeroElectores ?? null},
-        ${parsed.juntasFemeninas ?? null}, ${parsed.juntasMasculinas ?? null}, ${parsed.esDificilAcceso ?? false}
+        ${parsed.juntasFemeninas ?? null}, ${parsed.juntasMasculinas ?? null}, ${parsed.esDificilAcceso ?? false},
+        ${esCda ? (parsed.contingenciaNombre ?? null) : null}, ${esCda ? (parsed.contingenciaDireccion ?? null) : null}
       )
     `;
     return this.getRecinto(id);
@@ -123,6 +126,7 @@ export class RecintosService {
       await this.assertPuedeDejarDeSerCda(id);
     }
 
+    const esNoCda = (parsed.tipo ?? existing.tipo) === 'NO_CDA';
     await this.prisma.recinto.update({
       where: { id },
       data: {
@@ -139,6 +143,10 @@ export class RecintosService {
         juntasFemeninas: parsed.juntasFemeninas === undefined ? undefined : parsed.juntasFemeninas,
         juntasMasculinas: parsed.juntasMasculinas === undefined ? undefined : parsed.juntasMasculinas,
         esDificilAcceso: parsed.esDificilAcceso ?? undefined,
+        // Solo un CDA tiene unidad de contingencia: al quedar NO-CDA se borra.
+        ...(esNoCda
+          ? { contingenciaNombre: null, contingenciaDireccion: null }
+          : { contingenciaNombre: parsed.contingenciaNombre, contingenciaDireccion: parsed.contingenciaDireccion }),
       },
     });
 
@@ -378,6 +386,8 @@ function toRecintoDto(r: any, coords?: { lat: number; lng: number }): Recinto {
     juntasFemeninas: r.juntasFemeninas ?? null,
     juntasMasculinas: r.juntasMasculinas ?? null,
     esDificilAcceso: r.esDificilAcceso ?? false,
+    contingenciaNombre: r.contingenciaNombre ?? null,
+    contingenciaDireccion: r.contingenciaDireccion ?? null,
     noCdasCount: r._count?.origenes,
   };
 }

@@ -263,7 +263,8 @@ export function RecintosPage() {
                       r.juntasFemeninas != null || r.juntasMasculinas != null
                         ? (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0)
                         : null;
-                    const isExpandable = r.tipo === 'CDA' && (r.noCdasCount ?? 0) > 0;
+                    // La ficha se abre si hay NO-CDAs o una unidad de contingencia que mostrar.
+                    const isExpandable = r.tipo === 'CDA' && ((r.noCdasCount ?? 0) > 0 || !!r.contingenciaNombre);
                     const isExpanded = expandedId === r.id;
                     const colSpan = isAdmin ? 10 : 9;
                     return (
@@ -517,7 +518,16 @@ function FichaSubtable({ cda, onEdit }: { cda: Recinto; onEdit?: (r: Recinto) =>
       {/* — Sección Contingencia — */}
       <div style={sectionStyle(SECTION_CONTING)}>
         <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.8rem', color: '#d97706' }}>{SECTION_CONTING.label}</p>
-        <p className="muted" style={{ fontSize: '0.82rem', margin: 0 }}>Sin unidad de contingencia configurada.</p>
+        {cda.contingenciaNombre ? (
+          <>
+            <p style={{ fontSize: '0.85rem', margin: 0, fontWeight: 600 }}>{cda.contingenciaNombre}</p>
+            {cda.contingenciaDireccion && (
+              <p className="muted" style={{ fontSize: '0.82rem', margin: 0 }}>{cda.contingenciaDireccion}</p>
+            )}
+          </>
+        ) : (
+          <p className="muted" style={{ fontSize: '0.82rem', margin: 0 }}>Sin unidad de contingencia configurada.</p>
+        )}
       </div>
 
     </div>
@@ -542,6 +552,8 @@ interface FormState {
   juntasFemeninas: string;
   juntasMasculinas: string;
   esDificilAcceso: boolean;
+  contingenciaNombre: string;
+  contingenciaDireccion: string;
 }
 
 type TextFieldKey = Exclude<keyof FormState, 'tipo' | 'tieneInternet' | 'coberturaMovil' | 'esDificilAcceso'>;
@@ -573,6 +585,8 @@ function RecintoModal({
     juntasFemeninas: recinto?.juntasFemeninas != null ? String(recinto.juntasFemeninas) : '',
     juntasMasculinas: recinto?.juntasMasculinas != null ? String(recinto.juntasMasculinas) : '',
     esDificilAcceso: recinto?.esDificilAcceso ?? false,
+    contingenciaNombre: recinto?.contingenciaNombre ?? '',
+    contingenciaDireccion: recinto?.contingenciaDireccion ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -606,6 +620,11 @@ function RecintoModal({
       juntasFemeninas: form.juntasFemeninas !== '' ? Number(form.juntasFemeninas) : null,
       juntasMasculinas: form.juntasMasculinas !== '' ? Number(form.juntasMasculinas) : null,
       esDificilAcceso: form.esDificilAcceso,
+      // Solo los CDA tienen unidad de contingencia.
+      ...(form.tipo === 'CDA' && {
+        contingenciaNombre: form.contingenciaNombre.trim() || null,
+        contingenciaDireccion: form.contingenciaDireccion.trim() || null,
+      }),
     };
     const schema = recinto ? updateRecintoSchema : createRecintoSchema;
     const parsed = schema.safeParse(payload);
@@ -758,6 +777,32 @@ function RecintoModal({
           <p className="muted" style={{ marginTop: '-0.5rem', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
             JT (total) = {(Number(form.juntasFemeninas) || 0) + (Number(form.juntasMasculinas) || 0)}
           </p>
+        )}
+
+        {form.tipo === 'CDA' && (
+          <>
+            <div className="field">
+              <label htmlFor="recinto-contingencia-nombre">Unidad de contingencia (problema con el kit)</label>
+              <input
+                id="recinto-contingencia-nombre"
+                value={form.contingenciaNombre}
+                onChange={textField('contingenciaNombre')}
+                maxLength={255}
+                placeholder="Ej.: UE Juan Montalvo"
+                autoComplete="off"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="recinto-contingencia-direccion">Dirección de la unidad de contingencia</label>
+              <input
+                id="recinto-contingencia-direccion"
+                value={form.contingenciaDireccion}
+                onChange={textField('contingenciaDireccion')}
+                maxLength={255}
+                autoComplete="off"
+              />
+            </div>
+          </>
         )}
 
         <div className="field">

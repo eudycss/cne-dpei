@@ -298,6 +298,9 @@ model Recinto {
   juntasFemeninas    Int?        @map("juntas_femeninas")
   juntasMasculinas   Int?        @map("juntas_masculinas")
   esDificilAcceso    Boolean     @default(false) @map("es_dificil_acceso")
+  /// CDA: a dónde dirigirse si hay un problema con el kit (texto libre; la sync del Sheet no lo toca).
+  contingenciaNombre    String?  @map("contingencia_nombre") @db.VarChar(255)
+  contingenciaDireccion String?  @map("contingencia_direccion") @db.VarChar(255)
   /// false = ya no está en el Google Sheet de recintos: se oculta de listas y
   /// asignaciones, pero se conserva por el historial (kits, tracking, actas).
   activo             Boolean     @default(true)

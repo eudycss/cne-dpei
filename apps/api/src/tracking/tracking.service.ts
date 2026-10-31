@@ -314,6 +314,9 @@ export class TrackingService {
             cedula: militar.cedula,
           }
         : null,
+      contingencia: recinto.contingenciaNombre
+        ? { nombre: recinto.contingenciaNombre, direccion: recinto.contingenciaDireccion ?? null }
+        : null,
       pareja,
       kits: kits.map((k) => ({
         id: k.id,

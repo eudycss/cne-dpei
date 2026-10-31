@@ -116,6 +116,21 @@ describe('SalidaDpiScreen', () => {
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Llamar a MORA LUIS' }).length).toBeGreaterThan(0);
   });
 
+  it('muestra a dónde dirigirse si hay un problema con el kit', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValue({
+      ...asignacionFixture,
+      contingencia: { nombre: 'UE Juan Montalvo', direccion: 'Gran Colombia y Mariscal Sucre' },
+    });
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaDpiScreen onSalidaRegistrada={jest.fn()} />);
+      await flushPromises();
+    });
+    expect(renderer.root.findAllByProps({ children: 'Si hay un problema con el kit' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ children: 'UE Juan Montalvo' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ children: 'Gran Colombia y Mariscal Sucre' }).length).toBeGreaterThan(0);
+  });
+
   it('tras registrar la salida exitosamente, activa el rastreo en segundo plano', async () => {
     let renderer!: ReactTestRenderer;
     await act(async () => {

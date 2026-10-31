@@ -129,6 +129,68 @@ describe('RecintosService', () => {
       expect(prisma.recinto.update).not.toHaveBeenCalled();
     });
 
+    it('guarda y devuelve la unidad de contingencia (texto libre; vacía = null)', async () => {
+      const conting = { contingenciaNombre: 'UE Alberto Enríquez', contingenciaDireccion: 'Galo Plaza Lasso 10-09' };
+      prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow()).mockResolvedValueOnce(recintoRow(conting));
+      prisma.recinto.update.mockResolvedValueOnce(recintoRow(conting));
+
+      const result = await service.update(recintoId, { contingenciaNombre: '  UE Alberto Enríquez ', contingenciaDireccion: 'Galo Plaza Lasso 10-09' });
+
+      expect(prisma.recinto.update.mock.calls[0][0].data).toMatchObject(conting);
+      expect(result).toMatchObject(conting);
+
+      prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow(conting)).mockResolvedValueOnce(recintoRow());
+      await service.update(recintoId, { contingenciaNombre: null, contingenciaDireccion: null });
+      expect(prisma.recinto.update.mock.calls[1][0].data).toMatchObject({ contingenciaNombre: null, contingenciaDireccion: null });
+    });
+
+    it('al pasar a NO-CDA (o editar un NO-CDA) la contingencia se borra', async () => {
+      prisma.recinto.findUnique
+        .mockResolvedValueOnce(recintoRow({ tipo: 'NO_CDA' }))
+        .mockResolvedValueOnce(recintoRow({ tipo: 'NO_CDA' }));
+      prisma.recinto.update.mockResolvedValueOnce(recintoRow());
+      await service.update(recintoId, { contingenciaNombre: 'CPE' });
+      expect(prisma.recinto.update.mock.calls[0][0].data).toMatchObject({ contingenciaNombre: null, contingenciaDireccion: null });
+    });
+
+    it('espacios en blanco cuentan como vacío (null)', async () => {
+      prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow()).mockResolvedValueOnce(recintoRow());
+      prisma.recinto.update.mockResolvedValueOnce(recintoRow());
+      await service.update(recintoId, { contingenciaNombre: '   ', contingenciaDireccion: '' });
+      expect(prisma.recinto.update.mock.calls[0][0].data).toMatchObject({ contingenciaNombre: null, contingenciaDireccion: null });
+    });
+
+    it('más de 255 caracteres no se acepta', async () => {
+      await expect(service.update(recintoId, { contingenciaNombre: 'x'.repeat(256) })).rejects.toThrow();
+      expect(prisma.recinto.update).not.toHaveBeenCalled();
+    });
+
+    it('sin contingencia en el pedido no la toca', async () => {
+      prisma.recinto.findUnique.mockResolvedValueOnce(recintoRow()).mockResolvedValueOnce(recintoRow());
+      prisma.recinto.update.mockResolvedValueOnce(recintoRow());
+      await service.update(recintoId, { nombre: 'Otro' });
+      const data = prisma.recinto.update.mock.calls[0][0].data;
+      expect(data.contingenciaNombre).toBeUndefined();
+      expect(data.contingenciaDireccion).toBeUndefined();
+    });
+
+    it('al crear un CDA guarda también su unidad de contingencia', async () => {
+      prisma.canton.findUnique.mockResolvedValueOnce({ id: 1 });
+      prisma.recinto.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(recintoRow());
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      await service.create({ ...validInput, contingenciaNombre: 'CPE', contingenciaDireccion: '' });
+      const valores = prisma.$executeRaw.mock.calls[0].slice(1);
+      expect(valores).toEqual(expect.arrayContaining(['CPE', null]));
+    });
+
+    it('al crear un NO-CDA la contingencia no se guarda', async () => {
+      prisma.canton.findUnique.mockResolvedValueOnce({ id: 1 });
+      prisma.recinto.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(recintoRow({ tipo: 'NO_CDA' }));
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      await service.create({ ...validInput, tipo: 'NO_CDA', contingenciaNombre: 'CPE' });
+      expect(prisma.$executeRaw.mock.calls[0].slice(1)).not.toContain('CPE');
+    });
+
     it('actualiza un recinto existente', async () => {
       prisma.recinto.findUnique
         .mockResolvedValueOnce(recintoRow()) // existing
