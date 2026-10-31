@@ -111,6 +111,15 @@ export interface AssignRolesRequest {
   roleIds: string[];
 }
 
+export interface ResetPasswordBulkRequest {
+  userIds: string[];
+}
+
+export interface ResetPasswordBulkResult {
+  restablecidos: number;
+  omitidos: { id: string; nombre: string | null; motivo: string }[];
+}
+
 export interface Paginated<T> {
   items: T[];
   total: number;

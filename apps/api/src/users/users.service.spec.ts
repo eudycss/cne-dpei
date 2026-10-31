@@ -272,6 +272,99 @@ describe('UsersService', () => {
     });
   });
 
+  describe('resetPasswordBulk', () => {
+    const yo = '11111111-1111-1111-1111-111111111111';
+    const a = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1';
+    const b = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2';
+    const fantasma = 'dddddddd-dddd-dddd-dddd-ddddddddddd3';
+
+    it('restablece a cada usuario con su cédula y revoca sus sesiones', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        userRow({ id: a, cedula: '1000000001', email: null }),
+        userRow({ id: b, cedula: '1000000002', email: null }),
+      ]);
+
+      const res = await service.resetPasswordBulk({ userIds: [a, b] }, yo);
+
+      expect(res).toEqual({ restablecidos: 2, omitidos: [] });
+      expect(prisma.usuario.update).toHaveBeenCalledTimes(2);
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: a },
+          data: expect.objectContaining({ debeCambiarPwd: true, intentosFallidos: 0, bloqueadoHasta: null }),
+        }),
+      );
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { usuarioId: b, revocadoEn: null },
+        data: { revocadoEn: expect.any(Date) },
+      });
+    });
+
+    it('nunca restablece la cuenta de quien lo pide (cerraría su propia sesión)', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        userRow({ id: yo, nombres: 'Admin', apellidos: 'Uno', email: null }),
+        userRow({ id: a, email: null }),
+      ]);
+
+      const res = await service.resetPasswordBulk({ userIds: [yo, a] }, yo);
+
+      expect(res.restablecidos).toBe(1);
+      expect(res.omitidos).toEqual([{ id: yo, nombre: 'Admin Uno', motivo: 'Es su propia cuenta' }]);
+      expect(prisma.usuario.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: yo } }));
+    });
+
+    it('los ids que no existen quedan como omitidos', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([userRow({ id: a, email: null })]);
+
+      const res = await service.resetPasswordBulk({ userIds: [a, fantasma] }, yo);
+
+      expect(res.restablecidos).toBe(1);
+      expect(res.omitidos).toEqual([{ id: fantasma, nombre: null, motivo: 'Usuario no encontrado' }]);
+    });
+
+    it('si falla uno, sigue con los demás', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        userRow({ id: a, nombres: 'Ana', apellidos: 'Uno', email: null }),
+        userRow({ id: b, email: null }),
+      ]);
+      prisma.$transaction.mockRejectedValueOnce(new Error('se cayó la conexión'));
+
+      const res = await service.resetPasswordBulk({ userIds: [a, b] }, yo);
+
+      expect(res.restablecidos).toBe(1);
+      expect(res.omitidos).toEqual([{ id: a, nombre: 'Ana Uno', motivo: 'No se pudo restablecer' }]);
+    });
+
+    it('rechaza una lista vacía o con más de 500 usuarios', async () => {
+      await expect(service.resetPasswordBulk({ userIds: [] }, yo)).rejects.toThrow(ZodError);
+      const muchos = Array.from({ length: 501 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      await expect(service.resetPasswordBulk({ userIds: muchos }, yo)).rejects.toThrow(ZodError);
+      expect(prisma.usuario.findMany).not.toHaveBeenCalled();
+    });
+
+    it('si falla el aviso por correo de uno, igual cuenta como restablecido y sigue', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        userRow({ id: a, email: 'a@cne.gob.ec' }),
+        userRow({ id: b, email: null }),
+      ]);
+      notifier.sendInitialPassword.mockRejectedValueOnce(new Error('SMTP caído'));
+
+      const res = await service.resetPasswordBulk({ userIds: [a, b] }, yo);
+
+      expect(res).toEqual({ restablecidos: 2, omitidos: [] });
+      expect(notifier.sendInitialPassword).toHaveBeenCalledTimes(1);
+    });
+
+    it('quita los ids repetidos', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([userRow({ id: a, email: null })]);
+
+      const res = await service.resetPasswordBulk({ userIds: [a, a] }, yo);
+
+      expect(res).toEqual({ restablecidos: 1, omitidos: [] });
+      expect(prisma.usuario.update).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('desbloquear', () => {
     const id = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 

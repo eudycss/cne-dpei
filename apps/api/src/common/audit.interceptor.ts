@@ -57,6 +57,22 @@ const AUDIT_TABLE: Array<{
   { method: 'PATCH', pathRegex: /^\/users\/[^/]+$/,          accion: 'USER_UPDATE', entidad: 'usuario', campos: ['activo'] },
   { method: 'POST',  pathRegex: /^\/users\/[^/]+\/reset-password$/, accion: 'USER_PASSWORD_RESET', entidad: 'usuario' },
   { method: 'POST',  pathRegex: /^\/users\/bulk$/,           accion: 'BULK_USER_UPLOAD', entidad: 'usuario' },
+  // En bloque: todos los ids afectados (los arrays de "campos" se cortan en 50) y los conteos.
+  {
+    method: 'POST',
+    pathRegex: /^\/users\/reset-password-bulk$/,
+    accion: 'USER_PASSWORD_RESET_BULK',
+    entidad: 'usuario',
+    resumen: (res, req) => {
+      const r = (res ?? {}) as { restablecidos?: unknown; omitidos?: unknown };
+      const ids = (req.body as { userIds?: unknown } | undefined)?.userIds;
+      return {
+        userIds: Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string').slice(0, 500).map((x) => x.slice(0, 40)) : [],
+        restablecidos: Number(r.restablecidos) || 0,
+        omitidos: Array.isArray(r.omitidos) ? r.omitidos.length : 0,
+      };
+    },
+  },
   { method: 'POST',  pathRegex: /^\/users\/assign-roles$/,   accion: 'ROLE_ASSIGN', campos: ['userIds', 'roleIds'] },
   // Fase 2 — militares
   { method: 'POST',  pathRegex: /^\/militares$/,             accion: 'MILITAR_CREATE', entidad: 'militar' },

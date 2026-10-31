@@ -225,6 +225,22 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data)).not.toMatch(/1710034065|PÉREZ/);
   });
 
+  it('restablecer claves en bloque: guarda a TODOS los afectados y los conteos, nunca la clave', async () => {
+    const ids = Array.from({ length: 120 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+    const { data } = await auditar(
+      { method: 'POST', originalUrl: '/users/reset-password-bulk', body: { userIds: ids }, user: ADMIN },
+      { restablecidos: 119, omitidos: [{ id: ids[0], nombre: 'Admin Uno', motivo: 'Es su propia cuenta' }] },
+    );
+    expect(data).toMatchObject({
+      accion: 'USER_PASSWORD_RESET_BULK',
+      entidad: 'usuario',
+      datosDespues: { restablecidos: 119, omitidos: 1 },
+    });
+    // Más de 50 (el tope de los arrays en "campos"): el resumen guarda la lista completa.
+    expect(data.datosDespues.userIds).toEqual(ids);
+    expect(JSON.stringify(data)).not.toMatch(/Admin Uno/);
+  });
+
   it('asistencia CDA: corregir un día pasado guarda qué había, qué quedó y el motivo', async () => {
     const corregir = await auditar(
       {

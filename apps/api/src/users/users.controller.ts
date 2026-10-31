@@ -15,14 +15,21 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 
 import { UsersService } from './users.service';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import type { CreateUserRequest, UpdateUserRequest, AssignRolesRequest } from '@cne/shared-types';
+import type {
+  CreateUserRequest,
+  UpdateUserRequest,
+  AssignRolesRequest,
+  ResetPasswordBulkRequest,
+} from '@cne/shared-types';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
-import { assignRolesSchema } from '@cne/shared-validation';
+import { assignRolesSchema, resetPasswordBulkSchema } from '@cne/shared-validation';
+import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -72,6 +79,18 @@ export class UsersController {
   @ApiOperation({ summary: 'Editar usuario' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateUserRequest) {
     return this.users.update(id, body);
+  }
+
+  @Post('reset-password-bulk')
+  @Roles('ADMINISTRADOR')
+  // Cada llamada calcula hasta 500 hashes argon2: pocas por minuto.
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Restablecer la contraseña de varios usuarios a su cédula' })
+  resetPasswordBulk(
+    @Body(new ZodValidationPipe(resetPasswordBulkSchema)) body: ResetPasswordBulkRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.users.resetPasswordBulk(body, user.sub);
   }
 
   @Post(':id/reset-password')
