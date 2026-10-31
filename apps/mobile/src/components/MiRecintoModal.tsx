@@ -121,7 +121,14 @@ export function MiRecintoModal({ visible, onClose }: Props) {
               <Text style={[styles.sectionLabel, { marginTop: 18 }]}>
                 En caso de problema con el kit, dirigirse a
               </Text>
-              <Text style={styles.muted}>Sin unidad de contingencia configurada.</Text>
+              {data.contingencia ? (
+                <>
+                  <Text style={styles.recintoNombre}>{data.contingencia.nombre}</Text>
+                  {data.contingencia.direccion ? <Text style={styles.recintoMeta}>{data.contingencia.direccion}</Text> : null}
+                </>
+              ) : (
+                <Text style={styles.muted}>Sin unidad de contingencia configurada.</Text>
+              )}
             </ScrollView>
           )}
 

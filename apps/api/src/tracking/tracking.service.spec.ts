@@ -179,6 +179,30 @@ describe('TrackingService', () => {
       expect(result.margenLlegadaDpiMetros).toBe(150);
     });
 
+    it('trae la unidad de contingencia de su CDA (o null si no está configurada)', async () => {
+      const preparar = (recinto: object) => {
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+        prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null, ...recinto });
+        prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+        prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+        prisma.recinto.findMany.mockResolvedValueOnce([]);
+        prisma.militar.findFirst.mockResolvedValueOnce(null);
+        prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
+      };
+      preparar({ contingenciaNombre: 'UE Juan Montalvo', contingenciaDireccion: 'Gran Colombia y Mariscal Sucre' });
+      expect((await service.miAsignacion(operadorId)).contingencia).toEqual({
+        nombre: 'UE Juan Montalvo',
+        direccion: 'Gran Colombia y Mariscal Sucre',
+      });
+
+      preparar({ contingenciaNombre: 'CPE', contingenciaDireccion: null });
+      expect((await service.miAsignacion(operadorId)).contingencia).toEqual({ nombre: 'CPE', direccion: null });
+
+      preparar({ contingenciaNombre: null, contingenciaDireccion: null });
+      expect((await service.miAsignacion(operadorId)).contingencia).toBeNull();
+    });
+
     describe('su pareja del recinto', () => {
       function mockAsignacion() {
         prisma.eventoElectoral.findFirst.mockResolvedValueOnce({ ...evento, fechaJornada: new Date('2026-11-01T00:00:00Z') });

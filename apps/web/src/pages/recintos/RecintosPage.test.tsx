@@ -100,6 +100,73 @@ describe('RecintosPage — NO-CDA sin CDA asignado', () => {
     expect(apiPatch).toHaveBeenCalledWith('/recintos/r2', expect.objectContaining({ tipo: 'CDA' }));
   });
 
+  it('la ficha del CDA muestra a dónde dirigirse si hay un problema con el kit', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/cantones') return Promise.resolve({ data: [{ id: 1, codigo: '10', nombre: 'Ibarra' }] });
+      if (url.startsWith('/recintos?') && url.includes('tipo=CDA')) {
+        const items = [recinto({ contingenciaNombre: 'UE Juan Montalvo', contingenciaDireccion: 'Gran Colombia y Mariscal Sucre' })];
+        return Promise.resolve({ data: { items, total: 1, page: 1, pageSize: 20 } });
+      }
+      return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 100 } });
+    });
+    const user = userEvent.setup();
+    renderPage();
+    const fila = (await screen.findByText('UE García Moreno')).closest('tr')!;
+    await user.click(within(fila).getByTitle('Ver No CDAs asociados'));
+    expect(await screen.findByText('UE Juan Montalvo')).toBeInTheDocument();
+    expect(screen.getByText('Gran Colombia y Mariscal Sucre')).toBeInTheDocument();
+    expect(screen.queryByText('Sin unidad de contingencia configurada.')).not.toBeInTheDocument();
+  });
+
+  it('al editar un CDA se escribe la unidad de contingencia y se envía', async () => {
+    const user = userEvent.setup();
+    apiPatch.mockResolvedValueOnce({ data: cda });
+    renderPage();
+    const fila = (await screen.findByText('UE García Moreno')).closest('tr')!;
+    await user.click(within(fila).getByText('Editar'));
+    await user.type(screen.getByLabelText('Unidad de contingencia (problema con el kit)'), 'UE Juan Montalvo');
+    await user.type(screen.getByLabelText('Dirección de la unidad de contingencia'), 'Gran Colombia y Mariscal Sucre');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(apiPatch).toHaveBeenCalledWith(
+      '/recintos/r1',
+      expect.objectContaining({ contingenciaNombre: 'UE Juan Montalvo', contingenciaDireccion: 'Gran Colombia y Mariscal Sucre' }),
+    );
+  });
+
+  it('un CDA sin NO-CDAs ni contingencia no tiene ficha que abrir', async () => {
+    renderPage();
+    const fila = (await screen.findByText('UE García Moreno')).closest('tr')!;
+    expect(within(fila).queryByTitle('Ver No CDAs asociados')).not.toBeInTheDocument();
+  });
+
+  it('borrar el texto de la contingencia la deja vacía (null)', async () => {
+    const user = userEvent.setup();
+    const conConting = recinto({ contingenciaNombre: 'CPE', contingenciaDireccion: 'Sánchez y Cifuentes' });
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/cantones') return Promise.resolve({ data: [{ id: 1, codigo: '10', nombre: 'Ibarra' }] });
+      if (url.startsWith('/recintos?')) return Promise.resolve({ data: { items: [conConting], total: 1, page: 1, pageSize: 20 } });
+      return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 100 } });
+    });
+    apiPatch.mockResolvedValueOnce({ data: cda });
+    renderPage();
+    const fila = (await screen.findByText('UE García Moreno')).closest('tr')!;
+    await user.click(within(fila).getByText('Editar'));
+    await user.clear(screen.getByLabelText('Unidad de contingencia (problema con el kit)'));
+    await user.clear(screen.getByLabelText('Dirección de la unidad de contingencia'));
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    expect(apiPatch).toHaveBeenCalledWith('/recintos/r1', expect.objectContaining({ contingenciaNombre: null, contingenciaDireccion: null }));
+  });
+
+  it('un NO-CDA no pide unidad de contingencia', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('UE García Moreno');
+    await user.selectOptions(screen.getByLabelText('Mostrar'), 'sueltos');
+    const fila = (await screen.findByText('Recinto de prueba suelto')).closest('tr')!;
+    await user.click(within(fila).getByText('Editar'));
+    expect(screen.queryByLabelText('Unidad de contingencia (problema con el kit)')).not.toBeInTheDocument();
+  });
+
   it('si la API bloquea el cambio a NO-CDA, muestra el motivo como alerta', async () => {
     const user = userEvent.setup();
     const mensaje =

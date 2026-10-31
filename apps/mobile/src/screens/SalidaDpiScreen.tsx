@@ -154,7 +154,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
     );
   }
 
-  const { recinto, militar, kits, eventoNombre, pareja } = asignacion;
+  const { recinto, militar, kits, eventoNombre, pareja, contingencia } = asignacion;
 
   return (
     <View style={styles.container}>
@@ -184,6 +184,17 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
         </View>
 
         <SuParejaCard pareja={pareja} />
+
+        {contingencia ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle} accessibilityRole="header">
+              Si hay un problema con el kit
+            </Text>
+            <Text style={styles.militarNombre}>{contingencia.nombre}</Text>
+            {contingencia.direccion ? <Text style={styles.recintoMeta}>{contingencia.direccion}</Text> : null}
+            <Text style={styles.note}>Diríjase a este lugar.</Text>
+          </View>
+        ) : null}
 
         {militar ? (
           <View style={styles.card}>

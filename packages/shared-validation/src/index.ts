@@ -204,6 +204,9 @@ export const createRecintoSchema = z.object({
   juntasFemeninas: z.number().int().nonnegative().nullable().optional(),
   juntasMasculinas: z.number().int().nonnegative().nullable().optional(),
   esDificilAcceso: z.boolean().optional(),
+  // CDA: a dónde dirigirse si hay un problema con el kit. Vacío = sin configurar.
+  contingenciaNombre: z.string().trim().max(255, 'Máximo 255 caracteres').nullable().optional().transform((v) => (v === '' ? null : v)),
+  contingenciaDireccion: z.string().trim().max(255, 'Máximo 255 caracteres').nullable().optional().transform((v) => (v === '' ? null : v)),
 });
 
 export const updateRecintoSchema = createRecintoSchema.partial();

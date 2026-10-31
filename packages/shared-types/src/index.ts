@@ -148,6 +148,9 @@ export interface Recinto {
   juntasFemeninas: number | null;
   juntasMasculinas: number | null;
   esDificilAcceso: boolean;
+  /** CDA: a dónde dirigirse si hay un problema con el kit. */
+  contingenciaNombre?: string | null;
+  contingenciaDireccion?: string | null;
   noCdasCount?: number;
 }
 
@@ -167,6 +170,8 @@ export interface CreateRecintoRequest {
   juntasFemeninas?: number | null;
   juntasMasculinas?: number | null;
   esDificilAcceso?: boolean;
+  contingenciaNombre?: string | null;
+  contingenciaDireccion?: string | null;
 }
 
 export interface UpdateRecintoRequest {
@@ -185,6 +190,8 @@ export interface UpdateRecintoRequest {
   juntasFemeninas?: number | null;
   juntasMasculinas?: number | null;
   esDificilAcceso?: boolean;
+  contingenciaNombre?: string | null;
+  contingenciaDireccion?: string | null;
 }
 
 // --- Sincronización de recintos desde el Google Sheet ---
@@ -463,6 +470,8 @@ export interface MiAsignacionResponse {
   recinto: MiAsignacionRecinto;
   noCdas: MiAsignacionRecinto[];
   militar: MiAsignacionMilitar | null;
+  /** A dónde dirigirse si hay un problema con el kit (null si no está configurada; ausente en APIs antiguas). */
+  contingencia?: { nombre: string; direccion: string | null } | null;
   /** Pareja CDA de la jornada en este recinto (vacía si no hay; ausente en APIs antiguas). */
   pareja?: MiAsignacionCompanero[];
   kits: MiAsignacionKit[];
