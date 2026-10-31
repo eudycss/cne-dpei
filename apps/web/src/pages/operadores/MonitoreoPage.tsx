@@ -4,6 +4,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { TextoAnimado } from '../../components/TextoAnimado';
 import { BotonConMotivo } from '../../components/BotonConMotivo';
 import { Cargando } from '../../components/Cargando';
+import { SearchInput } from '../../components/SearchInput';
+import { normalizar } from '../operadores-cda/utils';
 import { WarmTooltipGroup } from '../../components/micro/WarmTooltip/WarmTooltip';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoActa, getFotoMilitar, getOperadoresEnRetorno } from '../../lib/queries/monitoreo';
@@ -227,6 +229,7 @@ export function MonitoreoPage() {
   const cdas = cdaData ?? [];
   const [cantonFiltro, setCantonFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState<FiltroEstadoValor>('TODOS');
+  const [busqueda, setBusqueda] = useState('');
   const [verUbicacion, setVerUbicacion] = useState<CdaEstadoDto | null>(null);
   const [verFoto, setVerFoto] = useState<CdaEstadoDto | null>(null);
   const [verActa, setVerActa] = useState<{ cda: CdaEstadoDto; tipo: 'instalacion' | 'escrutinio' } | null>(
@@ -246,8 +249,13 @@ export function MonitoreoPage() {
   const cdasDelCanton = cantonFiltro
     ? cdas.filter((c) => String(c.cantonId) === cantonFiltro)
     : cdas;
-  const cdasFiltrados =
-    estadoFiltro === 'TODOS' ? cdasDelCanton : cdasDelCanton.filter((c) => c.estado === estadoFiltro);
+  const textoBuscado = normalizar(busqueda.trim());
+  const cdasFiltrados = cdasDelCanton.filter(
+    (c) =>
+      (estadoFiltro === 'TODOS' || c.estado === estadoFiltro) &&
+      (!textoBuscado ||
+        normalizar(`${c.codigoRecinto} ${c.nombreRecinto} ${c.operadorNombre}`).includes(textoBuscado)),
+  );
 
   const conteoPorEstado = useMemo(() => {
     const acc: ConteoEstados = {};
@@ -433,16 +441,28 @@ export function MonitoreoPage() {
             conteo={conteoPorEstado}
             total={cdasDelCanton.length}
           />
+          <SearchInput
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar por código, recinto u operador"
+            ariaLabel="Buscar CDA por código, recinto u operador"
+            style={{ flex: '1 1 240px', minWidth: 200 }}
+          />
         </div>
+        {textoBuscado && !cdaLoading && !cdaError ? (
+          <p className="muted" role="status" style={{ fontSize: '0.85rem', margin: '0.5rem 0 0' }}>
+            {cdasFiltrados.length === 1 ? '1 CDA encontrado' : `${cdasFiltrados.length} CDAs encontrados`}
+          </p>
+        ) : null}
 
         {cdaLoading ? (
           <Cargando texto="Cargando estado de CDAs…" />
         ) : cdaError ? (
           <p style={{ color: 'var(--error)' }}>No se pudo cargar el estado de los CDAs.</p>
         ) : (
-          // Enfocable para poder desplazarla horizontalmente con el teclado.
+          // Alto tope con scroll y encabezado fijo; enfocable para desplazarla con el teclado.
           <WarmTooltipGroup>
-          <div className="table-scroll" role="region" aria-label="Tabla de estado de CDAs" tabIndex={0}>
+          <div className="table-scroll table-scroll-alta" role="region" aria-label="Tabla de estado de CDAs" tabIndex={0}>
           <table className="table-sticky-first">
             <thead>
               <tr>

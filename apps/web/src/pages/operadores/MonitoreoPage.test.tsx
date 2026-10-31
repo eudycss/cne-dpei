@@ -224,6 +224,65 @@ describe('MonitoreoPage', () => {
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
   });
 
+  it('busca CDAs por código, por nombre del recinto o del operador, sin importar tildes', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Colegio Otavalo');
+    const buscar = screen.getByLabelText('Buscar CDA por código, recinto u operador');
+
+    await user.type(buscar, 'canizares');
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+
+    await user.clear(buscar);
+    await user.type(buscar, 'ana ruiz');
+    expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
+    expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
+
+    await user.clear(buscar);
+    await user.type(buscar, 'c1');
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+
+    expect(screen.getByText('1 CDA encontrado')).toHaveAttribute('role', 'status');
+
+    await user.clear(buscar);
+    await user.type(buscar, '  CAÑIZARES ');
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+
+    await user.clear(buscar);
+    await user.type(buscar, 'zzz');
+    expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
+    expect(screen.getByText('0 CDAs encontrados')).toHaveAttribute('role', 'status');
+
+    await user.clear(buscar);
+    expect(screen.queryByText(/CDAs? encontrados?/)).not.toBeInTheDocument();
+  });
+
+  it('la búsqueda se combina con el filtro por cantón', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Colegio Otavalo');
+    await user.selectOptions(screen.getByLabelText('Filtrar CDAs por cantón'), '1');
+    await user.type(screen.getByLabelText('Buscar CDA por código, recinto u operador'), 'ana');
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+    expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
+  });
+
+  it('la tabla de CDAs tiene alto tope con scroll y encabezado fijo', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+    renderPage();
+    const region = await screen.findByRole('region', { name: 'Tabla de estado de CDAs' });
+    expect(region).toHaveClass('table-scroll', 'table-scroll-alta');
+    expect(region).toHaveAttribute('tabindex', '0');
+  });
+
   it('la lista "En ruta" tiene scroll propio y no estira la tarjeta del mapa', async () => {
     getOperadoresMock.mockResolvedValue([operadorRetorno, operadorTransito]);
     getEstadoCdasMock.mockResolvedValue([]);
