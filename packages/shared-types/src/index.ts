@@ -1127,6 +1127,8 @@ export interface RecintoParejaCda {
   id: string;
   codigo: string;
   nombre: string;
+  /** Nombre del cantón (solo en la lista del día; los combos no lo traen). */
+  canton?: string;
 }
 
 export interface ParejaCdaFila {

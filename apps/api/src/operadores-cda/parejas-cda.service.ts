@@ -43,7 +43,7 @@ const GRUPOS_PAREJA = new Set(['OPERADOR', 'ASISTENTE']);
 const NO_ES_DE_PAREJA = 'no de Operadores ni Asistentes CDA';
 
 const CON_RELACIONES = {
-  recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
+  recinto: { select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { nombre: true } } } },
   operador: { select: { ...PERSONA, usuarioId: true, activo: true } },
   asistente: { select: { ...PERSONA, usuarioId: true, activo: true } },
   kit: { select: { codigoUnico: true, eventoId: true, operadorId: true } },
@@ -481,9 +481,13 @@ export class ParejasCdaService {
     return this.kits.generatePdfQr({ kitIds });
   }
 
-  /** Reporte imprimible (Excel o PDF) de la lista del día, tal como la ve la pestaña Parejas. */
+  /**
+   * Reporte imprimible (Excel o PDF) de la lista del día, tal como la ve la
+   * pestaña Parejas, más los operadores y asistentes activos sin pareja ese día.
+   */
   async reporte(fecha: string, formato: FormatoReporteCda): Promise<ArchivoReporte> {
-    return generarReporte(reporteParejas(await this.listar(fecha)), formato);
+    const [dia, libres] = await Promise.all([this.listar(fecha), this.disponibles(fecha, true)]);
+    return generarReporte(reporteParejas(dia, [...libres.operadores, ...libres.asistentes]), formato);
   }
 
   /** Plantilla: hoja de parejas, recintos CDA con su código e instrucciones. */
@@ -974,8 +978,8 @@ function primerasPorRecinto(parejas: { id: string; recintoId: string; kitId: str
   return primeras;
 }
 
-function aRecinto(r: { id: string; codigoRecinto: string; nombre: string }): RecintoParejaCda {
-  return { id: r.id, codigo: r.codigoRecinto, nombre: r.nombre };
+function aRecinto(r: { id: string; codigoRecinto: string; nombre: string; canton?: { nombre: string } }): RecintoParejaCda {
+  return { id: r.id, codigo: r.codigoRecinto, nombre: r.nombre, ...(r.canton && { canton: r.canton.nombre }) };
 }
 
 /** La columna es VARCHAR con CHECK: solo puede traer ANDROID, IPHONE o null. */
