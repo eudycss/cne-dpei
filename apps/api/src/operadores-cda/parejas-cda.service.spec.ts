@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 
 import { ParejasCdaService } from './parejas-cda.service';
+import * as reporteParejasModulo from './reporte-parejas-cda';
 import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService } from './cuentas-cda.service';
 import { KitsService } from '../kits/kits.service';
@@ -11,7 +12,7 @@ import { KitsService } from '../kits/kits.service';
 const DIA = '2026-10-30';
 const FECHA = new Date(`${DIA}T00:00:00Z`);
 const EVENTO = { id: 'ev2', nombre: 'Prueba Técnica 2' };
-const RECINTO = { id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA' };
+const RECINTO = { id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA', canton: { nombre: 'COTACACHI' } };
 const OPERADOR = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, usuarioId: 'u1', activo: true };
 const ASISTENTE = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, usuarioId: 'u2', activo: true };
 
@@ -125,7 +126,7 @@ describe('ParejasCdaService', () => {
         ['p2', 'SOLO_REGISTRADA', true],
         ['p3', 'SIN_KIT', false],
       ]);
-      expect(r.parejas[0]).toMatchObject({ fecha: DIA, kitCodigo: 'KIT-1', recinto: { codigo: '957', nombre: 'UE ATAHUALPA' } });
+      expect(r.parejas[0]).toMatchObject({ fecha: DIA, kitCodigo: 'KIT-1', recinto: { codigo: '957', nombre: 'UE ATAHUALPA', canton: 'COTACACHI' } });
       expect(r.parejas[1].asistente).toBeNull();
     });
 
@@ -1288,6 +1289,28 @@ describe('ParejasCdaService', () => {
       expect(xlsx.nombre).toBe(`parejas_cda_${DIA}_${DIA}.xlsx`);
       expect(pdf.tipo).toBe('application/pdf');
       expect(pdf.contenido.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    it('suma los operadores y asistentes activos sin pareja ese mismo día', async () => {
+      const dia = { fecha: DIA, evento: null, congelado: false, parejas: [] as never[] };
+      jest.spyOn(service, 'listar').mockResolvedValue({ ...dia, parejas: [{ id: 'x' }] as never });
+      const libres = jest.spyOn(service, 'disponibles').mockResolvedValue({
+        operadores: [{ id: 'o9', apellidosNombres: 'LIBRE OP', cedula: '1001', telefono: null, dispositivo: null, grupo: 'OPERADOR' }],
+        asistentes: [{ id: 'a9', apellidosNombres: 'LIBRE AS', cedula: '1002', telefono: null, dispositivo: null, grupo: 'ASISTENTE' }],
+        recintos: [],
+      });
+      const generar = jest.spyOn(reporteParejasModulo, 'reporteParejas').mockReturnValue({
+        titulo: 't', detalle: 'd', archivo: 'parejas_cda', desde: DIA, hasta: DIA, modo: 'GENERAL', tablas: [],
+      });
+
+      try {
+        await service.reporte(DIA, 'xlsx');
+
+        expect(libres).toHaveBeenCalledWith(DIA, true);
+        expect(generar.mock.calls[0][1]?.map((p) => p.id)).toEqual(['o9', 'a9']);
+      } finally {
+        generar.mockRestore();
+      }
     });
 
     it('día sin parejas: 400', async () => {
