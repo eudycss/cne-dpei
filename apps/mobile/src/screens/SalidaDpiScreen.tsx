@@ -16,6 +16,7 @@ import { useCerrarSesion } from '../auth/useCerrarSesion';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
+import { SuParejaCard } from '../components/SuParejaCard';
 import { getMiAsignacion, postSalidaDpi } from '../lib/queries/tracking';
 import {
   activarRastreoSegundoPlano,
@@ -153,7 +154,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
     );
   }
 
-  const { recinto, militar, kits, eventoNombre } = asignacion;
+  const { recinto, militar, kits, eventoNombre, pareja } = asignacion;
 
   return (
     <View style={styles.container}>
@@ -181,6 +182,8 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
             <Text style={styles.recintoMeta}>Parroquia: {recinto.parroquia}</Text>
           ) : null}
         </View>
+
+        <SuParejaCard pareja={pareja} />
 
         {militar ? (
           <View style={styles.card}>

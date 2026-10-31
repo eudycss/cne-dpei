@@ -22,6 +22,7 @@ describe('TrackingService', () => {
     recinto: { findUnique: jest.fn(), findMany: jest.fn() },
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
+    parejaCda: { findFirst: jest.fn() },
     eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
@@ -64,6 +65,7 @@ describe('TrackingService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
+    prisma.parejaCda.findFirst.mockResolvedValue(null);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -175,6 +177,59 @@ describe('TrackingService', () => {
 
       expect(result.delegacion).toBeNull();
       expect(result.margenLlegadaDpiMetros).toBe(150);
+    });
+
+    describe('su pareja del recinto', () => {
+      function mockAsignacion() {
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce({ ...evento, fechaJornada: new Date('2026-11-01T00:00:00Z') });
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+        prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+        prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+        prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+        prisma.recinto.findMany.mockResolvedValueOnce([]);
+        prisma.militar.findFirst.mockResolvedValueOnce(null);
+        prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
+      }
+
+      it('trae a las dos personas de su pareja (el día de la jornada, en su recinto) y marca quién es usted', async () => {
+        mockAsignacion();
+        prisma.parejaCda.findFirst.mockResolvedValueOnce({
+          operador: { apellidosNombres: 'PÉREZ ANA', telefono: '0991234567', grupo: 'OPERADOR', usuarioId: 'otro' },
+          asistente: { apellidosNombres: 'RUIZ JUAN', telefono: '0987654321', grupo: 'ASISTENTE', usuarioId: operadorId },
+        });
+
+        const result = await service.miAsignacion(operadorId);
+
+        expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
+          fecha: new Date('2026-11-01T00:00:00Z'),
+          recintoId,
+          OR: [{ operador: { usuarioId: operadorId } }, { asistente: { usuarioId: operadorId } }],
+        });
+        expect(result.pareja).toEqual([
+          { nombre: 'PÉREZ ANA', cargo: 'Operador CDA', telefono: '0991234567', esUsted: false },
+          // Su propio teléfono no hace falta en la app.
+          { nombre: 'RUIZ JUAN', cargo: 'Asistente CDA', telefono: null, esUsted: true },
+        ]);
+      });
+
+      it('pareja de dos operadores, sin asistente o sin pareja registrada', async () => {
+        mockAsignacion();
+        prisma.parejaCda.findFirst.mockResolvedValueOnce({
+          operador: { apellidosNombres: 'PÉREZ ANA', telefono: null, grupo: 'OPERADOR', usuarioId: operadorId },
+          asistente: { apellidosNombres: 'MORA LUIS', telefono: null, grupo: 'OPERADOR', usuarioId: null },
+        });
+        expect((await service.miAsignacion(operadorId)).pareja?.map((p) => p.cargo)).toEqual(['Operador CDA', 'Operador CDA']);
+
+        mockAsignacion();
+        prisma.parejaCda.findFirst.mockResolvedValueOnce({
+          operador: { apellidosNombres: 'PÉREZ ANA', telefono: null, grupo: 'OPERADOR', usuarioId: operadorId },
+          asistente: null,
+        });
+        expect((await service.miAsignacion(operadorId)).pareja).toHaveLength(1);
+
+        mockAsignacion();
+        expect((await service.miAsignacion(operadorId)).pareja).toEqual([]);
+      });
     });
 
     it('indica si el operador ya hizo la prueba de conexión', async () => {

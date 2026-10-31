@@ -99,6 +99,23 @@ describe('SalidaDpiScreen', () => {
     });
   });
 
+  it('muestra la tarjeta "Su pareja" con las personas de la pareja del recinto', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValue({
+      ...asignacionFixture,
+      pareja: [
+        { nombre: 'PÉREZ ANA', cargo: 'Operador CDA', telefono: null, esUsted: true },
+        { nombre: 'MORA LUIS', cargo: 'Operador CDA', telefono: '0991234567', esUsted: false },
+      ],
+    });
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaDpiScreen onSalidaRegistrada={jest.fn()} />);
+      await flushPromises();
+    });
+    expect(renderer.root.findAllByProps({ children: 'Su pareja' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Llamar a MORA LUIS' }).length).toBeGreaterThan(0);
+  });
+
   it('tras registrar la salida exitosamente, activa el rastreo en segundo plano', async () => {
     let renderer!: ReactTestRenderer;
     await act(async () => {
