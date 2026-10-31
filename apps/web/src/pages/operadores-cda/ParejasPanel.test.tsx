@@ -7,6 +7,7 @@ import type { DisponiblesParejasCda, ImportParejasCdaResult, ParejaCdaFila, Pare
 
 import { OperadoresCdaPage } from './OperadoresCdaPage';
 import { api } from '../../lib/api';
+import { sileo } from 'sileo';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
 const auth = vi.hoisted(() => ({ roles: ['ADMINISTRADOR'] }));
@@ -335,6 +336,65 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(screen.queryByRole('button', { name: 'Cargar plantilla' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Quitar la pareja/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Descargar QR de esta lista' })).toBeEnabled();
+  });
+
+  describe('reporte de la lista para imprimir', () => {
+    function mockDescarga() {
+      mockApi();
+      const base = getMock.getMockImplementation()!;
+      getMock.mockImplementation((url: string, opts?: unknown) =>
+        url.startsWith('/parejas-cda/reporte.')
+          ? Promise.resolve({ data: new Blob(['x']), headers: {} })
+          : base(url, opts),
+      );
+      URL.createObjectURL = vi.fn(() => 'blob:x');
+      URL.revokeObjectURL = vi.fn();
+      const descargas: string[] = [];
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        descargas.push(this.download);
+      });
+      return descargas;
+    }
+
+    it.each([
+      ['Reporte PDF', 'pdf'],
+      ['Reporte Excel', 'xlsx'],
+    ])('"%s" descarga el reporte del día elegido', async (boton, formato) => {
+      const descargas = mockDescarga();
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: boton }));
+      await waitFor(() => expect(descargas).toEqual([`parejas_cda_${DIA}.${formato}`]));
+      expect(getMock).toHaveBeenCalledWith(`/parejas-cda/reporte.${formato}?fecha=${DIA}`, { responseType: 'blob' });
+    });
+
+    it('también lo descarga quien no es administrador', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockDescarga();
+      renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.getByRole('button', { name: 'Reporte PDF' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Reporte Excel' })).toBeEnabled();
+    });
+
+    it('sin parejas ese día no hay nada que imprimir', async () => {
+      mockApi({ parejas: [] });
+      renderPagina();
+      expect(await screen.findByRole('button', { name: 'Reporte PDF' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reporte Excel' })).toBeDisabled();
+    });
+
+    it('si falla, avisa con el mensaje de la API', async () => {
+      mockApi();
+      const base = getMock.getMockImplementation()!;
+      getMock.mockImplementation((url: string, opts?: unknown) =>
+        url.startsWith('/parejas-cda/reporte.')
+          ? Promise.reject({ response: { data: new Blob([JSON.stringify({ message: 'El 30/10/2026 no tiene parejas' })]) } })
+          : base(url, opts),
+      );
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Reporte PDF' }));
+      await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'El 30/10/2026 no tiene parejas' }));
+    });
   });
 
   it('quitar pide confirmación y luego llama a la API', async () => {

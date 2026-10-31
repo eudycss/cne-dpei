@@ -446,6 +446,11 @@ export async function descargarPlantillaParejasCda(): Promise<void> {
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'plantilla_parejas_cda.xlsx'));
 }
 
+/** Reporte imprimible de las parejas del día (recinto, celular de cada uno y quién lleva el kit). */
+export function pedirReporteParejasCda(fecha: string, formato: FormatoReporteCda) {
+  return api.get<Blob>(`/parejas-cda/reporte.${formato}?fecha=${fecha}`, { responseType: 'blob' });
+}
+
 export async function descargarQrParejasCda(fecha: string): Promise<void> {
   const res = await api.get<Blob>(`/parejas-cda/qr?fecha=${fecha}`, { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `kits-qr-parejas_${fecha}.pdf`));

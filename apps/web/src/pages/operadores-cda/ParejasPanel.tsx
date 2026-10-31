@@ -13,8 +13,10 @@ import {
   descargarQrParejasCda,
   getFechasParejasCda,
   getParejasCda,
+  pedirReporteParejasCda,
   quitarParejaCda,
 } from '../../lib/queries/operadores-cda';
+import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import { ParejaFormModal, cargoPareja } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
@@ -119,6 +121,9 @@ export function ParejasPanel() {
     mutationFn: () => descargarQrParejasCda(dia),
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo descargar el PDF de QR') }),
   });
+  const reporte = useDescargaPdf('No se pudo generar el reporte de parejas');
+  const descargarReporte = (formato: 'pdf' | 'xlsx') =>
+    void reporte.descargar(formato, () => pedirReporteParejasCda(dia, formato), `parejas_cda_${dia}.${formato}`);
   const plantilla = useMutation({
     mutationFn: descargarPlantillaParejasCda,
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo descargar la plantilla') }),
@@ -236,6 +241,24 @@ export function ParejasPanel() {
         )}
         <button type="button" className="btn secondary" onClick={() => qr.mutate()} disabled={!conKit || qr.isPending}>
           Descargar QR de esta lista
+        </button>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => descargarReporte('pdf')}
+          disabled={parejas.length === 0 || !!reporte.descargando}
+          aria-busy={reporte.descargando === 'pdf'}
+        >
+          {reporte.descargando === 'pdf' ? 'Generando…' : 'Reporte PDF'}
+        </button>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => descargarReporte('xlsx')}
+          disabled={parejas.length === 0 || !!reporte.descargando}
+          aria-busy={reporte.descargando === 'xlsx'}
+        >
+          {reporte.descargando === 'xlsx' ? 'Generando…' : 'Reporte Excel'}
         </button>
       </div>
 
