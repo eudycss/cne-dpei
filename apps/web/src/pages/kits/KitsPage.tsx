@@ -309,7 +309,8 @@ export function KitsPage() {
           {/* Toolbar */}
           <div className="row" style={{ marginBottom: '0.75rem' }}>
             <SearchInput
-              placeholder="Buscar por nombre o código…"
+              ariaLabel="Buscar kit por nombre, código o recinto"
+              placeholder="Buscar por kit, código o recinto…"
               value={search}
               onChange={(v) => setSearch(v)}
               style={{ flex: 1 }}

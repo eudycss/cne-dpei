@@ -99,6 +99,19 @@ describe('KitsService', () => {
       await service.list({ eventoId, incluirPrueba: true });
       expect(prisma.kitElectoral.count).toHaveBeenCalledWith({ where: { eventoId } });
     });
+
+    it('la búsqueda también encuentra el kit por el nombre o el código de su recinto', async () => {
+      prisma.kitElectoral.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow()]);
+      await service.list({ eventoId, search: 'juan montalvo' });
+      const contiene = { contains: 'juan montalvo', mode: 'insensitive' };
+      expect(prisma.kitElectoral.count.mock.calls[0][0].where.OR).toEqual([
+        { nombre: contiene },
+        { codigoUnico: contiene },
+        { recinto: { nombre: contiene } },
+        { recinto: { codigoRecinto: contiene } },
+      ]);
+    });
   });
 
   describe('recintosOcupados', () => {

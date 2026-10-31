@@ -738,7 +738,8 @@ export class ParejasCdaService {
       const detalleItems = p.articulos ? await this.detalleDeArticulos(p.articulos) : undefined;
       const nuevo = await this.kits.create({
         eventoId: evento.id,
-        nombre: `Kit Recinto ${p.recinto.codigoRecinto}`,
+        // Mismo nombre que "Nuevo kit" de la página Kits: así se busca también por el recinto.
+        nombre: `${p.recinto.codigoRecinto} — ${p.recinto.nombre}`.slice(0, 160), // VARCHAR(160)
         recintoId: p.recintoId,
         ...(detalleItems && { detalleItems }),
       });
