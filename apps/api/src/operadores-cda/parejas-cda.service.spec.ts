@@ -12,8 +12,8 @@ const DIA = '2026-10-30';
 const FECHA = new Date(`${DIA}T00:00:00Z`);
 const EVENTO = { id: 'ev2', nombre: 'Prueba Técnica 2' };
 const RECINTO = { id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA' };
-const OPERADOR = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, usuarioId: 'u1' };
-const ASISTENTE = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, usuarioId: 'u2' };
+const OPERADOR = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, usuarioId: 'u1', activo: true };
+const ASISTENTE = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, usuarioId: 'u2', activo: true };
 
 function pareja(over: Record<string, unknown> = {}) {
   return {
@@ -435,6 +435,18 @@ describe('ParejasCdaService', () => {
       expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: ['rK', 'rL'] } });
     });
 
+    it('operador con iPhone y asistente con Android: el kit nuevo queda a nombre del asistente (le crea la cuenta)', async () => {
+      prisma.operadorCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === 'op1'
+            ? { grupo: 'OPERADOR', activo: true, usuarioId: 'u1', dispositivo: 'IPHONE' }
+            : { grupo: 'ASISTENTE', activo: true, usuarioId: 'u2', dispositivo: 'ANDROID' },
+        ),
+      );
+      await service.crearKitConPareja(DATOS, 'admin');
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u2' });
+    });
+
     it('crea el kit (artículos por defecto), lo asigna al operador y registra la pareja en la fecha de la jornada', async () => {
       const kit = await service.crearKitConPareja(DATOS, 'admin');
 
@@ -722,17 +734,16 @@ describe('ParejasCdaService', () => {
       expect(kits.quitarOperador).toHaveBeenCalledTimes(4);
     });
 
-    it('asistente: intercambia solo los asistentes y no toca los kits', async () => {
-      const r = await service.intercambiar('p1', 'p2', 'ASISTENTE');
+    it('asistente: intercambia los asistentes y reaplica los dos recintos (puede cambiar quién tiene Android)', async () => {
+      await service.intercambiar('p1', 'p2', 'ASISTENTE');
 
       expect(prisma.parejaCda.update.mock.calls.map((c) => c[0])).toEqual([
         { where: { id: 'p1' }, data: { asistenteCdaId: null } },
         { where: { id: 'p2' }, data: { asistenteCdaId: 'as1' } },
         { where: { id: 'p1' }, data: { asistenteCdaId: 'as2' } },
       ]);
-      expect(kits.quitarOperador).not.toHaveBeenCalled();
-      expect(kits.asignar).not.toHaveBeenCalled();
-      expect(r).toEqual({ enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] });
+      expect(kits.quitarOperador).toHaveBeenCalledTimes(4);
+      expect(prisma.parejaCda.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { fecha: FECHA } }));
     });
 
     it('si un kit ya salió de la Delegación, no cambia nada y dice cuál', async () => {
@@ -816,6 +827,133 @@ describe('ParejasCdaService', () => {
       );
       await expect(service.intercambiar('p1', 'p2', 'RECINTO')).rejects.toThrow('Las dos parejas deben ser del mismo día');
       expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('el kit (la app y el nombre del QR) va a quien tiene Android', () => {
+    const IPHONE = (x: object) => ({ ...x, dispositivo: 'IPHONE' });
+    const ANDROID = (x: object) => ({ ...x, dispositivo: 'ANDROID' });
+
+    it('operador con iPhone y asistente con Android: el kit va al asistente', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ operador: IPHONE(OPERADOR), asistente: ANDROID(ASISTENTE) })]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u2' });
+    });
+
+    it('operador con Android: el kit es del operador aunque el asistente también tenga Android', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ operador: ANDROID(OPERADOR), asistente: ANDROID(ASISTENTE) })]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
+    });
+
+    it('recinto con dos parejas: basta que una de las 4 personas tenga Android', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operador: IPHONE(OPERADOR), asistente: IPHONE(ASISTENTE) }),
+        pareja({
+          id: 'p2',
+          operadorCdaId: 'op2',
+          asistenteCdaId: 'as2',
+          creadoEn: new Date('2026-10-29T12:00:00Z'),
+          operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3', dispositivo: 'IPHONE' },
+          asistente: { ...ASISTENTE, id: 'as2', usuarioId: null, dispositivo: 'ANDROID' },
+        }),
+      ]);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ usuarioId: 'u4' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+
+      const r = await service.aplicar(DIA);
+
+      // Le crea la cuenta de la app a ese asistente y el kit queda a su nombre.
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'as2', 'hash');
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u4' });
+      expect(r).toMatchObject({ enApp: 1, soloRegistradas: 1 });
+    });
+
+    it('recinto con dos kits propios: la misma persona con Android no lleva los dos', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ kitId: 'k1', operador: IPHONE(OPERADOR), asistente: IPHONE(ASISTENTE) }),
+        pareja({
+          id: 'p2',
+          operadorCdaId: 'op2',
+          asistenteCdaId: 'as2',
+          kitId: 'k2',
+          creadoEn: new Date('2026-10-29T11:00:00Z'),
+          operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3', dispositivo: 'IPHONE' },
+          asistente: { ...ASISTENTE, id: 'as2', usuarioId: 'u4', dispositivo: 'IPHONE' },
+        }),
+        pareja({
+          id: 'p3',
+          operadorCdaId: 'op3',
+          asistenteCdaId: null,
+          asistente: null,
+          creadoEn: new Date('2026-10-29T12:00:00Z'),
+          operador: { ...OPERADOR, id: 'op3', usuarioId: 'u5', dispositivo: 'ANDROID' },
+        }),
+      ]);
+      prisma.kitElectoral.findFirst
+        .mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'ASIGNADO' })
+        .mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'ASIGNADO' });
+
+      await service.aplicar(DIA);
+
+      expect(kits.asignar.mock.calls).toEqual([
+        ['k1', { operadorId: 'u5' }],
+        ['k2', { operadorId: 'u3' }],
+      ]);
+    });
+
+    it('no elige a una persona oculta aunque tenga Android', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operador: IPHONE(OPERADOR), asistente: { ...ANDROID(ASISTENTE), activo: false } }),
+      ]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
+    });
+
+    it('portador sin cuenta y kit sin operador: "Sin kit", no "En la app"', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operador: IPHONE(OPERADOR), asistente: { ...ANDROID(ASISTENTE), usuarioId: null }, kitId: 'k1', kit: { codigoUnico: 'K', eventoId: 'ev2', operadorId: null } }),
+      ]);
+      const { parejas } = await service.listar(DIA);
+      expect(parejas[0].estado).toBe('SIN_KIT');
+    });
+
+    it('nadie tiene Android: el kit queda con el operador', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ operador: IPHONE(OPERADOR), asistente: IPHONE(ASISTENTE) })]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      await service.aplicar(DIA);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
+    });
+
+    it('la lista dice quién lleva el kit y lo marca "En la app" cuando lo tiene el asistente', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja({ operador: IPHONE(OPERADOR), asistente: ANDROID(ASISTENTE), kitId: 'k1', kit: { codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: 'u2' } }),
+      ]);
+      const { parejas } = await service.listar(DIA);
+      expect(parejas[0].estado).toBe('EN_APP');
+      expect(parejas[0].portador).toMatchObject({ id: 'as1', apellidosNombres: 'RUIZ JUAN', dispositivo: 'ANDROID' });
+      expect(parejas[0].portador).not.toHaveProperty('usuarioId');
+    });
+
+    it('la segunda pareja del recinto no lleva kit (portador null)', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja(),
+        pareja({ id: 'p2', operadorCdaId: 'op2', asistenteCdaId: null, asistente: null, creadoEn: new Date('2026-10-29T12:00:00Z'), operador: { ...OPERADOR, id: 'op2', apellidosNombres: 'SEGUNDO' } }),
+      ]);
+      const { parejas } = await service.listar(DIA);
+      expect(parejas.find((p) => p.id === 'p2')?.portador).toBeNull();
+      expect(parejas.find((p) => p.id === 'p1')?.portador).toMatchObject({ id: 'op1' });
+    });
+
+    it('quitar la pareja suelta el kit aunque lo tenga su asistente', async () => {
+      prisma.parejaCda.findUnique.mockResolvedValueOnce(
+        pareja({ kitId: 'k1', kit: { id: 'k1', operadorId: 'u2', eventoId: 'ev2' }, asistente: { usuarioId: 'u2' } }),
+      );
+      await service.eliminar('p1');
+      expect(kits.quitarOperador).toHaveBeenCalledWith('k1', undefined);
     });
   });
 

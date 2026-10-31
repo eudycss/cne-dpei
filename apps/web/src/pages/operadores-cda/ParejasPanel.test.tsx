@@ -33,6 +33,7 @@ function fila(over: Partial<ParejaCdaFila> = {}): ParejaCdaFila {
     estado: 'EN_APP',
     recintoCompartido: false,
     articulos: null,
+    portador: ANA,
     ...over,
   };
 }
@@ -379,13 +380,14 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
   describe('dispositivo de cada persona', () => {
     it('se ve y se cambia en la tabla; avisa si quien lleva el kit tiene iPhone', async () => {
-      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, asistente: { ...JUAN, dispositivo: 'ANDROID' } })] });
+      // Nadie con Android: el kit queda con el operador (iPhone) y se avisa.
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, asistente: { ...JUAN, dispositivo: 'IPHONE' }, portador: { ...ANA, dispositivo: 'IPHONE' } })] });
       const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
       patchMock.mockResolvedValueOnce({ data: { id: 'op1', dispositivo: 'ANDROID' } });
       renderPagina();
       const operador = await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
       expect(operador).toHaveValue('IPHONE');
-      expect(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' })).toHaveValue('ANDROID');
+      expect(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' })).toHaveValue('IPHONE');
       expect(screen.getByText('iPhone: la APK no se instala')).toBeInTheDocument();
 
       await userEvent.selectOptions(operador, 'ANDROID');
@@ -397,9 +399,18 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     });
 
     it('la segunda pareja del recinto (sin kit) no lleva el aviso de iPhone', async () => {
-      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'SOLO_REGISTRADA', kitCodigo: null })] });
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null })] });
       renderPagina();
       await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
+      expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
+    });
+
+    it('dice quién lleva el kit (el de Android) y no avisa si lo tiene', async () => {
+      const JUAN_ANDROID = { ...JUAN, dispositivo: 'ANDROID' as const };
+      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, asistente: JUAN_ANDROID, portador: JUAN_ANDROID })] });
+      renderPagina();
+      const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Lleva el kit: RUIZ JUAN');
       expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
     });
 
@@ -444,7 +455,10 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     });
 
     it('avisa si el operador tiene iPhone y pide justificación si la jornada inició', async () => {
-      mockApi({ congelado: true, parejas: [fila({ estado: 'SIN_KIT', kitCodigo: null, operador: { ...ANA, dispositivo: 'IPHONE' } })] });
+      mockApi({
+        congelado: true,
+        parejas: [fila({ estado: 'SIN_KIT', kitCodigo: null, operador: { ...ANA, dispositivo: 'IPHONE' }, portador: { ...ANA, dispositivo: 'IPHONE' } })],
+      });
       postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
@@ -456,6 +470,16 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await userEvent.click(boton);
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/asignar-kit', { justificacion: 'Cambio de última hora' }));
     });
+  });
+
+  it('Asignar kit: el diálogo nombra a quien lo va a llevar (el de Android)', async () => {
+    const JUAN_ANDROID = { ...JUAN, dispositivo: 'ANDROID' as const };
+    mockApi({ parejas: [fila({ estado: 'SIN_KIT', kitCodigo: null, asistente: JUAN_ANDROID, portador: JUAN_ANDROID })] });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
+    const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+    expect(dialogo).toHaveTextContent('quedará en la app de RUIZ JUAN');
+    expect(dialogo).toHaveTextContent('tiene Android');
   });
 
   describe('copiar la lista a otro día', () => {

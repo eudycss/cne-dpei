@@ -335,13 +335,14 @@ export function ParejasPanel() {
                     <td>
                       <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
                       <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
-                      {/* Quien lleva el kit es el operador; la segunda pareja del recinto no lo lleva. */}
-                      {p.operador.dispositivo === 'IPHONE' && p.estado !== 'SOLO_REGISTRADA' && (
+                      {/* Lleva el kit el de Android del recinto; si nadie lo tiene, el operador (iPhone). */}
+                      {p.portador?.dispositivo === 'IPHONE' && (
                         <span className="ocda-estado aviso">iPhone: la APK no se instala</span>
                       )}
                     </td>
                     <td>
                       <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
+                      {p.portador && <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>}
                       {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
                       {isAdmin && p.estado === 'SIN_KIT' && (
                         <div>

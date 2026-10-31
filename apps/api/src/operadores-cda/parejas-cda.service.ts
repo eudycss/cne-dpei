@@ -36,12 +36,13 @@ const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true
 
 const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
-  operador: { select: { ...PERSONA, usuarioId: true } },
-  asistente: { select: PERSONA },
+  operador: { select: { ...PERSONA, usuarioId: true, activo: true } },
+  asistente: { select: { ...PERSONA, usuarioId: true, activo: true } },
   kit: { select: { codigoUnico: true, eventoId: true, operadorId: true } },
 } satisfies Prisma.ParejaCdaInclude;
 
 type ParejaConRelaciones = Prisma.ParejaCdaGetPayload<{ include: typeof CON_RELACIONES }>;
+type PersonaDePareja = ParejaConRelaciones['operador'];
 type Evento = { id: string; nombre: string };
 /** Qué parejas del día pasar a la app: por id o por recinto (todas si no se indica). */
 type Filtro = { ids?: string[]; recintos?: string[] };
@@ -83,14 +84,15 @@ export class ParejasCdaService {
   async listar(fecha: string): Promise<ParejasCdaDia> {
     const [evento, parejas] = await Promise.all([this.eventoDeFecha(fecha), this.parejasDelDia(fecha)]);
     const primeras = primerasPorRecinto(parejas);
-    // "Compartido": el recinto tiene alguna pareja que solo queda registrada.
-    const conSobrante = new Set(parejas.filter((p) => !primeras.has(p.id)).map((p) => p.recintoId));
+    const sobrantes = sobrantesPorRecinto(parejas, primeras);
+    const portadores = portadoresDelDia(parejas, primeras, sobrantes);
     return {
       fecha,
       evento,
       congelado: !!evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }),
       parejas: parejas
-        .map((p) => aFila(p, evento, primeras.has(p.id), conSobrante.has(p.recintoId)))
+        // "Compartido": el recinto tiene alguna pareja que solo queda registrada.
+        .map((p) => aFila(p, evento, portadores.get(p.id) ?? null, sobrantes.has(p.recintoId)))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
     };
   }
@@ -276,11 +278,7 @@ export class ParejasCdaService {
     const fecha = diaDeFechaDb(a.fecha);
     if (fecha !== diaDeFechaDb(b.fecha)) throw new BadRequestException('Las dos parejas deben ser del mismo día');
 
-    if (campo === 'ASISTENTE') {
-      if (a.asistenteCdaId === b.asistenteCdaId) throw new BadRequestException('Las dos parejas ya tienen ese asistente');
-      await this.intercambiarAsistentes(fecha, a, b);
-      return vacio();
-    }
+    if (campo === 'ASISTENTE' && a.asistenteCdaId === b.asistenteCdaId) throw new BadRequestException('Las dos parejas ya tienen ese asistente');
     if (campo === 'RECINTO' && a.recintoId === b.recintoId) throw new BadRequestException('Las dos parejas ya tienen ese recinto');
 
     const evento = await this.eventoDeFecha(fecha);
@@ -291,7 +289,10 @@ export class ParejasCdaService {
     for (const k of kits) await this.kits.quitarOperador(k, justificacion, true);
     // El kit es del recinto: cada pareja se lleva el vínculo con el kit de su
     // nuevo recinto (así, en un recinto con dos parejas, no se va a la otra).
-    if (campo === 'RECINTO') {
+    // Cambiar asistentes también se reaplica: puede cambiar quién tiene Android (y lleva el kit).
+    if (campo === 'ASISTENTE') {
+      await this.intercambiarAsistentes(fecha, a, b);
+    } else if (campo === 'RECINTO') {
       await this.guardar(fecha, () =>
         this.prisma.$transaction(async (tx) => {
           await tx.parejaCda.update({ where: { id: a.id }, data: { recintoId: b.recintoId, kitId: b.kitId } });
@@ -403,8 +404,13 @@ export class ParejasCdaService {
     if (this.kits.estaCongelado(evento) && !justificacion) {
       throw new BadRequestException({ message: MENSAJE_CONGELADO_KIT, frozen: true });
     }
-    const operador = await this.prisma.operadorCda.findUnique({ where: { id: datos.operadorCdaId }, select: { usuarioId: true } });
-    const cuenta = operador?.usuarioId ?? (await this.crearCuentaOperador(datos.operadorCdaId));
+    // El kit (la app y el nombre del QR) va a quien tiene Android: el operador, o el asistente si solo él lo tiene.
+    const datosDe = (id: string) => this.prisma.operadorCda.findUnique({ where: { id }, select: { usuarioId: true, dispositivo: true } });
+    const [operador, asistente] = await Promise.all([datosDe(datos.operadorCdaId), asistenteCdaId ? datosDe(asistenteCdaId) : null]);
+    const alAsistente = !!asistenteCdaId && operador?.dispositivo !== 'ANDROID' && asistente?.dispositivo === 'ANDROID';
+    const cuenta = alAsistente
+      ? (asistente?.usuarioId ?? (await this.crearCuentaOperador(asistenteCdaId as string)))
+      : (operador?.usuarioId ?? (await this.crearCuentaOperador(datos.operadorCdaId)));
 
     const nuevo = await this.kits.create({
       eventoId: evento.id,
@@ -661,6 +667,7 @@ export class ParejasCdaService {
     const congelado = this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) });
     const parejas = await this.parejasDelDia(fecha);
     const primeras = primerasPorRecinto(parejas);
+    const portadores = portadoresDelDia(parejas, primeras, sobrantesPorRecinto(parejas, primeras));
     const r = vacio();
     for (const p of parejas) {
       if (filtro.ids && !filtro.ids.includes(p.id)) continue;
@@ -670,7 +677,9 @@ export class ParejasCdaService {
         continue;
       }
       try {
-        const usuarioId = p.operador.usuarioId ?? (await this.crearCuentaOperador(p.operadorCdaId));
+        // El kit (la app y el nombre del QR) va a quien tiene Android en el recinto.
+        const portador = portadores.get(p.id) ?? p.operador;
+        const usuarioId = portador.usuarioId ?? (await this.crearCuentaOperador(portador.id));
         const resultado = await this.aplicarPareja(p, evento, usuarioId, congelado ? justificacion?.trim() || null : undefined);
         r.enApp++;
         if (resultado === 'KIT_CREADO') r.kitsCreados++;
@@ -731,13 +740,14 @@ export class ParejasCdaService {
     return creado ? 'KIT_CREADO' : 'EN_APP';
   }
 
-  /** Id del kit de la pareja si lo tiene su operador en un evento ACTIVO (el que hay que soltar). */
+  /** Id del kit de la pareja si lo tiene su operador o su asistente en un evento ACTIVO (el que hay que soltar). */
   private async kitDelOperador(p: {
     operador: { usuarioId: string | null };
+    asistente?: { usuarioId: string | null } | null;
     kit: { id: string; operadorId: string | null; eventoId: string } | null;
   }): Promise<string | null> {
     const kit = p.kit;
-    if (!kit?.operadorId || kit.operadorId !== p.operador.usuarioId) return null;
+    if (!kit?.operadorId || ![p.operador.usuarioId, p.asistente?.usuarioId].includes(kit.operadorId)) return null;
     const activo = await this.prisma.eventoElectoral.findFirst({ where: { id: kit.eventoId, estado: 'ACTIVO' }, select: { id: true } });
     return activo ? kit.id : null;
   }
@@ -760,6 +770,7 @@ export class ParejasCdaService {
       where: { id },
       include: {
         operador: { select: { usuarioId: true } },
+        asistente: { select: { usuarioId: true } },
         kit: { select: { id: true, operadorId: true, eventoId: true } },
       },
     });
@@ -941,19 +952,56 @@ function aPersona<P extends { dispositivo: string | null }>(p: P): Omit<P, 'disp
   return { ...p, dispositivo: p.dispositivo === 'ANDROID' || p.dispositivo === 'IPHONE' ? p.dispositivo : null };
 }
 
-function aFila(p: ParejaConRelaciones, evento: Evento | null, primera: boolean, compartido: boolean): ParejaCdaFila {
-  const { usuarioId, ...operador } = p.operador;
+/** Parejas de cada recinto que no llevan kit propio (solo registradas), en orden de registro. */
+function sobrantesPorRecinto(parejas: ParejaConRelaciones[], primeras: Set<string>): Map<string, ParejaConRelaciones[]> {
+  const m = new Map<string, ParejaConRelaciones[]>();
+  for (const p of parejas) if (!primeras.has(p.id)) m.set(p.recintoId, [...(m.get(p.recintoId) ?? []), p]);
+  return m;
+}
+
+/**
+ * Quién lleva cada kit (la app y el nombre del QR), por pareja que va a la
+ * app: el primero con Android y activo entre su operador y su asistente y,
+ * después, los de las parejas del recinto que no llevan kit propio. Nadie
+ * lleva dos kits (recinto con dos dispositivos). Si no hay nadie con
+ * Android, su operador (y la web avisa que la APK no se instala en iPhone).
+ */
+function portadoresDelDia(
+  parejas: ParejaConRelaciones[],
+  primeras: Set<string>,
+  sobrantes: Map<string, ParejaConRelaciones[]>,
+): Map<string, PersonaDePareja> {
+  const usados = new Set<string>();
+  const portadores = new Map<string, PersonaDePareja>();
+  const personas = (xs: ParejaConRelaciones[]) => xs.flatMap((x) => [x.operador, x.asistente]).filter((x): x is PersonaDePareja => !!x);
+  for (const p of parejas) {
+    if (!primeras.has(p.id)) continue;
+    const candidatos = [...personas([p]), ...personas(sobrantes.get(p.recintoId) ?? [])];
+    const elegido = candidatos.find((x) => x.dispositivo === 'ANDROID' && x.activo && !usados.has(x.id)) ?? p.operador;
+    usados.add(elegido.id);
+    portadores.set(p.id, elegido);
+  }
+  return portadores;
+}
+
+/** Persona para la web: sin el id de su cuenta. */
+function sinCuenta({ usuarioId: _usuarioId, activo: _activo, ...persona }: PersonaDePareja) {
+  return aPersona(persona);
+}
+
+function aFila(p: ParejaConRelaciones, evento: Evento | null, portador: PersonaDePareja | null, compartido: boolean): ParejaCdaFila {
   let estado: EstadoParejaCda;
-  if (!primera) estado = 'SOLO_REGISTRADA';
+  if (!portador) estado = 'SOLO_REGISTRADA';
   else if (!evento) estado = 'PENDIENTE_EVENTO';
-  else if (p.kit && p.kit.eventoId === evento.id && p.kit.operadorId === usuarioId) estado = 'EN_APP';
+  else if (p.kit && p.kit.eventoId === evento.id && !!portador.usuarioId && p.kit.operadorId === portador.usuarioId) estado = 'EN_APP';
   else estado = 'SIN_KIT';
   return {
     id: p.id,
     fecha: diaDeFechaDb(p.fecha),
     recinto: aRecinto(p.recinto),
-    operador: aPersona(operador),
-    asistente: p.asistente && aPersona(p.asistente),
+    operador: sinCuenta(p.operador),
+    asistente: p.asistente && sinCuenta(p.asistente),
+    portador: portador && sinCuenta(portador),
     kitCodigo: p.kit?.codigoUnico ?? null,
     estado,
     recintoCompartido: compartido,
