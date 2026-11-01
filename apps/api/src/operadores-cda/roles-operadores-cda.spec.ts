@@ -11,6 +11,7 @@ import { IS_PUBLIC_KEY } from '../common/jwt-auth.guard';
 import { MODULO_KEY, ModuloGuard } from '../permisos-modulos/modulo.guard';
 import { ParejasCdaController, parsearFecha } from './parejas-cda.controller';
 import { CargosCdaController, parsearClave } from './cargos-cda.controller';
+import { ReporteTecnicosCdaController, parsearTecnicos } from './reporte-tecnicos-cda.controller';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -92,6 +93,30 @@ describe('RBAC de Operadores CDA', () => {
   it('cargos: la clave de la ruta tiene forma de clave (si no, 400)', () => {
     expect(parsearClave('RECEPTOR_ACTAS')).toBe('RECEPTOR_ACTAS');
     for (const c of ['receptor', '', '../x', 'A'.repeat(41)]) expect(() => parsearClave(c)).toThrow(BadRequestException);
+  });
+
+  it.each(['tecnicos', 'reporteXlsx', 'reportePdf', 'contactos'])(
+    'reporte por técnico.%s: los mismos tres roles, el módulo operadores-cda y límite de descargas',
+    (metodo) => {
+      const fn = (ReporteTecnicosCdaController.prototype as any)[metodo];
+      expect(rolesDe(ReporteTecnicosCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+      expect(Reflect.getMetadata(MODULO_KEY, fn)).toBe('operadores-cda');
+      expect(Reflect.getMetadata('__guards__', fn)).toContain(ModuloGuard);
+      expect(Reflect.getMetadata('THROTTLER:LIMITdefault', fn)).toBe(30);
+    },
+  );
+
+  it('reporte por técnico: ?tecnicos= obligatorio; inválido responde 400 sin leer el Drive', async () => {
+    expect(parsearTecnicos(['Ing. Jairo Leal', 'SIN_TECNICO'])).toEqual(['Ing. Jairo Leal', 'SIN_TECNICO']);
+    const servicio = { reporte: jest.fn(), contactos: jest.fn() };
+    const ctrl = new ReporteTecnicosCdaController(servicio as never) as any;
+    for (const t of [undefined, '', [], ['x'.repeat(121)]]) {
+      await expect(ctrl.reporteXlsx('2026-11-01', t, {})).rejects.toThrow(BadRequestException);
+      await expect(ctrl.contactos('2026-11-01', t, {})).rejects.toThrow(BadRequestException);
+    }
+    await expect(ctrl.reportePdf('2026-13-01', ['Ing. Jairo Leal'], {})).rejects.toThrow(BadRequestException);
+    expect(servicio.reporte).not.toHaveBeenCalled();
+    expect(servicio.contactos).not.toHaveBeenCalled();
   });
 
   it('parejas: ?fecha= obligatoria y válida', () => {

@@ -369,6 +369,15 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(getMock).toHaveBeenCalledWith(`/parejas-cda/reporte.${formato}?fecha=${DIA}`, { responseType: 'blob' });
     });
 
+    it('"Reporte por técnico" abre la ventana de técnicos del día (también para quien no es administrador)', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi();
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Reporte por técnico' }));
+      expect(screen.getByRole('dialog', { name: 'Reporte por técnico' })).toBeInTheDocument();
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith(`/parejas-cda/tecnicos?fecha=${DIA}`));
+    });
+
     it('también lo descarga quien no es administrador', async () => {
       auth.roles = ['TECNICO_SUPERVISOR'];
       mockDescarga();
@@ -383,6 +392,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       renderPagina();
       expect(await screen.findByRole('button', { name: 'Reporte PDF' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Reporte Excel' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reporte por técnico' })).toBeDisabled();
     });
 
     it('si falla, avisa con el mensaje de la API', async () => {

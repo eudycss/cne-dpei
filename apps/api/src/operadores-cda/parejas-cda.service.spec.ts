@@ -105,6 +105,39 @@ describe('ParejasCdaService', () => {
     service = moduleRef.get(ParejasCdaService);
   });
 
+  describe('listarConIngreso (reporte por técnico)', () => {
+    it('quién tiene de verdad el kit: el operador, el asistente, otra persona o nadie', async () => {
+      const kit = (operadorId: string | null, eventoId = 'ev2') => ({ codigoUnico: 'K', eventoId, operadorId, estado: 'ASIGNADO' });
+      const otroRecinto = (id: string, codigo: string) => ({ id, recintoId: id, recinto: { ...RECINTO, id, codigoRecinto: codigo } });
+      prisma.parejaCda.findMany.mockResolvedValue([
+        pareja({ kitId: 'k1', kit: kit('u1') }),
+        pareja({ ...otroRecinto('r2', '2'), kitId: 'k2', kit: kit('u2') }),
+        pareja({ ...otroRecinto('r3', '3'), kitId: 'k3', kit: kit('u9') }),
+        pareja({ ...otroRecinto('r4', '4'), kitId: 'k4', kit: kit(null) }),
+        pareja({ ...otroRecinto('r5', '5'), kitId: 'k5', kit: kit('u1', 'evViejo') }),
+        pareja({ ...otroRecinto('r6', '6') }),
+      ]);
+
+      const { dia, filas } = await service.listarConIngreso(DIA);
+
+      expect(dia.evento).toEqual(EVENTO);
+      expect(Object.fromEntries(filas.map((f) => [f.pareja.recinto.codigo, f.ingresa]))).toEqual({
+        '957': 'OPERADOR',
+        '2': 'ASISTENTE',
+        '3': 'OTRA',
+        '4': null,
+        // El kit de otro evento no cuenta.
+        '5': null,
+        '6': null,
+      });
+
+      // Sin evento activo de ese día, nadie ingresa todavía.
+      prisma.eventoElectoral.findFirst.mockResolvedValue(null);
+      const sinEvento = await service.listarConIngreso(DIA);
+      expect(sinEvento.filas.every((f) => f.ingresa === null)).toBe(true);
+    });
+  });
+
   describe('listar', () => {
     it('busca el evento ACTIVO cuya jornada es ese día', async () => {
       await service.listar(DIA);

@@ -31,6 +31,16 @@ function resumenDescargaReporte(req: Request): Record<string, unknown> {
   return { grupo: grupoCda(req), desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
 }
 
+/** Reporte por técnico: día, formato y técnicos pedidos (nombres del distributivo, acotados). */
+function resumenReporteTecnicos(req: Request): Record<string, unknown> {
+  const q = (req.query ?? {}) as Record<string, unknown>;
+  const ruta = (req.originalUrl ?? req.url ?? '').split('?')[0];
+  const lista = Array.isArray(q.tecnicos) ? q.tecnicos : [q.tecnicos];
+  const tecnicos = lista.filter((t): t is string => typeof t === 'string').slice(0, 30).map((t) => t.slice(0, 120));
+  const fecha = typeof q.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.fecha) ? q.fecha : null;
+  return { fecha, formato: ruta.slice(ruta.lastIndexOf('.') + 1).slice(0, 4), tecnicos };
+}
+
 /**
  * Mapeo: método+ruta -> { accion, entidad }
  * Preparación de HU17. Las HU posteriores extenderán esta tabla.
@@ -224,6 +234,14 @@ const AUDIT_TABLE: Array<{
     accion: 'ASISTENCIA_CDA_EXPORTAR',
     entidad: 'asistencia_cda',
     resumen: (_res, req) => resumenDescargaReporte(req),
+  },
+  // Reporte por técnico de Parejas CDA (Excel, PDF o .vcf con celulares): el día, el formato y los técnicos pedidos.
+  {
+    method: 'GET',
+    pathRegex: /^\/parejas-cda\/(reporte-tecnicos\.(xlsx|pdf)|contactos\.vcf)$/,
+    accion: 'PAREJAS_CDA_REPORTE_TECNICOS',
+    entidad: 'pareja_cda',
+    resumen: (_res, req) => resumenReporteTecnicos(req),
   },
   // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
   // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.

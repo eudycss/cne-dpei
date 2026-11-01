@@ -22,6 +22,7 @@ import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { CopiarParejasModal } from './CopiarParejasModal';
 import { AsignarKitModal } from './AsignarKitModal';
+import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError, normalizar } from './utils';
@@ -67,6 +68,7 @@ export function ParejasPanel() {
   const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
+  const [reporteTecnicos, setReporteTecnicos] = useState(false);
   const [copiando, setCopiando] = useState(false);
   const [asignandoKit, setAsignandoKit] = useState<ParejaCdaFila | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
@@ -260,7 +262,11 @@ export function ParejasPanel() {
         >
           {reporte.descargando === 'xlsx' ? 'Generando…' : 'Reporte Excel'}
         </button>
+        <button type="button" className="btn secondary" onClick={() => setReporteTecnicos(true)} disabled={parejas.length === 0}>
+          Reporte por técnico
+        </button>
       </div>
+      {reporteTecnicos && <ReporteTecnicosModal dia={dia} onClose={() => setReporteTecnicos(false)} />}
 
       {resultado && (
         <div className={`banner ${resultado.errores.length ? 'error' : 'success'}`} role={resultado.errores.length ? 'alert' : 'status'}>

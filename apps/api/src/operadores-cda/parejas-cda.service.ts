@@ -28,6 +28,7 @@ import { textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, fechaDb } from './dia-ecuador';
 import { type ArchivoReporte, generarReporte } from './reporte-cda';
 import { reporteParejas } from './reporte-parejas-cda';
+import type { FilaTecnico, QuienIngresa } from './reporte-tecnicos-cda';
 
 /** Cargo con el que se registra a quien llega nuevo en la plantilla. */
 const CARGO_NUEVO: Record<'OPERADOR' | 'ASISTENTE', string> = {
@@ -110,6 +111,16 @@ export class ParejasCdaService {
         }))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
     };
+  }
+
+  /**
+   * La lista del día con quién tiene de verdad el kit de cada pareja (para el
+   * reporte por técnico: esa persona es la que ingresa a la app).
+   */
+  async listarConIngreso(fecha: string): Promise<{ dia: ParejasCdaDia; filas: FilaTecnico[] }> {
+    const [dia, parejas] = await Promise.all([this.listar(fecha), this.parejasDelDia(fecha)]);
+    const porId = new Map(parejas.map((p) => [p.id, p]));
+    return { dia, filas: dia.parejas.map((fila) => ({ pareja: fila, ingresa: quienTieneElKit(porId.get(fila.id), dia.evento) })) };
   }
 
   /**
@@ -1095,6 +1106,16 @@ function portadoresDelDia(
     portadores.set(p.id, elegido);
   }
   return portadores;
+}
+
+/** De los dos de la pareja, quién tiene asignado el kit (de este evento) en el sistema. */
+function quienTieneElKit(p: ParejaConRelaciones | undefined, evento: Evento | null): QuienIngresa {
+  const kit = p?.kit;
+  // Sin evento activo de ese día nadie ingresa todavía ("Pendiente" en el reporte).
+  if (!p || !evento || !kit?.operadorId || kit.eventoId !== evento.id) return null;
+  if (kit.operadorId === p.operador.usuarioId) return 'OPERADOR';
+  if (p.asistente && kit.operadorId === p.asistente.usuarioId) return 'ASISTENTE';
+  return 'OTRA';
 }
 
 /** Persona para la web: sin el id de su cuenta. */
