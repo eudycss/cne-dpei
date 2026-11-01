@@ -378,9 +378,15 @@ export function ParejasPanel() {
                     </td>
                     <td>
                       <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
-                      {p.portador && <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>}
+                      {p.portador &&
+                        (p.estado === 'SIN_KIT' ? (
+                          <div className="muted">Nadie lleva el kit · se asignará a {p.portador.apellidosNombres}</div>
+                        ) : (
+                          <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>
+                        ))}
                       {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
-                      {isAdmin && p.estado === 'SIN_KIT' && (
+                      {/* "Sin kit", o la otra pareja del recinto cuando su kit quedó sin persona. */}
+                      {isAdmin && (p.estado === 'SIN_KIT' || (p.estado === 'SOLO_REGISTRADA' && p.puedeRecibirKit)) && (
                         <div>
                           <button
                             type="button"

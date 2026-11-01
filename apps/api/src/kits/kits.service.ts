@@ -331,11 +331,14 @@ export class KitsService {
     assertEventoNoReabierto(evento);
     this.assertNoFrozen(evento, parsed.justificacion);
 
+    // El kit de una pareja CDA se queda en su recinto: el QR impreso es del kit
+    // y del recinto, y otra pareja del recinto debe poder tomarlo sin crear otro.
+    const dePareja = (await this.prisma.parejaCda.count({ where: { kitId: id } })) > 0;
     const updated = await this.prisma.kitElectoral.update({
       where: { id },
       data: {
         operadorId: null,
-        recintoId: null,
+        ...(!dePareja && { recintoId: null }),
         estado: kit.estado === 'ASIGNADO' ? 'EN_BODEGA' : kit.estado,
       },
     });

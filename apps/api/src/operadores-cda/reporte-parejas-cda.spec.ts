@@ -26,6 +26,7 @@ const fila = (codigo: string, extra: Partial<ParejaCdaFila> = {}): ParejaCdaFila
     kitCodigo: `K-${codigo}`,
     estado: 'EN_APP',
     recintoCompartido: false,
+    puedeRecibirKit: false,
     articulos: null,
     ...extra,
   };

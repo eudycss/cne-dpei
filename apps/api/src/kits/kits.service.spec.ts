@@ -36,6 +36,9 @@ describe('KitsService', () => {
       count: jest.fn(),
       findMany: jest.fn(),
     },
+    parejaCda: {
+      count: jest.fn(),
+    },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
   };
 
@@ -77,6 +80,7 @@ describe('KitsService', () => {
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
     prisma.itemKitCatalog.findMany.mockResolvedValue([]);
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
+    prisma.parejaCda.count.mockResolvedValue(0);
 
     const moduleRef = await Test.createTestingModule({
       providers: [KitsService, { provide: PrismaService, useValue: prisma }],
@@ -832,6 +836,23 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.update).toHaveBeenCalledWith({
         where: { id: kitId },
         data: { operadorId: null, recintoId: null, estado: 'EN_BODEGA' },
+      });
+    });
+
+    it('kit de una pareja CDA: conserva el recinto (el QR impreso es del kit y del recinto)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(
+        kitRow({ estado: 'ASIGNADO', operadorId, recintoId }),
+      );
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.parejaCda.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.update.mockResolvedValueOnce(kitRow({ estado: 'EN_BODEGA', recintoId }));
+
+      await service.desasignar(kitId);
+
+      expect(prisma.parejaCda.count).toHaveBeenCalledWith({ where: { kitId } });
+      expect(prisma.kitElectoral.update).toHaveBeenCalledWith({
+        where: { id: kitId },
+        data: { operadorId: null, estado: 'EN_BODEGA' },
       });
     });
 

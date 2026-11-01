@@ -46,14 +46,17 @@ const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { nombre: true } } } },
   operador: { select: { ...PERSONA, usuarioId: true, activo: true } },
   asistente: { select: { ...PERSONA, usuarioId: true, activo: true } },
-  kit: { select: { codigoUnico: true, eventoId: true, operadorId: true } },
+  kit: { select: { codigoUnico: true, eventoId: true, operadorId: true, estado: true } },
 } satisfies Prisma.ParejaCdaInclude;
 
 type ParejaConRelaciones = Prisma.ParejaCdaGetPayload<{ include: typeof CON_RELACIONES }>;
 type PersonaDePareja = ParejaConRelaciones['operador'];
 type Evento = { id: string; nombre: string };
-/** Qué parejas del día pasar a la app: por id o por recinto (todas si no se indica). */
-type Filtro = { ids?: string[]; recintos?: string[] };
+/**
+ * Qué parejas del día pasar a la app: por id o por recinto (todas si no se indica).
+ * `tomarKitLibre`: una pareja solo registrada toma el kit sin persona de su recinto.
+ */
+type Filtro = { ids?: string[]; recintos?: string[]; tomarKitLibre?: boolean };
 
 /** La plantilla es pequeña (~60 parejas): un tope protege a la API de archivos enormes. */
 const MAX_FILAS = 300;
@@ -94,13 +97,17 @@ export class ParejasCdaService {
     const primeras = primerasPorRecinto(parejas);
     const sobrantes = sobrantesPorRecinto(parejas, primeras);
     const portadores = portadoresDelDia(parejas, primeras, sobrantes);
+    const libres = evento ? kitsLibresPorRecinto(parejas, primeras, evento) : new Map<string, string>();
     return {
       fecha,
       evento,
       congelado: !!evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }),
       parejas: parejas
         // "Compartido": el recinto tiene alguna pareja que solo queda registrada.
-        .map((p) => aFila(p, evento, portadores.get(p.id) ?? null, sobrantes.has(p.recintoId)))
+        .map((p) => ({
+          ...aFila(p, evento, portadores.get(p.id) ?? null, sobrantes.has(p.recintoId)),
+          puedeRecibirKit: !primeras.has(p.id) && libres.has(p.recintoId),
+        }))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
     };
   }
@@ -205,7 +212,7 @@ export class ParejasCdaService {
   async asignarKit(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
     const p = await this.leerPareja(id);
     const fecha = diaDeFechaDb(p.fecha);
-    const r = await this.aplicarDia(fecha, { ids: [id] }, justificacion);
+    const r = await this.aplicarDia(fecha, { ids: [id], tomarKitLibre: true }, justificacion);
     if (!r) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para asignar el kit`);
     if (!r.enApp && !r.errores.length) {
       throw new ConflictException(
@@ -690,9 +697,25 @@ export class ParejasCdaService {
     if (!evento) return null;
     const congelado = this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) });
     const parejas = await this.parejasDelDia(fecha);
+    /** undefined = no congelado; null = congelado sin justificación. */
+    const justificar = congelado ? justificacion?.trim() || null : undefined;
+    const etiqueta = (p: ParejaConRelaciones) => `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`;
+    const r = vacio();
+    // Pareja solo registrada que toma el kit sin persona de su recinto: mover el
+    // kit también es cambiar la asignación (congelamiento y justificación).
+    const movidos = new Map<string, { anteriorId: string; kitId: string }>();
+    if (filtro.tomarKitLibre && filtro.ids) {
+      for (const { pareja, anterior, kitId } of kitsPorTomar(parejas, filtro.ids, evento)) {
+        if (justificar === null) {
+          r.errores.push({ pareja: etiqueta(pareja), error: MENSAJE_CONGELADO });
+          continue;
+        }
+        await this.moverKit(pareja, anterior, kitId);
+        movidos.set(pareja.id, { anteriorId: anterior.id, kitId });
+      }
+    }
     const primeras = primerasPorRecinto(parejas);
     const portadores = portadoresDelDia(parejas, primeras, sobrantesPorRecinto(parejas, primeras));
-    const r = vacio();
     for (const p of parejas) {
       if (filtro.ids && !filtro.ids.includes(p.id)) continue;
       if (filtro.recintos && !filtro.recintos.includes(p.recintoId)) continue;
@@ -704,11 +727,13 @@ export class ParejasCdaService {
         // El kit (la app y el nombre del QR) va a quien tiene Android en el recinto.
         const portador = portadores.get(p.id) ?? p.operador;
         const usuarioId = portador.usuarioId ?? (await this.crearCuentaOperador(portador.id));
-        const resultado = await this.aplicarPareja(p, evento, usuarioId, congelado ? justificacion?.trim() || null : undefined);
+        const resultado = await this.aplicarPareja(p, evento, usuarioId, justificar);
         r.enApp++;
         if (resultado === 'KIT_CREADO') r.kitsCreados++;
       } catch (e) {
-        r.errores.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`, error: (e as Error).message });
+        const movido = movidos.get(p.id);
+        if (movido) await this.devolverKit(p, movido.anteriorId, movido.kitId);
+        r.errores.push({ pareja: etiqueta(p), error: (e as Error).message });
       }
     }
     return r;
@@ -763,6 +788,30 @@ export class ParejasCdaService {
     }
     if (p.kitId !== kit.id) await this.prisma.parejaCda.update({ where: { id: p.id }, data: { kitId: kit.id } });
     return creado ? 'KIT_CREADO' : 'EN_APP';
+  }
+
+  /**
+   * Pasa a la pareja `p` (solo registrada) el kit sin persona de su recinto
+   * (mismo QR); la pareja que lo tenía queda solo registrada. Las escrituras
+   * son condicionales: si otro lo movió mientras tanto, no se duplica.
+   * Actualiza también las parejas en memoria.
+   */
+  private async moverKit(p: ParejaConRelaciones, anterior: ParejaConRelaciones, kitId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const quitado = await tx.parejaCda.updateMany({ where: { id: anterior.id, kitId }, data: { kitId: null } });
+      const puesto = quitado.count === 1 && (await tx.parejaCda.updateMany({ where: { id: p.id, kitId: null }, data: { kitId } })).count === 1;
+      if (!puesto) throw new ConflictException('El kit del recinto cambió mientras tanto: recargue la lista e intente de nuevo');
+    });
+    Object.assign(p, { kitId, kit: anterior.kit });
+    Object.assign(anterior, { kitId: null, kit: null });
+  }
+
+  /** Si asignar el kit movido falla, vuelve a la pareja que lo tenía. */
+  private async devolverKit(p: ParejaConRelaciones, anteriorId: string, kitId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.parejaCda.update({ where: { id: p.id }, data: { kitId: null } });
+      await tx.parejaCda.update({ where: { id: anteriorId }, data: { kitId } });
+    });
   }
 
   /** Id del kit de la pareja si lo tiene su operador o su asistente en un evento ACTIVO (el que hay que soltar). */
@@ -988,6 +1037,34 @@ function aPersona<P extends { dispositivo: string | null }>(p: P): Omit<P, 'disp
   return { ...p, dispositivo: p.dispositivo === 'ANDROID' || p.dispositivo === 'IPHONE' ? p.dispositivo : null };
 }
 
+/**
+ * Kit de cada recinto que tiene una pareja pero nadie lo lleva, de este evento y
+ * aún en la Delegación: otra pareja del recinto puede tomarlo. Recinto → kitId.
+ */
+function kitsLibresPorRecinto(parejas: ParejaConRelaciones[], primeras: Set<string>, evento: Evento): Map<string, string> {
+  const libres = new Map<string, string>();
+  for (const p of parejas) {
+    if (!primeras.has(p.id) || !p.kitId || !p.kit) continue;
+    if (p.kit.eventoId === evento.id && !p.kit.operadorId && EN_DELEGACION.has(p.kit.estado)) libres.set(p.recintoId, p.kitId);
+  }
+  return libres;
+}
+
+/** Parejas de `ids` solo registradas cuyo recinto tiene un kit sin persona, con la pareja que lo tiene. */
+function kitsPorTomar(parejas: ParejaConRelaciones[], ids: string[], evento: Evento) {
+  const primeras = primerasPorRecinto(parejas);
+  const libres = kitsLibresPorRecinto(parejas, primeras, evento);
+  const porTomar: { pareja: ParejaConRelaciones; anterior: ParejaConRelaciones; kitId: string }[] = [];
+  for (const pareja of parejas) {
+    const kitId = libres.get(pareja.recintoId);
+    const anterior = kitId && parejas.find((x) => x.kitId === kitId);
+    if (!ids.includes(pareja.id) || primeras.has(pareja.id) || !kitId || !anterior) continue;
+    porTomar.push({ pareja, anterior, kitId });
+    libres.delete(pareja.recintoId);
+  }
+  return porTomar;
+}
+
 /** Parejas de cada recinto que no llevan kit propio (solo registradas), en orden de registro. */
 function sobrantesPorRecinto(parejas: ParejaConRelaciones[], primeras: Set<string>): Map<string, ParejaConRelaciones[]> {
   const m = new Map<string, ParejaConRelaciones[]>();
@@ -1041,6 +1118,7 @@ function aFila(p: ParejaConRelaciones, evento: Evento | null, portador: PersonaD
     kitCodigo: p.kit?.codigoUnico ?? null,
     estado,
     recintoCompartido: compartido,
+    puedeRecibirKit: false,
     articulos: p.articulos,
   };
 }
