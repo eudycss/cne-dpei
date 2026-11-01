@@ -131,11 +131,29 @@ describe('ParejasCdaService', () => {
         '6': null,
       });
 
+      expect(filas.find((f) => f.pareja.recinto.codigo === '957')?.lleva?.apellidosNombres).toBe('PÉREZ ANA');
+
       // Sin evento activo de ese día, nadie ingresa todavía.
       prisma.eventoElectoral.findFirst.mockResolvedValue(null);
       const sinEvento = await service.listarConIngreso(DIA);
       expect(sinEvento.filas.every((f) => f.ingresa === null)).toBe(true);
     });
+  });
+
+  it('listarConIngreso: el kit de una pareja lo lleva alguien de la otra pareja del recinto (caso 6116: la 1.ª sin Android)', async () => {
+    const HERRERA = { ...OPERADOR, id: 'op9', apellidosNombres: 'HERRERA PAULA', usuarioId: 'u9' };
+    prisma.parejaCda.findMany.mockResolvedValue([
+      pareja({ kitId: 'k1', kit: { codigoUnico: 'K', eventoId: 'ev2', operadorId: 'u9', estado: 'ASIGNADO' } }),
+      pareja({ id: 'p2', operadorCdaId: 'op9', operador: HERRERA, asistente: null, creadoEn: new Date('2026-10-29T11:00:00Z') }),
+    ]);
+
+    const { filas } = await service.listarConIngreso(DIA);
+    const de = (id: string) => filas.find((f) => f.pareja.id === id)!;
+
+    expect(de('p1')).toMatchObject({ ingresa: 'RECINTO', lleva: { apellidosNombres: 'HERRERA PAULA' } });
+    // La 2.ª pareja no tiene kit propio, pero su integrante lleva el del recinto.
+    expect(de('p2')).toMatchObject({ ingresa: null, lleva: { apellidosNombres: 'HERRERA PAULA' } });
+    expect(JSON.stringify(filas)).not.toContain('usuarioId');
   });
 
   describe('listar', () => {

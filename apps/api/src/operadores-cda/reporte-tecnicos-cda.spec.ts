@@ -53,10 +53,10 @@ const RITA = persona('r', 'VACA GUEVARA RITA', 'OPERADOR', '0994444444');
 
 // 1286: dos parejas (la 2.ª solo registrada); 96: una pareja donde el asistente tiene el kit; 7777: sin técnico.
 const FILAS: FilaTecnico[] = [
-  { pareja: fila('p1', '1286', ANA, LUIS, { recintoCompartido: true }), ingresa: 'OPERADOR' },
-  { pareja: fila('p2', '1286', EVA, JOSE, { portador: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }), ingresa: null },
-  { pareja: fila('p3', '96', RITA, LUIS, { portador: LUIS }), ingresa: 'ASISTENTE' },
-  { pareja: fila('p4', '7777', persona('x', 'SOLO PEREZ JUAN', 'OPERADOR'), null, { estado: 'SIN_KIT' }), ingresa: null },
+  { pareja: fila('p1', '1286', ANA, LUIS, { recintoCompartido: true }), ingresa: 'OPERADOR', lleva: ANA },
+  { pareja: fila('p2', '1286', EVA, JOSE, { portador: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }), ingresa: null, lleva: null },
+  { pareja: fila('p3', '96', RITA, LUIS, { portador: LUIS }), ingresa: 'ASISTENTE', lleva: LUIS },
+  { pareja: fila('p4', '7777', persona('x', 'SOLO PEREZ JUAN', 'OPERADOR'), null, { estado: 'SIN_KIT' }), ingresa: null, lleva: null },
 ];
 const DISTRIBUTIVO = [asig('1286', 'Ing. Sebastian Cabascango', 1), asig('96', 'Ing. Sebastian Cabascango', 1), asig('96', 'Ing. Jairo Leal', 2, 'SAN FRANCISCO'), asig('5', 'Ing. Carlos Cañares', 3)];
 
@@ -110,10 +110,39 @@ describe('reporte por técnico de parejas CDA', () => {
       expect(t.filas[0].slice(6, 10)).toEqual(['NADIE: pulse "Asignar kit"', '', 'Operador: SOLO PEREZ JUAN · 0991 234 567', 'Revisar antes de la jornada']);
       expect(t.resaltadas).toEqual([0]);
 
-      const otra = reporteTecnicos({ fecha: '2026-11-01', evento: null }, agruparPorTecnico([{ pareja: FILAS[0].pareja, ingresa: 'OTRA' }], DISTRIBUTIVO));
+      const otra = reporteTecnicos({ fecha: '2026-11-01', evento: null }, agruparPorTecnico([{ pareja: FILAS[0].pareja, ingresa: 'OTRA', lleva: null }], DISTRIBUTIVO));
       expect(otra.tablas[0].filas[0][6]).toBe('OTRA PERSONA tiene el kit (revisar en Kits)');
       expect(otra.tablas[0].resaltadas).toEqual([0]);
       expect(otra.detalle).toContain('sin evento activo');
+    });
+
+    it('caso 6116: el kit de la 1.ª pareja (sin Android) lo lleva alguien de la 2.ª; esa persona ingresa y nada se resalta', () => {
+      const ECHE = persona('ec', 'ECHEVERRIA BERMEO ANTHONY', 'OPERADOR', '0985774628');
+      const LIMA = persona('li', 'LIMAICO NAZATE DANIELA', 'ASISTENTE', '0988860129');
+      const HERR = persona('he', 'HERRERA HERRERA PAULA', 'OPERADOR', '0967018582');
+      const MONT = persona('mo', 'MONTENEGRO ARCINIEGA DENNIS', 'ASISTENTE', '0982983178');
+      const filas: FilaTecnico[] = [
+        { pareja: fila('k1', '6116', ECHE, LIMA, { portador: HERR, recintoCompartido: true }), ingresa: 'RECINTO', lleva: HERR },
+        { pareja: fila('k2', '6116', HERR, MONT, { portador: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }), ingresa: null, lleva: HERR },
+      ];
+      const t = reporteTecnicos({ fecha: '2026-11-01', evento: { id: 'ev', nombre: 'S' } }, agruparPorTecnico(filas, [asig('6116', 'Ing. William Paspuel', 1)])).tablas[0];
+
+      expect(t.titulo).toBe('Ing. William Paspuel · 1 recintos · 2 parejas · 1 ingresan a la app');
+      expect(t.filas.map((f) => f.slice(6, 10))).toEqual([
+        [
+          'HERRERA HERRERA PAULA (Operador, de la 2.ª pareja)',
+          '0967 018 582',
+          'Operador: ECHEVERRIA BERMEO ANTHONY · 0985 774 628\nAsistente: LIMAICO NAZATE DANIELA · 0988 860 129',
+          'Sin Android en esta pareja: el kit lo lleva la 2.ª pareja',
+        ],
+        [
+          'HERRERA HERRERA PAULA (Operador): lleva el kit de la 1.ª pareja',
+          '0967 018 582',
+          'MONTENEGRO ARCINIEGA DENNIS (Asistente) · 0982 983 178',
+          '2.ª pareja: va con la 1.ª pareja',
+        ],
+      ]);
+      expect(t.resaltadas).toEqual([]);
     });
 
     it('sin parejas para los técnicos elegidos, una tabla que lo dice', () => {
@@ -165,11 +194,11 @@ describe('reporte por técnico de parejas CDA', () => {
 
     it('escapa los caracteres especiales de vCard en el nombre', () => {
       const raro = persona('z', 'PAZ;LOPEZ ANA,MARIA', 'OPERADOR');
-      const vcf = contactosVcf(agruparPorTecnico([{ pareja: fila('p9', '96', raro, null), ingresa: 'OPERADOR' }], [asig('96', 'Ing. Jairo Leal', 1)]));
+      const vcf = contactosVcf(agruparPorTecnico([{ pareja: fila('p9', '96', raro, null), ingresa: 'OPERADOR', lleva: raro }], [asig('96', 'Ing. Jairo Leal', 1)]));
       expect(vcf).toContain('FN:96.Ana\\,maria.Paz\\;lopez.Jairo');
 
       // Un \r suelto tampoco parte la línea de la tarjeta.
-      const conRetorno = contactosVcf(agruparPorTecnico([{ pareja: fila('p8', '96', persona('w', 'PAZ LOPEZ ANA', 'OPERADOR'), null), ingresa: 'OPERADOR' }], [asig('96', 'Ing.\rJairo', 1)]));
+      const conRetorno = contactosVcf(agruparPorTecnico([{ pareja: fila('p8', '96', persona('w', 'PAZ LOPEZ ANA', 'OPERADOR'), null), ingresa: 'OPERADOR', lleva: null }], [asig('96', 'Ing.\rJairo', 1)]));
       expect(conRetorno).not.toMatch(/\r(?!\n)/);
     });
   });
