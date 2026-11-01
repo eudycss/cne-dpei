@@ -22,6 +22,7 @@ import type {
   LlegadaRecintoManualResponse,
   LlegadaRecintoRequest,
   LlegadaRecintoResponse,
+  MiAsignacionCompanero,
   MiAsignacionResponse,
   PruebaConexionRequest,
   PruebaConexionResponse,
@@ -67,6 +68,37 @@ import { StorageService } from '../storage/storage.service';
 // en UX, pero la validación que de verdad importa es la del servidor, en
 // registrarLlegadaRecinto.
 const MARGEN_LLEGADA_METROS_DEFAULT = 150;
+
+type PersonaCdaRecinto = { apellidosNombres: string; telefono: string | null; grupo: string; usuarioId: string | null };
+
+/**
+ * Personas de las parejas CDA del recinto para la app. Va primero la pareja de
+ * quien tiene la sesión (o la del kit si no está en ninguna); las demás, con su
+ * número ("2.ª pareja") porque la APK solo muestra el nombre y este texto.
+ */
+export function parejasDelRecinto(
+  parejas: { kitId: string | null; operador: PersonaCdaRecinto; asistente: PersonaCdaRecinto | null }[],
+  usuarioId: string,
+  kitIds: Set<string>,
+): MiAsignacionCompanero[] {
+  const integrantes = (p: (typeof parejas)[number]) => [p.operador, p.asistente].filter((x): x is PersonaCdaRecinto => !!x);
+  const propia =
+    parejas.find((p) => integrantes(p).some((x) => x.usuarioId === usuarioId)) ??
+    parejas.find((p) => !!p.kitId && kitIds.has(p.kitId));
+  const ordenadas = propia ? [propia, ...parejas.filter((p) => p !== propia)] : parejas;
+  return ordenadas.flatMap((p, i) =>
+    integrantes(p).map((x) => {
+      const esUsted = x.usuarioId === usuarioId;
+      const etiqueta = esUsted ? ' · lleva el kit' : i > 0 ? ` · ${i + 1}.ª pareja` : '';
+      return {
+        nombre: x.apellidosNombres,
+        cargo: `${x.grupo === 'ASISTENTE' ? 'Asistente CDA' : 'Operador CDA'}${etiqueta}`,
+        telefono: esUsted ? null : (x.telefono ?? null),
+        esUsted,
+      };
+    }),
+  );
+}
 const MAX_HOLGURA_GPS_METROS = 100;
 
 // HU5: margen para registrar la llegada a la Delegación (config_alertas.
@@ -202,30 +234,16 @@ export class TrackingService {
       orderBy: { creadoEn: 'asc' },
     });
 
-    // Su pareja CDA de la jornada en este recinto (puede ser de dos operadores o dos asistentes).
+    // Todas las parejas CDA de la jornada en este recinto (la tarjeta "Su pareja"
+    // de la APK lista a cuantas personas lleguen): la suya primero.
     const persona = { select: { apellidosNombres: true, telefono: true, grupo: true, usuarioId: true } };
-    const parejaCda = await this.prisma.parejaCda.findFirst({
-      where: {
-        fecha: evento.fechaJornada,
-        recintoId,
-        OR: [{ operador: { usuarioId: operadorId } }, { asistente: { usuarioId: operadorId } }],
-      },
-      orderBy: { creadoEn: 'asc' },
-      select: { operador: persona, asistente: persona },
+    const parejasCda = await this.prisma.parejaCda.findMany({
+      where: { fecha: evento.fechaJornada, recintoId },
+      // Desempate por id: una carga masiva crea varias en el mismo instante y la "2.ª pareja" no debe cambiar.
+      orderBy: [{ creadoEn: 'asc' }, { id: 'asc' }],
+      select: { kitId: true, operador: persona, asistente: persona },
     });
-    const pareja = parejaCda
-      ? [parejaCda.operador, parejaCda.asistente]
-          .filter((p): p is NonNullable<typeof p> => !!p)
-          .map((p) => {
-            const esUsted = p.usuarioId === operadorId;
-            return {
-              nombre: p.apellidosNombres,
-              cargo: p.grupo === 'ASISTENTE' ? 'Asistente CDA' : 'Operador CDA',
-              telefono: esUsted ? null : (p.telefono ?? null),
-              esUsted,
-            };
-          })
-      : [];
+    const pareja = parejasDelRecinto(parejasCda, operadorId, new Set(kits.map((k) => k.id)));
 
     const [
       salidaPrevia,
