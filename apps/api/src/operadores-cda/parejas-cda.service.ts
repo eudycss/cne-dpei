@@ -18,6 +18,7 @@ import type {
   Kit,
   ParejaCdaFila,
   ParejasCdaDia,
+  PersonaParejaCda,
   RecintoParejaCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
@@ -120,7 +121,14 @@ export class ParejasCdaService {
   async listarConIngreso(fecha: string): Promise<{ dia: ParejasCdaDia; filas: FilaTecnico[] }> {
     const [dia, parejas] = await Promise.all([this.listar(fecha), this.parejasDelDia(fecha)]);
     const porId = new Map(parejas.map((p) => [p.id, p]));
-    return { dia, filas: dia.parejas.map((fila) => ({ pareja: fila, ingresa: quienTieneElKit(porId.get(fila.id), dia.evento) })) };
+    return {
+      dia,
+      filas: dia.parejas.map((fila) => {
+        const p = porId.get(fila.id);
+        const delRecinto = p ? parejas.filter((x) => x.recintoId === p.recintoId) : [];
+        return { pareja: fila, ...quienTieneElKit(p, delRecinto, dia.evento) };
+      }),
+    };
   }
 
   /**
@@ -1108,14 +1116,34 @@ function portadoresDelDia(
   return portadores;
 }
 
-/** De los dos de la pareja, quién tiene asignado el kit (de este evento) en el sistema. */
-function quienTieneElKit(p: ParejaConRelaciones | undefined, evento: Evento | null): QuienIngresa {
-  const kit = p?.kit;
+const integrantesDe = (p: ParejaConRelaciones) => [p.operador, p.asistente].filter((x): x is PersonaDePareja => !!x);
+
+/**
+ * Quién tiene asignado en el sistema el kit (de este evento) de la pareja: uno de
+ * los dos, alguien de otra pareja del recinto (la pareja no tiene Android), otra
+ * persona o nadie. En una pareja sin kit, `lleva` es su integrante que lleva el
+ * kit de otra pareja del recinto, si lo hay.
+ */
+function quienTieneElKit(
+  p: ParejaConRelaciones | undefined,
+  delRecinto: ParejaConRelaciones[],
+  evento: Evento | null,
+): { ingresa: QuienIngresa; lleva: PersonaParejaCda | null } {
   // Sin evento activo de ese día nadie ingresa todavía ("Pendiente" en el reporte).
-  if (!p || !evento || !kit?.operadorId || kit.eventoId !== evento.id) return null;
-  if (kit.operadorId === p.operador.usuarioId) return 'OPERADOR';
-  if (p.asistente && kit.operadorId === p.asistente.usuarioId) return 'ASISTENTE';
-  return 'OTRA';
+  if (!p || !evento) return { ingresa: null, lleva: null };
+  const titular = (x: ParejaConRelaciones) =>
+    x.kit?.operadorId && x.kit.eventoId === evento.id ? x.kit.operadorId : null;
+  const usuarioKit = titular(p);
+  if (!p.kitId) {
+    const titulares = new Set(delRecinto.map(titular).filter(Boolean));
+    const lleva = integrantesDe(p).find((x) => x.usuarioId && titulares.has(x.usuarioId));
+    return { ingresa: null, lleva: lleva ? sinCuenta(lleva) : null };
+  }
+  if (!usuarioKit) return { ingresa: null, lleva: null };
+  if (usuarioKit === p.operador.usuarioId) return { ingresa: 'OPERADOR', lleva: sinCuenta(p.operador) };
+  if (p.asistente && usuarioKit === p.asistente.usuarioId) return { ingresa: 'ASISTENTE', lleva: sinCuenta(p.asistente) };
+  const otro = delRecinto.flatMap(integrantesDe).find((x) => x.usuarioId === usuarioKit);
+  return otro ? { ingresa: 'RECINTO', lleva: sinCuenta(otro) } : { ingresa: 'OTRA', lleva: null };
 }
 
 /** Persona para la web: sin el id de su cuenta. */

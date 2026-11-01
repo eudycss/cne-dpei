@@ -11,12 +11,20 @@ import { type Celda, type ReporteCda, type TablaReporte, diaLargo } from './repo
  * pone las parejas y el distributivo.
  */
 
-/** Quién tiene el kit de la pareja en el sistema: uno de los dos, otra persona o nadie. */
-export type QuienIngresa = 'OPERADOR' | 'ASISTENTE' | 'OTRA' | null;
+/**
+ * Quién tiene el kit de la pareja en el sistema: uno de los dos, alguien de otra
+ * pareja del mismo recinto (la pareja no tiene Android), otra persona o nadie.
+ */
+export type QuienIngresa = 'OPERADOR' | 'ASISTENTE' | 'RECINTO' | 'OTRA' | null;
 
 export interface FilaTecnico {
   pareja: ParejaCdaFila;
   ingresa: QuienIngresa;
+  /**
+   * Quién lleva el kit: el de esta pareja (aunque sea de otra pareja del
+   * recinto) o, en una pareja sin kit propio, su integrante que lleva el del recinto.
+   */
+  lleva: PersonaParejaCda | null;
 }
 
 export interface GrupoTecnico {
@@ -79,7 +87,7 @@ export function agruparPorTecnico(filas: FilaTecnico[], asignaciones: Asignacion
 }
 
 const recintosDe = (g: GrupoTecnico) => new Set(g.filas.map((f) => f.pareja.recinto.codigo)).size;
-const ingresa = (f: FilaTecnico) => f.ingresa === 'OPERADOR' || f.ingresa === 'ASISTENTE';
+const ingresa = (f: FilaTecnico) => f.ingresa === 'OPERADOR' || f.ingresa === 'ASISTENTE' || f.ingresa === 'RECINTO';
 
 export function resumenTecnicos(grupos: GrupoTecnico[]): TecnicoParejasCda[] {
   return grupos.map((g) => ({ nombre: g.nombre, recintos: recintosDe(g), parejas: g.filas.length }));
@@ -108,7 +116,32 @@ function integrantes(p: ParejaCdaFila): string {
 function quienIngresa(f: FilaTecnico, parejasEnRecinto: number, hayEvento: boolean): { celdas: Celda[]; revisar: boolean } {
   const p = f.pareja;
   if (!p.portador) {
+    if (f.lleva) {
+      // Lleva el kit de la 1.ª pareja (que no tiene Android): sí ingresa a la app.
+      const lleva = f.lleva;
+      const otro = [p.operador, p.asistente].find((x) => x && x.id !== lleva.id);
+      return {
+        celdas: [
+          `${lleva.apellidosNombres} (${cargo(lleva)}): lleva el kit de la 1.ª pareja`,
+          celular(lleva.telefono),
+          otro ? `${otro.apellidosNombres} (${cargo(otro)}) · ${celular(otro.telefono)}` : 'Sin pareja',
+          '2.ª pareja: va con la 1.ª pareja',
+        ],
+        revisar: false,
+      };
+    }
     return { celdas: ['NO INGRESA', '', integrantes(p), '2.ª pareja: va con la pareja que tiene el kit'], revisar: false };
+  }
+  if (f.ingresa === 'RECINTO' && f.lleva) {
+    return {
+      celdas: [
+        `${f.lleva.apellidosNombres} (${cargo(f.lleva)}, de la 2.ª pareja)`,
+        celular(f.lleva.telefono),
+        integrantes(p),
+        'Sin Android en esta pareja: el kit lo lleva la 2.ª pareja',
+      ],
+      revisar: false,
+    };
   }
   if (f.ingresa === 'OPERADOR' || f.ingresa === 'ASISTENTE') {
     const [lleva, otro] = f.ingresa === 'OPERADOR' ? [p.operador, p.asistente] : [p.asistente!, p.operador];

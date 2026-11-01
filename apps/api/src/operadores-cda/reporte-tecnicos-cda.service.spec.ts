@@ -28,6 +28,7 @@ const fila = (id: string, codigo: string, telefono: string | null = '0991234567'
     articulos: null,
   } as ParejaCdaFila,
   ingresa: 'OPERADOR',
+  lleva: null,
 });
 
 describe('ReporteTecnicosCdaService', () => {
