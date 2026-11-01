@@ -1168,6 +1168,14 @@ export interface ParejasCdaDia {
   parejas: ParejaCdaFila[];
 }
 
+/** Un técnico del distributivo con lo que tiene ese día ("Reporte por técnico" de Parejas). */
+export interface TecnicoParejasCda {
+  /** Como está en el distributivo; null = recintos con parejas que no están en él ("Sin técnico"). */
+  nombre: string | null;
+  recintos: number;
+  parejas: number;
+}
+
 export interface DisponiblesParejasCda {
   operadores: PersonaParejaCda[];
   asistentes: PersonaParejaCda[];

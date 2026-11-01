@@ -7,6 +7,7 @@ import {
   fechaParejaCdaSchema,
   filaParejaCdaSchema,
   intercambiarParejaCdaSchema,
+  tecnicosReporteParejasCdaSchema,
 } from './index';
 
 const OP = '11111111-1111-4111-8111-111111111111';
@@ -15,6 +16,19 @@ const RE = '33333333-3333-4333-8333-333333333333';
 // Cédulas ecuatorianas válidas (dígito verificador correcto).
 const CEDULA_OP = '1710034065';
 const CEDULA_AS = '1713175071';
+
+describe('reporte por técnico de parejas CDA', () => {
+  it('?tecnicos= acepta uno (texto) o varios (arreglo), sin repetir ni espacios sobrantes', () => {
+    expect(tecnicosReporteParejasCdaSchema.parse('Ing. Jairo Leal')).toEqual(['Ing. Jairo Leal']);
+    expect(tecnicosReporteParejasCdaSchema.parse([' Jairo ', 'Jairo', 'SIN_TECNICO'])).toEqual(['Jairo', 'SIN_TECNICO']);
+  });
+
+  it('?tecnicos= rechaza vacío, nombres muy largos o demasiados técnicos', () => {
+    for (const v of [undefined, [], '', ['   '], ['x'.repeat(121)], Array.from({ length: 31 }, (_, i) => `T${i}`), [3]]) {
+      expect(tecnicosReporteParejasCdaSchema.safeParse(v).success).toBe(false);
+    }
+  });
+});
 
 describe('parejas CDA por día', () => {
   it('fecha: solo AAAA-MM-DD de un día que existe', () => {
