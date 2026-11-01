@@ -39,6 +39,7 @@ import type {
   ReporteAtrasosCda,
   ResultadoSincronizarCuentasCda,
   ResumenCuentasCda,
+  TecnicoParejasCda,
   TipoMarcaAsistenciaCda,
 } from '@cne/shared-types';
 import { VERSION_AVISO_FOTO_CDA } from '@cne/shared-validation';
@@ -449,6 +450,28 @@ export async function descargarPlantillaParejasCda(): Promise<void> {
 /** Reporte imprimible de las parejas del día (recinto, celular de cada uno y quién lleva el kit). */
 export function pedirReporteParejasCda(fecha: string, formato: FormatoReporteCda) {
   return api.get<Blob>(`/parejas-cda/reporte.${formato}?fecha=${fecha}`, { responseType: 'blob' });
+}
+
+// Reporte por técnico (distributivo del Drive): técnicos del día y descargas de los marcados.
+
+export async function getTecnicosParejasCda(fecha: string): Promise<TecnicoParejasCda[]> {
+  const { data } = await api.get<TecnicoParejasCda[]>(`/parejas-cda/tecnicos?fecha=${fecha}`);
+  return data;
+}
+
+/** ?fecha=…&tecnicos=…&tecnicos=… (un parámetro por técnico). */
+function paramsTecnicos(fecha: string, tecnicos: string[]): string {
+  const p = new URLSearchParams({ fecha });
+  for (const t of tecnicos) p.append('tecnicos', t);
+  return p.toString();
+}
+
+export function pedirReporteTecnicosCda(fecha: string, tecnicos: string[], formato: FormatoReporteCda) {
+  return api.get<Blob>(`/parejas-cda/reporte-tecnicos.${formato}?${paramsTecnicos(fecha, tecnicos)}`, { responseType: 'blob' });
+}
+
+export function pedirContactosTecnicosCda(fecha: string, tecnicos: string[]) {
+  return api.get<Blob>(`/parejas-cda/contactos.vcf?${paramsTecnicos(fecha, tecnicos)}`, { responseType: 'blob' });
 }
 
 export async function descargarQrParejasCda(fecha: string): Promise<void> {

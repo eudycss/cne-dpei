@@ -998,6 +998,20 @@ export const intercambiarParejaCdaSchema = z
   .strict();
 export type IntercambiarParejaCdaInput = z.infer<typeof intercambiarParejaCdaSchema>;
 
+/** "Sin técnico" en el reporte por técnico: recintos con parejas que no están en el distributivo. */
+export const SIN_TECNICO_PAREJAS_CDA = 'SIN_TECNICO';
+
+/** ?tecnicos= del reporte por técnico: uno (texto) o varios (repetido) nombres del distributivo, o SIN_TECNICO. */
+export const tecnicosReporteParejasCdaSchema = z
+  .preprocess(
+    (v) => (typeof v === 'string' ? [v] : v),
+    z
+      .array(z.string().trim().min(1, 'Técnico vacío').max(120, 'Nombre de técnico muy largo'))
+      .min(1, 'Elija al menos un técnico')
+      .max(30, 'Elija como máximo 30 técnicos'),
+  )
+  .transform((xs) => [...new Set(xs)]);
+
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 

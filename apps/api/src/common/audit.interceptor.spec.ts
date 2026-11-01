@@ -340,6 +340,30 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('reporte por técnico de parejas: queda el día, el formato y los técnicos (no los celulares)', async () => {
+    const vcf = await auditar({
+      method: 'GET',
+      originalUrl: '/parejas-cda/contactos.vcf?fecha=2026-11-01&tecnicos=Ing.%20Jairo%20Leal&tecnicos=SIN_TECNICO',
+      query: { fecha: '2026-11-01', tecnicos: ['Ing. Jairo Leal', 'SIN_TECNICO'] },
+      body: {},
+      user: ADMIN,
+    });
+    expect(vcf.data).toMatchObject({
+      accion: 'PAREJAS_CDA_REPORTE_TECNICOS',
+      entidad: 'pareja_cda',
+      datosDespues: { fecha: '2026-11-01', formato: 'vcf', tecnicos: ['Ing. Jairo Leal', 'SIN_TECNICO'] },
+    });
+
+    const pdf = await auditar({
+      method: 'GET',
+      originalUrl: '/parejas-cda/reporte-tecnicos.pdf?fecha=x&tecnicos=Ing.%20Jairo%20Leal',
+      query: { fecha: 'x', tecnicos: 'Ing. Jairo Leal' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(pdf.data.datosDespues).toEqual({ fecha: null, formato: 'pdf', tecnicos: ['Ing. Jairo Leal'] });
+  });
+
   it('cambio de cargo: queda de qué cargo a cuál, sin datos personales', async () => {
     const { data } = await auditar(
       {
