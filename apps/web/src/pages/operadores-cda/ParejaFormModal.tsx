@@ -108,7 +108,6 @@ export function ParejaFormModal({
   const [operadorId, setOperadorId] = useState(pareja?.operador.id ?? '');
   const [asistenteId, setAsistenteId] = useState(pareja?.asistente?.id ?? '');
   const [recintoId, setRecintoId] = useState(pareja?.recinto.id ?? '');
-  const [articulos, setArticulos] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const motivo = justificacion.trim() || undefined;
 
@@ -138,7 +137,6 @@ export function ParejaFormModal({
             operadorCdaId: operadorId,
             asistenteCdaId: asistenteId || null,
             recintoId,
-            ...(articulos.trim() && { articulos: articulos.trim() }),
             ...(motivo && { justificacion: motivo }),
           }),
     onSuccess: (r) => {
@@ -225,22 +223,9 @@ export function ParejaFormModal({
         />
 
         {!pareja && (
-          <div className="field">
-            <label htmlFor="pareja-articulos">Artículos del kit (solo si el recinto aún no tiene kit)</label>
-            <input
-              id="pareja-articulos"
-              value={articulos}
-              onChange={(e) => setArticulos(e.target.value)}
-              placeholder="COMPUTADOR:5CD445577S, MOUSE"
-              aria-describedby="pareja-articulos-ayuda"
-              maxLength={1000}
-              autoComplete="off"
-            />
-            <p id="pareja-articulos-ayuda" className="muted" style={{ margin: '0.25rem 0 0' }}>
-              Códigos del catálogo separados por coma; la serie va después de dos puntos. Si lo deja vacío, el kit
-              lleva todos los artículos activos del catálogo.
-            </p>
-          </div>
+          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+            Si el recinto aún no tiene kit, se crea con todos los artículos activos del catálogo.
+          </p>
         )}
 
         {congelado && (
