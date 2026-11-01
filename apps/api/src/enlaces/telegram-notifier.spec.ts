@@ -10,7 +10,7 @@ import {
   TEXTO_BOTON_ASIGNACIONES,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
-  TEXTO_BOTON_INGRESAR_CODIGO,
+  TEXTO_BOTON_BUSCAR_RECINTO,
   TEXTO_BOTON_PREGUNTAR,
 } from './telegram-notifier';
 
@@ -406,7 +406,7 @@ describe('TelegramNotifier', () => {
       expect(body.text).toMatch(/no hay enlaces caídos/i);
     });
 
-    it('adjunta los botones fijos de "Caídos" e "Ingresar código" en el teclado del mensaje', async () => {
+    it('adjunta los botones fijos de "Caídos" y "Buscar recinto" en el teclado del mensaje', async () => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';
       process.env.TELEGRAM_CHAT_ID = '-100200300';
       global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -418,7 +418,7 @@ describe('TelegramNotifier', () => {
       const body = JSON.parse(opts.body);
       expect(body.reply_markup).toEqual({
         keyboard: [
-          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_BUSCAR_RECINTO }],
           [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
         ],
         resize_keyboard: true,
@@ -445,7 +445,7 @@ describe('TelegramNotifier', () => {
 
         const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
         expect(body.reply_markup.keyboard).toEqual([
-          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_BUSCAR_RECINTO }],
           [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
           [{ text: TEXTO_BOTON_PREGUNTAR }],
         ]);
@@ -754,7 +754,7 @@ describe('TelegramNotifier', () => {
       expect(body.parse_mode).toBeUndefined();
       expect(body.reply_markup).toEqual({
         keyboard: [
-          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+          [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_BUSCAR_RECINTO }],
           [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
         ],
         resize_keyboard: true,

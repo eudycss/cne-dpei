@@ -8,7 +8,7 @@ import type {
   PeriodoEstadisticasEnlaces,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { resolveNotifier, type EnlaceCaido } from '../auth/notifier';
+import { escapeHtml, resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
 import {
   claveGrupoAsignacion,
@@ -18,8 +18,10 @@ import {
   type GrupoAsignacion,
   PREFIJO_CALLBACK_ASIGNACIONES,
   PREFIJO_CALLBACK_ESTADISTICAS,
+  PREFIJO_CALLBACK_FICHA,
   PREFIJO_CALLBACK_RECINTO,
   TEXTO_BOTON_ASIGNACIONES,
+  TEXTO_BOTON_BUSCAR_RECINTO,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
@@ -38,6 +40,7 @@ import {
   tecnicosPorRecinto,
 } from './distributivo-tecnicos.client';
 import { AsistenteService } from './asistente/asistente.service';
+import { buscarRecintosDetalle } from './asistente/buscar-recintos';
 import { asistenteHabilitado } from './asistente/llm.client';
 
 const CONFIG_ID = 1;
@@ -66,6 +69,12 @@ const PAUSA_ENTRE_TOQUES_MS = 1500;
 const CALLBACK_PERIODO = new RegExp(`^${PREFIJO_CALLBACK_ESTADISTICAS}(dia|semana|mes)$`);
 // codigo_recinto es VarChar(20): se aceptan letras, dígitos y guion.
 const CALLBACK_RECINTO = new RegExp(`^${PREFIJO_CALLBACK_RECINTO}([\\w-]{1,20})$`);
+const CALLBACK_FICHA = new RegExp(`^${PREFIJO_CALLBACK_FICHA}([\\w-]{1,20})$`);
+/** "Buscar recinto" con varios resultados: hasta tantos botones para elegir. */
+const MAX_BOTONES_BUSQUEDA = 8;
+/** Lo escrito en "Buscar recinto" se usa y se repite hasta este largo. */
+const MAX_LARGO_BUSQUEDA = 60;
+const SELECT_FICHA = { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true } as const;
 /** Número de técnico (orden en el distributivo, desde 1), "sin" (recintos sin técnico) o "menu" (volver al resumen). */
 const CALLBACK_TECNICO = new RegExp(
   `^${PREFIJO_CALLBACK_ASIGNACIONES}([1-9]\\d{0,2}|sin|${CLAVE_RESUMEN_ASIGNACIONES})$`,
@@ -136,7 +145,7 @@ function secretosCoinciden(recibido: string | undefined, esperado: string): bool
 export class EnlacesService {
   private readonly log = new Logger('EnlacesService');
   private readonly notifier = resolveNotifier();
-  /** Personas (chatId:userId) que tocaron "Ingresar código" y cuyo próximo mensaje
+  /** Personas (chatId:userId) que tocaron "Buscar recinto" y cuyo próximo mensaje
    * de texto se interpreta como el código a buscar, en vez de ignorarse como charla
    * normal del grupo. Guarda el momento en que se marcó, para poder expirar entradas
    * de gente que tocó el botón y nunca volvió a escribir — sin TTL, cualquiera que
@@ -588,9 +597,9 @@ export class EnlacesService {
   /** Procesa un update entrante del webhook de Telegram: `/caidos` (o su botón)
    * responde con la lista actual de recintos caídos; `/estadisticas` (o su
    * botón), con la tarjeta de hoy (y botones para la semana y el mes); `/asignaciones`
-   * (o su botón), con un botón por técnico para ver sus recintos CDA; el botón "Ingresar código"
+   * (o su botón), con un botón por técnico para ver sus recintos CDA; el botón "Buscar recinto"
    * arranca un flujo de dos pasos donde el siguiente mensaje de esa misma persona
-   * se busca como código de recinto. Cualquier otra cosa (secreto inválido, chat
+   * se busca como código o nombre de recinto. Cualquier otra cosa (secreto inválido, chat
    * que no es el principal ni uno de consulta, texto que no matchea nada de esto) se ignora en
    * silencio — este endpoint es público, así que nunca debe reaccionar a tráfico
    * no confiable. */
@@ -633,16 +642,16 @@ export class EnlacesService {
     // mensaje — /caidos y su botón siguen funcionando igual, no dependen de from.id.
     const claveEspera = userId !== undefined ? `${chatId}:${userId}` : undefined;
 
-    if (texto === TEXTO_BOTON_INGRESAR_CODIGO.toLowerCase()) {
+    if (texto === TEXTO_BOTON_BUSCAR_RECINTO.toLowerCase() || texto === TEXTO_BOTON_INGRESAR_CODIGO.toLowerCase()) {
       if (!claveEspera) {
-        this.log.warn('Webhook de Telegram: botón "Ingresar código" sin remitente identificable — se ignora');
+        this.log.warn('Webhook de Telegram: botón "Buscar recinto" sin remitente identificable — se ignora');
         return;
       }
       this.esperandoPregunta.delete(claveEspera);
       this.esperandoCodigo.set(claveEspera, Date.now());
       await this.telegram.enviarTexto(
-        '✏️ Escriba el código del recinto que quiere consultar.',
-        'el prompt de ingresar código',
+        '✏️ Escriba el código o el nombre del recinto que quiere consultar.',
+        'el prompt de buscar recinto',
       );
       return;
     }
@@ -715,7 +724,7 @@ export class EnlacesService {
 
     if (claveEspera && this.tieneEsperaVigente(this.esperandoCodigo, claveEspera)) {
       this.esperandoCodigo.delete(claveEspera);
-      await this.responderCodigoRecinto(textoOriginal);
+      await this.buscarRecintoTelegram(textoOriginal);
     }
   }
 
@@ -774,6 +783,12 @@ export class EnlacesService {
     // Primero se contesta el toque (aunque luego se ignore), para que el botón no
     // quede "cargando" en el cliente de quien lo tocó.
     await this.telegram.responderBoton(boton.id);
+    const ficha = CALLBACK_FICHA.exec(boton.data ?? '')?.[1];
+    if (ficha) {
+      if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${boton.message?.message_id}:${ficha}`)) return;
+      await this.responderCodigoRecinto(ficha);
+      return;
+    }
     const recinto = CALLBACK_RECINTO.exec(boton.data ?? '')?.[1];
     if (recinto) {
       // Con el código en la clave: tocar dos recintos distintos del mismo mensaje no se descarta.
@@ -814,7 +829,7 @@ export class EnlacesService {
     return false;
   }
 
-  /** true si la persona tocó "Ingresar código" hace menos de ESPERA_CODIGO_TTL_MS.
+  /** true si la persona tocó "Buscar recinto" hace menos de ESPERA_CODIGO_TTL_MS.
    * Una espera vieja (tocó el botón y nunca volvió a escribir) se descarta en vez
    * de reactivarse con un mensaje cualquiera que llegue mucho después. */
   private tieneEsperaVigente(esperas: Map<string, number>, clave: string): boolean {
@@ -827,7 +842,7 @@ export class EnlacesService {
     return true;
   }
 
-  /** Purga entradas vencidas de gente que tocó "Ingresar código" y nunca volvió a
+  /** Purga entradas vencidas de gente que tocó "Buscar recinto" y nunca volvió a
    * escribir — sin esto, alguien con el secreto del webhook podría simular toques
    * del botón con from.id distintos en cada request y hacer crecer el mapa sin
    * límite. Se corre en el mismo cron de 5 minutos que ya revisa los enlaces, para
@@ -843,23 +858,64 @@ export class EnlacesService {
     }
   }
 
-  /** Busca un recinto por código (solo Imbabura, que es lo único que este bot
-   * sincroniza) y responde con código, nombre, estado, técnico y a quién llamar —
-   * o avisa si no existe, en vez de quedarse callado, para que la persona sepa que
-   * el código no se reconoce y no piense que el bot no le respondió. */
-  private async responderCodigoRecinto(codigo: string): Promise<void> {
-    const recinto = await this.prisma.enlaceRecinto.findUnique({
-      where: { codigoRecinto: codigo },
-      select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
-    });
-    if (!recinto) {
-      await this.telegram.enviarTexto(
-        `⚠️ No se encontró el recinto con código "${codigo}". Verifique el código e intente de nuevo.`,
-        'el resultado de búsqueda de recinto (no encontrado)',
-      );
-      return;
-    }
+  /**
+   * "Buscar recinto": el código exacto gana; si no, se busca por código o nombre
+   * sin importar mayúsculas ni tildes (el mismo buscador del asistente). Un
+   * resultado manda su ficha; varios, un botón por recinto para elegir.
+   */
+  private async buscarRecintoTelegram(escrito: string): Promise<void> {
+    // Se recorta: lo escrito se repite en la respuesta (límite de Telegram) y cada palabra cuesta en la búsqueda.
+    const texto = Array.from(escrito).slice(0, MAX_LARGO_BUSQUEDA).join('');
+    const exacto = await this.prisma.enlaceRecinto.findUnique({ where: { codigoRecinto: texto }, select: SELECT_FICHA });
+    if (exacto) return this.enviarFichaRecinto(exacto);
 
+    const candidatos = await this.prisma.enlaceRecinto.findMany({
+      select: { codigoRecinto: true, nombreRecinto: true, canton: true },
+      orderBy: { codigoRecinto: 'asc' },
+    });
+    const { recintos } = buscarRecintosDetalle(
+      texto,
+      candidatos.map((c) => ({ ...c, parroquia: '' })),
+    );
+    if (recintos.length === 0) return this.avisarRecintoNoEncontrado(texto);
+    if (recintos.length === 1) return this.responderCodigoRecinto(recintos[0].codigoRecinto);
+
+    const elegibles = recintos.slice(0, MAX_BOTONES_BUSQUEDA);
+    const resto = recintos.length - elegibles.length;
+    await this.telegram.enviarHtml(
+      `🔍 Encontré ${recintos.length} recintos para "${escapeHtml(texto)}". Toque uno para ver su ficha.` +
+        (resto > 0 ? `\nSe muestran ${elegibles.length}: escriba más detalle del nombre o use el código.` : ''),
+      'la lista de recintos de buscar recinto',
+      {
+        inline_keyboard: elegibles.map((r) => [
+          { text: `${r.codigoRecinto} · ${r.nombreRecinto}`.slice(0, 60), callback_data: `${PREFIJO_CALLBACK_FICHA}${r.codigoRecinto}` },
+        ]),
+      },
+    );
+  }
+
+  /** Responde con código, nombre, estado, técnico y a quién llamar del recinto, o
+   * avisa si no existe, para que la persona no piense que el bot no le respondió. */
+  private async responderCodigoRecinto(codigo: string): Promise<void> {
+    const recinto = await this.prisma.enlaceRecinto.findUnique({ where: { codigoRecinto: codigo }, select: SELECT_FICHA });
+    if (!recinto) return this.avisarRecintoNoEncontrado(codigo);
+    await this.enviarFichaRecinto(recinto);
+  }
+
+  /** Texto plano (no HTML): lo que escribió la persona va tal cual sin riesgo. */
+  private async avisarRecintoNoEncontrado(buscado: string): Promise<void> {
+    await this.telegram.enviarTexto(
+      `⚠️ No se encontró el recinto "${buscado}". Pruebe con el código o con otra parte del nombre.`,
+      'el resultado de búsqueda de recinto (no encontrado)',
+    );
+  }
+
+  private async enviarFichaRecinto(recinto: {
+    codigoRecinto: string;
+    nombreRecinto: string;
+    canton: string | null;
+    estado: string;
+  }): Promise<void> {
     const contacto = (await this.contactosDe(new Set([recinto.codigoRecinto]))).get(recinto.codigoRecinto) ?? {
       tecnico: null,
       encargado: null,

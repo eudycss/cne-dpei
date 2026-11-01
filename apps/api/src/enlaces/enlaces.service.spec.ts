@@ -4,6 +4,7 @@ import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import {
   TelegramNotifier,
+  TEXTO_BOTON_BUSCAR_RECINTO,
   TEXTO_BOTON_CAIDOS,
   TEXTO_BOTON_ESTADISTICAS,
   TEXTO_BOTON_INGRESAR_CODIGO,
@@ -1575,6 +1576,7 @@ describe('EnlacesService', () => {
         process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
         process.env.TELEGRAM_CHAT_ID = '-100200300';
         prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
+        prisma.enlaceRecinto.findMany.mockResolvedValue([]);
 
         await service.procesarComandoTelegram('secreto123', {
           message: { text: TEXTO_BOTON_INGRESAR_CODIGO, chat: { id: '-100200300' }, from: { id: 111 } },
@@ -1587,6 +1589,151 @@ describe('EnlacesService', () => {
           expect.stringMatching(/no se encontró/i),
           expect.any(String),
         );
+      });
+
+      describe('"Buscar recinto": por código o por nombre, sin importar mayúsculas ni tildes', () => {
+        const RECINTOS = [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Ibarra', estado: 'ACTIVO' },
+          { codigoRecinto: '1008', nombreRecinto: 'Unidad Educativa Ilumán', canton: 'Otavalo', estado: 'FALLO' },
+          { codigoRecinto: '1290', nombreRecinto: 'Colegio Nacional Ibarra', canton: 'Ibarra', estado: 'ACTIVO' },
+          { codigoRecinto: '1487', nombreRecinto: 'Escuela Ibarra Norte', canton: 'Ibarra', estado: 'ACTIVO' },
+          { codigoRecinto: 'CPE', nombreRecinto: 'CPE - IMBABURA', canton: null, estado: 'ACTIVO' },
+        ];
+        const buscar = async (texto: string, boton = TEXTO_BOTON_BUSCAR_RECINTO) => {
+          await service.procesarComandoTelegram('secreto123', {
+            message: { text: boton, chat: { id: '-100200300' }, from: { id: 111 } },
+          });
+          await service.procesarComandoTelegram('secreto123', {
+            message: { text: texto, chat: { id: '-100200300' }, from: { id: 111 } },
+          });
+        };
+
+        beforeEach(() => {
+          process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+          process.env.TELEGRAM_CHAT_ID = '-100200300';
+          prisma.enlaceRecinto.findMany.mockResolvedValue(RECINTOS);
+          prisma.enlaceRecinto.findUnique.mockImplementation(({ where }: { where: { codigoRecinto: string } }) =>
+            Promise.resolve(RECINTOS.find((r) => r.codigoRecinto === where.codigoRecinto) ?? null),
+          );
+        });
+
+        it('el botón dice "Buscar recinto" y pide el código o el nombre', async () => {
+          expect(TEXTO_BOTON_BUSCAR_RECINTO).toBe('🔍 Buscar recinto');
+          await service.procesarComandoTelegram('secreto123', {
+            message: { text: TEXTO_BOTON_BUSCAR_RECINTO, chat: { id: '-100200300' }, from: { id: 111 } },
+          });
+          expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringMatching(/código o el nombre/i), expect.any(String));
+        });
+
+        it.each([['iluman'], ['ILUMÁN'], ['unidad educativa ilumán'], ['Ilu']])(
+          '"%s" encuentra el recinto por nombre y manda la misma ficha que con el código',
+          async (texto) => {
+            await buscar(texto);
+            const [ficha] = telegram.enviarHtml.mock.calls.at(-1);
+            expect(ficha).toContain('📍 1008 (Ota) — Unidad Educativa Ilumán');
+            expect(ficha).toContain('Estado: 🔴 FALLO');
+          },
+        );
+
+        it('el código exacto gana y no recorre la lista de recintos', async () => {
+          await buscar('1290');
+          expect(prisma.enlaceRecinto.findMany).not.toHaveBeenCalled();
+          expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('📍 1290 (Iba) — Colegio Nacional Ibarra');
+        });
+
+        it('un texto muy largo se recorta antes de buscar y de repetirlo', async () => {
+          await buscar('zzzz '.repeat(400));
+          const [texto] = telegram.enviarTexto.mock.calls.at(-1);
+          expect(texto).toMatch(/no se encontró/i);
+          expect(texto.length).toBeLessThan(200);
+        });
+
+        it('el código en minúsculas también vale ("cpe")', async () => {
+          await buscar('cpe');
+          expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('📍 CPE — CPE - IMBABURA');
+        });
+
+        it('el botón viejo "Ingresar código" (teclados anteriores) busca igual', async () => {
+          await buscar('iluman', TEXTO_BOTON_INGRESAR_CODIGO);
+          expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('Unidad Educativa Ilumán');
+        });
+
+        it('varios recintos: un botón por recinto para elegir', async () => {
+          await buscar('ibarra');
+          const [texto, , botones] = telegram.enviarHtml.mock.calls.at(-1);
+          expect(texto).toContain('Encontré 2 recintos para "ibarra"');
+          expect(botones).toEqual({
+            inline_keyboard: [
+              [{ text: '1290 · Colegio Nacional Ibarra', callback_data: 'rec:1290' }],
+              [{ text: '1487 · Escuela Ibarra Norte', callback_data: 'rec:1487' }],
+            ],
+          });
+        });
+
+        it('al tocar un recinto de la lista, manda su ficha', async () => {
+          await service.procesarComandoTelegram('secreto123', {
+            callback_query: { id: 'cb-r', data: 'rec:1290', message: { message_id: 90, chat: { id: '-100200300' } } },
+          });
+          expect(telegram.responderBoton).toHaveBeenCalledWith('cb-r');
+          expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('📍 1290 (Iba) — Colegio Nacional Ibarra');
+        });
+
+        it('un botón con datos que no son un código se ignora sin consultar', async () => {
+          await service.procesarComandoTelegram('secreto123', {
+            callback_query: { id: 'cb-x', data: 'rec:1 OR 1', message: { message_id: 91, chat: { id: '-100200300' } } },
+          });
+          expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+        });
+
+        it('un botón de un recinto que ya no existe lo dice', async () => {
+          await service.procesarComandoTelegram('secreto123', {
+            callback_query: { id: 'cb-y', data: 'rec:9999', message: { message_id: 92, chat: { id: '-100200300' } } },
+          });
+          expect(telegram.enviarTexto.mock.calls.at(-1)[0]).toMatch(/no se encontró/i);
+        });
+
+        it('los botones del asistente (asis:rec:) siguen yendo al asistente', async () => {
+          await service.procesarComandoTelegram('secreto123', {
+            callback_query: { id: 'cb-z', data: 'asis:rec:1008', message: { message_id: 93, chat: { id: '-100200300' } } },
+          });
+          expect(asistente.responderRecintoElegido).toHaveBeenCalledWith('1008');
+          expect(prisma.enlaceRecinto.findUnique).not.toHaveBeenCalled();
+        });
+
+        it('más de 8 resultados: solo 8 botones y pide más detalle', async () => {
+          prisma.enlaceRecinto.findMany.mockResolvedValue(
+            Array.from({ length: 12 }, (_, i) => ({
+              codigoRecinto: String(2000 + i),
+              nombreRecinto: `Escuela Mira ${i}`,
+              canton: 'Mira',
+              estado: 'ACTIVO',
+            })),
+          );
+          await buscar('escuela mira');
+          const [texto, , botones] = telegram.enviarHtml.mock.calls.at(-1);
+          expect(botones.inline_keyboard).toHaveLength(8);
+          expect(texto).toContain('12 recintos');
+          expect(texto).toMatch(/más detalle/i);
+        });
+
+        it('lo escrito con < o & se escapa en la lista y va en texto plano si no hay resultados', async () => {
+          await buscar('ibarra <b>');
+          expect(telegram.enviarHtml).not.toHaveBeenCalled();
+          expect(telegram.enviarTexto.mock.calls.at(-1)[0]).toContain('"ibarra <b>"');
+
+          prisma.enlaceRecinto.findMany.mockResolvedValue([
+            { codigoRecinto: '1', nombreRecinto: 'Mariano Suárez & Hijos', canton: 'Ibarra', estado: 'ACTIVO' },
+            { codigoRecinto: '2', nombreRecinto: 'Mariano Acosta & Cía', canton: 'Ibarra', estado: 'ACTIVO' },
+          ]);
+          await buscar('mariano &');
+          expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('"mariano &amp;"');
+        });
+
+        it('sin coincidencias: lo dice, no se queda callado', async () => {
+          await buscar('zzzz qqqq');
+          const ultimo = [...telegram.enviarTexto.mock.calls, ...telegram.enviarHtml.mock.calls].map((c) => c[0]).join('\n');
+          expect(ultimo).toMatch(/no se encontró/i);
+        });
       });
 
       it('no interpreta el mensaje de otra persona del grupo como el código', async () => {
