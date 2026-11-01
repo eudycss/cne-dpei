@@ -170,7 +170,9 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     await userEvent.selectOptions(await within(dialogo).findByRole('combobox', { name: 'Operador CDA' }), 'op2');
     await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Asistente CDA' }), 'as1');
     await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Recinto CDA' }), 'r1');
-    await userEvent.type(within(dialogo).getByRole('textbox', { name: /Artículos del kit/ }), 'LAP:123');
+    // El kit lleva los artículos activos del catálogo: no se escriben a mano.
+    expect(within(dialogo).queryByRole('textbox', { name: /Artículos/ })).not.toBeInTheDocument();
+    expect(dialogo).toHaveTextContent('todos los artículos activos del catálogo');
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() =>
@@ -179,7 +181,6 @@ describe('Parejas Operador + Asistente CDA por día', () => {
         operadorCdaId: 'op2',
         asistenteCdaId: 'as1',
         recintoId: 'r1',
-        articulos: 'LAP:123',
       }),
     );
   });
