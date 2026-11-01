@@ -22,7 +22,7 @@ describe('TrackingService', () => {
     recinto: { findUnique: jest.fn(), findMany: jest.fn() },
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
-    parejaCda: { findFirst: jest.fn() },
+    parejaCda: { findMany: jest.fn() },
     eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
@@ -65,7 +65,7 @@ describe('TrackingService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
-    prisma.parejaCda.findFirst.mockResolvedValue(null);
+    prisma.parejaCda.findMany.mockResolvedValue([]);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -215,40 +215,100 @@ describe('TrackingService', () => {
         prisma.$transaction.mockResolvedValueOnce([null, null, null, null, null, [], []]);
       }
 
+      const persona = (apellidosNombres: string, grupo: 'OPERADOR' | 'ASISTENTE', usuarioId: string | null, telefono: string | null = null) => ({
+        apellidosNombres,
+        telefono,
+        grupo,
+        usuarioId,
+      });
+
       it('trae a las dos personas de su pareja (el día de la jornada, en su recinto) y marca quién es usted', async () => {
         mockAsignacion();
-        prisma.parejaCda.findFirst.mockResolvedValueOnce({
-          operador: { apellidosNombres: 'PÉREZ ANA', telefono: '0991234567', grupo: 'OPERADOR', usuarioId: 'otro' },
-          asistente: { apellidosNombres: 'RUIZ JUAN', telefono: '0987654321', grupo: 'ASISTENTE', usuarioId: operadorId },
-        });
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          { kitId, operador: persona('PÉREZ ANA', 'OPERADOR', 'otro', '0991234567'), asistente: persona('RUIZ JUAN', 'ASISTENTE', operadorId, '0987654321') },
+        ]);
 
         const result = await service.miAsignacion(operadorId);
 
-        expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
-          fecha: new Date('2026-11-01T00:00:00Z'),
-          recintoId,
-          OR: [{ operador: { usuarioId: operadorId } }, { asistente: { usuarioId: operadorId } }],
+        const datos = { select: { apellidosNombres: true, telefono: true, grupo: true, usuarioId: true } };
+        expect(prisma.parejaCda.findMany.mock.calls[0][0]).toEqual({
+          where: { fecha: new Date('2026-11-01T00:00:00Z'), recintoId },
+          orderBy: [{ creadoEn: 'asc' }, { id: 'asc' }],
+          // Solo nombre, teléfono y cargo de cada uno: nada de cédula ni correo.
+          select: { kitId: true, operador: datos, asistente: datos },
         });
         expect(result.pareja).toEqual([
           { nombre: 'PÉREZ ANA', cargo: 'Operador CDA', telefono: '0991234567', esUsted: false },
           // Su propio teléfono no hace falta en la app.
-          { nombre: 'RUIZ JUAN', cargo: 'Asistente CDA', telefono: null, esUsted: true },
+          { nombre: 'RUIZ JUAN', cargo: 'Asistente CDA · lleva el kit', telefono: null, esUsted: true },
+        ]);
+      });
+
+      it('si van varias parejas al recinto, quien ingresa ve a todas: la suya primero y las demás como 2.ª, 3.ª pareja', async () => {
+        mockAsignacion();
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          // Registrada antes, pero no es la de quien tiene la sesión.
+          { kitId: null, operador: persona('TABI DORIAN', 'OPERADOR', null, '0963637455'), asistente: persona('BENAVIDES ROBERTO', 'ASISTENTE', 'u2', '0981611201') },
+          { kitId, operador: persona('TORRES MELANI', 'OPERADOR', operadorId, '0967794853'), asistente: persona('VELA MONICA', 'ASISTENTE', 'u3', '0988166326') },
+          { kitId: null, operador: persona('LOPEZ ANA', 'OPERADOR', null), asistente: null },
+        ]);
+
+        const { pareja } = await service.miAsignacion(operadorId);
+
+        expect(pareja).toEqual([
+          { nombre: 'TORRES MELANI', cargo: 'Operador CDA · lleva el kit', telefono: null, esUsted: true },
+          { nombre: 'VELA MONICA', cargo: 'Asistente CDA', telefono: '0988166326', esUsted: false },
+          { nombre: 'TABI DORIAN', cargo: 'Operador CDA · 2.ª pareja', telefono: '0963637455', esUsted: false },
+          { nombre: 'BENAVIDES ROBERTO', cargo: 'Asistente CDA · 2.ª pareja', telefono: '0981611201', esUsted: false },
+          { nombre: 'LOPEZ ANA', cargo: 'Operador CDA · 3.ª pareja', telefono: null, esUsted: false },
+        ]);
+      });
+
+      it('si quien tiene el kit no está en ninguna pareja, la del kit va primero', async () => {
+        mockAsignacion();
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          { kitId: null, operador: persona('B OPERADOR', 'OPERADOR', null), asistente: null },
+          { kitId, operador: persona('A OPERADOR', 'OPERADOR', 'otro'), asistente: persona('A ASISTENTE', 'ASISTENTE', null) },
+        ]);
+
+        const { pareja } = await service.miAsignacion(operadorId);
+
+        expect(pareja?.map((p) => `${p.nombre} | ${p.cargo}`)).toEqual([
+          'A OPERADOR | Operador CDA',
+          'A ASISTENTE | Asistente CDA',
+          'B OPERADOR | Operador CDA · 2.ª pareja',
+        ]);
+        expect(pareja?.some((p) => p.esUsted)).toBe(false);
+      });
+
+      it('su pareja va primero aunque otra tenga su kit, y la 4.ª pareja también se numera', async () => {
+        mockAsignacion();
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          { kitId, operador: persona('A', 'OPERADOR', null), asistente: null },
+          { kitId: null, operador: persona('B', 'OPERADOR', operadorId), asistente: null },
+          { kitId: 'kit-ajeno', operador: persona('C', 'OPERADOR', null), asistente: null },
+          { kitId: null, operador: persona('D', 'ASISTENTE', null), asistente: null },
+        ]);
+
+        const { pareja } = await service.miAsignacion(operadorId);
+
+        expect(pareja?.map((p) => `${p.nombre} | ${p.cargo}`)).toEqual([
+          'B | Operador CDA · lleva el kit',
+          'A | Operador CDA · 2.ª pareja',
+          'C | Operador CDA · 3.ª pareja',
+          'D | Asistente CDA · 4.ª pareja',
         ]);
       });
 
       it('pareja de dos operadores, sin asistente o sin pareja registrada', async () => {
         mockAsignacion();
-        prisma.parejaCda.findFirst.mockResolvedValueOnce({
-          operador: { apellidosNombres: 'PÉREZ ANA', telefono: null, grupo: 'OPERADOR', usuarioId: operadorId },
-          asistente: { apellidosNombres: 'MORA LUIS', telefono: null, grupo: 'OPERADOR', usuarioId: null },
-        });
-        expect((await service.miAsignacion(operadorId)).pareja?.map((p) => p.cargo)).toEqual(['Operador CDA', 'Operador CDA']);
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          { kitId, operador: persona('PÉREZ ANA', 'OPERADOR', operadorId), asistente: persona('MORA LUIS', 'OPERADOR', null) },
+        ]);
+        expect((await service.miAsignacion(operadorId)).pareja?.map((p) => p.cargo)).toEqual(['Operador CDA · lleva el kit', 'Operador CDA']);
 
         mockAsignacion();
-        prisma.parejaCda.findFirst.mockResolvedValueOnce({
-          operador: { apellidosNombres: 'PÉREZ ANA', telefono: null, grupo: 'OPERADOR', usuarioId: operadorId },
-          asistente: null,
-        });
+        prisma.parejaCda.findMany.mockResolvedValueOnce([{ kitId, operador: persona('PÉREZ ANA', 'OPERADOR', operadorId), asistente: null }]);
         expect((await service.miAsignacion(operadorId)).pareja).toHaveLength(1);
 
         mockAsignacion();
