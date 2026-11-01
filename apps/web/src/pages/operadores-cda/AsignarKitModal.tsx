@@ -39,7 +39,9 @@ export function AsignarKitModal({
   });
   const errores = asignar.data?.errores ?? [];
   // Lo lleva el de Android del recinto (lo decide la API); sin dato, el operador.
-  const portador = pareja.portador ?? pareja.operador;
+  // Pareja solo registrada que toma el kit libre del recinto: aún no tiene portador.
+  const portador =
+    pareja.portador ?? [pareja.operador, pareja.asistente].find((x) => x?.dispositivo === 'ANDROID') ?? pareja.operador;
   const iphone = portador.dispositivo === 'IPHONE';
   const puedeAsignar = (!congelado || !!motivo) && !asignar.isPending;
 

@@ -33,6 +33,7 @@ function fila(over: Partial<ParejaCdaFila> = {}): ParejaCdaFila {
     kitCodigo: 'KIT-0001',
     estado: 'EN_APP',
     recintoCompartido: false,
+    puedeRecibirKit: false,
     articulos: null,
     portador: ANA,
     ...over,
@@ -555,6 +556,38 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/asignar-kit', {}));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    // Caso 1307: quitaron el kit en Kits; la otra pareja del recinto debe poder tomarlo.
+    it('la otra pareja del recinto puede tomar el kit que quedó sin persona', async () => {
+      mockApi({
+        parejas: [
+          fila({ estado: 'SIN_KIT', recintoCompartido: true }),
+          fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true, puedeRecibirKit: true }),
+        ],
+      });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a MORA LUIS' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p2/asignar-kit', {}));
+    });
+
+    it('una pareja solo registrada sin kit libre en su recinto no ofrece "Asignar kit"', async () => {
+      mockApi({ parejas: [fila(), fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true })] });
+      renderPagina();
+      await screen.findByText('MORA LUIS');
+      expect(screen.queryByRole('button', { name: 'Asignar kit a MORA LUIS' })).not.toBeInTheDocument();
+    });
+
+    it('"Sin kit": no dice que alguien lo lleva, sino a quién se le asignará', async () => {
+      mockApi({ parejas: [fila({ estado: 'SIN_KIT' })] });
+      renderPagina();
+      const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      const fila1 = within(tabla).getAllByRole('row')[1];
+      expect(fila1).toHaveTextContent('Nadie lleva el kit');
+      expect(fila1).not.toHaveTextContent('Lleva el kit:');
     });
 
     it('si el kit no se pudo asignar, el motivo queda en el diálogo', async () => {

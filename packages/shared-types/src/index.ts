@@ -1153,6 +1153,8 @@ export interface ParejaCdaFila {
   estado: EstadoParejaCda;
   /** Otra pareja va al mismo recinto ese día. */
   recintoCompartido: boolean;
+  /** Pareja solo registrada cuyo recinto tiene un kit sin persona: "Asignar kit" le pasa ese mismo kit. */
+  puedeRecibirKit: boolean;
   /** Artículos para crear el kit si el recinto no lo tiene. */
   articulos: string | null;
 }
