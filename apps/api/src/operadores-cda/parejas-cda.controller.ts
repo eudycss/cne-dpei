@@ -206,6 +206,16 @@ export class ParejasCdaController {
     return this.parejas.asignarKit(id, body?.justificacion);
   }
 
+  @Post(':id/kit-propio')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Crea otro kit del recinto para esta pareja (la otra lleva el del recinto) y lo pone en la app' })
+  darKitPropio(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
+  ) {
+    return this.parejas.darKitPropio(id, body?.justificacion);
+  }
+
   @Post('copiar')
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'Copia la lista de un día a otro (solo la registra; no pasa a la app)' })

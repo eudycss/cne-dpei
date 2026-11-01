@@ -28,6 +28,8 @@ const fila = (codigo: string, extra: Partial<ParejaCdaFila> = {}): ParejaCdaFila
     recintoCompartido: false,
     puedeRecibirKit: false,
     articulos: null,
+    kitSalio: false,
+    quienLleva: null,
     ...extra,
   };
 };

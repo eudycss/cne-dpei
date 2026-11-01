@@ -2,22 +2,25 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AplicarParejasCdaResult, ParejaCdaFila } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
-import { asignarKitParejaCda } from '../../lib/queries/operadores-cda';
+import { asignarKitParejaCda, darKitPropioParejaCda } from '../../lib/queries/operadores-cda';
 import { mensajeError } from './utils';
 
 /**
  * Botón "Asignar kit" de una fila "Sin kit": el kit del recinto pasa al
- * operador de la pareja (o se crea con los artículos por defecto). Si algo
+ * operador de la pareja (o se crea con los artículos por defecto). Con
+ * `kitPropio`, la pareja solo registrada recibe otro kit del recinto. Si algo
  * falla (p. ej. la persona no es Operador CDA), el motivo queda aquí.
  */
 export function AsignarKitModal({
   pareja,
+  kitPropio = false,
   congelado = false,
   justificacionInicial = '',
   onResultado,
   onClose,
 }: {
   pareja: ParejaCdaFila;
+  kitPropio?: boolean;
   congelado?: boolean;
   justificacionInicial?: string;
   onResultado: (r: AplicarParejasCdaResult) => void;
@@ -27,7 +30,7 @@ export function AsignarKitModal({
   const [justificacion, setJustificacion] = useState(justificacionInicial);
   const motivo = justificacion.trim() || undefined;
   const asignar = useMutation({
-    mutationFn: () => asignarKitParejaCda(pareja.id, motivo),
+    mutationFn: () => (kitPropio ? darKitPropioParejaCda : asignarKitParejaCda)(pareja.id, motivo),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['parejas-cda'] });
       // Con error se queda abierto para mostrar el motivo.
@@ -56,13 +59,21 @@ export function AsignarKitModal({
         }}
         aria-busy={asignar.isPending}
       >
-        <h1 id="asignar-kit-titulo">Asignar kit</h1>
-        <p>
-          El kit del recinto <strong>{`${pareja.recinto.codigo} · ${pareja.recinto.nombre}`}</strong> quedará en la app de{' '}
-          <strong>{portador.apellidosNombres}</strong>
-          {portador.dispositivo === 'ANDROID' && ' (tiene Android)'}, y su nombre sale en el QR. Si el recinto aún no tiene kit, se
-          crea con los artículos activos del catálogo.
-        </p>
+        <h1 id="asignar-kit-titulo">{kitPropio ? 'Darle su propio kit' : 'Asignar kit'}</h1>
+        {kitPropio ? (
+          <p>
+            Se crea otro kit del recinto <strong>{`${pareja.recinto.codigo} · ${pareja.recinto.nombre}`}</strong> (otro dispositivo) para esta
+            pareja, con los artículos activos del catálogo. Queda en la app de <strong>{portador.apellidosNombres}</strong>
+            {portador.dispositivo === 'ANDROID' && ' (tiene Android)'} y su nombre sale en el QR; la otra pareja conserva su kit.
+          </p>
+        ) : (
+          <p>
+            El kit del recinto <strong>{`${pareja.recinto.codigo} · ${pareja.recinto.nombre}`}</strong> quedará en la app de{' '}
+            <strong>{portador.apellidosNombres}</strong>
+            {portador.dispositivo === 'ANDROID' && ' (tiene Android)'}, y su nombre sale en el QR. Si el recinto aún no tiene kit, se
+            crea con los artículos activos del catálogo.
+          </p>
+        )}
         {iphone && (
           <p className="banner aviso">
             {portador.apellidosNombres} usa iPhone y nadie del recinto tiene Android: la APK no se instala en iPhone. Puede asignarle el kit igual, pero no podrá
@@ -116,7 +127,7 @@ export function AsignarKitModal({
             disabled={!puedeAsignar}
             aria-describedby={congelado && !motivo ? 'asignar-kit-justificacion-ayuda' : undefined}
           >
-            {asignar.isPending ? 'Asignando…' : 'Asignar'}
+            {asignar.isPending ? 'Asignando…' : kitPropio ? 'Crear y asignar' : 'Asignar'}
           </button>
         </div>
       </form>
