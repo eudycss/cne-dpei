@@ -32,8 +32,10 @@ import { elegirFotoDeGaleria } from '../lib/galeria';
 import {
   adjuntarFotoPruebaConexion,
   HORA_INICIO_PRUEBA_CONEXION,
+  hayFotoPruebaNueva,
   leerPruebaConexionLocal,
   limpiarPruebaConexion,
+  marcarFotoPruebaNueva,
   pruebaConexionHabilitada,
   reconciliarPruebaConexion,
   registrarPruebaConexion,
@@ -90,7 +92,8 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   const [fotoConexion, setFotoConexion] = useState<ActaState>(ACTA_INICIAL);
   // Última foto ya enviada con la prueba, para no reenviarla.
   const fotoConexionEnviada = useRef<string | null>(null);
-  // Se tomó (o reemplazó) en esta sesión: hay que enviarla aunque el servidor ya tenga una.
+  // Se tomó (o reemplazó) y el servidor aún no la confirmó: hay que enviarla
+  // aunque ya tenga una. Persistida en el teléfono para sobrevivir un reinicio.
   const [fotoConexionNueva, setFotoConexionNueva] = useState(false);
   const pruebaConexionRef = useRef(pruebaConexion);
   pruebaConexionRef.current = pruebaConexion;
@@ -227,6 +230,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   useEffect(() => {
     if (!contextoId) return;
     (async () => {
+      if (await hayFotoPruebaNueva(contextoId)) setFotoConexionNueva(true);
       const registro = await restaurarActas(contextoId);
       for (const tipo of TIPOS_FOTO) {
         const entry = registro[tipo];
@@ -260,6 +264,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         aplicarResultadoActa(tipo, resultado);
         if (tipo === 'conexion') {
           setFotoConexionNueva(true);
+          await marcarFotoPruebaNueva(contextoId);
           // La primera foto registra la prueba; un reemplazo (foto equivocada) solo
           // cambia la foto, que el efecto de arriba envía cuando sube.
           if (!pruebaConexionRef.current) await registrarPrueba(resultado.url);
@@ -795,7 +800,12 @@ function ActaCard({
 
       {estado.url ? (
         <>
-          <Pressable style={styles.btnSecondary} onPress={onTomarFoto}>
+          <Pressable
+            style={styles.btnSecondary}
+            onPress={onTomarFoto}
+            accessibilityRole="button"
+            accessibilityLabel={`Reemplazar foto: ${titulo}`}
+          >
             <Text style={styles.btnSecondaryText}>Reemplazar foto</Text>
           </Pressable>
           <BotonGaleria
@@ -810,6 +820,9 @@ function ActaCard({
           style={[styles.btnPrimary, estado.subiendo && { opacity: 0.6 }]}
           onPress={onReintentar}
           disabled={estado.subiendo}
+          accessibilityRole="button"
+          accessibilityLabel={`Reintentar subida: ${titulo}`}
+          accessibilityState={{ disabled: estado.subiendo, busy: estado.subiendo }}
         >
           <Text style={styles.btnPrimaryText}>
             {estado.subiendo ? 'Reintentando…' : 'Reintentar subida'}
@@ -820,6 +833,9 @@ function ActaCard({
           style={[styles.btnPrimary, estado.subiendo && { opacity: 0.6 }]}
           onPress={onTomarFoto}
           disabled={estado.subiendo}
+          accessibilityRole="button"
+          accessibilityLabel={`Tomar foto: ${titulo}`}
+          accessibilityState={{ disabled: estado.subiendo, busy: estado.subiendo }}
         >
           <Text style={styles.btnPrimaryText}>{estado.subiendo ? 'Subiendo…' : 'Tomar foto'}</Text>
         </Pressable>
@@ -994,7 +1010,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     marginTop: 8,
   },
   btnPrimaryText: { color: '#fff', textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 15 },
-  btnSecondary: { paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', marginTop: 12 },
+  btnSecondary: { minHeight: 44, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', marginTop: 12 },
   btnSecondaryText: { color: c.textSecondary, fontFamily: fontFamily.medium },
   linkBack: { alignItems: 'center', marginTop: 6, marginBottom: 4 },
   linkBackText: { color: c.primary, fontFamily: fontFamily.medium, fontSize: 13 },

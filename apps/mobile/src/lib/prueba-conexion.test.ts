@@ -3,7 +3,9 @@ import { enqueue, sincronizarPendientes } from './offline-queue';
 import { marcarPruebaConexionEnCopia, postPruebaConexion } from './queries/tracking';
 import {
   adjuntarFotoPruebaConexion,
+  hayFotoPruebaNueva,
   leerPruebaConexionLocal,
+  marcarFotoPruebaNueva,
   pruebaConexionHabilitada,
   limpiarPruebaConexion,
   reconciliarPruebaConexion,
@@ -139,5 +141,31 @@ describe('prueba-conexion', () => {
     await expect(leerPruebaConexionLocal('evt1_otro')).resolves.toBeNull();
     await limpiarPruebaConexion(CONTEXTO);
     await expect(leerPruebaConexionLocal(CONTEXTO)).resolves.toBeNull();
+  });
+
+  it('la marca de foto nueva se borra cuando el servidor recibe la foto', async () => {
+    await marcarFotoPruebaNueva(CONTEXTO);
+    await expect(hayFotoPruebaNueva(CONTEXTO)).resolves.toBe(true);
+
+    await expect(adjuntarFotoPruebaConexion(CONTEXTO, 'actas/b.bin')).resolves.toBe(true);
+
+    await expect(hayFotoPruebaNueva(CONTEXTO)).resolves.toBe(false);
+  });
+
+  it('si el envío de la foto falla, la marca de foto nueva se conserva para reintentar', async () => {
+    (postPruebaConexion as jest.Mock).mockRejectedValueOnce(new Error('400'));
+    await marcarFotoPruebaNueva(CONTEXTO);
+
+    await expect(adjuntarFotoPruebaConexion(CONTEXTO, 'actas/b.bin')).resolves.toBe(false);
+
+    await expect(hayFotoPruebaNueva(CONTEXTO)).resolves.toBe(true);
+  });
+
+  it('al limpiar tras la salida también borra la marca de foto nueva', async () => {
+    await marcarFotoPruebaNueva(CONTEXTO);
+
+    await limpiarPruebaConexion(CONTEXTO);
+
+    await expect(hayFotoPruebaNueva(CONTEXTO)).resolves.toBe(false);
   });
 });
