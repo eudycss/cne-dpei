@@ -1163,8 +1163,9 @@ export class TrackingService {
    * Prueba de conexión: el operador confirma a la vista que el recinto tiene
    * conexión. Exige la llegada al recinto y se habilita desde las 9:00 (hora de
    * Ecuador). Es idempotente (la cola offline puede reenviarla) y devuelve la ya
-   * registrada; si esa no tenía foto y ahora llega (subió después, sin señal),
-   * se le agrega. La app exige la prueba y la foto antes de la salida del
+   * registrada; si llega una foto (subió después, sin señal, o reemplaza una
+   * foto equivocada) se le pone, sin cambiar la hora. Tras la salida del
+   * recinto la foto queda fija como evidencia. La app exige la prueba y la foto antes de la salida del
    * recinto; el servidor no, para no bloquear a las APK que no las tienen.
    */
   async registrarPruebaConexion(
@@ -1183,8 +1184,16 @@ export class TrackingService {
       select: { id: true, ocurridoEn: true, fotoPruebaConexionUrl: true },
     });
     if (existente) {
-      if (parsed.fotoUrl && !existente.fotoPruebaConexionUrl) {
-        await this.agregarFotoPruebaConexion(existente.id, parsed.fotoUrl);
+      if (parsed.fotoUrl && parsed.fotoUrl !== existente.fotoPruebaConexionUrl) {
+        const salio =
+          !!existente.fotoPruebaConexionUrl &&
+          !!(await this.prisma.eventoTracking.findFirst({
+            where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
+            select: { id: true },
+          }));
+        if (!salio) {
+          await this.ponerFotoPruebaConexion(existente.id, existente.fotoPruebaConexionUrl, parsed.fotoUrl);
+        }
       }
       return { id: existente.id, ocurridoEn: existente.ocurridoEn.toISOString() };
     }
@@ -1237,17 +1246,17 @@ export class TrackingService {
       });
       if (!ganadora) throw e;
       if (parsed.fotoUrl && !ganadora.fotoPruebaConexionUrl) {
-        await this.agregarFotoPruebaConexion(ganadora.id, parsed.fotoUrl);
+        await this.ponerFotoPruebaConexion(ganadora.id, null, parsed.fotoUrl);
       }
       return { id: ganadora.id, ocurridoEn: ganadora.ocurridoEn.toISOString() };
     }
   }
 
-  /** Condicional: una foto ya guardada (evidencia) no se reemplaza. */
-  private async agregarFotoPruebaConexion(id: string, url: string): Promise<void> {
+  /** Condicional sobre la foto leída: si otro pedido la cambió entre medio, no se pisa. */
+  private async ponerFotoPruebaConexion(id: string, anterior: string | null, url: string): Promise<void> {
     await this.exigirFotoPruebaConexion(url);
     await this.prisma.eventoTracking.updateMany({
-      where: { id, fotoPruebaConexionUrl: null },
+      where: { id, fotoPruebaConexionUrl: anterior },
       data: { fotoPruebaConexionUrl: url },
     });
   }

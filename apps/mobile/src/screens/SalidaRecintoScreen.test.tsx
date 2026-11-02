@@ -445,7 +445,7 @@ describe('SalidaRecintoScreen', () => {
       (getMiAsignacion as jest.Mock).mockResolvedValue(sinPrueba);
     });
 
-    it('la foto es la prueba: al tomarla se registra sola, sin botón de confirmar', async () => {
+    it('la foto es la prueba: al tomarla se registra sola, sin botón de confirmar (también desde la galería)', async () => {
       (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
       (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
       const renderer = await montar();
@@ -453,8 +453,7 @@ describe('SalidaRecintoScreen', () => {
       expect(renderer.root.findAllByProps({ children: 'Reporte de instalación' })).toHaveLength(0);
       expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(true);
       expect(renderer.root.findAllByProps({ accessibilityLabel: 'Confirmar prueba de conexión' })).toHaveLength(0);
-      // Evidencia del momento: solo con la cámara, no desde la galería.
-      expect(renderer.root.findAllByProps({ accessibilityLabel: `Elegir de la galería: ${FOTO_PC}` })).toHaveLength(0);
+      expect(renderer.root.findByProps({ accessibilityLabel: `Elegir de la galería: ${FOTO_PC}` })).toBeTruthy();
 
       await tomarFoto(renderer, FOTO_PC, 'file:///camara.jpg');
 
@@ -465,8 +464,8 @@ describe('SalidaRecintoScreen', () => {
           (n) => typeof n.props.children === 'string' && n.props.children.startsWith('Prueba de conexión registrada a las '),
         ).length,
       ).toBeGreaterThan(0);
-      // La foto registrada no se reemplaza.
-      expect(renderer.root.findAllByProps({ children: 'Reemplazar foto' })).toHaveLength(0);
+      // Si se equivocó de foto, la puede reemplazar.
+      expect(renderer.root.findByProps({ children: 'Reemplazar foto' })).toBeTruthy();
       // Ya iba con la foto: no se reenvía aparte.
       expect(adjuntarFotoPruebaConexion).not.toHaveBeenCalled();
       const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
@@ -509,6 +508,64 @@ describe('SalidaRecintoScreen', () => {
 
       expect(renderer.root.findAllByProps({ children: 'Reporte de instalación' })).toHaveLength(0);
       expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(false);
+    });
+
+    it('desde la galería también registra la prueba', async () => {
+      (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
+      (elegirFotoDeGaleria as jest.Mock).mockResolvedValue('file:///galeria.jpg');
+      (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
+      const renderer = await montar();
+
+      await act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: `Elegir de la galería: ${FOTO_PC}` }).props.onPress();
+        await flushPromises();
+      });
+
+      expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'conexion', 'file:///galeria.jpg');
+      expect(registrarPruebaConexion).toHaveBeenCalledWith('ev1_r1', 'actas/pc.bin');
+    });
+
+    it('foto equivocada: al reemplazarla se envía la nueva sin registrar otra prueba', async () => {
+      (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
+      (capturarYSubirActa as jest.Mock)
+        .mockResolvedValueOnce({ uri: 'file:///mala.jpg', url: 'actas/mala.bin', error: null })
+        .mockResolvedValueOnce({ uri: 'file:///buena.jpg', url: 'actas/buena.bin', error: null });
+      const renderer = await montar();
+      await tomarFoto(renderer, FOTO_PC, 'file:///mala.jpg');
+
+      const card = cardPorTitulo(renderer, FOTO_PC);
+      await act(async () => {
+        pressableAncestor(card.findByProps({ children: 'Reemplazar foto' })).props.onPress();
+      });
+      await act(async () => {
+        renderer.root.findByType(CameraFoto).props.onCapture('file:///buena.jpg');
+        await flushPromises();
+      });
+
+      expect(registrarPruebaConexion).toHaveBeenCalledTimes(1);
+      expect(adjuntarFotoPruebaConexion).toHaveBeenCalledWith('ev1_r1', 'actas/buena.bin');
+    });
+
+    it('al reabrir con la foto ya en el servidor, reemplazarla igual la envía', async () => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue({ ...sinPrueba, yaRegistroPruebaConexion: true, pruebaConexionConFoto: true });
+      (restaurarActas as jest.Mock).mockResolvedValue({ conexion: { uri: 'file:///mala.jpg', url: 'actas/mala.bin' } });
+      (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///buena.jpg', url: 'actas/buena.bin', error: null });
+      const renderer = await montar();
+      expect(adjuntarFotoPruebaConexion).not.toHaveBeenCalled();
+
+      await act(async () => {
+        pressableAncestor(renderer.root.findByProps({ children: '← Paso anterior' })).props.onPress();
+      });
+      const card = cardPorTitulo(renderer, FOTO_PC);
+      await act(async () => {
+        pressableAncestor(card.findByProps({ children: 'Reemplazar foto' })).props.onPress();
+      });
+      await act(async () => {
+        renderer.root.findByType(CameraFoto).props.onCapture('file:///buena.jpg');
+        await flushPromises();
+      });
+
+      expect(adjuntarFotoPruebaConexion).toHaveBeenCalledWith('ev1_r1', 'actas/buena.bin');
     });
 
     it('antes de las 9:00 no se puede tomar la foto y dice desde qué hora se habilita', async () => {

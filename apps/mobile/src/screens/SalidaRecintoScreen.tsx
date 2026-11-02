@@ -90,6 +90,10 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   const [fotoConexion, setFotoConexion] = useState<ActaState>(ACTA_INICIAL);
   // Última foto ya enviada con la prueba, para no reenviarla.
   const fotoConexionEnviada = useRef<string | null>(null);
+  // Se tomó (o reemplazó) en esta sesión: hay que enviarla aunque el servidor ya tenga una.
+  const [fotoConexionNueva, setFotoConexionNueva] = useState(false);
+  const pruebaConexionRef = useRef(pruebaConexion);
+  pruebaConexionRef.current = pruebaConexion;
 
   // Paso 2: actas obligatorias (instalación + escrutinio). A diferencia de
   // fotoMilitarUrl (que se puede resumir desde el servidor), las URLs de las
@@ -207,14 +211,14 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   // y la foto ya subió: se envía para que el servidor se la agregue.
   useEffect(() => {
     const url = fotoConexion.url;
-    if (!contextoId || !url || !pruebaConexion || fotoPruebaEnServidor) return;
+    if (!contextoId || !url || !pruebaConexion || (fotoPruebaEnServidor && !fotoConexionNueva)) return;
     if (fotoConexionEnviada.current === url) return;
     fotoConexionEnviada.current = url;
     adjuntarFotoPruebaConexion(contextoId, url).then((ok) => {
       // Si no se envió, se reintenta al registrar la salida.
       if (!ok && fotoConexionEnviada.current === url) fotoConexionEnviada.current = null;
     });
-  }, [contextoId, fotoConexion.url, pruebaConexion, fotoPruebaEnServidor]);
+  }, [contextoId, fotoConexion.url, pruebaConexion, fotoPruebaEnServidor, fotoConexionNueva]);
 
   // Al montar (y en cuanto se conoce el recinto/evento activo), restaura
   // cualquier acta que haya quedado pendiente de una sesión anterior para
@@ -254,7 +258,12 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       try {
         const resultado = await capturarYSubirActa(contextoId, tipo, uriCamara);
         aplicarResultadoActa(tipo, resultado);
-        if (tipo === 'conexion') await registrarPrueba(resultado.url);
+        if (tipo === 'conexion') {
+          setFotoConexionNueva(true);
+          // La primera foto registra la prueba; un reemplazo (foto equivocada) solo
+          // cambia la foto, que el efecto de arriba envía cuando sube.
+          if (!pruebaConexionRef.current) await registrarPrueba(resultado.url);
+        }
       } catch {
         // capturarYSubirActa está diseñada para no rechazar nunca, pero esta
         // red de seguridad evita que el acta quede "subiendo" para siempre
@@ -371,7 +380,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
 
       // Última oportunidad para la foto de la prueba de conexión que no subió
       // por falta de señal: luego se borra la copia local. Best-effort.
-      if (fotoConexion.uri && !fotoPruebaEnServidor) {
+      if (fotoConexion.uri && (!fotoPruebaEnServidor || fotoConexionNueva)) {
         const url =
           fotoConexion.url ?? (await reintentarSubidaActa(contextoId, 'conexion').catch(() => null))?.url ?? null;
         if (url && fotoConexionEnviada.current !== url) await adjuntarFotoPruebaConexion(contextoId, url);
@@ -471,6 +480,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
             onReintentarRegistro={() => registrarPrueba(fotoConexion.url)}
             foto={fotoConexion}
             onTomarFoto={() => setMostrarCamara('conexion')}
+            onElegirGaleria={() => elegirDeGaleria('conexion')}
             onReintentar={() => reintentar('conexion')}
             styles={styles}
           />
@@ -622,6 +632,7 @@ function PasoConexion({
   onReintentarRegistro,
   foto,
   onTomarFoto,
+  onElegirGaleria,
   onReintentar,
   styles,
 }: {
@@ -630,6 +641,7 @@ function PasoConexion({
   onReintentarRegistro: () => void;
   foto: ActaState;
   onTomarFoto: () => void;
+  onElegirGaleria: () => void;
   onReintentar: () => void;
   styles: Styles;
 }) {
@@ -647,39 +659,10 @@ function PasoConexion({
   return (
     <>
       <Text style={styles.subtitle}>
-        Haga el test de conexión en la computadora del recinto y tómele una foto a la pantalla: la
-        foto registra la prueba. Sin ella no podrá continuar.
+        Haga el test de conexión en la computadora del recinto y tómele una foto a la pantalla (o
+        súbala desde la galería): la foto registra la prueba. Si se equivoca de foto, reemplácela.
       </Text>
-      {pruebaConexion ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{TITULO_FOTO.conexion}</Text>
-          <View style={styles.fotoConfirm} accessible accessibilityRole="text" accessibilityLiveRegion="polite">
-            <View style={styles.fotoConfirmIcon}>
-              <Text style={styles.fotoConfirmCheck}>✓</Text>
-            </View>
-            <Text style={styles.fotoConfirmText}>
-              {pruebaConexion === 'registrada'
-                ? 'Prueba de conexión registrada'
-                : `Prueba de conexión registrada a las ${horaCorta(pruebaConexion)}`}
-            </Text>
-          </View>
-          {foto.uri && !foto.url ? (
-            <>
-              <Text style={styles.motivoBloqueo} accessibilityLiveRegion="polite">
-                La foto se enviará cuando haya señal.
-              </Text>
-              <Pressable
-                style={[styles.btnSecondary, foto.subiendo && { opacity: 0.6 }]}
-                onPress={onReintentar}
-                disabled={foto.subiendo}
-                accessibilityRole="button"
-              >
-                <Text style={styles.btnSecondaryText}>{foto.subiendo ? 'Reintentando…' : 'Reintentar subida'}</Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
-      ) : !habilitada ? (
+      {!pruebaConexion && !habilitada ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{TITULO_FOTO.conexion}</Text>
           <Text style={styles.motivoBloqueo} accessibilityLiveRegion="polite">
@@ -691,12 +674,30 @@ function PasoConexion({
           titulo={TITULO_FOTO.conexion}
           estado={foto}
           onTomarFoto={onTomarFoto}
-          onElegirGaleria={() => undefined}
+          onElegirGaleria={onElegirGaleria}
           onReintentar={onReintentar}
-          soloCamara
           styles={styles}
         />
       )}
+      {pruebaConexion ? (
+        <View style={styles.card}>
+          <View style={styles.fotoConfirm} accessible accessibilityRole="text" accessibilityLiveRegion="polite">
+            <View style={styles.fotoConfirmIcon}>
+              <Text style={styles.fotoConfirmCheck}>✓</Text>
+            </View>
+            <Text style={styles.fotoConfirmText}>
+              {pruebaConexion === 'registrada'
+                ? 'Prueba de conexión registrada'
+                : `Prueba de conexión registrada a las ${horaCorta(pruebaConexion)}`}
+            </Text>
+          </View>
+          {foto.uri && !foto.url ? (
+            <Text style={styles.motivoBloqueo} accessibilityLiveRegion="polite">
+              La foto se enviará cuando haya señal.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {registrando ? (
         <Text style={styles.motivoBloqueo} accessibilityLiveRegion="polite">
           Registrando la prueba de conexión…
@@ -762,7 +763,6 @@ function ActaCard({
   onTomarFoto,
   onElegirGaleria,
   onReintentar,
-  soloCamara = false,
   styles,
 }: {
   titulo: string;
@@ -770,8 +770,6 @@ function ActaCard({
   onTomarFoto: () => void;
   onElegirGaleria: () => void;
   onReintentar: () => void;
-  /** Evidencia del momento: sin galería ni "Reemplazar foto". */
-  soloCamara?: boolean;
   styles: Styles;
 }) {
   return (
@@ -796,19 +794,17 @@ function ActaCard({
       {estado.error ? <Text style={styles.actaError}>{estado.error}</Text> : null}
 
       {estado.url ? (
-        soloCamara ? null : (
-          <>
-            <Pressable style={styles.btnSecondary} onPress={onTomarFoto}>
-              <Text style={styles.btnSecondaryText}>Reemplazar foto</Text>
-            </Pressable>
-            <BotonGaleria
-              titulo={titulo}
-              texto="Reemplazar desde la galería"
-              onPress={onElegirGaleria}
-              styles={styles}
-            />
-          </>
-        )
+        <>
+          <Pressable style={styles.btnSecondary} onPress={onTomarFoto}>
+            <Text style={styles.btnSecondaryText}>Reemplazar foto</Text>
+          </Pressable>
+          <BotonGaleria
+            titulo={titulo}
+            texto="Reemplazar desde la galería"
+            onPress={onElegirGaleria}
+            styles={styles}
+          />
+        </>
       ) : estado.error ? (
         <Pressable
           style={[styles.btnPrimary, estado.subiendo && { opacity: 0.6 }]}
@@ -829,7 +825,7 @@ function ActaCard({
         </Pressable>
       )}
 
-      {!soloCamara && !estado.url && !estado.error && !estado.subiendo ? (
+      {!estado.url && !estado.error && !estado.subiendo ? (
         <BotonGaleria titulo={titulo} texto="Elegir de la galería" onPress={onElegirGaleria} styles={styles} />
       ) : null}
     </View>
