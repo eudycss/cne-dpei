@@ -430,9 +430,7 @@ describe('SalidaRecintoScreen', () => {
 
   describe('paso 1: prueba de conexión', () => {
     const sinPrueba = { ...asignacionFixture, yaRegistroPruebaConexion: false, pruebaConexionConFoto: false };
-    const FOTO_PC = 'Foto de la computadora del test';
-    const confirmar = (r: ReactTestRenderer) =>
-      r.root.findByProps({ accessibilityLabel: 'Confirmar prueba de conexión' });
+    const FOTO_PC = 'Foto de la prueba de conexión';
 
     async function montar() {
       let renderer!: ReactTestRenderer;
@@ -447,27 +445,28 @@ describe('SalidaRecintoScreen', () => {
       (getMiAsignacion as jest.Mock).mockResolvedValue(sinPrueba);
     });
 
-    it('arranca en la prueba y no deja continuar hasta tomar la foto y confirmar la conexión', async () => {
+    it('la foto es la prueba: al tomarla se registra sola, sin botón de confirmar', async () => {
       (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
       (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
       const renderer = await montar();
 
       expect(renderer.root.findAllByProps({ children: 'Reporte de instalación' })).toHaveLength(0);
       expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(true);
-      // Sin foto no se puede confirmar, y se explica por qué.
-      expect(confirmar(renderer).props.disabled).toBe(true);
-      expect(renderer.root.findByProps({ children: 'Primero tome la foto de la computadora donde hizo el test.' })).toBeTruthy();
+      expect(renderer.root.findAllByProps({ accessibilityLabel: 'Confirmar prueba de conexión' })).toHaveLength(0);
+      // Evidencia del momento: solo con la cámara, no desde la galería.
+      expect(renderer.root.findAllByProps({ accessibilityLabel: `Elegir de la galería: ${FOTO_PC}` })).toHaveLength(0);
 
       await tomarFoto(renderer, FOTO_PC, 'file:///camara.jpg');
+
       expect(capturarYSubirActa).toHaveBeenCalledWith('ev1_r1', 'conexion', 'file:///camara.jpg');
-      expect(confirmar(renderer).props.disabled).toBe(false);
-
-      await act(async () => {
-        confirmar(renderer).props.onPress();
-        await flushPromises();
-      });
-
       expect(registrarPruebaConexion).toHaveBeenCalledWith('ev1_r1', 'actas/pc.bin');
+      expect(
+        renderer.root.findAll(
+          (n) => typeof n.props.children === 'string' && n.props.children.startsWith('Prueba de conexión registrada a las '),
+        ).length,
+      ).toBeGreaterThan(0);
+      // La foto registrada no se reemplaza.
+      expect(renderer.root.findAllByProps({ children: 'Reemplazar foto' })).toHaveLength(0);
       // Ya iba con la foto: no se reenvía aparte.
       expect(adjuntarFotoPruebaConexion).not.toHaveBeenCalled();
       const continuar = pressableAncestor(renderer.root.findByProps({ children: 'Continuar' }));
@@ -512,28 +511,22 @@ describe('SalidaRecintoScreen', () => {
       expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(false);
     });
 
-    it('antes de las 9:00 no deja confirmar y dice desde qué hora se habilita', async () => {
+    it('antes de las 9:00 no se puede tomar la foto y dice desde qué hora se habilita', async () => {
       (pruebaConexionHabilitada as jest.Mock).mockReturnValue(false);
-      (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
       const renderer = await montar();
-      await tomarFoto(renderer, FOTO_PC, 'file:///camara.jpg');
 
-      expect(confirmar(renderer).props.disabled).toBe(true);
+      expect(renderer.root.findAllByProps({ children: 'Tomar foto' })).toHaveLength(0);
       expect(renderer.root.findByProps({ children: 'Se habilita desde las 9:00 (hora de Ecuador).' })).toBeTruthy();
       act(() => renderer.unmount()); // detiene el reloj de la hora
     });
 
-    it('sin señal: confirma con la foto guardada en el teléfono y la envía cuando sube', async () => {
+    it('sin señal: registra la prueba con la foto guardada en el teléfono y la envía cuando sube', async () => {
       (registrarPruebaConexion as jest.Mock).mockResolvedValue('2026-10-01T17:00:00.000Z');
       (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: null, error: 'Sin señal' });
       (reintentarSubidaActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
       const renderer = await montar();
       await tomarFoto(renderer, FOTO_PC, 'file:///camara.jpg');
 
-      await act(async () => {
-        confirmar(renderer).props.onPress();
-        await flushPromises();
-      });
       expect(registrarPruebaConexion).toHaveBeenCalledWith('ev1_r1', null);
       expect(renderer.root.findByProps({ children: 'La foto se enviará cuando haya señal.' })).toBeTruthy();
 
@@ -601,24 +594,28 @@ describe('SalidaRecintoScreen', () => {
       expect(adjuntarFotoPruebaConexion).not.toHaveBeenCalled();
     });
 
-    it('si el servidor la rechaza, avisa y sigue sin dejar continuar', async () => {
-      (registrarPruebaConexion as jest.Mock).mockRejectedValue({
+    it('si el servidor la rechaza, avisa, no deja continuar y permite reintentar con la misma foto', async () => {
+      (registrarPruebaConexion as jest.Mock).mockRejectedValueOnce({
         response: { data: { message: 'Debes registrar la llegada al recinto antes de la prueba de conexión' } },
       });
       (capturarYSubirActa as jest.Mock).mockResolvedValue({ uri: 'file:///pc.jpg', url: 'actas/pc.bin', error: null });
       const renderer = await montar();
       await tomarFoto(renderer, FOTO_PC, 'file:///camara.jpg');
 
-      await act(async () => {
-        confirmar(renderer).props.onPress();
-        await flushPromises();
-      });
-
       expect(Alert.alert).toHaveBeenCalledWith(
         'No se pudo registrar',
         'Debes registrar la llegada al recinto antes de la prueba de conexión',
       );
       expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(true);
+
+      (registrarPruebaConexion as jest.Mock).mockResolvedValueOnce('2026-10-01T17:00:00.000Z');
+      await act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: 'Reintentar registro de la prueba de conexión' }).props.onPress();
+        await flushPromises();
+      });
+
+      expect(registrarPruebaConexion).toHaveBeenLastCalledWith('ev1_r1', 'actas/pc.bin');
+      expect(pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.disabled).toBe(false);
     });
   });
 });
