@@ -20,7 +20,8 @@ import { comprimirFoto } from './comprimir-foto';
  * las actas de OTRO recinto/evento — contaminación de evidencia legal.
  */
 
-export type TipoActa = 'instalacion' | 'escrutinio';
+// 'conexion': foto de la computadora de la prueba de conexión (misma subida sin señal).
+export type TipoActa = 'instalacion' | 'escrutinio' | 'conexion';
 
 export interface EstadoActaPersistido {
   /** Ruta local persistente del archivo (sirve también como uri para <Image>). */

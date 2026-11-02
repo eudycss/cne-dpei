@@ -45,8 +45,10 @@ const flujoItem: ReporteFlujoItem = {
   salidaDpiEn: '2026-06-23T08:00:00.000Z',
   llegadaRecintoEn: null,
   pruebaConexionEn: null,
+  tieneFotoPruebaConexion: false,
   salidaRecintoEn: null,
   llegadaDpiEn: null,
+  llegadaDpiManual: false,
 };
 
 const noCdaItem: ReporteNoCdaItem = {
@@ -166,6 +168,27 @@ describe('ReporteNoCdaPage — Informe del Operador CDA', () => {
       if (url === '/tracking/informes-operador/responsables') return Promise.resolve({ data: [responsable] });
       return Promise.resolve({ data: new Blob(['%PDF']) });
     });
+  });
+
+  it('la prueba de conexión con foto se puede ver desde el reporte', async () => {
+    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    global.URL.revokeObjectURL = vi.fn();
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/tracking/reporte-flujo') {
+        return Promise.resolve({
+          data: [{ ...flujoItem, pruebaConexionEn: '2026-06-23T15:00:00.000Z', tieneFotoPruebaConexion: true }],
+        });
+      }
+      if (url === '/tracking/reporte-no-cda') return Promise.resolve({ data: [noCdaItem] });
+      if (url === '/tracking/informes-operador/responsables') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: new Blob(['img']) });
+    });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver foto de la prueba de conexión — Escuela Central' }));
+
+    expect(await screen.findByRole('heading', { name: 'Foto de la prueba de conexión' })).toBeInTheDocument();
+    expect(apiGetMock).toHaveBeenCalledWith('/tracking/estado-cdas/c1/foto-acta/conexion', { responseType: 'blob' });
   });
 
   it('muestra la columna Prueba de conexión y el logo 2027', async () => {

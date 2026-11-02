@@ -5,6 +5,7 @@ import { sileo } from 'sileo';
 import type { ReporteFlujoItem, ReporteNoCdaItem } from '@cne/shared-types';
 import { api } from '../../lib/api';
 import { Logo2027 } from '../../components/Logo2027';
+import { FotoActaModal } from '../operadores/FotoActaModal';
 import { useAuth } from '../../auth/AuthContext';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import {
@@ -86,6 +87,7 @@ export function ReporteNoCdaPage() {
   // la deje marcada por error.
   const [incluirJornada, setIncluirJornada] = useState(false);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [fotoConexion, setFotoConexion] = useState<ReporteFlujoItem | null>(null);
   const { descargando, descargar } = useDescargaPdf('No se pudo generar el informe');
 
   // Solo vale un responsable que siga en la lista (activo y con rol para firmar).
@@ -418,7 +420,22 @@ export function ReporteNoCdaPage() {
                         <td>{item.kitsCodigos.join(', ') || '—'}</td>
                         <td><HitoCelda iso={item.salidaDpiEn} /></td>
                         <td><HitoCelda iso={item.llegadaRecintoEn} /></td>
-                        <td><HitoCelda iso={item.pruebaConexionEn} /></td>
+                        <td>
+                          <HitoCelda iso={item.pruebaConexionEn} />
+                          {item.tieneFotoPruebaConexion && (
+                            <div className="no-print">
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', marginTop: '0.25rem', minHeight: 28 }}
+                                onClick={() => setFotoConexion(item)}
+                                aria-label={`Ver foto de la prueba de conexión — ${item.cdaNombre}`}
+                              >
+                                Ver foto
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td><HitoCelda iso={item.salidaRecintoEn} /></td>
                         <td><HitoCelda iso={item.llegadaDpiEn} /></td>
                         {isAdmin && (
@@ -498,6 +515,17 @@ export function ReporteNoCdaPage() {
           </>
         )}
       </div>
+      {fotoConexion && (
+        <FotoActaModal
+          cda={{
+            recintoId: fotoConexion.cdaId,
+            nombreRecinto: fotoConexion.cdaNombre,
+            operadorNombre: fotoConexion.operadorNombre,
+          }}
+          tipo="conexion"
+          onClose={() => setFotoConexion(null)}
+        />
+      )}
     </>
   );
 }

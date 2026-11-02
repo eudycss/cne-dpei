@@ -381,9 +381,10 @@ export class TrackingController {
   @Get('estado-cdas/:recintoId/foto-acta/:tipo')
   @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiParam({ name: 'recintoId', description: 'ID del recinto (CDA)' })
-  @ApiParam({ name: 'tipo', description: 'instalacion | escrutinio' })
+  @ApiParam({ name: 'tipo', description: 'instalacion | escrutinio | conexion' })
   @ApiOperation({
-    summary: 'Foto del acta (instalación o escrutinio, descifrada) subida antes de la salida del recinto de ese CDA',
+    summary:
+      'Foto del acta (instalación o escrutinio) o de la computadora de la prueba de conexión, descifrada, de ese CDA',
   })
   async fotoActa(
     @CurrentUser() user: AuthenticatedUser,
@@ -391,8 +392,8 @@ export class TrackingController {
     @Param('tipo') tipo: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    if (tipo !== 'instalacion' && tipo !== 'escrutinio') {
-      throw new BadRequestException('tipo debe ser "instalacion" o "escrutinio"');
+    if (tipo !== 'instalacion' && tipo !== 'escrutinio' && tipo !== 'conexion') {
+      throw new BadRequestException('tipo debe ser "instalacion", "escrutinio" o "conexion"');
     }
     const { buffer, contentType } = await this.tracking.obtenerFotoActa(
       recintoId,

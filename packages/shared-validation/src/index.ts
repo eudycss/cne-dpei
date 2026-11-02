@@ -469,9 +469,11 @@ export const llegadaDpiManualSchema = z
   .strict();
 
 // Prueba de conexión: el operador confirma a la vista que el recinto tiene
-// conexión, después de la llegada y antes de la salida. Solo guarda la hora.
+// conexión, después de la llegada y antes de la salida. Guarda la hora y la
+// foto de la computadora del test (opcional aquí por las APK viejas).
 export const pruebaConexionSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
+  fotoUrl: z.string().min(1).max(512).optional(),
   desdeOffline,
 });
 

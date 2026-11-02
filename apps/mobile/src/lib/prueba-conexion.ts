@@ -13,6 +13,16 @@ import { marcarPruebaConexionEnCopia, postPruebaConexion } from './queries/track
  */
 const clave = (contextoId: string) => `prueba-conexion:${contextoId}`;
 
+/** Hora (Ecuador) desde la que se habilita la prueba; el servidor rechaza las anteriores. */
+export const HORA_INICIO_PRUEBA_CONEXION = 9;
+// Ecuador continental es UTC-5 todo el año: no depende de la zona del teléfono.
+const OFFSET_ECUADOR_HORAS = -5;
+
+export function pruebaConexionHabilitada(ahora: Date = new Date()): boolean {
+  const horaEcuador = (ahora.getUTCHours() + 24 + OFFSET_ECUADOR_HORAS) % 24;
+  return horaEcuador >= HORA_INICIO_PRUEBA_CONEXION;
+}
+
 export async function leerPruebaConexionLocal(contextoId: string): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(clave(contextoId));
@@ -22,23 +32,25 @@ export async function leerPruebaConexionLocal(contextoId: string): Promise<strin
 }
 
 /**
- * Registra la prueba y devuelve la hora. Si en la cola offline quedan acciones
- * sin enviar (p. ej. la llegada al recinto), la prueba se encola detrás para
- * que llegue al servidor después de ellas (el servidor exige la llegada).
- * Errores no transitorios (4xx) se propagan.
+ * Registra la prueba (con la foto de la computadora del test, si ya subió) y
+ * devuelve la hora. Si en la cola offline quedan acciones sin enviar (p. ej.
+ * la llegada al recinto), la prueba se encola detrás para que llegue al
+ * servidor después de ellas (el servidor exige la llegada). Errores no
+ * transitorios (4xx) se propagan.
  */
-export async function registrarPruebaConexion(contextoId: string): Promise<string> {
+export async function registrarPruebaConexion(contextoId: string, fotoUrl?: string | null): Promise<string> {
   const ocurridoEn = new Date().toISOString();
+  const conFoto = fotoUrl ? { fotoUrl } : {};
   const pendientes = await sincronizarPendientes();
   if (pendientes > 0) {
     await enqueue({
       endpoint: '/tracking/prueba-conexion',
       method: 'post',
-      payload: { ocurridoEn, desdeOffline: true },
+      payload: { ocurridoEn, desdeOffline: true, ...conFoto },
     });
     await marcarPruebaConexionEnCopia();
   } else {
-    await postPruebaConexion({ ocurridoEn });
+    await postPruebaConexion({ ocurridoEn, ...conFoto });
   }
   try {
     await AsyncStorage.setItem(clave(contextoId), ocurridoEn);
@@ -50,18 +62,42 @@ export async function registrarPruebaConexion(contextoId: string): Promise<strin
 
 /**
  * Si el teléfono dice que la prueba se hizo pero el servidor no la tiene (la
- * cola offline descarta en silencio lo que el servidor rechaza, p. ej. si se
- * envió antes que la llegada), la reenvía con la hora original. Best-effort:
- * si vuelve a fallar se reintentará la próxima vez que se abra la pantalla.
+ * cola offline descarta lo que el servidor rechaza, p. ej. si se envió antes
+ * que la llegada), la reenvía con la hora original. Si el servidor la vuelve a
+ * rechazar (4xx: antes de las 9:00, hora adelantada…), se borra la marca local
+ * para que el operador la repita y se devuelve el motivo. Sin señal se
+ * conserva y se reintentará la próxima vez que se abra la pantalla.
  */
-export async function reconciliarPruebaConexion(contextoId: string, enServidor: boolean): Promise<void> {
-  if (enServidor) return;
+export async function reconciliarPruebaConexion(
+  contextoId: string,
+  enServidor: boolean,
+): Promise<{ rechazada: string | null }> {
+  if (enServidor) return { rechazada: null };
   const ocurridoEn = await leerPruebaConexionLocal(contextoId);
-  if (!ocurridoEn) return;
+  if (!ocurridoEn) return { rechazada: null };
   try {
     await postPruebaConexion({ ocurridoEn });
+    return { rechazada: null };
+  } catch (e: any) {
+    const status: number | undefined = e?.response?.status;
+    if (status === undefined || status < 400 || status >= 500) return { rechazada: null };
+    await limpiarPruebaConexion(contextoId);
+    return { rechazada: e?.response?.data?.message ?? 'El servidor no aceptó la prueba de conexión' };
+  }
+}
+
+/**
+ * La foto de la computadora del test subió después de registrar la prueba (sin
+ * señal): se reenvía la prueba con la foto y el servidor se la agrega. Si el
+ * servidor aún no tenía la prueba, la crea con la hora original. Best-effort.
+ */
+export async function adjuntarFotoPruebaConexion(contextoId: string, fotoUrl: string): Promise<boolean> {
+  const ocurridoEn = (await leerPruebaConexionLocal(contextoId)) ?? new Date().toISOString();
+  try {
+    await postPruebaConexion({ ocurridoEn, fotoUrl });
+    return true;
   } catch {
-    /* se reintenta al volver a abrir la pantalla */
+    return false; // se reintenta al volver a abrir la pantalla o al registrar la salida
   }
 }
 

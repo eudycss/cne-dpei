@@ -107,6 +107,7 @@ const asignacionFixture: MiAsignacionResponse = {
   yaRegistroSalida: true,
   yaRegistroLlegada: false,
   yaRegistroPruebaConexion: false,
+  pruebaConexionConFoto: false,
   yaRegistroSalidaRecinto: true,
   yaRegistroLlegadaDpi: false,
   fotoMilitarUrl: 'https://storage.example.com/foto.jpg',
