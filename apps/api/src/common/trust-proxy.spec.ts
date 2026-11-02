@@ -39,6 +39,14 @@ describe('trust proxy (Render detrás de Cloudflare)', () => {
     expect(res.body.ip).toBe('190.63.117.237');
   });
 
+  it('una IP pública que no es de Cloudflare no se trata como proxy', async () => {
+    const res = await request(appQueDevuelveIp())
+      .get('/ip')
+      .set('X-Forwarded-For', '1.2.3.4, 8.8.8.8, 10.0.0.1');
+
+    expect(res.body.ip).toBe('8.8.8.8');
+  });
+
   it('sin proxies (desarrollo local) usa la dirección de la conexión', async () => {
     const res = await request(appQueDevuelveIp()).get('/ip');
 
