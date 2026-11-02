@@ -7,6 +7,8 @@ import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService } from './cuentas-cda.service';
 import { registrarCargos, TEXTOS_GRUPO } from './grupo-cda';
 
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+
 const ENCABEZADOS = ['N°', 'Apellidos Nombres', 'Cédula', 'Teléfonos De Contacto', 'Cargo', 'Unidad', 'Inicial'];
 const FILA_OK = [1, 'PÉREZ LÓPEZ ANA MARÍA', '1710034065', '0987923273', 'OPERADOR CDA', 'UPSI', '20 de octubre de 2026'];
 
@@ -510,12 +512,15 @@ describe('OperadoresCdaService', () => {
       expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
     });
 
+    // La tabla se evalúa al cargar el archivo, no al correr el caso: con un margen
+    // de 60 s, una corrida lenta de la suite completa (88 s en local) llegaba a
+    // este caso con el bloqueo ya vencido. Un día de margen lo hace estable.
     it.each([
       [{ usuario: null }, 'SIN_CUENTA'],
       [{ usuario: { activo: true, debeCambiarPwd: true, bloqueadoHasta: null } }, 'PENDIENTE_CAMBIO'],
       [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'ACTIVA'],
-      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() + 60_000) } }, 'BLOQUEADA'],
-      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() - 60_000) } }, 'ACTIVA'],
+      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() + UN_DIA_MS) } }, 'BLOQUEADA'],
+      [{ usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: new Date(Date.now() - UN_DIA_MS) } }, 'ACTIVA'],
       [{ usuario: { activo: false, debeCambiarPwd: false, bloqueadoHasta: null } }, 'INACTIVA'],
       [{ activo: false, usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'INACTIVA'],
       [{ grupo: 'DIGITADOR', usuario: { activo: true, debeCambiarPwd: false, bloqueadoHasta: null } }, 'SIN_CUENTA'],
