@@ -254,6 +254,11 @@ export async function permisoSegundoPlanoConcedido(): Promise<boolean> {
   return bg?.status === 'granted';
 }
 
+/** Si el rastreo en segundo plano está corriendo (sin abrir diálogos ni arrancarlo). */
+export function rastreoEnSegundoPlanoActivo(): Promise<boolean> {
+  return Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
+}
+
 export async function detenerRastreo(): Promise<void> {
   const yaActivo = await Location.hasStartedLocationUpdatesAsync(TRACKING_TASK).catch(() => false);
   if (yaActivo) {

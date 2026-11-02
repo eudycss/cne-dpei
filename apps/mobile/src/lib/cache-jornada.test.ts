@@ -78,13 +78,14 @@ describe('cache-jornada', () => {
   });
 
   it('prepararCacheParaUsuario conserva la copia del mismo operador y descarta la de otro', async () => {
-    await prepararCacheParaUsuario('u1');
+    await expect(prepararCacheParaUsuario('u1')).resolves.toBe(false);
     await guardarAsignacion(asignacion);
 
-    await prepararCacheParaUsuario('u1');
+    await expect(prepararCacheParaUsuario('u1')).resolves.toBe(false);
     await expect(leerAsignacion()).resolves.toEqual(asignacion);
 
-    await prepararCacheParaUsuario('u2');
+    // Devuelve true solo cuando descarta la jornada de otro operador.
+    await expect(prepararCacheParaUsuario('u2')).resolves.toBe(true);
     await expect(leerAsignacion()).resolves.toBeNull();
   });
 

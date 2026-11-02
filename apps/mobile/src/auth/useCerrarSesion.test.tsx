@@ -5,10 +5,12 @@ const mockLogout = jest.fn();
 jest.mock('./AuthContext', () => ({ useAuth: () => ({ logout: mockLogout }) }));
 jest.mock('../lib/offline-queue', () => ({ contarPendientes: jest.fn(), leerRechazadas: jest.fn() }));
 jest.mock('../lib/offline-foto-militar', () => ({ hayFotoMilitarPendiente: jest.fn() }));
+jest.mock('../lib/location', () => ({ rastreoEnSegundoPlanoActivo: jest.fn() }));
 
 import { useCerrarSesion } from './useCerrarSesion';
 import { contarPendientes, leerRechazadas } from '../lib/offline-queue';
 import { hayFotoMilitarPendiente } from '../lib/offline-foto-militar';
+import { rastreoEnSegundoPlanoActivo } from '../lib/location';
 
 let cerrarSesion: () => Promise<void>;
 function Harness() {
@@ -23,6 +25,7 @@ describe('useCerrarSesion', () => {
     (contarPendientes as jest.Mock).mockResolvedValue(0);
     (leerRechazadas as jest.Mock).mockResolvedValue([]);
     (hayFotoMilitarPendiente as jest.Mock).mockResolvedValue(false);
+    (rastreoEnSegundoPlanoActivo as jest.Mock).mockResolvedValue(false);
     act(() => {
       create(<Harness />);
     });
@@ -63,6 +66,15 @@ describe('useCerrarSesion', () => {
     expect(mensaje).toContain('la foto del militar');
     expect(mensaje).toContain('2 aviso(s)');
     expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('con el recorrido en curso avisa que el supervisor dejará de verlo en el mapa', async () => {
+    (rastreoEnSegundoPlanoActivo as jest.Mock).mockResolvedValue(true);
+
+    await act(() => cerrarSesion());
+
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect((Alert.alert as jest.Mock).mock.calls[0][1]).toContain('dejará de verte en el mapa');
   });
 
   it('si no puede leer el almacenamiento, cierra sesión igual', async () => {
