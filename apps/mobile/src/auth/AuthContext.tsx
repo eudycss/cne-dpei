@@ -4,8 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
+import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
 import { api, onSessionExpired, tokenStore } from '../lib/api';
@@ -39,7 +41,12 @@ interface AuthContextValue {
   loginOffline: (usuario: string, password: string) => Promise<ResultadoLoginOffline>;
   logout: () => Promise<void>;
   markPasswordChanged: () => void;
+  /** Aviso para la pantalla de ingreso cuando el servidor cerró la sesión. */
+  avisoSesion: string | null;
 }
+
+export const AVISO_SESION_CERRADA =
+  'El servidor no aceptó su sesión (ingreso sin conexión, contraseña cambiada o sesión vencida). Ingrese de nuevo con su contraseña actual: lo pendiente se enviará al ingresar.';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const USER_KEY = 'cne.user';
@@ -47,6 +54,9 @@ const USER_KEY = 'cne.user';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [restoring, setRestoring] = useState(true);
+  const [avisoSesion, setAvisoSesion] = useState<string | null>(null);
+  const userRef = useRef(user);
+  userRef.current = user;
 
   useEffect(() => {
     (async () => {
@@ -69,13 +79,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // se quedaba con una sesión "zombie": tokens borrados pero `user` seteado.
   useEffect(() => {
     const unsubscribe = onSessionExpired(() => {
+      // Solo si había alguien dentro: sin sesión no hay nada que avisar.
+      if (userRef.current) setAvisoSesion(AVISO_SESION_CERRADA);
       setUser(null);
     });
     return unsubscribe;
   }, []);
 
   const login = useCallback(async (usuario: string, password: string) => {
-    const { data } = await api.post<LoginResponse>('/auth/login', { usuario, password });
+    let data: LoginResponse;
+    try {
+      ({ data } = await api.post<LoginResponse>('/auth/login', { usuario, password }));
+    } catch (e) {
+      // El servidor rechazó una contraseña que el ingreso sin conexión todavía
+      // acepta: la guardada ya no es la vigente (la cambiaron o la resetearon).
+      // Si se conservara, se podría entrar sin conexión con la vieja y quedar
+      // sin sesión en el servidor (simulacro 2026-11-01). Un simple error de
+      // tipeo no coincide con la guardada y no la borra.
+      if (axios.isAxiosError(e) && e.response?.status === 401) {
+        const local = await verificarLoginOffline(usuario, password).catch(() => null);
+        if (local?.ok) await limpiarVerificadorOffline().catch(() => {});
+      }
+      throw e;
+    }
+    setAvisoSesion(null);
     // La copia local de la jornada (y la cola sin enviar) se conserva si es del
     // mismo operador (p. ej. volvió a entrar tras expirar la sesión) y se
     // descarta si es de otro. Va ANTES de guardar los tokens: si no, un envío
@@ -104,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resultado = await verificarLoginOffline(usuario, password);
     if (!resultado.ok) return resultado;
     await prepararCacheParaUsuario(resultado.usuario.id).catch(() => {});
+    setAvisoSesion(null);
     setUser(resultado.usuario);
     return { ok: true } as const;
   }, []);
@@ -123,6 +151,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await limpiarVerificadorOffline();
     await limpiarCacheJornada().catch(() => {});
     setUser(null);
+    // Un 401 de algo en vuelo mientras se limpiaba (tokens ya borrados, user
+    // aún seteado) dispara el aviso de sesión cerrada: en un cierre voluntario
+    // no corresponde.
+    setAvisoSesion(null);
   }, []);
 
   const markPasswordChanged = useCallback(() => {
@@ -130,8 +162,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, restoring, login, loginOffline, logout, markPasswordChanged }),
-    [user, restoring, login, loginOffline, logout, markPasswordChanged],
+    () => ({ user, restoring, login, loginOffline, logout, markPasswordChanged, avisoSesion }),
+    [user, restoring, login, loginOffline, logout, markPasswordChanged, avisoSesion],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

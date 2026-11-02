@@ -193,4 +193,22 @@ describe('SalidaDpiScreen', () => {
     expect(Alert.alert).toHaveBeenCalledWith('Sin señal', expect.stringContaining('sincronizará'));
     expect(onSalidaRegistrada).toHaveBeenCalledTimes(1);
   });
+
+  it('si el GPS no consigue ubicación, lo dice y no registra la salida (simulacro 2026-11-01)', async () => {
+    const gps = new Error('No se pudo obtener la ubicación a tiempo');
+    gps.name = 'UbicacionNoDisponibleError';
+    (obtenerUbicacionPuntual as jest.Mock).mockRejectedValue(gps);
+    const onSalidaRegistrada = jest.fn();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<SalidaDpiScreen onSalidaRegistrada={onSalidaRegistrada} />);
+      await flushPromises();
+    });
+
+    await presionarRegistrarSalida(renderer);
+
+    expect(Alert.alert).toHaveBeenCalledWith('Error', expect.stringContaining('No se pudo obtener su ubicación'));
+    expect(postSalidaDpi).not.toHaveBeenCalled();
+    expect(onSalidaRegistrada).not.toHaveBeenCalled();
+  });
 });

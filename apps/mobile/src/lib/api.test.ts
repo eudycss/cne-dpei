@@ -101,6 +101,39 @@ describe('response interceptor — refresh en 401', () => {
     expect(axios.post).not.toHaveBeenCalled();
   });
 
+  it('sin tokens (ingreso sin conexión) y el servidor responde 401: cierra la sesión', async () => {
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
+    const err = { response: { status: 401 }, config: { headers: {}, url: '/tracking/foto-acta' } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('un 401 de /auth/* (credenciales inválidas) no se trata como sesión cerrada', async () => {
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
+    const err = { response: { status: 401 }, config: { headers: {}, url: '/auth/login' } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('tampoco cierra la sesión un 401 de /auth/change-password (contraseña actual incorrecta)', async () => {
+    const listener = jest.fn();
+    const unsubscribe = onSessionExpired(listener);
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
+    const err = { response: { status: 401 }, config: { headers: {}, url: '/auth/change-password' } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it('renueva el token y reintenta la request original si el refresh funciona', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
     (axios.post as jest.Mock).mockResolvedValueOnce({

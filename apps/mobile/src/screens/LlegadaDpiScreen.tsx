@@ -24,6 +24,7 @@ import {
   obtenerUbicacionPuntual,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
+import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 
 type Props = {
   onLlegadaRegistrada: () => void;
@@ -113,7 +114,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
       } else {
         Alert.alert(
           'Error',
-          e?.response?.data?.message ?? 'No se pudo registrar la llegada. Intenta de nuevo.',
+          mensajeErrorRegistro(e, 'No se pudo registrar la llegada. Intenta de nuevo.'),
         );
       }
     } finally {

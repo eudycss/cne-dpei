@@ -44,6 +44,7 @@ import {
   obtenerUbicacionPuntual,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
+import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 
 type Paso = 1 | 2 | 3;
 type Styles = ReturnType<typeof makeStyles>;
@@ -248,7 +249,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     } else if (e instanceof LocationServicesDisabledError) {
       Alert.alert('Activa la ubicación', 'Activa los servicios de ubicación para continuar.');
     } else {
-      Alert.alert('Error', e?.response?.data?.message ?? fallback);
+      Alert.alert('Error', mensajeErrorRegistro(e, fallback));
     }
   }
 

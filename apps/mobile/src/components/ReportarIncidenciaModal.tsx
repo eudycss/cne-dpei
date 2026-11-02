@@ -13,6 +13,8 @@ import {
 import type { EstadoIncidencia, Incidencia, TipoIncidencia } from '@cne/shared-types';
 import { misIncidencias, reportarIncidencia } from '../lib/queries/incidencias';
 import { obtenerUbicacionPuntual } from '../lib/location';
+
+const LIMITE_GPS_INCIDENCIA_MS = 8_000;
 import { comprimirFoto } from '../lib/comprimir-foto';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
@@ -127,7 +129,8 @@ export function ReportarIncidenciaModal({ visible, onClose }: Props) {
       let lat: number | undefined;
       let lng: number | undefined;
       try {
-        const pos = await obtenerUbicacionPuntual();
+        // Espera corta: la incidencia es urgente y las coordenadas, opcionales.
+        const pos = await obtenerUbicacionPuntual({ limiteMs: LIMITE_GPS_INCIDENCIA_MS });
         lat = pos.latitud;
         lng = pos.longitud;
       } catch {

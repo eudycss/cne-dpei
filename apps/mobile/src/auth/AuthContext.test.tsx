@@ -29,7 +29,7 @@ jest.mock('../lib/offlineAuth', () => ({
 }));
 
 import * as SecureStore from 'expo-secure-store';
-import { AuthProvider, useAuth } from './AuthContext';
+import { AuthProvider, AVISO_SESION_CERRADA, useAuth } from './AuthContext';
 import { guardarVerificadorOffline, limpiarVerificadorOffline, verificarLoginOffline } from '../lib/offlineAuth';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import {
@@ -142,6 +142,33 @@ describe('AuthContext — reacción a sesión expirada', () => {
     expect(harness.current.user).toBeNull();
   });
 
+  it('al cerrarse la sesión deja un aviso para la pantalla de ingreso', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
+      key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
+    );
+    const harness = await renderAuth();
+    expect(harness.current.avisoSesion).toBeNull();
+
+    await act(async () => {
+      __emitSessionExpired();
+      await flushPromises();
+    });
+
+    expect(harness.current.avisoSesion).toBe(AVISO_SESION_CERRADA);
+  });
+
+  it('sin nadie dentro, el evento no deja aviso', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+    const harness = await renderAuth();
+
+    await act(async () => {
+      __emitSessionExpired();
+      await flushPromises();
+    });
+
+    expect(harness.current.avisoSesion).toBeNull();
+  });
+
   it('se desuscribe del evento al desmontar (no queda un listener colgado)', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
       key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
@@ -204,6 +231,105 @@ describe('AuthContext — login offline', () => {
     });
 
     expect(guardarVerificadorOffline).not.toHaveBeenCalled();
+  });
+
+  it('login() rechazado por credenciales inválidas borra la contraseña guardada para el ingreso sin conexión', async () => {
+    const err: any = new Error('Unauthorized');
+    err.isAxiosError = true;
+    err.response = { status: 401, data: { message: 'Credenciales inválidas' } };
+    (api.post as jest.Mock).mockRejectedValue(err);
+    (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: true, usuario: sessionUser });
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await expect(harness.current.login('1712345678', 'claveVieja')).rejects.toBe(err);
+    });
+
+    expect(limpiarVerificadorOffline).toHaveBeenCalled();
+  });
+
+  it('login() rechazado por un error de tipeo (no coincide con la guardada) NO la borra', async () => {
+    const err: any = new Error('Unauthorized');
+    err.isAxiosError = true;
+    err.response = { status: 401, data: { message: 'Credenciales inválidas' } };
+    (api.post as jest.Mock).mockRejectedValue(err);
+    (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: false, razon: 'invalido' });
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await expect(harness.current.login('1712345678', 'clavMal')).rejects.toBe(err);
+    });
+
+    expect(limpiarVerificadorOffline).not.toHaveBeenCalled();
+  });
+
+  it('logout() no deja el aviso de sesión cerrada aunque un 401 llegue mientras limpia', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
+      key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
+    );
+    // Simula una petición en vuelo que vuelve con 401 durante el logout.
+    (limpiarVerificadorOffline as jest.Mock).mockImplementation(async () => {
+      __emitSessionExpired();
+    });
+    (api.post as jest.Mock).mockResolvedValue({});
+    const harness = await renderAuth();
+
+    await act(async () => {
+      await harness.current.logout();
+    });
+
+    expect(harness.current.user).toBeNull();
+    expect(harness.current.avisoSesion).toBeNull();
+  });
+
+  it('loginOffline() exitoso quita el aviso de sesión cerrada', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
+      key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
+    );
+    (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: true, usuario: sessionUser });
+    const harness = await renderAuth();
+    await act(async () => {
+      __emitSessionExpired();
+      await flushPromises();
+    });
+    expect(harness.current.avisoSesion).not.toBeNull();
+
+    await act(async () => {
+      await harness.current.loginOffline('operador@cne-imbabura.gob.ec', 'Secreto123!');
+    });
+
+    expect(harness.current.avisoSesion).toBeNull();
+  });
+
+  it('login() que falla por red NO borra la contraseña guardada (sirve para entrar sin conexión)', async () => {
+    const err: any = new Error('Network Error');
+    err.isAxiosError = true;
+    (api.post as jest.Mock).mockRejectedValue(err);
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await expect(harness.current.login('1712345678', 'clave')).rejects.toBe(err);
+    });
+
+    expect(limpiarVerificadorOffline).not.toHaveBeenCalled();
+  });
+
+  it('login() online exitoso quita el aviso de sesión cerrada', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
+      key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
+    );
+    (api.post as jest.Mock).mockResolvedValue({ data: { accessToken: 'a', refreshToken: 'r', user: sessionUser } });
+    const harness = await renderAuth();
+    await act(async () => {
+      __emitSessionExpired();
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await harness.current.login('operador@cne-imbabura.gob.ec', 'Secreto123!');
+    });
+
+    expect(harness.current.avisoSesion).toBeNull();
   });
 
   it('loginOffline() exitoso setea user sin llamar al backend', async () => {

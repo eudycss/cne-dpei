@@ -1,13 +1,14 @@
 import { act, create, ReactTestRenderer, TestInstance } from 'react-test-renderer';
-import { Alert, Pressable, TextInput } from 'react-native';
+import { AccessibilityInfo, Alert, Pressable, TextInput } from 'react-native';
 
 jest.setTimeout(30000);
 
 const mockLogin = jest.fn();
 const mockLoginOffline = jest.fn();
+let mockAvisoSesion: string | null = null;
 
 jest.mock('../auth/AuthContext', () => ({
-  useAuth: () => ({ login: mockLogin, loginOffline: mockLoginOffline }),
+  useAuth: () => ({ login: mockLogin, loginOffline: mockLoginOffline, avisoSesion: mockAvisoSesion }),
 }));
 
 jest.mock('../theme/ThemeContext', () => ({
@@ -43,6 +44,7 @@ describe('LoginScreen — reingreso sin conexión', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAvisoSesion = null;
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
@@ -121,6 +123,28 @@ describe('LoginScreen — reingreso sin conexión', () => {
     await llenarYEnviar(renderer, 'operador@cne-imbabura.gob.ec', 'Secreto123!');
 
     expect(alertSpy).toHaveBeenCalledWith('Sin conexión', expect.stringContaining('venció'));
+  });
+
+  it('si el servidor cerró la sesión, muestra el aviso como alerta accesible', async () => {
+    jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    mockAvisoSesion = 'Su sesión se cerró (cambio de contraseña o sesión vencida). Ingrese de nuevo con su contraseña actual.';
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<LoginScreen />);
+    });
+
+    const aviso = renderer.root.findByProps({ children: mockAvisoSesion });
+    expect(aviso.props.accessibilityRole).toBe('alert');
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(mockAvisoSesion);
+  });
+
+  it('sin aviso no muestra nada extra', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<LoginScreen />);
+    });
+
+    expect(renderer.root.findAllByProps({ accessibilityRole: 'alert' })).toHaveLength(0);
   });
 
   it('si login() falla por credenciales inválidas (no es error de red), NO intenta loginOffline()', async () => {
