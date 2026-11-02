@@ -8,7 +8,10 @@ import type { EncargadoRecinto } from './encargados-recintos.client';
 /** Botón persistente bajo el chat que dispara el mismo flujo que escribir /caidos a mano. */
 export const TEXTO_BOTON_CAIDOS = '🔴 Caídos';
 
-/** Botón persistente que arranca el flujo de "mande el código y le respondo con su estado". */
+/** Botón persistente que arranca el flujo de "mande el código o el nombre y le respondo con su estado". */
+export const TEXTO_BOTON_BUSCAR_RECINTO = '🔍 Buscar recinto';
+
+/** Texto del botón anterior: los teclados que ya tiene la gente lo siguen mandando. */
 export const TEXTO_BOTON_INGRESAR_CODIGO = '🔍 Ingresar código';
 
 /** Botón persistente con la tarjeta de estadísticas (hoy, con botones para semana y mes). */
@@ -23,11 +26,14 @@ export const TEXTO_BOTON_PREGUNTAR = '💬 Preguntar';
 /** callback_data de los botones para elegir un recinto entre varios ("asis:rec:1008"). */
 export const PREFIJO_CALLBACK_RECINTO = 'asis:rec:';
 
+/** callback_data de los botones de "Buscar recinto" ("rec:1008"): manda la ficha del recinto. */
+export const PREFIJO_CALLBACK_FICHA = 'rec:';
+
 /** Teclado fijo bajo el chat, el mismo en todos los mensajes. "Preguntar" solo
  * aparece con el asistente activado (ASISTENTE_ENABLED y alguna llave). */
 export function tecladoFijo() {
   const filas = [
-    [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_INGRESAR_CODIGO }],
+    [{ text: TEXTO_BOTON_CAIDOS }, { text: TEXTO_BOTON_BUSCAR_RECINTO }],
     [{ text: TEXTO_BOTON_ESTADISTICAS }, { text: TEXTO_BOTON_ASIGNACIONES }],
   ];
   if (asistenteHabilitado()) filas.push([{ text: TEXTO_BOTON_PREGUNTAR }]);
@@ -436,7 +442,7 @@ export function formatearListaActual(
   return mensajes;
 }
 
-/** Respuesta a "Ingresar código" (HTML escapado): el recinto, su estado, su
+/** Respuesta a "Buscar recinto" (HTML escapado): el recinto, su estado, su
  * técnico y a quién llamar, con las mismas etiquetas que el aviso de caída. */
 export function formatearFichaRecinto(
   recinto: EnlaceCaido & { estado: string },
