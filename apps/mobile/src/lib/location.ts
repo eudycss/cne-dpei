@@ -32,6 +32,8 @@ export class UbicacionNoDisponibleError extends Error {
 
 /** Espera máxima a un fix GPS nuevo antes de recurrir a la última posición conocida. */
 export const LIMITE_GPS_MS = 20_000;
+/** Espera máxima a un fix GPS nuevo en los registros (llegada, salida, kits), que no usan respaldo. */
+export const LIMITE_GPS_REGISTRO_MS = 45_000;
 /** Antigüedad máxima de la última posición conocida (el rastreo en primer plano la refresca cada 10 s). */
 export const MAX_ANTIGUEDAD_ULTIMA_POSICION_MS = 30_000;
 /** Precisión mínima exigida a la última posición conocida (igual al tope de holgura GPS). */
@@ -70,9 +72,21 @@ export async function obtenerUbicacionPuntual(opciones: OpcionesUbicacion = {}):
   if (!granted) throw new LocationPermissionDeniedError();
 
   const actual = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-  const pos = opciones.permitirUltimaConocida
-    ? await fixConRespaldo(actual, opciones.limiteMs ?? LIMITE_GPS_MS)
-    : await actual;
+  let pos: Location.LocationObject | null;
+  if (opciones.permitirUltimaConocida) {
+    pos =
+      (await fixATiempo(actual, opciones.limiteMs ?? LIMITE_GPS_MS)) ??
+      (await Location.getLastKnownPositionAsync({
+        maxAge: MAX_ANTIGUEDAD_ULTIMA_POSICION_MS,
+        requiredAccuracy: PRECISION_ULTIMA_POSICION_METROS,
+      }).catch(() => null));
+  } else {
+    // Los registros exigen un fix nuevo, pero con límite: sin datos (sin
+    // A-GPS) o bajo techo el GPS puede no responder nunca y dejar el botón en
+    // "Registrando…" (caso salida del DPI, simulacro 2026-11-01).
+    pos = await fixATiempo(actual, opciones.limiteMs ?? LIMITE_GPS_REGISTRO_MS);
+  }
+  if (!pos) throw new UbicacionNoDisponibleError();
   return {
     latitud: pos.coords.latitude,
     longitud: pos.coords.longitude,
@@ -80,27 +94,21 @@ export async function obtenerUbicacionPuntual(opciones: OpcionesUbicacion = {}):
   };
 }
 
-async function fixConRespaldo(
+/** El fix si llega dentro del límite; null si el GPS falla o no responde a tiempo. */
+async function fixATiempo(
   actual: Promise<Location.LocationObject>,
   limiteMs: number,
-): Promise<Location.LocationObject> {
+): Promise<Location.LocationObject | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const limite = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), limiteMs);
   });
-  let pos: Location.LocationObject | null;
   try {
     // Un rechazo (sin señal suele ser un error rápido, no un cuelgue) cuenta igual que el timeout.
-    pos = await Promise.race([actual.catch(() => null), limite]);
+    return await Promise.race([actual.catch(() => null), limite]);
   } finally {
     clearTimeout(timer);
   }
-  pos ??= await Location.getLastKnownPositionAsync({
-    maxAge: MAX_ANTIGUEDAD_ULTIMA_POSICION_MS,
-    requiredAccuracy: PRECISION_ULTIMA_POSICION_METROS,
-  }).catch(() => null);
-  if (!pos) throw new UbicacionNoDisponibleError();
-  return pos;
 }
 
 /**

@@ -48,6 +48,7 @@ import {
   obtenerUbicacionPuntual,
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
+import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 
 type Paso = 1 | 2 | 3;
 type Styles = ReturnType<typeof makeStyles>;
@@ -426,7 +427,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       } else {
         Alert.alert(
           'Error',
-          e?.response?.data?.message ?? 'No se pudo registrar la salida. Intenta de nuevo.',
+          mensajeErrorRegistro(e, 'No se pudo registrar la salida. Intenta de nuevo.'),
         );
       }
     } finally {

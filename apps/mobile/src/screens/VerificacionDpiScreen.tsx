@@ -19,6 +19,7 @@ import { AppBar } from '../components/AppBar';
 import { IngresoCodigoKit } from '../components/IngresoCodigoKit';
 import { validarKitRetorno, verificarKitRetorno } from '../lib/queries/retorno';
 import { fontFamily } from '../theme/typography';
+import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 
 const ESTADOS: { value: EstadoItemKit; label: string }[] = [
   { value: 'BUENO', label: 'Bueno' },
@@ -84,7 +85,7 @@ export function VerificacionDpiScreen() {
     } catch (e: any) {
       Alert.alert(
         'Error',
-        e?.response?.data?.message ?? 'No se pudo registrar la verificación del kit.',
+        mensajeErrorRegistro(e, 'No se pudo registrar la verificación del kit.'),
       );
     } finally {
       setConfirmando(false);

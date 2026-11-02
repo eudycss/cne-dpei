@@ -327,8 +327,25 @@ describe('obtenerUbicacionPuntual', () => {
   it('sin respaldo (registros) exige un fix nuevo y no usa la última posición conocida', async () => {
     (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValue(new Error('provider unavailable'));
 
-    await expect(obtenerUbicacionPuntual()).rejects.toThrow('provider unavailable');
+    await expect(obtenerUbicacionPuntual()).rejects.toBeInstanceOf(UbicacionNoDisponibleError);
     expect(Location.getLastKnownPositionAsync).not.toHaveBeenCalled();
+  });
+
+  it('sin respaldo, si el GPS no responde nunca lanza UbicacionNoDisponibleError (no queda en "Registrando…")', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+    await expect(obtenerUbicacionPuntual({ limiteMs: 10 })).rejects.toBeInstanceOf(UbicacionNoDisponibleError);
+    expect(Location.getLastKnownPositionAsync).not.toHaveBeenCalled();
+  });
+
+  it('el error de GPS conserva su nombre (mensajeErrorRegistro lo reconoce por él)', () => {
+    expect(new UbicacionNoDisponibleError().name).toBe('UbicacionNoDisponibleError');
+  });
+
+  it('sin respaldo devuelve el fix nuevo cuando llega a tiempo', async () => {
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue(conPrecision(0.3575, -78.51));
+
+    await expect(obtenerUbicacionPuntual()).resolves.toEqual({ latitud: 0.3575, longitud: -78.51, precisionMetros: 8 });
   });
 
   it('con respaldo devuelve el fix nuevo cuando llega a tiempo', async () => {

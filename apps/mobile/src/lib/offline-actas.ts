@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { subirFotoActa } from './queries/retorno';
 import { comprimirFoto } from './comprimir-foto';
+import { MENSAJE_SESION_NO_VALIDA } from './mensaje-error-registro';
 
 /**
  * Persistencia local de las 2 actas obligatorias (instalación/escrutinio) que
@@ -155,7 +156,13 @@ async function subirYActualizar(
     return {
       uri: localUri,
       url: null,
-      error: e?.response?.data?.message ?? 'No se pudo subir la foto. Verifica tu conexión e intenta de nuevo.',
+      // 401: la foto queda guardada en el teléfono; el servidor no acepta la
+      // sesión (p. ej. ingreso sin conexión o contraseña cambiada). Se envía
+      // al volver a ingresar.
+      error:
+        e?.response?.status === 401
+          ? MENSAJE_SESION_NO_VALIDA
+          : e?.response?.data?.message ?? 'No se pudo subir la foto. Verifica tu conexión e intenta de nuevo.',
     };
   }
 }

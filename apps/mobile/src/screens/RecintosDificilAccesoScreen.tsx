@@ -15,6 +15,7 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { getRecintosDificilAcceso, postLlegadaRecintoManual } from '../lib/queries/monitoreo';
 import { fontFamily } from '../theme/typography';
+import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 
 const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: string }> = {
   EN_DPI: { label: 'En DPI', color: '#9ca3af' },
@@ -59,7 +60,7 @@ export function RecintosDificilAccesoScreen() {
         prev.map((r) => (r.recintoId === recinto.recintoId ? { ...r, estado: 'EN_RECINTO' } : r)),
       );
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.message ?? 'No se pudo registrar la llegada.');
+      Alert.alert('Error', mensajeErrorRegistro(e, 'No se pudo registrar la llegada.'));
     } finally {
       setRegistrando(null);
     }

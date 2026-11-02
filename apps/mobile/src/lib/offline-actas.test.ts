@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { subirFotoActa } from './queries/retorno';
+import { MENSAJE_SESION_NO_VALIDA } from './mensaje-error-registro';
 import { comprimirFoto } from './comprimir-foto';
 import {
   capturarYSubirActa,
@@ -97,6 +98,22 @@ describe('offline-actas', () => {
         error: 'Sin conexión',
       });
       // Aunque falló la subida, queda registrada localmente (uri persistido, sin url).
+      const estado = await restaurarActas(CONTEXTO);
+      expect(estado.instalacion).toEqual({ uri: `${DIRECTORIO}instalacion.jpg`, url: null });
+    });
+
+    it('si el servidor no acepta la sesión (401), lo dice claro en vez de "Unauthorized" y conserva la foto', async () => {
+      (subirFotoActa as jest.Mock).mockRejectedValue({
+        response: { status: 401, data: { message: 'Unauthorized' } },
+      });
+
+      const resultado = await capturarYSubirActa(CONTEXTO, 'instalacion', 'file:///cache/foto.jpg');
+
+      expect(resultado).toEqual({
+        uri: `${DIRECTORIO}instalacion.jpg`,
+        url: null,
+        error: MENSAJE_SESION_NO_VALIDA,
+      });
       const estado = await restaurarActas(CONTEXTO);
       expect(estado.instalacion).toEqual({ uri: `${DIRECTORIO}instalacion.jpg`, url: null });
     });

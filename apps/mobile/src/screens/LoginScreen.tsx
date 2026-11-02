@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  AccessibilityInfo,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -29,13 +30,19 @@ const MENSAJE_OFFLINE: Record<'sin-verificador' | 'vencido' | 'invalido', string
 };
 
 export function LoginScreen() {
-  const { login, loginOffline } = useAuth();
+  const { login, loginOffline, avisoSesion } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // El aviso aparece al montar la pantalla y una región "live" solo anuncia
+  // cambios posteriores: se anuncia explícitamente para TalkBack.
+  useEffect(() => {
+    if (avisoSesion) AccessibilityInfo.announceForAccessibility(avisoSesion);
+  }, [avisoSesion]);
 
   async function onSubmit() {
     if (!usuario || !password) {
@@ -84,6 +91,12 @@ export function LoginScreen() {
         <Text style={styles.title}>CNE Imbabura</Text>
         <Text style={styles.subtitle}>Trazabilidad y Logística Electoral</Text>
 
+        {avisoSesion ? (
+          <Text style={styles.aviso} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {avisoSesion}
+          </Text>
+        ) : null}
+
         <Text style={styles.label}>Cédula o correo</Text>
         <TextInput
           style={styles.input}
@@ -121,6 +134,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   logoWrap: { alignItems: 'center', marginBottom: 12 },
   title: { fontSize: 22, fontFamily: fontFamily.bold, textAlign: 'center', color: c.textPrimary },
   subtitle: { fontSize: 13, fontFamily: fontFamily.regular, textAlign: 'center', marginTop: 4, color: c.textSecondary, marginBottom: 20 },
+  aviso: { fontSize: 14, fontFamily: fontFamily.medium, color: c.warningText, backgroundColor: c.warningBg, borderRadius: 8, padding: 12, marginBottom: 16 },
   label: { fontSize: 13, fontFamily: fontFamily.medium, color: c.textLabel, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: c.borderInput, padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 14, fontFamily: fontFamily.regular, backgroundColor: c.bgCard, color: c.textPrimary },
   button: { backgroundColor: c.primaryBg, padding: 12, borderRadius: 6, marginTop: 4 },

@@ -65,7 +65,15 @@ api.interceptors.response.use(
     const original = err.config as InternalAxiosRequestConfig & { _retry?: boolean };
     if (err.response?.status !== 401 || original._retry) return Promise.reject(err);
     const refresh = await tokenStore.getRefresh();
-    if (!refresh) return Promise.reject(err);
+    if (!refresh) {
+      // Sin tokens (ingreso sin conexión) y el servidor ya responde: esa sesión
+      // no le sirve al servidor. Se cierra para que vuelva a ingresar en línea,
+      // en vez de quedar dentro viendo "Unauthorized" en cada envío (simulacro
+      // 2026-11-01). Las rutas /auth/* quedan fuera: ahí el 401 es "credenciales
+      // inválidas", no una sesión vencida.
+      if (!original.url?.startsWith('/auth/')) notifySessionExpired();
+      return Promise.reject(err);
+    }
     try {
       if (!refreshing) {
         refreshing = axios
