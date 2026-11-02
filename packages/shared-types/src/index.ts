@@ -488,6 +488,8 @@ export interface MiAsignacionResponse {
   yaRegistroLlegada: boolean;
   /** El operador ya confirmó que el recinto tiene conexión (después de la llegada). */
   yaRegistroPruebaConexion: boolean;
+  /** La prueba de conexión registrada ya tiene la foto de la computadora del test. */
+  pruebaConexionConFoto: boolean;
   yaRegistroSalidaRecinto: boolean;
   yaRegistroLlegadaDpi: boolean;
   fotoMilitarUrl: string | null;
@@ -640,6 +642,8 @@ export interface SalidaDpiResponse {
 
 export interface PruebaConexionRequest {
   ocurridoEn: string;
+  /** Foto de la computadora del test (url de POST /tracking/foto-acta). Si la prueba ya existe sin foto, se le agrega. */
+  fotoUrl?: string;
   /** true si la acción se reenvió desde la cola offline del móvil. */
   desdeOffline?: boolean;
 }
@@ -719,6 +723,7 @@ export interface CdaEstadoDto {
   tieneFotoMilitar: boolean;
   /** ISO de la última prueba de conexión del evento activo; null si aún no la hizo. */
   pruebaConexionEn: string | null;
+  tieneFotoPruebaConexion: boolean;
   tieneActaInstalacion: boolean;
   tieneActaEscrutinio: boolean;
 }
@@ -782,6 +787,7 @@ export interface ReporteFlujoItem {
   salidaDpiEn: string | null;
   llegadaRecintoEn: string | null;
   pruebaConexionEn: string | null;
+  tieneFotoPruebaConexion: boolean;
   salidaRecintoEn: string | null;
   llegadaDpiEn: string | null;
   /** La llegada al DPEI la registró un administrador desde la web (el operador olvidó marcarla). */

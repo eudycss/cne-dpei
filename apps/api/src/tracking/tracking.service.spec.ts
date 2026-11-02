@@ -23,7 +23,7 @@ describe('TrackingService', () => {
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
     parejaCda: { findMany: jest.fn() },
-    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
+    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     entregaCustodioKit: { findUnique: jest.fn() },
@@ -333,6 +333,22 @@ describe('TrackingService', () => {
       expect(result.yaRegistroPruebaConexion).toBe(true);
       expect(result.yaRegistroSalidaRecinto).toBe(false);
     });
+
+    it('indica si la prueba de conexión ya tiene la foto (la app la reenvía si subió después)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, codigoUnico: 'K001' }]);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId, canton: null });
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.configAlerta.findUnique.mockResolvedValueOnce(null);
+      prisma.recinto.findMany.mockResolvedValueOnce([]);
+      prisma.militar.findFirst.mockResolvedValueOnce(null);
+      prisma.$transaction.mockResolvedValueOnce([{ id: 's' }, { id: 'l' }, { id: 'p', fotoPruebaConexionUrl: null }, null, null, [], []]);
+
+      const result = await service.miAsignacion(operadorId);
+
+      expect(result.yaRegistroPruebaConexion).toBe(true);
+      expect(result.pruebaConexionConFoto).toBe(false);
+    });
   });
 
   describe('reporteFlujoCdas', () => {
@@ -347,10 +363,16 @@ describe('TrackingService', () => {
       ]);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
         { operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-01T16:55:00.000Z') },
-        { operadorId, tipo: 'PRUEBA_CONEXION', ocurridoEn: new Date('2026-10-01T17:00:00.000Z') },
+        {
+          operadorId,
+          tipo: 'PRUEBA_CONEXION',
+          ocurridoEn: new Date('2026-10-01T17:00:00.000Z'),
+          fotoPruebaConexionUrl: 'actas/pc.bin',
+        },
       ]);
 
       const [fila] = await service.reporteFlujoCdas();
+      expect(fila.tieneFotoPruebaConexion).toBe(true);
 
       expect(fila).toMatchObject({
         operadorId,
@@ -392,14 +414,26 @@ describe('TrackingService', () => {
         tipo: true,
         ocurridoEn: true,
         registradoPorId: true,
+        fotoPruebaConexionUrl: true,
       });
+      expect(fila.tieneFotoPruebaConexion).toBe(false);
     });
   });
 
   describe('registrarPruebaConexion', () => {
+    // 10:00 en Ecuador (UTC-5): la prueba se habilita desde las 9:00.
+    const aLas10 = '2026-06-23T15:00:00.000Z';
+    // Hora del servidor fija (15:00 Ecuador del mismo día): las pruebas no dependen de cuándo corren.
+    const ahoraServidor = new Date('2026-06-23T20:00:00.000Z').getTime();
+    beforeEach(() => {
+      jest.spyOn(Date, 'now').mockReturnValue(ahoraServidor);
+    });
+    afterEach(() => {
+      jest.spyOn(Date, 'now').mockRestore();
+    });
     it('lanza NotFoundException si no hay evento activo', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
-      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).rejects.toThrow(
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10 })).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -409,7 +443,7 @@ describe('TrackingService', () => {
       prisma.eventoTracking.findFirst
         .mockResolvedValueOnce(null) // sin prueba previa
         .mockResolvedValueOnce(null); // sin llegada
-      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).rejects.toThrow(
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10 })).rejects.toThrow(
         BadRequestException,
       );
       expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
@@ -433,19 +467,20 @@ describe('TrackingService', () => {
       prisma.eventoTracking.findFirst
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ recintoId });
-      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'prueba-2', ocurridoEn: new Date(ocurridoEn) });
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'prueba-2', ocurridoEn: new Date(aLas10) });
 
-      const result = await service.registrarPruebaConexion(operadorId, { ocurridoEn, desdeOffline: true });
+      const result = await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, desdeOffline: true });
 
-      expect(result).toEqual({ id: 'prueba-2', ocurridoEn });
+      expect(result).toEqual({ id: 'prueba-2', ocurridoEn: aLas10 });
       expect(prisma.eventoTracking.create).toHaveBeenCalledWith({
         data: {
           eventoId,
           operadorId,
           tipo: 'PRUEBA_CONEXION',
           recintoId,
-          ocurridoEn: new Date(ocurridoEn),
+          ocurridoEn: new Date(aLas10),
           desdeOffline: true,
+          fotoPruebaConexionUrl: null,
         },
         select: { id: true, ocurridoEn: true },
       });
@@ -459,10 +494,140 @@ describe('TrackingService', () => {
         .mockResolvedValueOnce({ id: 'ganadora', ocurridoEn: new Date(ocurridoEn) });
       prisma.eventoTracking.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
 
-      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn })).resolves.toEqual({
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10 })).resolves.toEqual({
         id: 'ganadora',
         ocurridoEn,
       });
+    });
+
+    it('antes de las 9:00 de Ecuador la rechaza con un mensaje claro, sin crear nada', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      // 08:59 en Ecuador.
+      await expect(
+        service.registrarPruebaConexion(operadorId, { ocurridoEn: '2026-06-23T13:59:00.000Z' }),
+      ).rejects.toThrow('La prueba de conexión se habilita desde las 9:00 (hora de Ecuador)');
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('a las 9:00 en punto ya la acepta', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'p', ocurridoEn: new Date('2026-06-23T14:00:00.000Z') });
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: '2026-06-23T14:00:00.000Z' });
+      expect(prisma.eventoTracking.create).toHaveBeenCalled();
+    });
+
+    it('con el servidor antes de las 9:00 la rechaza aunque mande una hora de otro día (desdeOffline)', async () => {
+      // 08:00 en Ecuador; el teléfono manda "ayer a las 10:00".
+      jest.spyOn(Date, 'now').mockReturnValue(new Date('2026-06-24T13:00:00.000Z').getTime());
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      await expect(
+        service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, desdeOffline: true }),
+      ).rejects.toThrow('La prueba de conexión se habilita desde las 9:00 (hora de Ecuador)');
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('solo acepta fotos subidas como acta (no la de un militar u otra categoría)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      storage.exists.mockResolvedValueOnce(true);
+      await expect(
+        service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'militares/abc.bin' }),
+      ).rejects.toThrow('Foto de la prueba de conexión no encontrada');
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('en la carrera (índice único), si la ganadora no traía foto se le agrega la de esta petición', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ recintoId })
+        .mockResolvedValueOnce({ id: 'ganadora', ocurridoEn: new Date(aLas10), fotoPruebaConexionUrl: null });
+      storage.exists.mockResolvedValue(true);
+      prisma.eventoTracking.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/pc.bin' });
+
+      expect(prisma.eventoTracking.updateMany).toHaveBeenCalledWith({
+        where: { id: 'ganadora', fotoPruebaConexionUrl: null },
+        data: { fotoPruebaConexionUrl: 'actas/pc.bin' },
+      });
+      storage.exists.mockReset();
+    });
+
+    it('rechaza una hora adelantada (reloj del teléfono cambiado para saltarse las 9:00)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      const enUnaHora = new Date(Date.now() + 60 * 60_000).toISOString();
+      await expect(service.registrarPruebaConexion(operadorId, { ocurridoEn: enUnaHora })).rejects.toThrow(
+        'La hora del teléfono está adelantada',
+      );
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('guarda la foto de la computadora del test si existe en el almacenamiento', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      storage.exists.mockResolvedValueOnce(true);
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'p', ocurridoEn: new Date(aLas10) });
+
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/pc.bin' });
+
+      expect(storage.exists).toHaveBeenCalledWith('actas/pc.bin');
+      expect(prisma.eventoTracking.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ fotoPruebaConexionUrl: 'actas/pc.bin' }) }),
+      );
+    });
+
+    it('si la foto no está en el almacenamiento, pide volver a subirla', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      storage.exists.mockResolvedValueOnce(false);
+      await expect(
+        service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/no.bin' }),
+      ).rejects.toThrow('Foto de la prueba de conexión no encontrada');
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('sin foto también la acepta (APK viejas que aún no la piden)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ recintoId });
+      prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'p', ocurridoEn: new Date(aLas10) });
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10 });
+      expect(storage.exists).not.toHaveBeenCalled();
+    });
+
+    it('si ya estaba registrada sin foto y llega la foto (subió después, sin señal), se la agrega', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({
+        id: 'prueba-1',
+        ocurridoEn: new Date(aLas10),
+        fotoPruebaConexionUrl: null,
+      });
+      storage.exists.mockResolvedValueOnce(true);
+
+      const r = await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/pc.bin' });
+
+      expect(r).toEqual({ id: 'prueba-1', ocurridoEn: aLas10 });
+      expect(prisma.eventoTracking.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prueba-1', fotoPruebaConexionUrl: null },
+        data: { fotoPruebaConexionUrl: 'actas/pc.bin' },
+      });
+      expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+    });
+
+    it('si ya tenía foto, no la reemplaza (evidencia)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({
+        id: 'prueba-1',
+        ocurridoEn: new Date(aLas10),
+        fotoPruebaConexionUrl: 'actas/a.bin',
+      });
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/b.bin' });
+      expect(prisma.eventoTracking.updateMany).not.toHaveBeenCalled();
+      expect(storage.exists).not.toHaveBeenCalled();
     });
 
     it('rechaza una fecha que no es ISO', async () => {
@@ -1519,7 +1684,9 @@ describe('TrackingService', () => {
         { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
       ]);
       prisma.eventoTracking.findMany
-        .mockResolvedValueOnce([]) // trackingRows (estado)
+        .mockResolvedValueOnce([
+          { operadorId, tipo: 'PRUEBA_CONEXION', ocurridoEn: new Date(ocurridoEn), fotoPruebaConexionUrl: 'actas/pc.bin' },
+        ]) // trackingRows (estado)
         .mockResolvedValueOnce([
           { operadorId, actaInstalacionUrl: 'actas/inst.bin', actaEscrutinioUrl: null },
         ]); // salidasRecinto (flags de actas)
@@ -1535,6 +1702,7 @@ describe('TrackingService', () => {
           operadorId,
           tieneActaInstalacion: true,
           tieneActaEscrutinio: false,
+          tieneFotoPruebaConexion: true,
         }),
       ]);
     });
@@ -1577,6 +1745,7 @@ describe('TrackingService', () => {
       const [cda] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
 
       expect(cda.pruebaConexionEn).toBeNull();
+      expect(cda.tieneFotoPruebaConexion).toBe(false);
     });
 
     it('si la prueba de conexión se registró más de una vez, devuelve la más reciente', async () => {
@@ -1593,7 +1762,9 @@ describe('TrackingService', () => {
       expect(cda.estado).toBe('EN_RECINTO');
       expect(prisma.eventoTracking.findMany).toHaveBeenNthCalledWith(
         1,
-        expect.objectContaining({ select: { operadorId: true, tipo: true, ocurridoEn: true } }),
+        expect.objectContaining({
+          select: { operadorId: true, tipo: true, ocurridoEn: true, fotoPruebaConexionUrl: true },
+        }),
       );
     });
   });
@@ -1742,6 +1913,30 @@ describe('TrackingService', () => {
       await expect(
         service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'instalacion'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('la foto de la prueba de conexión sale de la fila PRUEBA_CONEXION', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: 'actas/pc.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      await service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'conexion');
+
+      expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith({
+        where: { eventoId, operadorId, tipo: 'PRUEBA_CONEXION' },
+        select: { fotoPruebaConexionUrl: true },
+      });
+      expect(storage.readDecrypted).toHaveBeenCalledWith('actas/pc.bin');
+    });
+
+    it('sin foto de la prueba de conexión: 404 con mensaje claro', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: null });
+      await expect(service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'conexion')).rejects.toThrow(
+        'No hay foto de la prueba de conexión para este CDA',
+      );
     });
 
     it('un LECTOR obtiene el acta de escrutinio sin verificar asignación de supervisor', async () => {

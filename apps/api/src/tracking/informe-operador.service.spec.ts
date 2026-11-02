@@ -30,6 +30,7 @@ function fila(over: Partial<ReporteFlujoItem> = {}): ReporteFlujoItem {
     salidaDpiEn: '2026-10-01T14:09:00.000Z',
     llegadaRecintoEn: '2026-10-01T16:55:00.000Z',
     pruebaConexionEn: '2026-10-01T17:00:00.000Z',
+    tieneFotoPruebaConexion: false,
     salidaRecintoEn: '2026-10-01T16:58:00.000Z',
     llegadaDpiEn: null,
     llegadaDpiManual: false,

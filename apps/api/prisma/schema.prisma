@@ -474,6 +474,9 @@ model EventoTracking {
   // las actas antes de poder registrar la salida del recinto.
   actaInstalacionUrl String? @map("acta_instalacion_url") @db.VarChar(512)
   actaEscrutinioUrl  String? @map("acta_escrutinio_url") @db.VarChar(512)
+  // Solo en la fila tipo=PRUEBA_CONEXION: foto de la computadora donde se hizo
+  // el test (obligatoria en la app; opcional en el servidor por las APK viejas).
+  fotoPruebaConexionUrl String? @map("foto_prueba_conexion_url") @db.VarChar(512)
   // Solo en una LLEGADA_DPI registrada desde la web por un administrador
   // (el operador olvidó marcarla): quién la registró y por qué.
   registradoPorId String?  @map("registrado_por_id") @db.Uuid

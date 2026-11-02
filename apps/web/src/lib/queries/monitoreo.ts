@@ -41,14 +41,14 @@ export async function getFotoMilitar(recintoId: string): Promise<Blob> {
   return data;
 }
 
+export type TipoFotoCda = 'instalacion' | 'escrutinio' | 'conexion';
+
 /**
  * Foto del acta de instalación o de escrutinio (descifrada), subida por el
- * operador antes de la salida del recinto de ese CDA.
+ * operador antes de la salida del recinto de ese CDA, o de la computadora de
+ * la prueba de conexión (`conexion`).
  */
-export async function getFotoActa(
-  recintoId: string,
-  tipo: 'instalacion' | 'escrutinio',
-): Promise<Blob> {
+export async function getFotoActa(recintoId: string, tipo: TipoFotoCda): Promise<Blob> {
   const { data } = await api.get<Blob>(`/tracking/estado-cdas/${recintoId}/foto-acta/${tipo}`, {
     responseType: 'blob',
   });

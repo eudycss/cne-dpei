@@ -60,6 +60,7 @@ import { PrismaService } from '../db/prisma.service';
 import { AlertasService } from '../alertas/alertas.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
+import { horaEcuador } from '../operadores-cda/dia-ecuador';
 
 // HU3: margen para registrar la llegada al recinto. Es configurable por evento
 // (ConfigAlerta.margenLlegadaMetros, vía "Configurar alertas" en Eventos) para
@@ -117,6 +118,14 @@ const MIN_DESFASE_SIN_SENAL_MS = 2 * 60_000;
 const MAX_ADELANTO_RELOJ_MS = 60_000;
 
 type FueraDeRango = { metros: number; margen: number; desfaseMinutos: number };
+
+// Prueba de conexión: se habilita desde esta hora (Ecuador). Una hora de
+// registro más adelantada que la tolerancia se rechaza, para que cambiar el
+// reloj del teléfono no permita saltarse la hora.
+const HORA_INICIO_PRUEBA_CONEXION = '09:00';
+const TOLERANCIA_RELOJ_MS = 5 * 60_000;
+
+type TipoFotoCda = 'instalacion' | 'escrutinio' | 'conexion';
 
 /**
  * Minutos entre el registro en el celular y su llegada al servidor, si la
@@ -264,7 +273,7 @@ export class TrackingService {
       }),
       this.prisma.eventoTracking.findFirst({
         where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
-        select: { id: true },
+        select: { id: true, fotoPruebaConexionUrl: true },
       }),
       this.prisma.eventoTracking.findFirst({
         where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
@@ -347,6 +356,7 @@ export class TrackingService {
       yaRegistroSalida: !!salidaPrevia,
       yaRegistroLlegada: !!llegadaPrevia,
       yaRegistroPruebaConexion: !!pruebaConexionPrevia,
+      pruebaConexionConFoto: !!pruebaConexionPrevia?.fotoPruebaConexionUrl,
       yaRegistroSalidaRecinto: !!salidaRecintoPrevia,
       yaRegistroLlegadaDpi: !!llegadaDpiPrevia,
       fotoMilitarUrl,
@@ -1151,9 +1161,11 @@ export class TrackingService {
    */
   /**
    * Prueba de conexión: el operador confirma a la vista que el recinto tiene
-   * conexión. Exige la llegada al recinto; es idempotente (la cola offline puede
-   * reenviarla) y devuelve la ya registrada. La app la exige antes de la salida
-   * del recinto; el servidor no, para no bloquear a las APK que no la tienen.
+   * conexión. Exige la llegada al recinto y se habilita desde las 9:00 (hora de
+   * Ecuador). Es idempotente (la cola offline puede reenviarla) y devuelve la ya
+   * registrada; si esa no tenía foto y ahora llega (subió después, sin señal),
+   * se le agrega. La app exige la prueba y la foto antes de la salida del
+   * recinto; el servidor no, para no bloquear a las APK que no las tienen.
    */
   async registrarPruebaConexion(
     operadorId: string,
@@ -1168,9 +1180,14 @@ export class TrackingService {
 
     const existente = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
-      select: { id: true, ocurridoEn: true },
+      select: { id: true, ocurridoEn: true, fotoPruebaConexionUrl: true },
     });
-    if (existente) return { id: existente.id, ocurridoEn: existente.ocurridoEn.toISOString() };
+    if (existente) {
+      if (parsed.fotoUrl && !existente.fotoPruebaConexionUrl) {
+        await this.agregarFotoPruebaConexion(existente.id, parsed.fotoUrl);
+      }
+      return { id: existente.id, ocurridoEn: existente.ocurridoEn.toISOString() };
+    }
 
     const llegada = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
@@ -1180,6 +1197,22 @@ export class TrackingService {
       throw new BadRequestException('Debes registrar la llegada al recinto antes de la prueba de conexión');
     }
 
+    const ocurridoEn = new Date(parsed.ocurridoEn);
+    const ahora = new Date(Date.now());
+    if (ocurridoEn.getTime() > ahora.getTime() + TOLERANCIA_RELOJ_MS) {
+      throw new BadRequestException(
+        'La hora del teléfono está adelantada: corríjala (fecha y hora automáticas) e intente de nuevo',
+      );
+    }
+    // También la hora del servidor: si no, una hora de otro día (p. ej. "ayer a
+    // las 10:00" marcada como sin señal) saltaría la regla antes de las 9:00.
+    if (horaEcuador(ocurridoEn) < HORA_INICIO_PRUEBA_CONEXION || horaEcuador(ahora) < HORA_INICIO_PRUEBA_CONEXION) {
+      throw new BadRequestException(
+        `La prueba de conexión se habilita desde las ${Number(HORA_INICIO_PRUEBA_CONEXION.slice(0, 2))}:00 (hora de Ecuador)`,
+      );
+    }
+    if (parsed.fotoUrl) await this.exigirFotoPruebaConexion(parsed.fotoUrl);
+
     try {
       const creado = await this.prisma.eventoTracking.create({
         data: {
@@ -1187,8 +1220,9 @@ export class TrackingService {
           operadorId,
           tipo: 'PRUEBA_CONEXION',
           recintoId: llegada.recintoId,
-          ocurridoEn: new Date(parsed.ocurridoEn),
+          ocurridoEn,
           desdeOffline: parsed.desdeOffline ?? false,
+          fotoPruebaConexionUrl: parsed.fotoUrl ?? null,
         },
         select: { id: true, ocurridoEn: true },
       });
@@ -1199,10 +1233,29 @@ export class TrackingService {
       if ((e as { code?: string })?.code !== 'P2002') throw e;
       const ganadora = await this.prisma.eventoTracking.findFirst({
         where: { eventoId: evento.id, operadorId, tipo: 'PRUEBA_CONEXION' },
-        select: { id: true, ocurridoEn: true },
+        select: { id: true, ocurridoEn: true, fotoPruebaConexionUrl: true },
       });
       if (!ganadora) throw e;
+      if (parsed.fotoUrl && !ganadora.fotoPruebaConexionUrl) {
+        await this.agregarFotoPruebaConexion(ganadora.id, parsed.fotoUrl);
+      }
       return { id: ganadora.id, ocurridoEn: ganadora.ocurridoEn.toISOString() };
+    }
+  }
+
+  /** Condicional: una foto ya guardada (evidencia) no se reemplaza. */
+  private async agregarFotoPruebaConexion(id: string, url: string): Promise<void> {
+    await this.exigirFotoPruebaConexion(url);
+    await this.prisma.eventoTracking.updateMany({
+      where: { id, fotoPruebaConexionUrl: null },
+      data: { fotoPruebaConexionUrl: url },
+    });
+  }
+
+  /** Solo fotos subidas por POST /tracking/foto-acta (categoría actas), no la de un militar u otra. */
+  private async exigirFotoPruebaConexion(url: string): Promise<void> {
+    if (!url.startsWith('actas/') || !(await this.storage.exists(url))) {
+      throw new BadRequestException('Foto de la prueba de conexión no encontrada. Vuelve a subirla.');
     }
   }
 
@@ -1497,11 +1550,12 @@ export class TrackingService {
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
-      select: { operadorId: true, tipo: true, ocurridoEn: true },
+      select: { operadorId: true, tipo: true, ocurridoEn: true, fotoPruebaConexionUrl: true },
     });
     const tiposPorOperador = new Map<string, Set<string>>();
     // La app puede repetir la prueba de conexión: vale la más reciente.
     const pruebaConexionPorOperador = new Map<string, Date>();
+    const conFotoPruebaConexion = new Set<string>();
     for (const t of trackingRows) {
       const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
       set.add(t.tipo);
@@ -1509,6 +1563,7 @@ export class TrackingService {
       if (t.tipo === 'PRUEBA_CONEXION') {
         const previa = pruebaConexionPorOperador.get(t.operadorId);
         if (!previa || t.ocurridoEn > previa) pruebaConexionPorOperador.set(t.operadorId, t.ocurridoEn);
+        if (t.fotoPruebaConexionUrl) conFotoPruebaConexion.add(t.operadorId);
       }
     }
 
@@ -1587,6 +1642,7 @@ export class TrackingService {
         ubicacion,
         tieneFotoMilitar: operadoresConFoto.has(operadorId),
         pruebaConexionEn: pruebaConexionPorOperador.get(operadorId)?.toISOString() ?? null,
+        tieneFotoPruebaConexion: conFotoPruebaConexion.has(operadorId),
         tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
         tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
       };
@@ -1812,15 +1868,17 @@ export class TrackingService {
         operadorId: { in: operadorIds },
         tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'PRUEBA_CONEXION', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
       },
-      select: { operadorId: true, tipo: true, ocurridoEn: true, registradoPorId: true },
+      select: { operadorId: true, tipo: true, ocurridoEn: true, registradoPorId: true, fotoPruebaConexionUrl: true },
     });
     const hitosPorOperador = new Map<string, Map<string, Date>>();
     const llegadaManual = new Set<string>();
+    const conFotoPruebaConexion = new Set<string>();
     for (const h of hitos) {
       const mapa = hitosPorOperador.get(h.operadorId) ?? new Map<string, Date>();
       mapa.set(h.tipo, h.ocurridoEn);
       hitosPorOperador.set(h.operadorId, mapa);
       if (h.tipo === 'LLEGADA_DPI' && h.registradoPorId) llegadaManual.add(h.operadorId);
+      if (h.tipo === 'PRUEBA_CONEXION' && h.fotoPruebaConexionUrl) conFotoPruebaConexion.add(h.operadorId);
     }
 
     return cdas.map((cda) => {
@@ -1841,6 +1899,7 @@ export class TrackingService {
         salidaDpiEn: mapa?.get('SALIDA_DPI')?.toISOString() ?? null,
         llegadaRecintoEn: mapa?.get('LLEGADA_RECINTO')?.toISOString() ?? null,
         pruebaConexionEn: mapa?.get('PRUEBA_CONEXION')?.toISOString() ?? null,
+        tieneFotoPruebaConexion: conFotoPruebaConexion.has(operadorId),
         salidaRecintoEn: mapa?.get('SALIDA_RECINTO')?.toISOString() ?? null,
         llegadaDpiEn: mapa?.get('LLEGADA_DPI')?.toISOString() ?? null,
         llegadaDpiManual: llegadaManual.has(operadorId),
@@ -1904,14 +1963,15 @@ export class TrackingService {
 
   /**
    * Devuelve el acta de instalación o de escrutinio (cifrada en disco,
-   * subida antes de la salida del recinto) descifrada para el CDA del
-   * recinto indicado. Mismo control de acceso que obtenerFotoMilitar.
+   * subida antes de la salida del recinto), o la foto de la computadora de la
+   * prueba de conexión, descifrada para el CDA del recinto indicado. Mismo
+   * control de acceso que obtenerFotoMilitar.
    */
   async obtenerFotoActa(
     recintoId: string,
     viewerId: string,
     roles: RoleName[],
-    tipo: 'instalacion' | 'escrutinio',
+    tipo: TipoFotoCda,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
@@ -1932,6 +1992,18 @@ export class TrackingService {
         select: { id: true },
       });
       if (!asignado) throw new NotFoundException('CDA no encontrado');
+    }
+
+    if (tipo === 'conexion') {
+      const prueba = await this.prisma.eventoTracking.findFirst({
+        where: { eventoId: evento.id, operadorId: kit.operadorId, tipo: 'PRUEBA_CONEXION' },
+        select: { fotoPruebaConexionUrl: true },
+      });
+      if (!prueba?.fotoPruebaConexionUrl) {
+        throw new NotFoundException('No hay foto de la prueba de conexión para este CDA');
+      }
+      const buffer = await this.storage.readDecrypted(prueba.fotoPruebaConexionUrl);
+      return { buffer, contentType: detectarContentTypeImagen(buffer) };
     }
 
     const salidaRecinto = await this.prisma.eventoTracking.findFirst({

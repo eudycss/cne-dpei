@@ -92,6 +92,7 @@ const cdaConUbicacionYFoto: CdaEstadoDto = {
   ubicacion: { latitud: 0.35, longitud: -78.12, capturadoEn: '2026-07-01T10:00:00.000Z' },
   tieneFotoMilitar: true,
   pruebaConexionEn: '2026-07-01T09:45:00.000Z',
+  tieneFotoPruebaConexion: true,
   tieneActaInstalacion: true,
   tieneActaEscrutinio: false,
 };
@@ -108,6 +109,7 @@ const cdaSinUbicacionNiFoto: CdaEstadoDto = {
   ubicacion: null,
   tieneFotoMilitar: false,
   pruebaConexionEn: null,
+  tieneFotoPruebaConexion: false,
   tieneActaInstalacion: false,
   tieneActaEscrutinio: false,
 };
@@ -518,6 +520,36 @@ describe('MonitoreoPage', () => {
     expect(screen.getByRole('columnheader', { name: 'Reporte escrutinio' })).toBeInTheDocument();
     expect(within(fila).queryByText('Ver acta')).not.toBeInTheDocument();
     expect(within(fila).getAllByText('Ver reporte')).toHaveLength(2);
+  });
+
+  it('la prueba de conexión con foto muestra "Ver foto" y abre la foto de la computadora del test', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([
+      cdaConUbicacionYFoto,
+      cdaSinUbicacionNiFoto,
+      { ...cdaSinUbicacionNiFoto, recintoId: 'r3', nombreRecinto: 'UE Sin Foto', pruebaConexionEn: '2026-07-01T09:50:00.000Z' },
+    ]);
+    getFotoActaMock.mockResolvedValue(new Blob(['fake'], { type: 'image/png' }));
+    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    global.URL.revokeObjectURL = vi.fn();
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText('Escuela Manuela Cañizares');
+
+    expect(
+      within(screen.getByText('Colegio Otavalo').closest('tr')!).queryByRole('button', { name: /prueba de conexión/ }),
+    ).not.toBeInTheDocument();
+    expect(within(screen.getByText('UE Sin Foto').closest('tr')!).getByText('Sin foto')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Ver foto de la prueba de conexión — Escuela Manuela Cañizares' }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: 'Foto de la prueba de conexión' })).toBeInTheDocument();
+    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'conexion');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('los botones "Ver reporte" respetan tieneActaInstalacion/tieneActaEscrutinio, y cargan la imagen correcta', async () => {
