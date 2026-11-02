@@ -391,6 +391,12 @@ export async function asignarKitParejaCda(id: string, justificacion?: string): P
   return data;
 }
 
+/** "Darle su propio kit": otro kit del recinto para la pareja solo registrada, en su app. */
+export async function darKitPropioParejaCda(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/${id}/kit-propio`, justificacion ? { justificacion } : {});
+  return data;
+}
+
 /** Celular de una persona CDA (ANDROID, IPHONE o null). */
 export async function cambiarDispositivoOperadorCda(id: string, dispositivo: DispositivoCda | null): Promise<void> {
   await api.patch(`/operadores-cda/${id}/dispositivo`, { dispositivo });

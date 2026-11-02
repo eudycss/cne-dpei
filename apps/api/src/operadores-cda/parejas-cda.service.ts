@@ -202,6 +202,7 @@ export class ParejasCdaService {
     await this.libresEseDia(actual.fecha, diaDeFechaDb(actual.fecha), operadorCdaId, asistenteCdaId, id);
     const cambiaRecinto = !!datos.recintoId && datos.recintoId !== actual.recintoId;
     if (cambiaRecinto) await this.validarRecinto(datos.recintoId as string);
+    await this.quienLlevaKitSalidoSeQueda(actual, operadorCdaId, asistenteCdaId, cambiaRecinto);
 
     const kitAnterior = cambiaRecinto ? await this.kitDelOperador(actual) : null;
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion, true);
@@ -235,7 +236,7 @@ export class ParejasCdaService {
     if (!r) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para asignar el kit`);
     if (!r.enApp && !r.errores.length) {
       throw new ConflictException(
-        'Esta pareja comparte el recinto con otra que lleva el kit. Para darle uno propio, cree otro kit del recinto en Kits ("otro dispositivo")',
+        'Esta pareja comparte el recinto con otra que lleva el kit. Para darle uno propio, use "Darle su propio kit"',
       );
     }
     return r;
@@ -327,7 +328,14 @@ export class ParejasCdaService {
     if (evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }) && !justificacion?.trim()) {
       throw new BadRequestException(MENSAJE_CONGELADO);
     }
-    const kits = evento ? await this.kitsASoltar(evento.id, [a.kitId, b.kitId]) : [];
+    // Al cambiar asistentes (u operadores), un kit que ya salió con el otro integrante se queda con él.
+    const seMueven =
+      campo === 'ASISTENTE'
+        ? [a.asistente?.usuarioId, b.asistente?.usuarioId]
+        : campo === 'OPERADOR'
+          ? [a.operador.usuarioId, b.operador.usuarioId]
+          : undefined;
+    const kits = evento ? await this.kitsASoltar(evento.id, [a.kitId, b.kitId], seMueven) : [];
     for (const k of kits) await this.kits.quitarOperador(k, justificacion, true);
     // El kit es del recinto: cada pareja se lleva el vínculo con el kit de su
     // nuevo recinto (así, en un recinto con dos parejas, no se va a la otra).
@@ -372,17 +380,113 @@ export class ParejasCdaService {
   /**
    * Kits del evento (el activo de ese día) que hay que soltar; si alguno ya
    * salió de la Delegación, 409 aunque no tenga operador (es conservador).
+   * Con `seMueven` (usuarios que cambian de pareja), un kit que salió con
+   * otra persona no impide el cambio: se queda con ella y no se suelta.
    */
-  private async kitsASoltar(eventoId: string, ids: (string | null)[]): Promise<string[]> {
+  private async kitsASoltar(eventoId: string, ids: (string | null)[], seMueven?: (string | null | undefined)[]): Promise<string[]> {
     const conKit = ids.filter((k): k is string => !!k);
     if (!conKit.length) return [];
     const kits = await this.prisma.kitElectoral.findMany({
       where: { id: { in: conKit }, eventoId },
       select: { id: true, codigoUnico: true, estado: true, operadorId: true },
     });
-    const salio = kits.find((k) => !EN_DELEGACION.has(k.estado));
-    if (salio) throw new ConflictException(`El kit ${salio.codigoUnico} ya salió de la Delegación: no se puede cambiar su pareja`);
-    return kits.filter((k) => k.operadorId).map((k) => k.id);
+    const salidos = kits.filter((k) => !EN_DELEGACION.has(k.estado));
+    const bloquea = salidos.find((k) => !seMueven || !k.operadorId || seMueven.includes(k.operadorId));
+    if (bloquea) throw new ConflictException(`El kit ${bloquea.codigoUnico} ya salió de la Delegación: no se puede cambiar su pareja`);
+    return kits.filter((k) => k.operadorId && EN_DELEGACION.has(k.estado)).map((k) => k.id);
+  }
+
+  /**
+   * Quien lleva un kit (del evento de ese día) que ya salió de la Delegación
+   * sigue en la pareja: cadena de custodia. Al otro integrante sí se lo cambia.
+   */
+  private async quienLlevaKitSalidoSeQueda(
+    actual: Awaited<ReturnType<ParejasCdaService['leerPareja']>>,
+    operadorCdaId: string,
+    asistenteCdaId: string | null,
+    cambiaRecinto: boolean,
+  ): Promise<void> {
+    const kit = actual.kit;
+    if (!kit?.estado || EN_DELEGACION.has(kit.estado)) return;
+    const evento = await this.eventoDeFecha(diaDeFechaDb(actual.fecha));
+    if (kit.eventoId !== evento?.id) return;
+    if (cambiaRecinto) {
+      throw new ConflictException(`El kit ${kit.codigoUnico} ya salió de la Delegación hacia su recinto: no se puede cambiar el recinto`);
+    }
+    if (!kit.operadorId) return;
+    const sale =
+      (kit.operadorId === actual.operador.usuarioId && operadorCdaId !== actual.operadorCdaId && actual.operador) ||
+      (kit.operadorId === actual.asistente?.usuarioId && asistenteCdaId !== actual.asistenteCdaId && actual.asistente);
+    if (sale) {
+      throw new ConflictException(
+        `${sale.apellidosNombres} lleva el kit ${kit.codigoUnico}, que ya salió de la Delegación: no se puede cambiar. Puede cambiar al otro integrante.`,
+      );
+    }
+  }
+
+  /**
+   * "Darle su propio kit": la pareja solo registrada (otra lleva el kit del
+   * recinto) recibe otro kit del mismo recinto ("otro dispositivo", con los
+   * artículos de la pareja o los del catálogo) y pasa a la app. Si no se
+   * puede asignar, el kit nuevo se borra y la pareja queda como estaba.
+   */
+  async darKitPropio(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+    const p = await this.leerPareja(id);
+    if (p.kitId) throw new ConflictException('Esta pareja ya tiene su kit');
+    const fecha = diaDeFechaDb(p.fecha);
+    const evento = await this.eventoDeFecha(fecha);
+    if (!evento) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para crear el kit`);
+    if (this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }) && !justificacion?.trim()) {
+      throw new BadRequestException({ message: MENSAJE_CONGELADO_KIT, frozen: true });
+    }
+    // Solo la pareja que queda registrada porque otra del recinto ya lleva kit, y sin kit libre que tomar.
+    const delDia = await this.parejasDelDia(fecha);
+    const primeras = primerasPorRecinto(delDia);
+    if (primeras.has(id) || kitsLibresPorRecinto(delDia, primeras, evento).has(p.recintoId)) {
+      throw new ConflictException('Esta pareja puede usar el kit de su recinto: use "Asignar kit"');
+    }
+    const recinto = await this.prisma.recinto.findUnique({ where: { id: p.recintoId }, select: { codigoRecinto: true, nombre: true } });
+    const detalleItems = p.articulos ? await this.detalleDeArticulos(p.articulos) : undefined;
+    const nuevo = await this.kits.create({
+      eventoId: evento.id,
+      nombre: `${recinto?.codigoRecinto ?? ''} — ${recinto?.nombre ?? ''}`.slice(0, 160), // VARCHAR(160)
+      recintoId: p.recintoId,
+      otroDispositivo: true,
+      ...(detalleItems && { detalleItems }),
+    });
+    // Condicional: con doble clic o dos administradores a la vez, solo uno vincula su kit.
+    const { count } = await this.prisma.parejaCda.updateMany({ where: { id, kitId: null }, data: { kitId: nuevo.id } });
+    if (count !== 1) {
+      await this.borrarKitNuevo(nuevo.id);
+      throw new ConflictException('Esta pareja ya recibió su kit (otro pedido llegó primero): recargue la lista');
+    }
+    let r: AplicarParejasCdaResult;
+    try {
+      r = (await this.aplicarDia(fecha, { ids: [id] }, justificacion)) ?? vacio();
+    } catch (e) {
+      await this.deshacerKitPropio(id, nuevo.id);
+      throw e;
+    }
+    if (r.enApp === 0 && !(await this.deshacerKitPropio(id, nuevo.id))) {
+      r.errores.push({ pareja: `${p.operador.apellidosNombres}`, error: 'El kit nuevo quedó en Kits sin pareja: bórrelo o asígnelo allí' });
+    }
+    return r;
+  }
+
+  /** Desvincula y borra el kit recién creado; false si el kit no se pudo borrar. */
+  private async deshacerKitPropio(id: string, kitId: string): Promise<boolean> {
+    await this.prisma.parejaCda.update({ where: { id }, data: { kitId: null } });
+    return this.borrarKitNuevo(kitId);
+  }
+
+  private borrarKitNuevo(kitId: string): Promise<boolean> {
+    return this.prisma.kitElectoral
+      .delete({ where: { id: kitId } })
+      .then(() => true)
+      .catch((err: unknown) => {
+        this.log.error(`No se pudo borrar el kit ${kitId} tras fallar su asignación: ${(err as Error)?.message}`);
+        return false;
+      });
   }
 
   /**
@@ -742,6 +846,11 @@ export class ParejasCdaService {
         r.soloRegistradas++;
         continue;
       }
+      if (kitSalidoConLaPareja(p, evento)) {
+        // Cadena de custodia: sigue con quien lo lleva; no se reasigna ni se crean cuentas.
+        r.enApp++;
+        continue;
+      }
       try {
         // El kit (la app y el nombre del QR) va a quien tiene Android en el recinto.
         const portador = portadores.get(p.id) ?? p.operador;
@@ -782,6 +891,13 @@ export class ParejasCdaService {
       select: campos,
       orderBy: { creadoEn: 'asc' },
     });
+    // Un kit que ya salió sigue con quien lo lleva si es de la pareja, aunque
+    // ahora otro integrante tenga Android (cadena de custodia).
+    const deLaPareja = [p.operador.usuarioId, p.asistente?.usuarioId];
+    if (kit?.estado && !EN_DELEGACION.has(kit.estado) && kit.operadorId && deLaPareja.includes(kit.operadorId)) {
+      if (p.kitId !== kit.id) await this.prisma.parejaCda.update({ where: { id: p.id }, data: { kitId: kit.id } });
+      return 'EN_APP';
+    }
     const cambia = !kit || kit.operadorId !== usuarioId;
     // Quien llevó un kit que ya salió queda en su historial: no se reescribe.
     if (cambia && kit?.estado && !EN_DELEGACION.has(kit.estado)) {
@@ -862,9 +978,9 @@ export class ParejasCdaService {
     const p = await this.prisma.parejaCda.findUnique({
       where: { id },
       include: {
-        operador: { select: { usuarioId: true } },
-        asistente: { select: { usuarioId: true } },
-        kit: { select: { id: true, operadorId: true, eventoId: true } },
+        operador: { select: { usuarioId: true, apellidosNombres: true } },
+        asistente: { select: { usuarioId: true, apellidosNombres: true } },
+        kit: { select: { id: true, operadorId: true, eventoId: true, estado: true, codigoUnico: true } },
       },
     });
     if (!p) throw new NotFoundException('Pareja no encontrada');
@@ -1151,7 +1267,25 @@ function sinCuenta({ usuarioId: _usuarioId, activo: _activo, ...persona }: Perso
   return aPersona(persona);
 }
 
-function aFila(p: ParejaConRelaciones, evento: Evento | null, portador: PersonaDePareja | null, compartido: boolean): ParejaCdaFila {
+/** El kit de la pareja (de este evento) ya salió de la Delegación y lo tiene alguien de ella. */
+function kitSalidoConLaPareja(p: ParejaConRelaciones, evento: Evento): boolean {
+  const kit = p.kit;
+  return (
+    !!kit?.operadorId &&
+    kit.eventoId === evento.id &&
+    !EN_DELEGACION.has(kit.estado) &&
+    [p.operador.usuarioId, p.asistente?.usuarioId].includes(kit.operadorId)
+  );
+}
+
+function aFila(p: ParejaConRelaciones, evento: Evento | null, calculado: PersonaDePareja | null, compartido: boolean): ParejaCdaFila {
+  const delEvento = !!evento && p.kit?.eventoId === evento.id;
+  const titular = delEvento ? p.kit?.operadorId : null;
+  const quienLleva =
+    titular && titular === p.operador.usuarioId ? 'OPERADOR' : titular && titular === p.asistente?.usuarioId ? 'ASISTENTE' : null;
+  const kitSalio = delEvento && !!p.kit && !EN_DELEGACION.has(p.kit.estado);
+  // Un kit que ya salió sigue con quien lo lleva aunque otro de la pareja tenga Android.
+  const portador = kitSalio && quienLleva ? (quienLleva === 'OPERADOR' ? p.operador : p.asistente) : calculado;
   let estado: EstadoParejaCda;
   if (!portador) estado = 'SOLO_REGISTRADA';
   else if (!evento) estado = 'PENDIENTE_EVENTO';
@@ -1169,6 +1303,8 @@ function aFila(p: ParejaConRelaciones, evento: Evento | null, portador: PersonaD
     recintoCompartido: compartido,
     puedeRecibirKit: false,
     articulos: p.articulos,
+    kitSalio,
+    quienLleva,
   };
 }
 

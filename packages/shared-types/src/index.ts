@@ -1157,6 +1157,10 @@ export interface ParejaCdaFila {
   puedeRecibirKit: boolean;
   /** Artículos para crear el kit si el recinto no lo tiene. */
   articulos: string | null;
+  /** El kit de esta pareja (del evento del día) ya salió de la Delegación: quien lo lleva y el recinto no se cambian. */
+  kitSalio: boolean;
+  /** Quién de la pareja tiene asignado su kit en el sistema; null si nadie de ella. */
+  quienLleva: 'OPERADOR' | 'ASISTENTE' | null;
 }
 
 export interface ParejasCdaDia {

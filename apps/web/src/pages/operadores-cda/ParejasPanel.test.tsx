@@ -36,6 +36,8 @@ function fila(over: Partial<ParejaCdaFila> = {}): ParejaCdaFila {
     puedeRecibirKit: false,
     articulos: null,
     portador: ANA,
+    kitSalio: false,
+    quienLleva: 'OPERADOR',
     ...over,
   };
 }
@@ -584,6 +586,34 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p2/asignar-kit', {}));
     });
 
+    it('la 2.ª pareja del recinto puede recibir su propio kit: crea otro kit del recinto y lo pone en su app', async () => {
+      mockApi({
+        parejas: [
+          fila({ recintoCompartido: true }),
+          fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true, quienLleva: null }),
+        ],
+      });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Darle su propio kit a MORA LUIS' }));
+      expect(screen.queryByRole('button', { name: 'Darle su propio kit a PÉREZ ANA' })).not.toBeInTheDocument();
+      const dialogo = screen.getByRole('dialog', { name: 'Darle su propio kit' });
+      expect(dialogo).toHaveTextContent('otro kit del recinto 957 · UE ATAHUALPA');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Crear y asignar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p2/kit-propio', {}));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('sin evento activo ese día no se ofrece "Darle su propio kit"', async () => {
+      mockApi({
+        evento: null,
+        parejas: [fila({ estado: 'PENDIENTE_EVENTO' }), fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null })],
+      });
+      renderPagina();
+      await screen.findByText('MORA LUIS');
+      expect(screen.queryByRole('button', { name: /Darle su propio kit/ })).not.toBeInTheDocument();
+    });
+
     it('una pareja solo registrada sin kit libre en su recinto no ofrece "Asignar kit"', async () => {
       mockApi({ parejas: [fila(), fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true })] });
       renderPagina();
@@ -815,6 +845,35 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await userEvent.selectOptions(combo, 'r2');
       await userEvent.click(within(dialogo).getByRole('button', { name: 'Intercambiar' }));
       expect(await within(dialogo).findByRole('alert')).toHaveTextContent('ya salió de la Delegación');
+    });
+
+    it('kit que ya salió: no se cambia a quien lo lleva ni el recinto, y lo dice; al otro integrante sí', async () => {
+      mockApi({ congelado: true, parejas: [fila({ kitSalio: true, quienLleva: 'OPERADOR' })] });
+      renderPagina();
+      const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(within(tabla).queryByRole('button', { name: 'Cambiar operador de PÉREZ ANA' })).not.toBeInTheDocument();
+      expect(within(tabla).queryByRole('button', { name: 'Cambiar recinto de PÉREZ ANA' })).not.toBeInTheDocument();
+      expect(within(tabla).getByText('Lleva el kit que ya salió: no se cambia')).toBeInTheDocument();
+      expect(within(tabla).getByText('El kit ya salió: no se cambia')).toBeInTheDocument();
+      expect(within(tabla).getByRole('button', { name: 'Cambiar asistente de PÉREZ ANA' })).toBeInTheDocument();
+    });
+
+    it('si el kit que salió lo lleva el asistente, es el asistente quien no se cambia', async () => {
+      mockApi({ parejas: [fila({ kitSalio: true, quienLleva: 'ASISTENTE', portador: JUAN })] });
+      renderPagina();
+      const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(within(tabla).getByRole('button', { name: 'Cambiar operador de PÉREZ ANA' })).toBeInTheDocument();
+      expect(within(tabla).queryByRole('button', { name: 'Cambiar asistente de PÉREZ ANA' })).not.toBeInTheDocument();
+    });
+
+    it('jornada iniciada: el aviso explica qué se puede cambiar y qué no', async () => {
+      mockApi({ congelado: true });
+      renderPagina();
+      const aviso = await screen.findByText(/La jornada ya inició/);
+      const banner = aviso.closest('.banner') as HTMLElement;
+      expect(banner).toHaveTextContent('Se puede cambiar');
+      expect(banner).toHaveTextContent('con justificación');
+      expect(banner).toHaveTextContent('No se puede cambiar a quien lleva un kit que ya salió de la Delegación, ni el recinto de ese kit');
     });
 
     it('quien no es administrador no ve los botones de cambiar', async () => {

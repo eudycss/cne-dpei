@@ -70,7 +70,7 @@ export function ParejasPanel() {
   const [importando, setImportando] = useState(false);
   const [reporteTecnicos, setReporteTecnicos] = useState(false);
   const [copiando, setCopiando] = useState(false);
-  const [asignandoKit, setAsignandoKit] = useState<ParejaCdaFila | null>(null);
+  const [asignandoKit, setAsignandoKit] = useState<{ pareja: ParejaCdaFila; kitPropio: boolean } | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
   // El último paso a la app queda a la vista (los avisos emergentes desaparecen).
@@ -134,8 +134,13 @@ export function ParejasPanel() {
   const parejas = data?.parejas ?? [];
 
   /** Botón "Cambiar" de una celda (solo administrador). */
-  const botonCambiar = (p: ParejaCdaFila, campo: CampoParejaCda, nombre: string) =>
-    isAdmin && (
+  const botonCambiar = (p: ParejaCdaFila, campo: CampoParejaCda, nombre: string) => {
+    if (!isAdmin) return null;
+    // Cadena de custodia: quien lleva el kit que ya salió, y el recinto de ese kit, se quedan.
+    if (p.kitSalio && (campo === 'RECINTO' || p.quienLleva === campo)) {
+      return <div className="muted">{campo === 'RECINTO' ? 'El kit ya salió: no se cambia' : 'Lleva el kit que ya salió: no se cambia'}</div>;
+    }
+    return (
       <div>
         <button
           type="button"
@@ -148,6 +153,7 @@ export function ParejasPanel() {
         </button>
       </div>
     );
+  };
   const recintos = new Set(parejas.map((p) => p.recinto.id)).size;
   // Buscador: persona (operador o asistente, nombre o cédula), código o nombre del recinto; sin tildes.
   const q = normalizar(busqueda.trim());
@@ -207,6 +213,10 @@ export function ParejasPanel() {
             <strong>La jornada ya inició: las asignaciones están congeladas.</strong> Para que un cambio llegue a la app escriba
             el motivo; queda en la bitácora.
           </p>
+          <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.1rem' }}>
+            <li>Se puede cambiar operador, asistente o recinto con justificación, y dar kit propio a otra pareja del recinto.</li>
+            <li>No se puede cambiar a quien lleva un kit que ya salió de la Delegación, ni el recinto de ese kit (cadena de custodia).</li>
+          </ul>
           <label className="field" style={{ margin: 0 }}>
             <span>Justificación</span>
             <input value={justificacion} onChange={(e) => setJustificacion(e.target.value)} maxLength={500} autoComplete="off" />
@@ -398,9 +408,22 @@ export function ParejasPanel() {
                             type="button"
                             className="ocda-btn-texto"
                             aria-label={`Asignar kit a ${p.operador.apellidosNombres}`}
-                            onClick={() => setAsignandoKit(p)}
+                            onClick={() => setAsignandoKit({ pareja: p, kitPropio: false })}
                           >
                             Asignar kit
+                          </button>
+                        </div>
+                      )}
+                      {/* Otra pareja del recinto que también va con su propio dispositivo. */}
+                      {isAdmin && data?.evento && p.estado === 'SOLO_REGISTRADA' && !p.puedeRecibirKit && (
+                        <div>
+                          <button
+                            type="button"
+                            className="ocda-btn-texto"
+                            aria-label={`Darle su propio kit a ${p.operador.apellidosNombres}`}
+                            onClick={() => setAsignandoKit({ pareja: p, kitPropio: true })}
+                          >
+                            Darle su propio kit
                           </button>
                         </div>
                       )}
@@ -435,6 +458,7 @@ export function ParejasPanel() {
             <p id="quitar-pareja-texto">
               ¿Quitar la pareja de {quitarA.operador.apellidosNombres} ({quitarA.recinto.nombre})? Si tenía el kit en la app, el kit
               sigue en su recinto pero sin operador.
+              {quitarA.kitSalio && ' Su kit ya salió de la Delegación: no se puede quitar (cadena de custodia).'}
             </p>
             {quitar.isError && (
               <p className="banner error" role="alert">
@@ -469,7 +493,8 @@ export function ParejasPanel() {
       )}
       {asignandoKit && (
         <AsignarKitModal
-          pareja={asignandoKit}
+          pareja={asignandoKit.pareja}
+          kitPropio={asignandoKit.kitPropio}
           congelado={congelado}
           justificacionInicial={justificacion}
           onResultado={mostrarResultado}

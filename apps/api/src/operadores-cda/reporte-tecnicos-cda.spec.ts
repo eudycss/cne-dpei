@@ -33,6 +33,8 @@ function fila(id: string, codigo: string, op: PersonaParejaCda, as: PersonaParej
     recintoCompartido: false,
     puedeRecibirKit: false,
     articulos: null,
+    kitSalio: false,
+    quienLleva: null,
     ...extra,
   };
 }
