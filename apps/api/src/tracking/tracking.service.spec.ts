@@ -618,16 +618,44 @@ describe('TrackingService', () => {
       expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
     });
 
-    it('si ya tenía foto, no la reemplaza (evidencia)', async () => {
+    it('foto equivocada: la reemplaza (sin cambiar la hora) mientras no haya salido del recinto', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce({ id: 'prueba-1', ocurridoEn: new Date(aLas10), fotoPruebaConexionUrl: 'actas/a.bin' })
+        .mockResolvedValueOnce(null); // sin salida del recinto
+      storage.exists.mockResolvedValueOnce(true);
+
+      const r = await service.registrarPruebaConexion(operadorId, {
+        ocurridoEn: '2026-06-23T16:00:00.000Z',
+        fotoUrl: 'actas/b.bin',
+      });
+
+      expect(r).toEqual({ id: 'prueba-1', ocurridoEn: aLas10 });
+      expect(prisma.eventoTracking.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prueba-1', fotoPruebaConexionUrl: 'actas/a.bin' },
+        data: { fotoPruebaConexionUrl: 'actas/b.bin' },
+      });
+    });
+
+    it('después de la salida del recinto la foto ya no se reemplaza (evidencia)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce({ id: 'prueba-1', ocurridoEn: new Date(aLas10), fotoPruebaConexionUrl: 'actas/a.bin' })
+        .mockResolvedValueOnce({ id: 'salida' });
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/b.bin' });
+      expect(prisma.eventoTracking.updateMany).not.toHaveBeenCalled();
+      expect(storage.exists).not.toHaveBeenCalled();
+    });
+
+    it('el reenvío de la misma foto no escribe nada', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({
         id: 'prueba-1',
         ocurridoEn: new Date(aLas10),
         fotoPruebaConexionUrl: 'actas/a.bin',
       });
-      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/b.bin' });
+      await service.registrarPruebaConexion(operadorId, { ocurridoEn: aLas10, fotoUrl: 'actas/a.bin' });
       expect(prisma.eventoTracking.updateMany).not.toHaveBeenCalled();
-      expect(storage.exists).not.toHaveBeenCalled();
     });
 
     it('rechaza una fecha que no es ISO', async () => {

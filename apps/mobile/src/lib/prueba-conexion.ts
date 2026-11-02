@@ -12,6 +12,10 @@ import { marcarPruebaConexionEnCopia, postPruebaConexion } from './queries/track
  * reinicia antes de sincronizar, el paso sigue marcado como hecho.
  */
 const clave = (contextoId: string) => `prueba-conexion:${contextoId}`;
+// Marca de "se tomó o reemplazó una foto que el servidor aún no tiene": sin
+// ella, si la app se reinicia antes de enviar el reemplazo, queda la foto
+// equivocada en el servidor.
+const claveFotoNueva = (contextoId: string) => `prueba-conexion-foto-nueva:${contextoId}`;
 
 /** Hora (Ecuador) desde la que se habilita la prueba; el servidor rechaza las anteriores. */
 export const HORA_INICIO_PRUEBA_CONEXION = 9;
@@ -95,9 +99,30 @@ export async function adjuntarFotoPruebaConexion(contextoId: string, fotoUrl: st
   const ocurridoEn = (await leerPruebaConexionLocal(contextoId)) ?? new Date().toISOString();
   try {
     await postPruebaConexion({ ocurridoEn, fotoUrl });
-    return true;
   } catch {
     return false; // se reintenta al volver a abrir la pantalla o al registrar la salida
+  }
+  try {
+    await AsyncStorage.removeItem(claveFotoNueva(contextoId));
+  } catch {
+    // Best-effort: a lo sumo se reenvía la misma foto, que el servidor ignora.
+  }
+  return true;
+}
+
+export async function marcarFotoPruebaNueva(contextoId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(claveFotoNueva(contextoId), '1');
+  } catch {
+    // Best-effort: solo se pierde si además la app se reinicia antes de enviarla.
+  }
+}
+
+export async function hayFotoPruebaNueva(contextoId: string): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(claveFotoNueva(contextoId))) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -105,6 +130,7 @@ export async function adjuntarFotoPruebaConexion(contextoId: string, fotoUrl: st
 export async function limpiarPruebaConexion(contextoId: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(clave(contextoId));
+    await AsyncStorage.removeItem(claveFotoNueva(contextoId));
   } catch {
     /* sin efecto: se sobrescribe en la próxima jornada de este contexto */
   }
