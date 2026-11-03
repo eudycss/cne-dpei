@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Militar, Paginated, Recinto } from '@cne/shared-types';
 import { createMilitarSchema, updateMilitarSchema } from '@cne/shared-validation';
@@ -221,14 +222,9 @@ function MilitarModal({
 
   const filteredRecintos = useMemo(() => {
     if (!allRecintos) return [];
-    const q = recintoSearch.toLowerCase().trim();
-    if (!q || form.recintoId) return [];
+    if (!recintoSearch.trim() || form.recintoId) return [];
     return allRecintos
-      .filter(
-        (r) =>
-          r.nombre.toLowerCase().includes(q) ||
-          r.codigoRecinto.toLowerCase().includes(q),
-      )
+      .filter((r) => coincideBusqueda([r.nombre, r.codigoRecinto], recintoSearch))
       .slice(0, 12);
   }, [allRecintos, recintoSearch, form.recintoId]);
 

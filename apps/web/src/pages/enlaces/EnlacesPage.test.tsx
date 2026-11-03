@@ -130,6 +130,12 @@ describe('EnlacesPage', () => {
     expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
     expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
 
+    // Sin importar tildes y con las palabras en otro orden.
+    await user.clear(screen.getByLabelText('Buscar por nombre o código'));
+    await user.type(screen.getByLabelText('Buscar por nombre o código'), 'zaldúmbide unidad');
+    expect(screen.getByText('Unidad Educativa Zaldumbide')).toBeInTheDocument();
+    expect(screen.queryByText('Escuela Central')).not.toBeInTheDocument();
+
     await user.clear(screen.getByLabelText('Buscar por nombre o código'));
     await user.type(screen.getByLabelText('Buscar por nombre o código'), '978');
 

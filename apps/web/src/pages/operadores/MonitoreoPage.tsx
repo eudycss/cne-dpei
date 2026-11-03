@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth/AuthContext';
 import { TextoAnimado } from '../../components/TextoAnimado';
 import { BotonConMotivo } from '../../components/BotonConMotivo';
 import { Cargando } from '../../components/Cargando';
 import { SearchInput } from '../../components/SearchInput';
-import { normalizar } from '../operadores-cda/utils';
 import { WarmTooltipGroup } from '../../components/micro/WarmTooltip/WarmTooltip';
 import type { CdaEstadoDto, OperadorEnRetorno } from '@cne/shared-types';
 import { getEstadoCdas, getFotoMilitar, getOperadoresEnRetorno, type TipoFotoCda } from '../../lib/queries/monitoreo';
@@ -190,12 +190,11 @@ export function MonitoreoPage() {
   const cdasDelCanton = cantonFiltro
     ? cdas.filter((c) => String(c.cantonId) === cantonFiltro)
     : cdas;
-  const textoBuscado = normalizar(busqueda.trim());
+  const textoBuscado = busqueda.trim();
   const cdasFiltrados = cdasDelCanton.filter(
     (c) =>
       (estadoFiltro === 'TODOS' || c.estado === estadoFiltro) &&
-      (!textoBuscado ||
-        normalizar(`${c.codigoRecinto} ${c.nombreRecinto} ${c.operadorNombre}`).includes(textoBuscado)),
+      coincideBusqueda([c.codigoRecinto, c.nombreRecinto, c.operadorNombre], textoBuscado),
   );
 
   const conteoPorEstado = useMemo(() => {

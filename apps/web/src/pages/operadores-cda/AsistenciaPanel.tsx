@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
@@ -17,7 +18,7 @@ import { CorregirAsistenciaModal } from './CorregirAsistenciaModal';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
-import { cargoCorto, hoyEcuador, iniciales, normalizar } from './utils';
+import { cargoCorto, hoyEcuador, iniciales } from './utils';
 import { useGrupoCda } from './grupo';
 import { useModulos } from '../../lib/useModulos';
 
@@ -114,10 +115,10 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const filas = data?.filas ?? [];
   const conteo = (f: Filtro) => filas.filter(FILTROS.find((x) => x.id === f)!.cumple).length;
   const visibles = useMemo(() => {
-    const q = normalizar(busqueda.trim());
+    const q = busqueda.trim();
     const cumple = FILTROS.find((x) => x.id === filtro)!.cumple;
     return filas.filter(
-      (f) => cumple(f) && (!q || normalizar(f.operador.apellidosNombres).includes(q) || f.operador.cedula.includes(q)),
+      (f) => cumple(f) && coincideBusqueda([f.operador.apellidosNombres, f.operador.cedula], q),
     );
   }, [filas, filtro, busqueda]);
 

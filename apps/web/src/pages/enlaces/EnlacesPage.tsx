@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery } from '@tanstack/react-query';
 import type { ConfigEnlacesResponse, EnlaceRecinto } from '@cne/shared-types';
 import { getConfigEnlaces, getEnlaces } from '../../lib/queries/enlaces';
@@ -77,18 +78,12 @@ export function EnlacesPage() {
   }, []);
   const ultimaActualizacion = ultimaActualizacionVencida(enlaces, isError ? ahora : dataUpdatedAt);
 
-  const busquedaNormalizada = busqueda.trim().toLowerCase();
 
   // Los conteos de cada botón de estado reflejan el cantón y la búsqueda activos,
   // por eso se calculan sobre esta lista y no sobre `enlaces`.
   const enlacesSinFiltroEstado = enlaces
     .filter((e) => !cantonFiltro || e.canton === cantonFiltro)
-    .filter(
-      (e) =>
-        !busquedaNormalizada ||
-        e.codigoRecinto.toLowerCase().includes(busquedaNormalizada) ||
-        e.nombreRecinto.toLowerCase().includes(busquedaNormalizada),
-    );
+    .filter((e) => coincideBusqueda([e.codigoRecinto, e.nombreRecinto], busqueda));
 
   const enlacesFiltrados = enlacesSinFiltroEstado.filter((e) => filtro === 'TODOS' || e.estado === filtro);
 
