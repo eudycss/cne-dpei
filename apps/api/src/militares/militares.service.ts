@@ -20,6 +20,8 @@ import type {
   UpdateMilitarRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { Prisma } from '@prisma/client';
+import { idsPorBusqueda } from '../common/busqueda-sql';
 
 const MILITAR_CON_ENTREGAS = 'No se puede eliminar: este militar recibió kits (cadena de custodia)';
 
@@ -36,16 +38,15 @@ export class MilitaresService {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
     const where: any = {};
-    if (opts.search) {
-      where.OR = [
-        { nombres: { contains: opts.search, mode: 'insensitive' } },
-        { apellidos: { contains: opts.search, mode: 'insensitive' } },
-        { cedula: { contains: opts.search } },
-        // También por el recinto asignado: "¿qué militares van a Apuela?".
-        { recinto: { nombre: { contains: opts.search, mode: 'insensitive' } } },
-        { recinto: { codigoRecinto: { contains: opts.search, mode: 'insensitive' } } },
-      ];
-    }
+    // Sin tildes y por palabras en cualquier orden. También por el recinto
+    // asignado: "¿qué militares van a Apuela?".
+    const ids = await idsPorBusqueda(
+      this.prisma,
+      Prisma.sql`militares t LEFT JOIN recintos r ON r.id = t.recinto_id`,
+      [Prisma.raw('t.nombres'), Prisma.raw('t.apellidos'), Prisma.raw('t.cedula'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
+      opts.search,
+    );
+    if (ids) where.id = { in: ids };
     if (opts.recintoId) where.recintoId = opts.recintoId;
 
     const [total, items] = await this.prisma.$transaction([

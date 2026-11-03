@@ -20,6 +20,8 @@ import { leerFilasOperadoresCda, type FilaLeida } from './excel-operadores-cda';
 import { tamanoDescomprimidoZip } from './zip';
 import { asegurarCargoActivo, textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, fechaDb } from './dia-ecuador';
+import { Prisma } from '@prisma/client';
+import { idsPorBusqueda } from '../common/busqueda-sql';
 
 // Un .xlsx es un ZIP: empieza con "PK\x03\x04".
 const FIRMA_ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -41,17 +43,13 @@ export class OperadoresCdaService {
   ) {}
 
   async list(opts: { search?: string; incluirInactivos?: boolean; grupo?: GrupoCda } = {}): Promise<OperadorCda[]> {
-    const search = opts.search?.trim();
+    // Sin tildes y por palabras en cualquier orden ("juan perez" encuentra "PEREZ GOMEZ JUAN").
+    const ids = await idsPorBusqueda(this.prisma, Prisma.sql`operadores_cda t`, [Prisma.raw('t.apellidos_nombres'), Prisma.raw('t.cedula')], opts.search);
     const items = await this.prisma.operadorCda.findMany({
       where: {
         grupo: opts.grupo ?? 'OPERADOR',
         ...(!opts.incluirInactivos && { activo: true }),
-        ...(search && {
-          OR: [
-            { apellidosNombres: { contains: search, mode: 'insensitive' as const } },
-            { cedula: { contains: search } },
-          ],
-        }),
+        ...(ids && { id: { in: ids } }),
       },
       orderBy: { apellidosNombres: 'asc' },
       include: { usuario: { select: { activo: true, debeCambiarPwd: true, bloqueadoHasta: true } } },
@@ -63,14 +61,12 @@ export class OperadoresCdaService {
    * Busca por nombre o cédula en todos los cargos (CDA y CPE), para saber en
    * qué listado está una persona. Hasta 20 resultados.
    */
-  buscar(opts: { q: string; incluirInactivos?: boolean }): Promise<PersonaCdaEncontrada[]> {
+  async buscar(opts: { q: string; incluirInactivos?: boolean }): Promise<PersonaCdaEncontrada[]> {
+    const ids = await idsPorBusqueda(this.prisma, Prisma.sql`operadores_cda t`, [Prisma.raw('t.apellidos_nombres'), Prisma.raw('t.cedula')], opts.q);
     return this.prisma.operadorCda.findMany({
       where: {
         ...(!opts.incluirInactivos && { activo: true }),
-        OR: [
-          { apellidosNombres: { contains: opts.q, mode: 'insensitive' as const } },
-          { cedula: { contains: opts.q } },
-        ],
+        ...(ids && { id: { in: ids } }),
       },
       orderBy: { apellidosNombres: 'asc' },
       take: 20,
