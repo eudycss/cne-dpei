@@ -1889,6 +1889,110 @@ describe('TrackingService', () => {
     });
   });
 
+  describe('retornoKits', () => {
+    const kitRetorno = (id: string, codigo: string, estado: string) => ({
+      id,
+      codigoUnico: `K-${codigo}`,
+      estado,
+      recinto: { codigoRecinto: codigo, nombre: `Recinto ${codigo}` },
+      operador: { nombres: 'Ana', apellidos: 'Perez' },
+    });
+
+    it('clasifica cada kit (falta llegar, llegó sin verificar, registrado) y pone primero los que faltan', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        kitRetorno('k-reg', '100', 'RETORNADO'),
+        kitRetorno('k-llego', '300', 'RETORNADO'),
+        kitRetorno('k-falta', '200', 'EN_RETORNO'),
+      ]);
+      prisma.recepcionDpiKit.findMany.mockResolvedValueOnce([{ kitId: 'k-reg', confirmadoEn: new Date(ocurridoEn) }]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        { kitId: 'k-falta', asistente: { apellidosNombres: 'MUÑOZ MARIA' } },
+        { kitId: 'k-falta', asistente: { apellidosNombres: 'DE OTRO DIA' } },
+      ]);
+
+      const r = await service.retornoKits('asist1', ['ASISTENTE_TRANSVERSAL']);
+
+      expect(r.registrados).toBe(1);
+      expect(r.faltan).toBe(2);
+      expect(r.items.map((i) => [i.kitId, i.estado])).toEqual([
+        ['k-falta', 'FALTA_LLEGAR'],
+        ['k-llego', 'LLEGO_SIN_VERIFICAR'],
+        ['k-reg', 'REGISTRADO'],
+      ]);
+      // La pareja más reciente (la consulta viene ordenada por fecha desc).
+      expect(r.items[0]).toEqual(
+        expect.objectContaining({
+          recinto: { codigo: '200', nombre: 'Recinto 200' },
+          operadorNombre: 'Ana Perez',
+          asistenteNombre: 'MUÑOZ MARIA',
+          confirmadoEn: null,
+        }),
+      );
+      expect(r.items[2].confirmadoEn).toBe(new Date(ocurridoEn).toISOString());
+      expect(r.items[1].asistenteNombre).toBeNull();
+    });
+
+    it('un kit verificado cuenta como registrado aunque el operador aún no marque la llegada (estado no RETORNADO)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRetorno('k1', '100', 'EN_RECINTO')]);
+      prisma.recepcionDpiKit.findMany.mockResolvedValueOnce([{ kitId: 'k1', confirmadoEn: new Date(ocurridoEn) }]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([]);
+
+      const r = await service.retornoKits('asist1', ['ASISTENTE_TRANSVERSAL']);
+
+      expect(r.items[0].estado).toBe('REGISTRADO');
+      expect(r).toEqual(expect.objectContaining({ registrados: 1, faltan: 0 }));
+    });
+
+    it('excluye los kits de prueba y los que no tienen operador, sin filtrar por asignación al asistente', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      const r = await service.retornoKits('asist1', ['ASISTENTE_TRANSVERSAL']);
+
+      expect(r).toEqual({ registrados: 0, faltan: 0, items: [] });
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventoId: evento.id, esPrueba: false, operadorId: { not: null } },
+        }),
+      );
+    });
+
+    it('el técnico supervisor solo ve a sus operadores; sin operadores asignados, lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([]);
+
+      const r = await service.retornoKits('sup1', ['TECNICO_SUPERVISOR']);
+
+      expect(r.items).toEqual([]);
+      expect(prisma.kitElectoral.findMany).not.toHaveBeenCalled();
+    });
+
+    it('el técnico supervisor consulta solo los kits de sus operadores', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      await service.retornoKits('sup1', ['TECNICO_SUPERVISOR']);
+
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ operadorId: { in: [operadorId] } }) }),
+      );
+    });
+
+    it('sin evento activo devuelve la lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.retornoKits('asist1', ['ASISTENTE_TRANSVERSAL'])).resolves.toEqual({
+        registrados: 0,
+        faltan: 0,
+        items: [],
+      });
+    });
+  });
+
   describe('guardarFotoActa', () => {
     it('lanza BadRequestException si el archivo no es una imagen', async () => {
       const file = { mimetype: 'application/pdf', buffer: Buffer.from('x') } as Express.Multer.File;

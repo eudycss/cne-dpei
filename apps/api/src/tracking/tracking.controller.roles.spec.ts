@@ -24,6 +24,15 @@ describe('TrackingController — roles de la verificación de kits al retorno', 
       'LECTOR',
     ]);
   });
+
+  it('el retorno de los kits (quién falta llegar) lo leen el asistente, el supervisor, el admin y el lector', () => {
+    expect(rolesDe('retornoKits')).toEqual([
+      'ASISTENTE_TRANSVERSAL',
+      'TECNICO_SUPERVISOR',
+      'ADMINISTRADOR',
+      'LECTOR',
+    ]);
+  });
 });
 
 describe('TrackingController — llegada al DPEI registrada desde la web', () => {
