@@ -13,8 +13,8 @@ const DIA = '2026-10-30';
 const FECHA = new Date(`${DIA}T00:00:00Z`);
 const EVENTO = { id: 'ev2', nombre: 'Prueba Técnica 2' };
 const RECINTO = { id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA', canton: { nombre: 'COTACACHI' } };
-const OPERADOR = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, usuarioId: 'u1', activo: true };
-const ASISTENTE = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, usuarioId: 'u2', activo: true };
+const OPERADOR = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, usuarioId: 'u1', activo: true, grupo: 'OPERADOR' };
+const ASISTENTE = { id: 'as1', apellidosNombres: 'RUIZ JUAN', cedula: '1713175071', telefono: null, usuarioId: 'u2', activo: true, grupo: 'ASISTENTE' };
 
 function pareja(over: Record<string, unknown> = {}) {
   return {
@@ -297,20 +297,30 @@ describe('ParejasCdaService', () => {
       prisma.parejaCda.create.mockResolvedValue({ id: 'p1' });
     });
 
-    it('por disponibilidad de Android, la pareja puede ser de dos operadores o de dos asistentes', async () => {
-      await service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'op2', recintoId: 'r1' }, 'admin');
-      await service.crear({ fecha: DIA, operadorCdaId: 'as1', asistenteCdaId: 'as2', recintoId: 'r1' }, 'admin');
+    it('cada pareja es un Operador y un Asistente CDA (el asistente es opcional)', async () => {
+      await service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'as1', recintoId: 'r1' }, 'admin');
+      await service.crear({ fecha: DIA, operadorCdaId: 'op2', recintoId: 'r1' }, 'admin');
       expect(prisma.parejaCda.create.mock.calls.map((c) => [c[0].data.operadorCdaId, c[0].data.asistenteCdaId])).toEqual([
-        ['op1', 'op2'],
-        ['as1', 'as2'],
+        ['op1', 'as1'],
+        ['op2', null],
       ]);
     });
 
-    it('solo Operadores o Asistentes CDA: otros cargos no forman pareja', async () => {
+    it.each([
+      ['dos operadores', 'op1', 'op2', 'como asistente es de Operadores CDA, no de Asistentes CDA'],
+      ['dos asistentes', 'as1', 'as2', 'como operador es de Asistentes CDA, no de Operadores CDA'],
+      ['los cargos al revés', 'as1', 'op1', 'como operador es de Asistentes CDA, no de Operadores CDA'],
+      ['otro cargo', 'op1', 'dig1', 'como asistente es de Digitadores, no de Asistentes CDA'],
+    ])('no permite %s', async (_caso, operadorCdaId, asistenteCdaId, mensaje) => {
+      await expect(service.crear({ fecha: DIA, operadorCdaId, asistenteCdaId, recintoId: 'r1' }, 'admin')).rejects.toThrow(mensaje);
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+    });
+
+    it('la 2.ª pareja de un recinto sigue la misma regla', async () => {
+      prisma.parejaCda.findMany.mockResolvedValue([pareja()]);
       await expect(
-        service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'dig1', recintoId: 'r1' }, 'admin'),
-      ).rejects.toThrow('es de Digitadores, no de Operadores ni Asistentes CDA');
-      await expect(service.crear({ fecha: DIA, operadorCdaId: 'dig1', recintoId: 'r1' }, 'admin')).rejects.toThrow(BadRequestException);
+        service.crear({ fecha: DIA, operadorCdaId: 'as2', asistenteCdaId: 'op2', recintoId: 'r1' }, 'admin'),
+      ).rejects.toThrow('cada pareja es un Operador y un Asistente CDA');
       expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
 
@@ -321,14 +331,14 @@ describe('ParejasCdaService', () => {
       expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
 
-    it('nadie está en dos parejas el mismo día, aunque en la otra vaya en la otra columna', async () => {
-      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'opX', asistenteCdaId: 'op2' });
+    it('nadie está en dos parejas el mismo día, aunque en una pareja anterior vaya en la otra columna', async () => {
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'as2', asistenteCdaId: 'asX' });
       await expect(
-        service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'op2', recintoId: 'r1' }, 'admin'),
+        service.crear({ fecha: DIA, operadorCdaId: 'op1', asistenteCdaId: 'as2', recintoId: 'r1' }, 'admin'),
       ).rejects.toThrow(new ConflictException('El asistente ya tiene pareja el 2026-10-30'));
       expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
         fecha: FECHA,
-        OR: [{ operadorCdaId: { in: ['op1', 'op2'] } }, { asistenteCdaId: { in: ['op1', 'op2'] } }],
+        OR: [{ operadorCdaId: { in: ['op1', 'as2'] } }, { asistenteCdaId: { in: ['op1', 'as2'] } }],
       });
       expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
@@ -571,12 +581,14 @@ describe('ParejasCdaService', () => {
       expect(prisma.parejaCda.create.mock.calls[0][0].data.asistenteCdaId).toBeNull();
     });
 
-    it('dos operadores: crea el kit y registra la pareja; la misma persona dos veces no', async () => {
+    it('dos operadores no: ni crea el kit ni registra la pareja; la misma persona dos veces tampoco', async () => {
       prisma.operadorCda.findUnique.mockImplementation(() => Promise.resolve({ grupo: 'OPERADOR', activo: true, usuarioId: 'u1' }));
-      await service.crearKitConPareja({ ...DATOS, asistenteCdaId: 'op2' }, 'admin');
-      expect(prisma.parejaCda.create.mock.calls[0][0].data).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
-
+      await expect(service.crearKitConPareja({ ...DATOS, asistenteCdaId: 'op2' }, 'admin')).rejects.toThrow(
+        'cada pareja es un Operador y un Asistente CDA',
+      );
       await expect(service.crearKitConPareja({ ...DATOS, asistenteCdaId: 'op1' }, 'admin')).rejects.toThrow('Elija dos personas distintas');
+      expect(kits.create).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
 
     it('si el operador o el asistente ya tiene pareja ese día, no crea nada', async () => {
@@ -668,7 +680,7 @@ describe('ParejasCdaService', () => {
         recinto: { codigo: '957', nombre: 'UE ATAHUALPA' },
         errores: [],
       });
-      expect(f2.errores).toContain('La cédula 1002003000 es de Digitadores, no de Operadores ni Asistentes CDA');
+      expect(f2.errores).toContain('La cédula 1002003000 es de Digitadores, no de Operadores CDA');
       expect(f3.errores).toContain('La cédula 1713175071 está repetida (fila 2)');
       expect(f4.errores).toEqual(
         expect.arrayContaining(['Cédula nueva 0401234562: falta nombre_operador', 'El recinto 20 no es CDA']),
@@ -701,7 +713,7 @@ describe('ParejasCdaService', () => {
       expect(r.app).not.toBeNull();
     });
 
-    it('acepta dos operadores (o un asistente en la columna del operador) y guarda a cada uno con su cargo', async () => {
+    it('no acepta dos operadores ni un asistente en la columna del operador: explica el error y no guarda', async () => {
       prisma.operadorCda.findMany.mockResolvedValueOnce([
         { id: 'op1', cedula: '1710034065', grupo: 'OPERADOR', activo: true, apellidosNombres: 'PÉREZ ANA' },
         { id: 'op2', cedula: '1712345675', grupo: 'OPERADOR', activo: true, apellidosNombres: 'MORA LUIS' },
@@ -719,12 +731,12 @@ describe('ParejasCdaService', () => {
 
       const r = await service.importar(file, DIA, true, 'admin', false);
 
-      expect(r.filas.map((f) => f.errores)).toEqual([[], []]);
-      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
-      expect(prisma.parejaCda.create.mock.calls.map((c) => [c[0].data.operadorCdaId, c[0].data.asistenteCdaId])).toEqual([
-        ['op1', 'op2'],
-        ['as1', null],
+      expect(r.filas.map((f) => f.errores)).toEqual([
+        ['La cédula 1712345675 es de Operadores CDA, no de Asistentes CDA'],
+        ['La cédula 1713175071 es de Asistentes CDA, no de Operadores CDA'],
       ]);
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
     });
 
     it('la misma cédula en las dos columnas de una fila es un error; también quien ya está hoy en la otra columna', async () => {
@@ -1033,19 +1045,23 @@ describe('ParejasCdaService', () => {
       prisma.parejaCda.findUnique.mockResolvedValue(pareja({ kitId: 'k1', kit: { id: 'k1', operadorId: 'u1', eventoId: 'ev2' } }));
     });
 
-    it('el asistente puede cambiarse por otro operador; se comprueba que no tenga pareja ese día (sin contar esta)', async () => {
-      await service.editar('p1', { asistenteCdaId: 'op2' });
+    it('el asistente no puede cambiarse por un operador (cada pareja es un Operador y un Asistente)', async () => {
+      await expect(service.editar('p1', { asistenteCdaId: 'op2' })).rejects.toThrow('cada pareja es un Operador y un Asistente CDA');
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+    });
+
+    it('al cambiar el asistente se comprueba que no tenga pareja ese día (sin contar esta)', async () => {
+      await service.editar('p1', { asistenteCdaId: 'as2' });
       expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
         fecha: FECHA,
         id: { not: 'p1' },
-        OR: [{ operadorCdaId: { in: ['op1', 'op2'] } }, { asistenteCdaId: { in: ['op1', 'op2'] } }],
+        OR: [{ operadorCdaId: { in: ['op1', 'as2'] } }, { asistenteCdaId: { in: ['op1', 'as2'] } }],
       });
-      expect(prisma.parejaCda.update.mock.calls[0][0].data).toEqual({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
     });
 
     it('si el nuevo integrante ya va en otra pareja del día, no guarda ni suelta el kit', async () => {
-      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'op2', asistenteCdaId: null });
-      await expect(service.editar('p1', { asistenteCdaId: 'op2', recintoId: 'r2' })).rejects.toThrow(
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: 'as2', asistenteCdaId: null });
+      await expect(service.editar('p1', { asistenteCdaId: 'as2', recintoId: 'r2' })).rejects.toThrow(
         new ConflictException('El asistente ya tiene pareja el 2026-10-30'),
       );
       expect(prisma.parejaCda.update).not.toHaveBeenCalled();
@@ -1056,6 +1072,17 @@ describe('ParejasCdaService', () => {
       await service.editar('p1', { recintoId: 'r2' });
       expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toMatchObject({ id: { not: 'p1' } });
       expect(prisma.parejaCda.update).toHaveBeenCalled();
+    });
+
+    it('una pareja anterior a la regla (dos operadores) puede cambiar de recinto o recibir un asistente de verdad', async () => {
+      prisma.parejaCda.findUnique.mockResolvedValue(
+        pareja({ asistenteCdaId: 'op2', asistente: { ...OPERADOR, id: 'op2', usuarioId: 'u9' } }),
+      );
+      await service.editar('p1', { recintoId: 'r2' });
+      await service.editar('p1', { asistenteCdaId: 'as2' });
+      expect(prisma.parejaCda.update).toHaveBeenCalledTimes(2);
+      // Pero no recibe a otro operador como asistente.
+      await expect(service.editar('p1', { asistenteCdaId: 'op3' })).rejects.toThrow('cada pareja es un Operador y un Asistente CDA');
     });
 
     it('cambiar solo el asistente no toca el kit', async () => {
@@ -1119,6 +1146,22 @@ describe('ParejasCdaService', () => {
         { id: 'k1', codigoUnico: 'KIT-1', estado: 'ASIGNADO', operadorId: 'u1' },
         { id: 'k2', codigoUnico: 'KIT-2', estado: 'ASIGNADO', operadorId: 'u2' },
       ]);
+    });
+
+    it('una pareja anterior a la regla no pasa a nadie fuera de su cargo (operador que era asistente)', async () => {
+      const VIEJA = { ...P2, operador: { ...ASISTENTE, id: 'as9', apellidosNombres: 'LEÓN MARÍA', usuarioId: 'u9' } };
+      prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'p1' ? P1 : where.id === 'p2' ? VIEJA : null),
+      );
+
+      await expect(service.intercambiar('p1', 'p2', 'OPERADOR')).rejects.toThrow(
+        'LEÓN MARÍA es de Asistentes CDA: no puede ir como operador (cada pareja es un Operador y un Asistente CDA)',
+      );
+      expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      expect(kits.quitarOperador).not.toHaveBeenCalled();
+      // El recinto sí se puede intercambiar: no mueve a nadie de columna.
+      await service.intercambiar('p1', 'p2', 'RECINTO');
+      expect(prisma.parejaCda.update).toHaveBeenCalled();
     });
 
     it('recinto: suelta los dos kits (antes comprueba que se pueda), intercambia los recintos y reaplica los dos', async () => {
@@ -1546,23 +1589,30 @@ describe('ParejasCdaService', () => {
 
     beforeEach(() => {
       prisma.parejaCda.findMany.mockReset();
-      prisma.operadorCda.findMany.mockResolvedValue([{ id: 'op1' }, { id: 'as1' }, { id: 'op2' }]);
+      prisma.operadorCda.findMany.mockResolvedValue([
+        { id: 'op1', grupo: 'OPERADOR' },
+        { id: 'as1', grupo: 'ASISTENTE' },
+        { id: 'op2', grupo: 'OPERADOR' },
+      ]);
       prisma.recinto.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
     });
 
-    it('copia una pareja de dos operadores tal cual y omite a quien ya no es Operador ni Asistente CDA', async () => {
+    it('una pareja anterior a la regla (dos operadores o cargos al revés) no se copia: queda como historial', async () => {
       const DOS_OP = pareja({ asistenteCdaId: 'op2', asistente: { ...OPERADOR, id: 'op2', apellidosNombres: 'MORA LUIS' } });
-      prisma.parejaCda.findMany.mockResolvedValueOnce([DOS_OP]).mockResolvedValueOnce([]);
+      const AL_REVES = pareja({ id: 'p9', recintoId: 'r2', operadorCdaId: 'as1', asistenteCdaId: null, operador: { ...ASISTENTE }, asistente: null });
+      prisma.parejaCda.findMany.mockResolvedValueOnce([DOS_OP, AL_REVES]).mockResolvedValueOnce([]);
 
       const r = await service.copiar(DIA, HACIA, 'uAdmin');
 
-      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
-        id: { in: ['op1', 'op2'] },
-        activo: true,
-        grupo: { in: ['OPERADOR', 'ASISTENTE'] },
+      expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['op1', 'op2', 'as1'] }, activo: true });
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+      expect(r).toEqual({
+        copiadas: 0,
+        omitidas: [
+          { pareja: 'PÉREZ ANA · 957', motivo: 'El asistente ya no está disponible (oculto o no es Asistente CDA)' },
+          { pareja: 'RUIZ JUAN · 957', motivo: 'El operador ya no está disponible (oculto o no es Operador CDA)' },
+        ],
       });
-      expect(prisma.parejaCda.createMany.mock.calls[0][0].data[0]).toMatchObject({ operadorCdaId: 'op1', asistenteCdaId: 'op2' });
-      expect(r.copiadas).toBe(1);
     });
 
     it('omite la pareja cuyo recinto fue desactivado', async () => {
@@ -1607,7 +1657,13 @@ describe('ParejasCdaService', () => {
       prisma.parejaCda.findMany
         .mockResolvedValueOnce([pareja(), B, C, D])
         .mockResolvedValueOnce([{ operadorCdaId: 'op2', asistenteCdaId: 'as3' }]);
-      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: 'op1' }, { id: 'as1' }, { id: 'op2' }, { id: 'op3' }, { id: 'as3' }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([
+        { id: 'op1', grupo: 'OPERADOR' },
+        { id: 'as1', grupo: 'ASISTENTE' },
+        { id: 'op2', grupo: 'OPERADOR' },
+        { id: 'op3', grupo: 'OPERADOR' },
+        { id: 'as3', grupo: 'ASISTENTE' },
+      ]);
 
       const r = await service.copiar(DIA, HACIA, 'uAdmin');
 
@@ -1617,7 +1673,7 @@ describe('ParejasCdaService', () => {
         omitidas: [
           { pareja: 'MORA LUIS · 1126', motivo: 'El operador ya tiene pareja ese día' },
           { pareja: 'VEGA RITA · 957', motivo: 'El asistente ya tiene pareja ese día' },
-          { pareja: 'OCULTO · 957', motivo: 'El operador ya no está disponible (oculto o cambió de cargo)' },
+          { pareja: 'OCULTO · 957', motivo: 'El operador ya no está disponible (oculto o no es Operador CDA)' },
         ],
       });
     });

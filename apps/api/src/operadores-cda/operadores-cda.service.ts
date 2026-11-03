@@ -162,6 +162,16 @@ export class OperadoresCdaService {
     asegurarCargoActivo(grupo);
 
     const hoy = diaEcuador();
+    // Cada pareja es un Operador y un Asistente CDA: con parejas de hoy en
+    // adelante, el cambio de cargo las dejaría fuera de la regla.
+    const parejasPendientes = await this.prisma.parejaCda.count({
+      where: { fecha: { gte: fechaDb(hoy) }, OR: [{ operadorCdaId: id }, { asistenteCdaId: id }] },
+    });
+    if (parejasPendientes > 0) {
+      throw new ConflictException(
+        `Tiene ${parejasPendientes} pareja(s) de hoy en adelante: quítelo de ellas antes de cambiarle el cargo (cada pareja es un Operador y un Asistente CDA)`,
+      );
+    }
     const marcoHoy = await this.prisma.asistenciaCda.findFirst({
       where: { operadorId: id, fecha: fechaDb(hoy), entradaEn: { not: null } },
       select: { id: true },

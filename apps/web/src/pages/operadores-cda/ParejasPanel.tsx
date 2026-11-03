@@ -28,13 +28,15 @@ import { DispositivoPersona } from './DispositivoPersona';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError } from './utils';
 
-/** Pareja de dos operadores o dos asistentes: el cargo real de quien no es el de su columna. */
+/** Pareja anterior a la regla Operador + Asistente: el cargo real de quien no es el de su columna. */
 function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; columna: 'OPERADOR' | 'ASISTENTE' }) {
   if (persona.grupo === columna) return null;
   return (
     <>
       <br />
-      <span className="ocda-estado aviso">{cargoPareja(persona)}</span>
+      <span className="ocda-estado aviso" title="Pareja anterior a la regla: cada pareja es un Operador y un Asistente CDA">
+        {cargoPareja(persona)} · no cumple la regla
+      </span>
     </>
   );
 }
