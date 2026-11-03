@@ -33,6 +33,8 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { assertEventoNoReabierto } from '../common/evento-no-reabierto.guard';
 import { parseUploadRows } from '../common/parse-upload-rows';
+import { Prisma } from '@prisma/client';
+import { idsPorBusqueda } from '../common/busqueda-sql';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
 const MM = 72 / 25.4;
@@ -52,16 +54,17 @@ export class KitsService {
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
     const where: any = { eventoId: opts.eventoId };
     if (!opts.incluirPrueba) where.esPrueba = false;
-    if (opts.search) {
-      const contiene = { contains: opts.search, mode: 'insensitive' };
-      // El nombre del kit solo trae el código del recinto ("Kit Recinto 1198"): también por su recinto.
-      where.OR = [
-        { nombre: contiene },
-        { codigoUnico: contiene },
-        { recinto: { nombre: contiene } },
-        { recinto: { codigoRecinto: contiene } },
-      ];
-    }
+    // Sin tildes y por palabras en cualquier orden. El nombre del kit solo trae
+    // el código del recinto ("Kit Recinto 1198"): también por su recinto.
+    const ids = await idsPorBusqueda(
+      this.prisma,
+      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id`,
+      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_unico'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
+      opts.search,
+      // Solo los kits del evento: sin esto volverían los de todos los eventos.
+      Prisma.sql`t.evento_id = ${opts.eventoId}::uuid`,
+    );
+    if (ids) where.id = { in: ids };
     const [total, items] = await this.prisma.$transaction([
       this.prisma.kitElectoral.count({ where }),
       this.prisma.kitElectoral.findMany({

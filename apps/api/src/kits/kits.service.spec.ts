@@ -40,6 +40,7 @@ describe('KitsService', () => {
       count: jest.fn(),
     },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
+    $queryRaw: jest.fn(),
   };
 
   const eventoId = '22222222-2222-2222-2222-222222222222';
@@ -104,17 +105,19 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.count).toHaveBeenCalledWith({ where: { eventoId } });
     });
 
-    it('la búsqueda también encuentra el kit por el nombre o el código de su recinto', async () => {
+    it('la búsqueda (sin tildes, por palabras) también encuentra el kit por el nombre o el código de su recinto', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'k1' }]);
       prisma.kitElectoral.count.mockResolvedValueOnce(1);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow()]);
-      await service.list({ eventoId, search: 'juan montalvo' });
-      const contiene = { contains: 'juan montalvo', mode: 'insensitive' };
-      expect(prisma.kitElectoral.count.mock.calls[0][0].where.OR).toEqual([
-        { nombre: contiene },
-        { codigoUnico: contiene },
-        { recinto: { nombre: contiene } },
-        { recinto: { codigoRecinto: contiene } },
-      ]);
+      await service.list({ eventoId, search: 'Juan Montalvo' });
+
+      const sql = prisma.$queryRaw.mock.calls[0][0];
+      expect(sql.sql).toContain('FROM kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id');
+      expect(sql.sql).toContain('t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto');
+      expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%montalvo%', eventoId]));
+      expect(sql.sql).toContain('(t.evento_id = ?::uuid) AND');
+      // Los ids encontrados se combinan con el resto del filtro (evento, prueba).
+      expect(prisma.kitElectoral.count.mock.calls[0][0].where).toEqual({ eventoId, esPrueba: false, id: { in: ['k1'] } });
     });
   });
 

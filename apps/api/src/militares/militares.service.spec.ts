@@ -22,6 +22,7 @@ describe('MilitaresService', () => {
     },
     entregaCustodioKit: { count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
+    $queryRaw: jest.fn(),
   };
 
   const recintoId = '44444444-4444-4444-4444-444444444444';
@@ -57,19 +58,17 @@ describe('MilitaresService', () => {
 
   describe('list', () => {
     it('busca también por nombre o código del recinto asignado', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'm1' }]);
       prisma.militar.count.mockResolvedValueOnce(1);
       prisma.militar.findMany.mockResolvedValueOnce([militarRow()]);
 
-      await service.list({ search: 'apuela' });
+      await service.list({ search: 'Apuela' });
 
-      const where = prisma.militar.findMany.mock.calls[0][0].where;
-      expect(where.OR).toEqual(
-        expect.arrayContaining([
-          { cedula: { contains: 'apuela' } },
-          { recinto: { nombre: { contains: 'apuela', mode: 'insensitive' } } },
-          { recinto: { codigoRecinto: { contains: 'apuela', mode: 'insensitive' } } },
-        ]),
-      );
+      const sql = prisma.$queryRaw.mock.calls[0][0];
+      expect(sql.sql).toContain('FROM militares t LEFT JOIN recintos r ON r.id = t.recinto_id');
+      expect(sql.sql).toContain('t.nombres,t.apellidos,t.cedula,r.nombre,r.codigo_recinto');
+      expect(sql.values).toContain('%apuela%');
+      expect(prisma.militar.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['m1'] } });
     });
   });
 

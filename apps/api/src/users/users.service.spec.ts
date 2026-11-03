@@ -27,6 +27,7 @@ describe('UsersService', () => {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
     },
+    $queryRaw: jest.fn(),
     $transaction: jest.fn((arg: any) =>
       Array.isArray(arg) ? Promise.all(arg) : arg(prisma),
     ),
@@ -104,6 +105,32 @@ describe('UsersService', () => {
       await service.list({ pageSize: Number('abc') });
 
       expect(prisma.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
+    });
+
+    it('busca sin tildes y por palabras en nombres y apellidos juntos ("juan perez")', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'u1' }]);
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.count.mockResolvedValueOnce(0);
+
+      await service.list({ search: 'Juan Pérez', role: 'OPERADOR_CDA' });
+
+      const sql = prisma.$queryRaw.mock.calls[0][0];
+      expect(sql.sql).toContain('FROM usuarios t');
+      expect(sql.sql).toContain('t.nombres,t.apellidos,t.email,t.cedula');
+      expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%perez%']));
+      expect(prisma.usuario.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['u1'] },
+        roles: { some: { rol: { nombre: 'OPERADOR_CDA' } } },
+      });
+    });
+
+    it('sin búsqueda no consulta por ids', async () => {
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.count.mockResolvedValueOnce(0);
+
+      await service.list({});
+
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 

@@ -26,6 +26,7 @@ describe('OperadoresCdaService', () => {
   let service: OperadoresCdaService;
 
   const prisma = {
+    $queryRaw: jest.fn(),
     operadorCda: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -256,15 +257,18 @@ describe('OperadoresCdaService', () => {
         },
       ]);
 
-      const r = await service.list({ search: ' pérez ' });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'o1' }]);
+      const r = await service.list({ search: ' juan pérez ' });
 
+      // Sin tildes y por palabras en cualquier orden, sobre nombre y cédula.
+      const sql = prisma.$queryRaw.mock.calls[0][0];
+      expect(sql.sql).toContain('FROM operadores_cda t');
+      expect(sql.sql).toContain('t.apellidos_nombres,t.cedula');
+      expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%perez%']));
       expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({
         grupo: 'OPERADOR',
         activo: true,
-        OR: [
-          { apellidosNombres: { contains: 'pérez', mode: 'insensitive' } },
-          { cedula: { contains: 'pérez' } },
-        ],
+        id: { in: ['o1'] },
       });
       expect(r[0]).toMatchObject({ fechaInicio: '2026-10-20', tieneFoto: true });
       expect(r[0]).not.toHaveProperty('fotoKey');
@@ -277,16 +281,12 @@ describe('OperadoresCdaService', () => {
         { id: 'o1', apellidosNombres: 'PÉREZ ANA', cedula: '1005201015', grupo: 'DIGITADOR', activo: true },
       ]);
 
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'o1' }]);
       const r = await service.buscar({ q: '1005201015' });
 
+      expect(prisma.$queryRaw.mock.calls[0][0].values).toContain('%1005201015%');
       const args = prisma.operadorCda.findMany.mock.calls[0][0];
-      expect(args.where).toEqual({
-        activo: true,
-        OR: [
-          { apellidosNombres: { contains: '1005201015', mode: 'insensitive' } },
-          { cedula: { contains: '1005201015' } },
-        ],
-      });
+      expect(args.where).toEqual({ activo: true, id: { in: ['o1'] } });
       expect(args.where).not.toHaveProperty('grupo');
       expect(args.select).toEqual({ id: true, apellidosNombres: true, cedula: true, grupo: true, activo: true });
       expect(args.take).toBe(20);
@@ -294,6 +294,7 @@ describe('OperadoresCdaService', () => {
     });
 
     it('con incluirInactivos también trae a los ocultos', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
       await service.buscar({ q: 'pérez', incluirInactivos: true });
       expect(prisma.operadorCda.findMany.mock.calls[0][0].where).not.toHaveProperty('activo');
     });

@@ -29,6 +29,8 @@ import type {
 
 import { PrismaService } from '../db/prisma.service';
 import { INotifier, NOTIFIER } from '../auth/notifier';
+import { Prisma } from '@prisma/client';
+import { idsPorBusqueda } from '../common/busqueda-sql';
 
 @Injectable()
 export class UsersService {
@@ -50,16 +52,14 @@ export class UsersService {
     const page = Math.max(1, numero(opts.page, 1));
     // 500: los combos de Kits necesitan a todos los operadores CDA (más de 100).
     const pageSize = Math.min(500, Math.max(1, numero(opts.pageSize, 20)));
-    const where: any = opts.search
-      ? {
-          OR: [
-            { email: { contains: opts.search, mode: 'insensitive' as const } },
-            { cedula: { contains: opts.search } },
-            { nombres: { contains: opts.search, mode: 'insensitive' as const } },
-            { apellidos: { contains: opts.search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    // Sin tildes y por palabras en cualquier orden: "juan perez" une nombres y apellidos.
+    const ids = await idsPorBusqueda(
+      this.prisma,
+      Prisma.sql`usuarios t`,
+      [Prisma.raw('t.nombres'), Prisma.raw('t.apellidos'), Prisma.raw('t.email'), Prisma.raw('t.cedula')],
+      opts.search,
+    );
+    const where: any = ids ? { id: { in: ids } } : {};
     if (opts.role) {
       where.roles = { some: { rol: { nombre: opts.role } } };
     }

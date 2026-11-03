@@ -17,6 +17,8 @@ import type {
   UpdateRecintoRequest,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { Prisma } from '@prisma/client';
+import { idsPorBusqueda } from '../common/busqueda-sql';
 
 @Injectable()
 export class RecintosService {
@@ -37,13 +39,14 @@ export class RecintosService {
     const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
     // Los recintos que salieron del Google Sheet no se listan (siguen en la base por el historial).
     const where: any = { activo: true };
-    if (opts.search) {
-      where.OR = [
-        { nombre: { contains: opts.search, mode: 'insensitive' } },
-        { codigoRecinto: { contains: opts.search } },
-        { parroquia: { contains: opts.search, mode: 'insensitive' } },
-      ];
-    }
+    // Sin tildes y por palabras en cualquier orden.
+    const ids = await idsPorBusqueda(
+      this.prisma,
+      Prisma.sql`recintos t`,
+      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_recinto'), Prisma.raw('t.parroquia')],
+      opts.search,
+    );
+    if (ids) where.id = { in: ids };
     if (opts.cantonId) where.cantonId = opts.cantonId;
     if (opts.tipo) where.tipo = opts.tipo;
     if (opts.cdaDestinoId) where.cdaDestinoId = opts.cdaDestinoId;
