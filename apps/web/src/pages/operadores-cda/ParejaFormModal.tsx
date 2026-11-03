@@ -19,7 +19,6 @@ export function ComboFiltrable<T extends { id: string }>({
   id,
   etiqueta,
   opciones,
-  otras,
   valor,
   onChange,
   texto,
@@ -29,8 +28,6 @@ export function ComboFiltrable<T extends { id: string }>({
   id: string;
   etiqueta: string;
   opciones: T[];
-  /** Opciones que van aparte, debajo (p. ej. el otro cargo para una pareja). */
-  otras?: { titulo: string; tituloPrincipal: string; opciones: T[] };
   valor: string;
   onChange: (id: string) => void;
   texto: (o: T) => string;
@@ -39,15 +36,7 @@ export function ComboFiltrable<T extends { id: string }>({
 }) {
   const [filtro, setFiltro] = useState('');
   const q = filtro.trim();
-  const filtrar = (lista: T[]) => (q ? lista.filter((o) => o.id === valor || coincideBusqueda([texto(o)], q)) : lista);
-  const visibles = filtrar(opciones);
-  const visiblesOtras = otras ? filtrar(otras.opciones) : [];
-  const lista = (l: T[]) =>
-    l.map((o) => (
-      <option key={o.id} value={o.id}>
-        {texto(o)}
-      </option>
-    ));
+  const visibles = q ? opciones.filter((o) => o.id === valor || coincideBusqueda([texto(o)], q)) : opciones;
   return (
     <div className="field">
       <label htmlFor={id}>{etiqueta}</label>
@@ -61,17 +50,14 @@ export function ComboFiltrable<T extends { id: string }>({
       />
       <select id={id} value={valor} onChange={(e) => onChange(e.target.value)} required={requerido} style={{ marginTop: 6 }}>
         <option value="">{vacio}</option>
-        {otras && visiblesOtras.length > 0 ? (
-          <>
-            <optgroup label={otras.tituloPrincipal}>{lista(visibles)}</optgroup>
-            <optgroup label={otras.titulo}>{lista(visiblesOtras)}</optgroup>
-          </>
-        ) : (
-          lista(visibles)
-        )}
+        {visibles.map((o) => (
+          <option key={o.id} value={o.id}>
+            {texto(o)}
+          </option>
+        ))}
       </select>
       <p className="muted" style={{ margin: '0.25rem 0 0' }} aria-live="polite">
-        {visibles.length + visiblesOtras.length} disponible(s)
+        {visibles.length} disponible(s)
       </p>
     </div>
   );
@@ -82,7 +68,6 @@ export const textoPersona = (p: PersonaParejaCda) => `${p.apellidosNombres} · $
 /** Nombre del cargo de una persona de pareja (Operador CDA o Asistente CDA). */
 export const cargoPareja = (p: PersonaParejaCda) => (p.grupo === 'ASISTENTE' ? 'Asistente CDA' : 'Operador CDA');
 
-const sin = <T extends { id: string }>(lista: T[], id: string) => (id ? lista.filter((x) => x.id !== id) : lista);
 export const textoRecinto = (r: RecintoParejaCda) => `${r.codigo} · ${r.nombre}`;
 
 /**
@@ -116,12 +101,10 @@ export function ParejaFormModal({
     queryKey: ['parejas-cda', 'disponibles', dia, todos],
     queryFn: () => getDisponiblesParejasCda(dia, todos),
   });
-  const operadores = conActual(data?.operadores, pareja?.operador?.grupo === 'ASISTENTE' ? null : pareja?.operador);
-  const asistentes = conActual(data?.asistentes, pareja?.asistente?.grupo === 'OPERADOR' ? null : pareja?.asistente);
-  // Por disponibilidad de Android la pareja puede ser de dos operadores o de dos asistentes:
-  // cada combo ofrece aparte al otro cargo, sin la persona ya elegida en el otro combo.
-  const conOtroActual = (lista: PersonaParejaCda[], actual: PersonaParejaCda | null | undefined, grupo: string) =>
-    conActual(lista, actual?.grupo === grupo ? actual : null);
+  // Cada pareja es un Operador y un Asistente CDA: en una pareja anterior a la
+  // regla, quien no es del cargo de su columna no se ofrece (hay que cambiarlo).
+  const operadores = conActual(data?.operadores, pareja?.operador?.grupo === 'OPERADOR' ? pareja.operador : null);
+  const asistentes = conActual(data?.asistentes, pareja?.asistente?.grupo === 'ASISTENTE' ? pareja.asistente : null);
   const recintos = conActual(data?.recintos, pareja?.recinto);
 
   const guardar = useMutation({
@@ -183,15 +166,15 @@ export function ParejaFormModal({
           </p>
         )}
 
+        {pareja && (pareja.operador.grupo !== 'OPERADOR' || (pareja.asistente && pareja.asistente.grupo !== 'ASISTENTE')) && (
+          <p className="ocda-estado aviso" role="note">
+            Esta pareja es anterior a la regla: cada pareja es un Operador CDA y un Asistente CDA. Elija a la persona del cargo que corresponde.
+          </p>
+        )}
         <ComboFiltrable
           id="pareja-operador"
           etiqueta="Operador CDA"
-          opciones={sin(operadores, asistenteId)}
-          otras={{
-            tituloPrincipal: 'Operadores CDA',
-            titulo: 'Asistentes CDA (si hace falta)',
-            opciones: sin(conOtroActual(data?.asistentes ?? [], pareja?.operador, 'ASISTENTE'), asistenteId),
-          }}
+          opciones={operadores}
           valor={operadorId}
           onChange={setOperadorId}
           texto={textoPersona}
@@ -201,12 +184,7 @@ export function ParejaFormModal({
         <ComboFiltrable
           id="pareja-asistente"
           etiqueta="Asistente CDA"
-          opciones={sin(asistentes, operadorId)}
-          otras={{
-            tituloPrincipal: 'Asistentes CDA',
-            titulo: 'Operadores CDA (si hace falta)',
-            opciones: sin(conOtroActual(data?.operadores ?? [], pareja?.asistente, 'OPERADOR'), operadorId),
-          }}
+          opciones={asistentes}
           valor={asistenteId}
           onChange={setAsistenteId}
           texto={textoPersona}

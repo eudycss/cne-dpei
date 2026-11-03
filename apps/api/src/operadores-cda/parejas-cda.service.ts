@@ -39,10 +39,13 @@ const CARGO_NUEVO: Record<'OPERADOR' | 'ASISTENTE', string> = {
 
 const PERSONA = { id: true, apellidosNombres: true, cedula: true, telefono: true, dispositivo: true, grupo: true } as const;
 
-/** Cargos que forman pareja. Lo normal es un operador con un asistente, pero
- * por disponibilidad de Android pueden ir dos operadores o dos asistentes. */
-const GRUPOS_PAREJA = new Set(['OPERADOR', 'ASISTENTE']);
-const NO_ES_DE_PAREJA = 'no de Operadores ni Asistentes CDA';
+/**
+ * Regla (2026-11-03): cada pareja es un Operador CDA y, si va, un Asistente
+ * CDA; nunca dos operadores ni dos asistentes, tampoco la 2.ª pareja de un
+ * recinto. Las parejas anteriores que no la cumplen quedan como historial.
+ */
+type GrupoPareja = 'OPERADOR' | 'ASISTENTE';
+const ROL_DE: Record<GrupoPareja, string> = { OPERADOR: 'operador', ASISTENTE: 'asistente' };
 
 const CON_RELACIONES = {
   recinto: { select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { nombre: true } } } },
@@ -197,7 +200,13 @@ export class ParejasCdaService {
     const actual = await this.leerPareja(id);
     const operadorCdaId = datos.operadorCdaId ?? actual.operadorCdaId;
     const asistenteCdaId = datos.asistenteCdaId === undefined ? actual.asistenteCdaId : datos.asistenteCdaId;
-    await this.validarIntegrantes(operadorCdaId, asistenteCdaId);
+    // Solo se valida a quien entra: una pareja anterior a la regla (historial)
+    // puede cambiar de recinto o del integrante que no cumple, sin bloquearse.
+    if (operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
+    await this.validarIntegrantes(
+      operadorCdaId !== actual.operadorCdaId ? operadorCdaId : null,
+      asistenteCdaId !== actual.asistenteCdaId ? asistenteCdaId : null,
+    );
     // Los únicos de la base son por columna: aquí se mira también la otra columna.
     await this.libresEseDia(actual.fecha, diaDeFechaDb(actual.fecha), operadorCdaId, asistenteCdaId, id);
     const cambiaRecinto = !!datos.recintoId && datos.recintoId !== actual.recintoId;
@@ -258,13 +267,14 @@ export class ParejasCdaService {
     });
     const ocupadas = new Set(destino.flatMap((d) => [d.operadorCdaId, d.asistenteCdaId]).filter((id): id is string => !!id));
     const personas = [...new Set(origen.flatMap((p) => [p.operadorCdaId, p.asistenteCdaId]).filter((id): id is string => !!id))];
-    const activas = new Set(
+    // Activas con su cargo: no se copia a nadie fuera del cargo de su columna.
+    const activas = new Map(
       (
         await this.prisma.operadorCda.findMany({
-          where: { id: { in: personas }, activo: true, grupo: { in: [...GRUPOS_PAREJA] } },
-          select: { id: true },
+          where: { id: { in: personas }, activo: true },
+          select: { id: true, grupo: true },
         })
-      ).map((o) => o.id),
+      ).map((o) => [o.id, o.grupo] as const),
     );
     const recintosOrigen = [...new Set(origen.map((p) => p.recintoId))];
     const recintosActivos = new Set(
@@ -280,12 +290,12 @@ export class ParejasCdaService {
     for (const p of origen) {
       const motivo = !recintosActivos.has(p.recintoId)
         ? 'El recinto ya no está activo'
-        : !activas.has(p.operadorCdaId)
-          ? 'El operador ya no está disponible (oculto o cambió de cargo)'
+        : activas.get(p.operadorCdaId) !== 'OPERADOR'
+          ? 'El operador ya no está disponible (oculto o no es Operador CDA)'
           : ocupadas.has(p.operadorCdaId)
             ? 'El operador ya tiene pareja ese día'
-            : p.asistenteCdaId && !activas.has(p.asistenteCdaId)
-              ? 'El asistente ya no está disponible (oculto o cambió de cargo)'
+            : p.asistenteCdaId && activas.get(p.asistenteCdaId) !== 'ASISTENTE'
+              ? 'El asistente ya no está disponible (oculto o no es Asistente CDA)'
               : p.asistenteCdaId && ocupadas.has(p.asistenteCdaId)
                 ? 'El asistente ya tiene pareja ese día'
                 : null;
@@ -323,6 +333,13 @@ export class ParejasCdaService {
 
     if (campo === 'ASISTENTE' && a.asistenteCdaId === b.asistenteCdaId) throw new BadRequestException('Las dos parejas ya tienen ese asistente');
     if (campo === 'RECINTO' && a.recintoId === b.recintoId) throw new BadRequestException('Las dos parejas ya tienen ese recinto');
+    // Una pareja anterior a la regla (dos operadores o dos asistentes) no pasa a nadie fuera de su cargo.
+    if (campo !== 'RECINTO') {
+      const grupo: GrupoPareja = campo;
+      const personas = grupo === 'OPERADOR' ? [a.operador, b.operador] : [a.asistente, b.asistente];
+      const fuera = personas.find((p) => p && p.grupo !== grupo);
+      if (fuera) throw new BadRequestException(`${fuera.apellidosNombres} es de ${textosGrupo(fuera.grupo).titulo}: no puede ir como ${ROL_DE[grupo]} (cada pareja es un Operador y un Asistente CDA)`);
+    }
 
     const evento = await this.eventoDeFecha(fecha);
     if (evento && this.kits.estaCongelado({ estado: 'ACTIVO', fechaJornada: fechaDb(fecha) }) && !justificacion?.trim()) {
@@ -655,6 +672,7 @@ export class ParejasCdaService {
     [
       'Una fila por pareja. Solo la hoja "Parejas" se carga.',
       'cedula_operador y codigo_recinto son obligatorios. El asistente es opcional.',
+      'Cada pareja es un Operador CDA (cedula_operador) y un Asistente CDA (cedula_asistente): nunca dos operadores ni dos asistentes, tampoco la 2.ª pareja de un recinto.',
       'Si una cédula no está registrada se crea con el nombre y teléfono de la fila (nombre obligatorio).',
       'codigo_recinto: ver la hoja "Recintos CDA".',
       'articulos: solo si el recinto aún no tiene kit en el evento. Códigos del catálogo separados por coma; serie opcional con dos puntos (ej. COMPUTADOR:5CD445577S, MOUSE).',
@@ -722,7 +740,7 @@ export class ParejasCdaService {
       }
       errores.push(...textosInvalidos(datos));
 
-      const integrante = (cedula: string, nombre: string | undefined, columna: string) => {
+      const integrante = (cedula: string, nombre: string | undefined, grupo: GrupoPareja, columna: string) => {
         if (!cedula) return null;
         const repetida = filaDeCedula.get(cedula);
         if (repetida) errores.push(`La cédula ${cedula} está repetida (fila ${repetida})`);
@@ -732,19 +750,19 @@ export class ParejasCdaService {
           if (!nombre) errores.push(`Cédula nueva ${cedula}: falta ${columna}`);
           return { cedula, nombre: nombre ?? null, nuevo: true };
         }
-        if (!GRUPOS_PAREJA.has(p.grupo)) errores.push(`La cédula ${cedula} es de ${textosGrupo(p.grupo).titulo}, ${NO_ES_DE_PAREJA}`);
+        if (p.grupo !== grupo) errores.push(`La cédula ${cedula} es de ${textosGrupo(p.grupo).titulo}, no de ${textosGrupo(grupo).titulo}`);
         else if (!p.activo) errores.push(`${p.apellidosNombres} está oculto en ${textosGrupo(p.grupo).titulo}`);
         if (personasHoy.has(p.id)) errores.push(`${p.apellidosNombres} ya tiene pareja el ${fecha}`);
         const otro = otroDia.get(p.id);
         if (otro) avisos.push(`${p.apellidosNombres} ya fue el ${otro}`);
         return { cedula, nombre: p.apellidosNombres, nuevo: false };
       };
-      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'nombre_operador') ?? {
+      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'OPERADOR', 'nombre_operador') ?? {
         cedula: datos.cedula_operador,
         nombre: null,
         nuevo: false,
       };
-      const asistente = integrante(datos.cedula_asistente, datos.nombre_asistente, 'nombre_asistente');
+      const asistente = integrante(datos.cedula_asistente, datos.nombre_asistente, 'ASISTENTE', 'nombre_asistente');
 
       const r = datos.codigo_recinto ? recintoPorCodigo.get(datos.codigo_recinto.toLowerCase()) : undefined;
       if (datos.codigo_recinto && !r) errores.push(`Recinto no encontrado: ${datos.codigo_recinto}`);
@@ -978,8 +996,8 @@ export class ParejasCdaService {
     const p = await this.prisma.parejaCda.findUnique({
       where: { id },
       include: {
-        operador: { select: { usuarioId: true, apellidosNombres: true } },
-        asistente: { select: { usuarioId: true, apellidosNombres: true } },
+        operador: { select: { usuarioId: true, apellidosNombres: true, grupo: true } },
+        asistente: { select: { usuarioId: true, apellidosNombres: true, grupo: true } },
         kit: { select: { id: true, operadorId: true, eventoId: true, estado: true, codigoUnico: true } },
       },
     });
@@ -987,18 +1005,22 @@ export class ParejasCdaService {
     return p;
   }
 
-  private async validarIntegrantes(operadorCdaId: string, asistenteCdaId: string | null) {
-    if (operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
-    const comprobar = async (id: string, rol: string) => {
+  /** Comprueba el cargo de cada integrante indicado (null = no se comprueba). */
+  private async validarIntegrantes(operadorCdaId: string | null, asistenteCdaId: string | null) {
+    if (operadorCdaId && operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
+    const comprobar = async (id: string, grupo: GrupoPareja) => {
+      const rol = ROL_DE[grupo];
       const p = await this.prisma.operadorCda.findUnique({ where: { id }, select: { grupo: true, activo: true } });
       if (!p) throw new NotFoundException(`No se encontró al ${rol}`);
-      if (!GRUPOS_PAREJA.has(p.grupo)) {
-        throw new BadRequestException(`La persona elegida como ${rol} es de ${textosGrupo(p.grupo).titulo}, ${NO_ES_DE_PAREJA}`);
+      if (p.grupo !== grupo) {
+        throw new BadRequestException(
+          `La persona elegida como ${rol} es de ${textosGrupo(p.grupo).titulo}, no de ${textosGrupo(grupo).titulo}: cada pareja es un Operador y un Asistente CDA`,
+        );
       }
       if (!p.activo) throw new BadRequestException(`La persona elegida como ${rol} está oculta`);
     };
-    await comprobar(operadorCdaId, 'operador');
-    if (asistenteCdaId) await comprobar(asistenteCdaId, 'asistente');
+    if (operadorCdaId) await comprobar(operadorCdaId, 'OPERADOR');
+    if (asistenteCdaId) await comprobar(asistenteCdaId, 'ASISTENTE');
   }
 
   private async validarRecinto(recintoId: string) {

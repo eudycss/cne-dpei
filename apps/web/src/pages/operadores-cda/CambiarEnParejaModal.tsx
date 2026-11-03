@@ -76,7 +76,7 @@ export function CambiarEnParejaModal({
     const con = otras.filter((p) => valorDe(p, campo)?.id === id);
     return con.find((p) => p.estado !== 'SOLO_REGISTRADA') ?? con[0] ?? null;
   };
-  // Quien no es del cargo de la columna (pareja de dos operadores o dos asistentes) lleva su cargo.
+  // En una pareja anterior a la regla, quien no es del cargo de su columna lleva su cargo.
   const grupoColumna = campo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
   const textoBase = (o: Opcion) =>
     'cedula' in o ? `${textoPersona(o)}${o.grupo === grupoColumna ? '' : ` · ${cargoPareja(o)}`}` : textoRecinto(o);
@@ -87,11 +87,10 @@ export function CambiarEnParejaModal({
       ? `${textoBase(o)} · lo tiene ${dueno.operador.apellidosNombres} (se intercambian)`
       : `${textoBase(o)} · en ${dueno.recinto.codigo} (se intercambian)`;
   };
-  // Para personas se ofrecen los dos cargos libres; el compañero de la pareja no se ofrece.
-  const companero = campo === 'OPERADOR' ? pareja.asistente?.id : campo === 'ASISTENTE' ? pareja.operador.id : undefined;
-  const deData = campo === 'RECINTO' ? (data?.recintos ?? []) : [...(data?.operadores ?? []), ...(data?.asistentes ?? [])];
-  const opciones = unir([deData, otras.map((p) => valorDe(p, campo)), [valorDe(pareja, campo)]], textoBase).filter(
-    (o) => o.id !== companero,
+  // Cada pareja es un Operador y un Asistente CDA: solo se ofrece el cargo de la columna.
+  const deData = campo === 'OPERADOR' ? data?.operadores : campo === 'ASISTENTE' ? data?.asistentes : data?.recintos;
+  const opciones = unir([deData ?? [], otras.map((p) => valorDe(p, campo)), [valorDe(pareja, campo)]], textoBase).filter(
+    (o) => !('cedula' in o) || o.grupo === grupoColumna || o.id === actualId,
   );
 
   const sinCambios = valor === actualId;

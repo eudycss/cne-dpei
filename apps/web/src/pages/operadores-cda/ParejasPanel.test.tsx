@@ -188,57 +188,39 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     );
   });
 
-  describe('pareja de dos operadores o dos asistentes (disponibilidad de Android)', () => {
-    it('cada combo ofrece aparte a las personas del otro cargo y no repite a la ya elegida', async () => {
+  describe('regla: cada pareja es un Operador y un Asistente CDA', () => {
+    it('cada combo ofrece solo su cargo: el de operador a los operadores y el de asistente a los asistentes', async () => {
       mockApi({ parejas: [] }, { operadores: [LUIS, ANA], asistentes: [JUAN], recintos: [R957] });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Agregar pareja' }));
       const dialogo = await screen.findByRole('dialog');
 
       const operador = await within(dialogo).findByRole('combobox', { name: 'Operador CDA' });
-      await waitFor(() => expect(within(operador).getByRole('group', { name: 'Asistentes CDA (si hace falta)' })).toBeInTheDocument());
-      expect(within(within(operador).getByRole('group', { name: 'Asistentes CDA (si hace falta)' })).getAllByRole('option')).toHaveLength(1);
+      await waitFor(() => expect(within(operador).getAllByRole('option')).toHaveLength(3));
+      expect(within(operador).queryByRole('option', { name: /RUIZ JUAN/ })).not.toBeInTheDocument();
+      expect(within(operador).queryByRole('group')).not.toBeInTheDocument();
 
-      await userEvent.selectOptions(operador, 'op2');
       const asistente = within(dialogo).getByRole('combobox', { name: 'Asistente CDA' });
-      expect(within(asistente).queryByRole('option', { name: /MORA LUIS/ })).not.toBeInTheDocument();
-      expect(within(within(asistente).getByRole('group', { name: 'Operadores CDA (si hace falta)' })).getByRole('option')).toHaveTextContent(
-        'PÉREZ ANA',
-      );
-
-      await userEvent.selectOptions(asistente, 'op1');
-      await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Recinto CDA' }), 'r1');
-      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
-      await waitFor(() =>
-        expect(postMock).toHaveBeenCalledWith('/parejas-cda', { fecha: DIA, operadorCdaId: 'op2', asistenteCdaId: 'op1', recintoId: 'r1' }),
-      );
+      expect(within(asistente).getAllByRole('option').map((o) => o.textContent)).toEqual(['Sin asistente', 'RUIZ JUAN · 1713175071']);
     });
 
-    it('en la tabla, el cargo real se ve debajo de quien no es del cargo de su columna', async () => {
+    it('en la tabla, una pareja anterior a la regla avisa que no la cumple', async () => {
       mockApi({ parejas: [fila({ asistente: LUIS })] });
       renderPagina();
       const celda = (await screen.findByText('MORA LUIS')).closest('td') as HTMLElement;
-      expect(within(celda).getByText('Operador CDA')).toBeInTheDocument();
+      expect(within(celda).getByText('Operador CDA · no cumple la regla')).toBeInTheDocument();
       const celdaOperador = screen.getByText('PÉREZ ANA').closest('td') as HTMLElement;
-      expect(within(celdaOperador).queryByText(/CDA$/)).not.toBeInTheDocument();
+      expect(within(celdaOperador).queryByText(/no cumple la regla/)).not.toBeInTheDocument();
     });
 
-    it('cambiar el asistente por un operador libre: lo ofrece con su cargo y lo guarda', async () => {
+    it('cambiar el asistente no ofrece operadores', async () => {
       mockApi({}, { operadores: [LUIS], asistentes: [], recintos: [] });
-      (api.patch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] },
-      });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Cambiar asistente de PÉREZ ANA' }));
       const dialogo = await screen.findByRole('dialog', { name: 'Cambiar asistente' });
       const combo = within(dialogo).getByRole('combobox', { name: 'Nuevo asistente' });
-      await waitFor(() => expect(within(combo).getByRole('option', { name: 'MORA LUIS · 1712345675 · Operador CDA' })).toBeInTheDocument());
-      // Quien ya está en la pareja (la operadora) no se ofrece como asistente.
+      await waitFor(() => expect(within(combo).queryByRole('option', { name: /MORA LUIS/ })).not.toBeInTheDocument());
       expect(within(combo).queryByRole('option', { name: /PÉREZ ANA/ })).not.toBeInTheDocument();
-      await userEvent.selectOptions(combo, 'op2');
-      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
-      await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/parejas-cda/p1', { asistenteCdaId: 'op2' }));
     });
   });
 

@@ -33,6 +33,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
   const prisma = {
     operadorCda: { findUnique: jest.fn() },
     asistenciaCda: { findFirst: jest.fn() },
+    parejaCda: { count: jest.fn() },
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const cuentas = {
@@ -55,6 +56,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     jest.useFakeTimers({ now: new Date('2026-10-26T02:00:00Z'), doNotFake: ['nextTick', 'setImmediate'] });
     tx.operadorCda.updateMany.mockResolvedValue({ count: 1 });
     prisma.asistenciaCda.findFirst.mockResolvedValue(null);
+    prisma.parejaCda.count.mockResolvedValue(0);
     tx.operadorCda.findUniqueOrThrow.mockResolvedValue(FILA);
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -83,6 +85,17 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     } finally {
       registrarCargos(base);
     }
+  });
+
+  it('con parejas de hoy en adelante no cambia el cargo (409): rompería la regla Operador + Asistente', async () => {
+    prisma.operadorCda.findUnique.mockResolvedValueOnce(leido());
+    prisma.parejaCda.count.mockResolvedValueOnce(2);
+
+    await expect(service.cambiarCargo(OP, 'OPERADOR', USR)).rejects.toThrow('Tiene 2 pareja(s) de hoy en adelante');
+    expect(prisma.parejaCda.count).toHaveBeenCalledWith({
+      where: { fecha: { gte: new Date('2026-10-25T00:00:00Z') }, OR: [{ operadorCdaId: OP }, { asistenteCdaId: OP }] },
+    });
+    expect(tx.operadorCda.updateMany).not.toHaveBeenCalled();
   });
 
   it('cambia el cargo desde hoy (Ecuador) y registra el cambio con quién lo hizo', async () => {
