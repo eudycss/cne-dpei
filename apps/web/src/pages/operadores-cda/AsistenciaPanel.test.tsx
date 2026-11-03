@@ -186,6 +186,13 @@ describe('AsistenciaPanel', () => {
     expect(filas[0]).toHaveTextContent('CHÁVEZ MORA MARÍA JOSÉ');
     // Bajo el nombre va el cargo abreviado, como en Figma.
     expect(filas[0]).toHaveTextContent('Operador CDA');
+
+    // Nombre y apellido en otro orden, saltando el segundo apellido.
+    const buscador = screen.getByRole('textbox', { name: 'Buscar operador por nombre o cédula' });
+    await userEvent.clear(buscador);
+    await userEvent.type(buscador, 'maría chavez');
+    expect(screen.getAllByRole('rowheader')).toHaveLength(1);
+    expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('CHÁVEZ MORA MARÍA JOSÉ');
   });
 
   it('el marcado masivo confirma y envía solo a los pendientes visibles', async () => {

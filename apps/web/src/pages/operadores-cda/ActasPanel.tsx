@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { ActaCdaFila } from '@cne/shared-types';
@@ -17,7 +18,7 @@ import { AccionesEncabezado } from './AccionesEncabezado';
 import { useModulos } from '../../lib/useModulos';
 import { GenerarActasModal } from './GenerarActasModal';
 import { Kpi } from './Kpi';
-import { cargoCorto, iniciales, normalizar } from './utils';
+import { cargoCorto, iniciales } from './utils';
 
 type Filtro = 'todos' | 'sin-acta' | 'generadas' | 'firmadas';
 
@@ -61,10 +62,10 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
   const filas = data ?? [];
   const conteo = (f: Filtro) => filas.filter(FILTROS.find((x) => x.id === f)!.cumple).length;
   const visibles = useMemo(() => {
-    const q = normalizar(busqueda.trim());
+    const q = busqueda.trim();
     const cumple = FILTROS.find((x) => x.id === filtro)!.cumple;
     return filas.filter(
-      (f) => cumple(f) && (!q || normalizar(f.operador.apellidosNombres).includes(q) || f.operador.cedula.includes(q)),
+      (f) => cumple(f) && coincideBusqueda([f.operador.apellidosNombres, f.operador.cedula], q),
     );
   }, [filas, filtro, busqueda]);
 

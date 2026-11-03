@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
@@ -20,7 +21,7 @@ import { OperadorFormModal } from './OperadorFormModal';
 import { OcultarOperadorModal } from './OcultarOperadorModal';
 import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
-import { cargoCorto, fechaCorta, iniciales, mensajeError, normalizar, partirNombre } from './utils';
+import { cargoCorto, fechaCorta, iniciales, mensajeError, partirNombre } from './utils';
 
 /**
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
@@ -158,11 +159,11 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
 
   const { desde, hasta, incluirSinFecha } = filtro;
   const visibles = useMemo(() => {
-    const q = normalizar(busqueda.trim());
+    const q = busqueda.trim();
     const f = { desde, hasta, incluirSinFecha };
     const filtrados = (data ?? []).filter(
       (o) =>
-        (!q || normalizar(o.apellidosNombres).includes(q) || o.cedula.includes(q)) &&
+        coincideBusqueda([o.apellidosNombres, o.cedula], q) &&
         cumpleIngreso(o, f) &&
         (!filtroCuenta || o.cuenta === filtroCuenta),
     );

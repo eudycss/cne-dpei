@@ -243,6 +243,12 @@ describe('MonitoreoPage', () => {
     expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
     expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
 
+    // Palabras en cualquier orden, también mezclando recinto y operador.
+    await user.clear(buscar);
+    await user.type(buscar, 'ruiz otavalo');
+    expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
+    expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
+
     await user.clear(buscar);
     await user.type(buscar, 'c1');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();

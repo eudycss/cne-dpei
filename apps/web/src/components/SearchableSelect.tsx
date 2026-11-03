@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { ChevronDown } from 'lucide-react';
 
 export interface SearchableSelectOption {
@@ -49,14 +50,8 @@ export function SearchableSelect({
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    const base = q
-      ? options.filter(
-          (o) =>
-            o.label.toLowerCase().includes(q) ||
-            (o.sublabel ? o.sublabel.toLowerCase().includes(q) : false),
-        )
-      : options;
+    // Sin tildes y por palabras en cualquier orden (misma regla que los demás buscadores).
+    const base = options.filter((o) => coincideBusqueda([o.label, o.sublabel], search));
     return base.slice(0, MAX_RESULTS);
   }, [options, search]);
 

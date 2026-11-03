@@ -8,7 +8,7 @@ import type { OperadorCda, RoleName } from '@cne/shared-types';
 
 import { ListadoOperadores } from './ListadoOperadores';
 import { GrupoCdaContext } from './grupo';
-import { hoyEcuador, iniciales, normalizar } from './utils';
+import { hoyEcuador, iniciales } from './utils';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -96,6 +96,12 @@ describe('ListadoOperadores', () => {
 
     await userEvent.clear(buscador);
     await userEvent.type(buscador, '100200');
+    expect(screen.getByRole('heading', { name: 'ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+
+    // Nombre y apellido en otro orden, saltando el segundo apellido.
+    await userEvent.clear(buscador);
+    await userEvent.type(buscador, 'maria andrade');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
 
     await userEvent.clear(buscador);
@@ -424,15 +430,12 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
   });
 });
 
-describe('iniciales / normalizar', () => {
+describe('iniciales', () => {
   it('toma el primer apellido y el primer nombre', () => {
     expect(iniciales('CHÁVEZ MORA LUCÍA ESTEFANÍA')).toBe('CL');
     expect(iniciales('VEGA LUIS')).toBe('VL');
   });
 
-  it('quita tildes y pasa a minúsculas', () => {
-    expect(normalizar('CHÁVEZ Núñez')).toBe('chavez nunez');
-  });
 
   it('"Enlace de foto" abre la ventana del enlace de ese operador; con foto muestra la foto y dice "Cambiar foto"', async () => {
     URL.createObjectURL = vi.fn(() => 'blob:foto');

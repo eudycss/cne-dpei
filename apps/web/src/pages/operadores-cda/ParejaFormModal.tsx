@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { AplicarParejasCdaResult, ParejaCdaFila, PersonaParejaCda, RecintoParejaCda } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { crearParejaCda, editarParejaCda, getDisponiblesParejasCda } from '../../lib/queries/operadores-cda';
 import { resumenApp } from './resumenParejas';
-import { mensajeError, normalizar } from './utils';
+import { mensajeError } from './utils';
 
 /** Agrega `actual` a la lista si no está (al cambiar una pareja, sus integrantes ya están "usados"). */
 function conActual<T extends { id: string }>(lista: T[] | undefined, actual: T | null | undefined): T[] {
@@ -37,8 +38,8 @@ export function ComboFiltrable<T extends { id: string }>({
   requerido?: boolean;
 }) {
   const [filtro, setFiltro] = useState('');
-  const q = normalizar(filtro.trim());
-  const filtrar = (lista: T[]) => (q ? lista.filter((o) => o.id === valor || normalizar(texto(o)).includes(q)) : lista);
+  const q = filtro.trim();
+  const filtrar = (lista: T[]) => (q ? lista.filter((o) => o.id === valor || coincideBusqueda([texto(o)], q)) : lista);
   const visibles = filtrar(opciones);
   const visiblesOtras = otras ? filtrar(otras.opciones) : [];
   const lista = (l: T[]) =>

@@ -920,6 +920,7 @@ export const descargarActasCdaSchema = z.object({ operadorIds: operadorIdsActasS
 
 export * from './modulos';
 export * from './permisos';
+export * from './busqueda';
 
 // --- Parejas Operador CDA + Asistente CDA por día ---
 

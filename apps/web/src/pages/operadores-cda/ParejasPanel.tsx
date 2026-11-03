@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
@@ -25,7 +26,7 @@ import { AsignarKitModal } from './AsignarKitModal';
 import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { resumenApp } from './resumenParejas';
-import { hoyEcuador, mensajeError, normalizar } from './utils';
+import { hoyEcuador, mensajeError } from './utils';
 
 /** Pareja de dos operadores o dos asistentes: el cargo real de quien no es el de su columna. */
 function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; columna: 'OPERADOR' | 'ASISTENTE' }) {
@@ -155,12 +156,15 @@ export function ParejasPanel() {
     );
   };
   const recintos = new Set(parejas.map((p) => p.recinto.id)).size;
-  // Buscador: persona (operador o asistente, nombre o cédula), código o nombre del recinto; sin tildes.
-  const q = normalizar(busqueda.trim());
+  // Buscador: persona (operador o asistente, nombre o cédula), código o nombre del recinto;
+  // sin tildes y por palabras en cualquier orden.
+  const q = busqueda.trim();
   const visibles = q
     ? parejas.filter((p) =>
-        [p.operador.apellidosNombres, p.operador.cedula, p.asistente?.apellidosNombres, p.asistente?.cedula, p.recinto.codigo, p.recinto.nombre]
-          .some((t) => !!t && normalizar(t).includes(q)),
+        coincideBusqueda(
+          [p.operador.apellidosNombres, p.operador.cedula, p.asistente?.apellidosNombres, p.asistente?.cedula, p.recinto.codigo, p.recinto.nombre],
+          q,
+        ),
       )
     : parejas;
   const conKit = parejas.some((p) => p.kitCodigo);

@@ -466,6 +466,12 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     await userEvent.type(buscar, 'solis');
     expect(filas()).toHaveLength(1);
     expect(filas()[0]).toHaveTextContent('MORA LUIS');
+
+    // Nombre y apellido en otro orden.
+    await userEvent.clear(buscar);
+    await userEvent.type(buscar, 'pedro solís');
+    expect(filas()).toHaveLength(1);
+    expect(filas()[0]).toHaveTextContent('MORA LUIS');
     expect(screen.getByText('1 de 2 pareja(s)')).toBeInTheDocument();
 
     await userEvent.clear(buscar);

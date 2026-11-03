@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { coincideBusqueda } from '@cne/shared-validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { ConfigAsistenciaCda, EstadoPuntualidad, FilaAtrasoCda } from '@cne/shared-types';
@@ -18,7 +19,7 @@ import { Campo } from './Campo';
 import { useModulos } from '../../lib/useModulos';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { Kpi } from './Kpi';
-import { hoyEcuador, mensajeError, normalizar } from './utils';
+import { hoyEcuador, mensajeError } from './utils';
 
 type Vista = 'resumen' | 'detalle';
 type Filtro = 'todos' | EstadoPuntualidad;
@@ -73,9 +74,9 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
     enabled: rango.success,
   });
 
-  const q = normalizar(busqueda.trim());
+  const q = busqueda.trim();
   const coincide = (p: { apellidosNombres: string; cedula: string }) =>
-    !q || normalizar(p.apellidosNombres).includes(q) || p.cedula.includes(q);
+    coincideBusqueda([p.apellidosNombres, p.cedula], q);
 
   const resumen = (data?.resumen ?? [])
     .filter(coincide)

@@ -70,6 +70,17 @@ describe('SearchableSelect', () => {
     expect(screen.queryByText('Carla Ruiz')).not.toBeInTheDocument();
   });
 
+  it('filtra sin tildes y por palabras en cualquier orden', async () => {
+    const user = userEvent.setup();
+    render(<ControlledSelect />);
+
+    await user.click(screen.getByRole('button', { name: '— Selecciona —' }));
+    await user.type(screen.getByPlaceholderText('Buscar…'), 'végá brunó');
+
+    expect(screen.getByText('Bruno Vega')).toBeInTheDocument();
+    expect(screen.queryByText('Ana Torres')).not.toBeInTheDocument();
+  });
+
   it('filtra también por sublabel (cédula)', async () => {
     const user = userEvent.setup();
     render(<ControlledSelect />);

@@ -1,8 +1,3 @@
-/** Sin tildes y en minúsculas, para buscar "chavez" y encontrar "CHÁVEZ". */
-export function normalizar(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
 /** Iniciales para el avatar: primer apellido y primer nombre ("APELLIDO1 APELLIDO2 NOMBRE1 …"). */
 export function iniciales(apellidosNombres: string): string {
   const p = apellidosNombres.trim().split(/\s+/);
