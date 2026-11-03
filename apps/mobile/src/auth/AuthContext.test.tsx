@@ -22,6 +22,10 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn(),
 }));
 
+jest.mock('../lib/location', () => ({
+  detenerRastreo: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../lib/offlineAuth', () => ({
   guardarVerificadorOffline: jest.fn(),
   limpiarVerificadorOffline: jest.fn(),
@@ -31,6 +35,7 @@ jest.mock('../lib/offlineAuth', () => ({
 import * as SecureStore from 'expo-secure-store';
 import { AuthProvider, AVISO_SESION_CERRADA, useAuth } from './AuthContext';
 import { guardarVerificadorOffline, limpiarVerificadorOffline, verificarLoginOffline } from '../lib/offlineAuth';
+import { detenerRastreo } from '../lib/location';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import {
   guardarAsignacion,
@@ -124,6 +129,9 @@ describe('AuthContext — reacción a sesión expirada', () => {
 
     expect(harness.current.user).toBeNull();
     expect(limpiarVerificadorOffline).not.toHaveBeenCalled();
+    // Decisión de diseño: el rastreo del retorno sigue; sus posiciones se
+    // encolan y se envían cuando el mismo operador vuelve a ingresar.
+    expect(detenerRastreo).not.toHaveBeenCalled();
   });
 
   it('setea user en null cuando api.ts emite onSessionExpired (401/403 real del refresh)', async () => {
@@ -371,6 +379,44 @@ describe('AuthContext — login offline', () => {
     expect(tokenStore.clear).toHaveBeenCalled();
   });
 
+  it('logout() detiene el rastreo en segundo plano (no sigue encolando posiciones de quien salió)', async () => {
+    (api.post as jest.Mock).mockResolvedValue({});
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await harness.current.logout();
+    });
+
+    expect(detenerRastreo).toHaveBeenCalled();
+  });
+
+  it('logout() detiene el rastreo ANTES de borrar los tokens (sin 401 de la tarea en el medio)', async () => {
+    (api.post as jest.Mock).mockResolvedValue({});
+    let rastreoDetenidoAlBorrarTokens = false;
+    (tokenStore.clear as jest.Mock).mockImplementationOnce(async () => {
+      rastreoDetenidoAlBorrarTokens = (detenerRastreo as jest.Mock).mock.calls.length > 0;
+    });
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await harness.current.logout();
+    });
+
+    expect(rastreoDetenidoAlBorrarTokens).toBe(true);
+  });
+
+  it('logout() termina aunque detener el rastreo falle', async () => {
+    (api.post as jest.Mock).mockResolvedValue({});
+    (detenerRastreo as jest.Mock).mockRejectedValueOnce(new Error('task no registrada'));
+
+    const harness = await renderAuth();
+    await act(async () => {
+      await harness.current.logout();
+    });
+
+    expect(harness.current.user).toBeNull();
+  });
+
   describe('copia local de la jornada', () => {
     beforeEach(async () => {
       await prepararCacheParaUsuario(sessionUser.id);
@@ -389,6 +435,64 @@ describe('AuthContext — login offline', () => {
       });
 
       await expect(leerEtapa()).resolves.toEqual({ eventoId: 'ev1', etapa: 'EN_RECINTO' });
+    });
+
+    it('login() del mismo operador NO detiene su rastreo (las posiciones pendientes son suyas)', async () => {
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: sessionUser },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('operador@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(detenerRastreo).not.toHaveBeenCalled();
+    });
+
+    it('login() de otro operador detiene el rastreo del anterior ANTES de guardar los tokens nuevos', async () => {
+      let rastreoDetenidoAlGuardarTokens = false;
+      (tokenStore.set as jest.Mock).mockImplementationOnce(async () => {
+        rastreoDetenidoAlGuardarTokens = (detenerRastreo as jest.Mock).mock.calls.length > 0;
+      });
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: otro },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(rastreoDetenidoAlGuardarTokens).toBe(true);
+    });
+
+    it('si detener el rastreo del anterior falla, el login del nuevo operador sigue', async () => {
+      (detenerRastreo as jest.Mock).mockRejectedValueOnce(new Error('task no registrada'));
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (api.post as jest.Mock).mockResolvedValue({
+        data: { accessToken: 'a', refreshToken: 'r', user: otro },
+      });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.login('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(harness.current.user).toEqual(otro);
+    });
+
+    it('loginOffline() de otro operador también detiene el rastreo del anterior', async () => {
+      const otro = { ...sessionUser, id: `${sessionUser.id}-otro` };
+      (verificarLoginOffline as jest.Mock).mockResolvedValue({ ok: true, usuario: otro });
+
+      const harness = await renderAuth();
+      await act(async () => {
+        await harness.current.loginOffline('otro@cne-imbabura.gob.ec', 'Secreto123!');
+      });
+
+      expect(detenerRastreo).toHaveBeenCalled();
     });
 
     it('login() online de otro operador la descarta', async () => {

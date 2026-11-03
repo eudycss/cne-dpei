@@ -94,13 +94,18 @@ export function leerEtapa(): Promise<EtapaGuardada | null> {
   return leer<EtapaGuardada>(ETAPA_KEY);
 }
 
-/** Al iniciar sesión: conserva la copia si es del mismo operador; si no, la descarta. */
-export async function prepararCacheParaUsuario(usuarioId: string): Promise<void> {
+/**
+ * Al iniciar sesión: conserva la copia si es del mismo operador; si no, la
+ * descarta. Devuelve true si descartó la jornada de otro operador.
+ */
+export async function prepararCacheParaUsuario(usuarioId: string): Promise<boolean> {
   const dueno = await AsyncStorage.getItem(USUARIO_KEY).catch(() => null);
   // Sin dueño registrado (logout explícito, que ya limpió todo, o una versión
   // anterior de la app) no se borra nada: la cola pendiente se adopta.
-  if (dueno && dueno !== usuarioId) await limpiarCacheJornada();
+  const deOtro = !!dueno && dueno !== usuarioId;
+  if (deOtro) await limpiarCacheJornada();
   await AsyncStorage.setItem(USUARIO_KEY, usuarioId);
+  return deOtro;
 }
 
 export function limpiarCacheJornada(): Promise<void> {

@@ -12,6 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
 import { api, onSessionExpired, tokenStore } from '../lib/api';
 import { limpiarCacheJornada, prepararCacheParaUsuario } from '../lib/cache-jornada';
+import { detenerRastreo } from '../lib/location';
 import {
   guardarVerificadorOffline,
   limpiarVerificadorOffline,
@@ -49,6 +50,16 @@ export const AVISO_SESION_CERRADA =
   'El servidor no aceptó su sesión (ingreso sin conexión, contraseña cambiada o sesión vencida). Ingrese de nuevo con su contraseña actual: lo pendiente se enviará al ingresar.';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+/**
+ * Antes de guardar la sesión nueva: si el teléfono tenía la jornada de OTRO
+ * operador (su sesión venció y entró alguien más), se detiene su rastreo en
+ * segundo plano, que si no enviaría sus posiciones con la sesión del nuevo.
+ */
+async function prepararParaUsuario(usuarioId: string): Promise<void> {
+  const deOtro = await prepararCacheParaUsuario(usuarioId).catch(() => false);
+  if (deOtro) await detenerRastreo().catch(() => {});
+}
 const USER_KEY = 'cne.user';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -107,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // mismo operador (p. ej. volvió a entrar tras expirar la sesión) y se
     // descarta si es de otro. Va ANTES de guardar los tokens: si no, un envío
     // de la cola en ese hueco mandaría lo del operador anterior con la sesión nueva.
-    await prepararCacheParaUsuario(data.user.id).catch(() => {});
+    await prepararParaUsuario(data.user.id);
     await tokenStore.set(data.accessToken, data.refreshToken);
     setUser(data.user);
     // Solo se guarda si no hay cambio de contraseña pendiente: si no, el
@@ -130,13 +141,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginOffline = useCallback(async (usuario: string, password: string) => {
     const resultado = await verificarLoginOffline(usuario, password);
     if (!resultado.ok) return resultado;
-    await prepararCacheParaUsuario(resultado.usuario.id).catch(() => {});
+    await prepararParaUsuario(resultado.usuario.id);
     setAvisoSesion(null);
     setUser(resultado.usuario);
     return { ok: true } as const;
   }, []);
 
   const logout = useCallback(async () => {
+    // Primero: el rastreo en segundo plano (TaskManager) sigue vivo aunque la
+    // pantalla se desmonte; sin esto seguiría encolando posiciones de quien ya
+    // salió, y con los tokens ya borrados recibiría 401.
+    await detenerRastreo().catch(() => {});
     try {
       await api.post('/auth/logout');
     } catch {
