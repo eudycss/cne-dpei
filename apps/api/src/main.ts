@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { ZodValidationExceptionFilter } from './common/zod-validation.filter';
 import { parseOriginPatterns, parseWebOrigins } from './common/web-origin.util';
 import { configurarBodyParsers } from './common/body-parsers';
+import { TRUST_PROXY } from './common/trust-proxy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -21,12 +22,10 @@ async function bootstrap() {
 
   app.use(helmet());
 
-  // En Render la petición llega por un proxy local: sin esto req.ip es 127.0.0.1
-  // para todos (visto en la bitácora), y los límites por IP (@Throttle del login
-  // y de la página pública de foto) se comparten entre todos los usuarios.
-  // Se confía solo en proxies de red interna; req.ip pasa a ser la IP pública más
-  // cercana que agregó el balanceador de Render en X-Forwarded-For.
-  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  // En Render la petición llega por Cloudflare y un proxy local: sin esto req.ip
+  // no es la del cliente (bitácora) y los límites por IP (@Throttle del login y
+  // de la página pública de foto) se comparten entre usuarios. Ver trust-proxy.ts.
+  app.set('trust proxy', TRUST_PROXY);
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   app.enableCors({
