@@ -114,7 +114,8 @@ describe('KitsService', () => {
       const sql = prisma.$queryRaw.mock.calls[0][0];
       expect(sql.sql).toContain('FROM kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id');
       expect(sql.sql).toContain('t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto');
-      expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%montalvo%']));
+      expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%montalvo%', eventoId]));
+      expect(sql.sql).toContain('(t.evento_id = ?::uuid) AND');
       // Los ids encontrados se combinan con el resto del filtro (evento, prueba).
       expect(prisma.kitElectoral.count.mock.calls[0][0].where).toEqual({ eventoId, esPrueba: false, id: { in: ['k1'] } });
     });

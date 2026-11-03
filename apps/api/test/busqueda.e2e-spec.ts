@@ -4,6 +4,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+import { palabrasBusqueda } from '@cne/shared-validation';
 import { idsPorBusqueda } from '../src/common/busqueda-sql';
 
 /**
@@ -12,6 +13,15 @@ import { idsPorBusqueda } from '../src/common/busqueda-sql';
  * encuentra lo esperado. Requiere postgres levantado (pnpm db:up) y el cargo
  * OPERADOR sembrado (pnpm db:seed).
  */
+// Crea y borra filas: nunca contra la base de producción (Supabase) ni otra remota.
+function exigirBaseLocal(): void {
+  const host = new URL(process.env.DATABASE_URL ?? '').hostname;
+  if (!['localhost', '127.0.0.1', 'postgres', '::1'].includes(host)) {
+    throw new Error(`busqueda.e2e: DATABASE_URL apunta a "${host}", no a una base local. Abortado.`);
+  }
+}
+exigirBaseLocal();
+
 describe('búsqueda sin tildes y por palabras (PostgreSQL real)', () => {
   const prisma = new PrismaClient();
   // Cédulas de prueba que no chocan con datos reales ni entre corridas.
@@ -72,6 +82,42 @@ describe('búsqueda sin tildes y por palabras (PostgreSQL real)', () => {
     expect(await buscar('cienxpor')).toEqual([]);
     // "%" solo no es comodín de "todo".
     expect(await buscar('%')).toEqual(['raro']);
+  });
+
+  it('recintos: encuentra uno sembrado por su nombre sin tildes y con las palabras al revés', async () => {
+    const recinto = await prisma.recinto.findFirst({ where: { nombre: { contains: ' ' } }, select: { id: true, nombre: true } });
+    if (!recinto) return; // base sin recintos sembrados: nada que comprobar
+    // Sin tildes, en minúsculas y con las (hasta 3) primeras palabras al revés.
+    const alReves = palabrasBusqueda(recinto.nombre).slice(0, 3).reverse().join(' ');
+
+    const ids = await idsPorBusqueda(
+      prisma,
+      Prisma.sql`recintos t`,
+      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_recinto'), Prisma.raw('t.parroquia')],
+      alReves,
+    );
+
+    expect(ids).toContain(recinto.id);
+  });
+
+  it('kits y militares: los JOIN con recintos y el filtro por evento se ejecutan en la base real', async () => {
+    const kits = await idsPorBusqueda(
+      prisma,
+      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id`,
+      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_unico'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
+      'kit recinto',
+      Prisma.sql`t.evento_id = ${'00000000-0000-4000-8000-000000000000'}::uuid`,
+    );
+    const militares = await idsPorBusqueda(
+      prisma,
+      Prisma.sql`militares t LEFT JOIN recintos r ON r.id = t.recinto_id`,
+      [Prisma.raw('t.nombres'), Prisma.raw('t.apellidos'), Prisma.raw('t.cedula'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
+      'perez',
+    );
+
+    // Un evento inexistente no trae kits; lo importante es que el SQL es válido.
+    expect(kits).toEqual([]);
+    expect(Array.isArray(militares)).toBe(true);
   });
 
   it('un intento de inyección se busca como texto y no rompe la consulta', async () => {

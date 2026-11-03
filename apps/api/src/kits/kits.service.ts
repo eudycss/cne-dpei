@@ -61,6 +61,8 @@ export class KitsService {
       Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id`,
       [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_unico'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
       opts.search,
+      // Solo los kits del evento: sin esto volverían los de todos los eventos.
+      Prisma.sql`t.evento_id = ${opts.eventoId}::uuid`,
     );
     if (ids) where.id = { in: ids };
     const [total, items] = await this.prisma.$transaction([
