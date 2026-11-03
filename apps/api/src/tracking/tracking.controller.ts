@@ -455,6 +455,15 @@ export class TrackingController {
     return this.tracking.kitsVerificadosRetorno(user.sub, user.roles);
   }
 
+  @Get('retorno-kits')
+  @Roles('ASISTENTE_TRANSVERSAL', 'TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
+  @ApiOperation({
+    summary: 'Retorno a la Delegación: kits registrados, que llegaron sin verificar y que faltan llegar',
+  })
+  retornoKits(@CurrentUser() user: AuthenticatedUser) {
+    return this.tracking.retornoKits(user.sub, user.roles);
+  }
+
   @Post('operadores/:operadorId/llegada-dpi-manual')
   @UseGuards(EventoNoReabiertoGuard)
   @Roles('ADMINISTRADOR')

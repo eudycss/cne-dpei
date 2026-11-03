@@ -586,6 +586,31 @@ export interface KitsVerificadosRetornoResponse {
   items: KitVerificadoRetorno[];
 }
 
+/**
+ * Retorno a la Delegación de un kit: REGISTRADO = el asistente ya lo verificó;
+ * LLEGO_SIN_VERIFICAR = el operador marcó la llegada al DPEI pero falta la
+ * verificación; FALTA_LLEGAR = todavía no llega.
+ */
+export type EstadoRetornoKit = 'REGISTRADO' | 'LLEGO_SIN_VERIFICAR' | 'FALTA_LLEGAR';
+
+export interface KitRetornoEstado {
+  kitId: string;
+  codigoUnico: string;
+  recinto: { codigo: string; nombre: string } | null;
+  operadorNombre: string;
+  /** Asistente CDA de la pareja que lleva el kit, si tiene. */
+  asistenteNombre: string | null;
+  estado: EstadoRetornoKit;
+  /** Hora de la verificación (solo REGISTRADO). */
+  confirmadoEn: string | null;
+}
+
+export interface RetornoKitsResponse {
+  registrados: number;
+  faltan: number;
+  items: KitRetornoEstado[];
+}
+
 export interface LlegadaRecintoRequest {
   latitud: number;
   longitud: number;

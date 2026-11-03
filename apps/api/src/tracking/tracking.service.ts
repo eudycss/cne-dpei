@@ -14,6 +14,8 @@ import type {
   IngestaPosicionesResponse,
   KitVerificadoRetorno,
   KitsVerificadosRetornoResponse,
+  KitRetornoEstado,
+  RetornoKitsResponse,
   LlegadaDpiRequest,
   LlegadaDpiResponse,
   LlegadaNoCdaRequest,
@@ -716,16 +718,8 @@ export class TrackingService {
     });
     if (!evento) return { total: 0, items: [] };
 
-    let operadorIds: string[] | undefined;
-    if (!esRolTransversalKits(roles)) {
-      const asignados = await this.prisma.asignacionSupervisor.findMany({
-        where: { eventoId: evento.id, supervisorId: viewerId },
-        select: { operadorId: true },
-      });
-      const ids = asignados.map((a) => a.operadorId);
-      if (ids.length === 0) return { total: 0, items: [] };
-      operadorIds = ids;
-    }
+    const operadorIds = await this.operadoresVisiblesRetorno(evento.id, viewerId, roles);
+    if (operadorIds?.length === 0) return { total: 0, items: [] };
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, ...(operadorIds ? { operadorId: { in: operadorIds } } : {}) },
@@ -769,6 +763,99 @@ export class TrackingService {
     });
 
     return { total: items.length, items };
+  }
+
+  /**
+   * Operadores cuyo retorno ve el usuario: undefined = todos (administrador,
+   * lector, asistente transversal); el técnico supervisor, solo los suyos.
+   */
+  private async operadoresVisiblesRetorno(
+    eventoId: string,
+    viewerId: string,
+    roles: RoleName[],
+  ): Promise<string[] | undefined> {
+    if (esRolTransversalKits(roles)) return undefined;
+    const asignados = await this.prisma.asignacionSupervisor.findMany({
+      where: { eventoId, supervisorId: viewerId },
+      select: { operadorId: true },
+    });
+    return asignados.map((a) => a.operadorId);
+  }
+
+  /**
+   * Retorno a la Delegación de todos los kits asignados del evento activo (sin
+   * los de prueba): quién ya fue registrado, quién llegó sin verificar y a
+   * quién le falta llegar. Primero los que faltan, luego por código de recinto.
+   */
+  async retornoKits(viewerId: string, roles: RoleName[]): Promise<RetornoKitsResponse> {
+    const vacio: RetornoKitsResponse = { registrados: 0, faltan: 0, items: [] };
+    const evento = await this.prisma.eventoElectoral.findFirst({
+      where: { estado: 'ACTIVO' },
+      select: { id: true },
+    });
+    if (!evento) return vacio;
+
+    const operadorIds = await this.operadoresVisiblesRetorno(evento.id, viewerId, roles);
+    if (operadorIds?.length === 0) return vacio;
+
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: {
+        eventoId: evento.id,
+        esPrueba: false,
+        operadorId: operadorIds ? { in: operadorIds } : { not: null },
+      },
+      select: {
+        id: true,
+        codigoUnico: true,
+        estado: true,
+        recinto: { select: { codigoRecinto: true, nombre: true } },
+        operador: { select: { nombres: true, apellidos: true } },
+      },
+    });
+    if (kits.length === 0) return vacio;
+    const kitIds = kits.map((k) => k.id);
+
+    const [recepciones, parejas] = await Promise.all([
+      this.prisma.recepcionDpiKit.findMany({
+        where: { kitId: { in: kitIds } },
+        select: { kitId: true, confirmadoEn: true },
+      }),
+      // La pareja más reciente que lleva cada kit (un kit puede repetirse en varios días).
+      this.prisma.parejaCda.findMany({
+        where: { kitId: { in: kitIds } },
+        orderBy: { fecha: 'desc' },
+        select: { kitId: true, asistente: { select: { apellidosNombres: true } } },
+      }),
+    ]);
+    const verificadoEn = new Map(recepciones.map((r) => [r.kitId, r.confirmadoEn]));
+    const asistentePorKit = new Map<string, string | null>();
+    for (const p of parejas) {
+      if (p.kitId && !asistentePorKit.has(p.kitId)) asistentePorKit.set(p.kitId, p.asistente?.apellidosNombres ?? null);
+    }
+
+    const ORDEN: Record<KitRetornoEstado['estado'], number> = { FALTA_LLEGAR: 0, LLEGO_SIN_VERIFICAR: 1, REGISTRADO: 2 };
+    const items: KitRetornoEstado[] = kits
+      .map((k): KitRetornoEstado => {
+        const confirmado = verificadoEn.get(k.id);
+        return {
+          kitId: k.id,
+          codigoUnico: k.codigoUnico,
+          recinto: k.recinto ? { codigo: k.recinto.codigoRecinto, nombre: k.recinto.nombre } : null,
+          operadorNombre: k.operador ? `${k.operador.nombres} ${k.operador.apellidos}` : 'Operador',
+          asistenteNombre: asistentePorKit.get(k.id) ?? null,
+          estado: confirmado ? 'REGISTRADO' : k.estado === 'RETORNADO' ? 'LLEGO_SIN_VERIFICAR' : 'FALTA_LLEGAR',
+          confirmadoEn: confirmado ? confirmado.toISOString() : null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          ORDEN[a.estado] - ORDEN[b.estado] ||
+          (a.recinto?.codigo ?? '').localeCompare(b.recinto?.codigo ?? '', 'es', { numeric: true }) ||
+          a.codigoUnico.localeCompare(b.codigoUnico),
+      );
+
+    const registrados = items.filter((i) => i.estado === 'REGISTRADO').length;
+    return { registrados, faltan: items.length - registrados, items };
   }
 
   /**

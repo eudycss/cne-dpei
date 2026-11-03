@@ -1,9 +1,9 @@
 import type {
   IngestaPosicionesRequest,
   IngestaPosicionesResponse,
-  KitsVerificadosRetornoResponse,
   LlegadaDpiRequest,
   LlegadaDpiResponse,
+  RetornoKitsResponse,
   SalidaRecintoRequest,
   SalidaRecintoResponse,
   ValidarKitRetornoResponse,
@@ -71,7 +71,7 @@ export async function verificarKitRetorno(
   return data;
 }
 
-export async function getKitsVerificadosRetorno(): Promise<KitsVerificadosRetornoResponse> {
-  const { data } = await api.get<KitsVerificadosRetornoResponse>('/tracking/kits-verificados-retorno');
+export async function getRetornoKits(): Promise<RetornoKitsResponse> {
+  const { data } = await api.get<RetornoKitsResponse>('/tracking/retorno-kits');
   return data;
 }

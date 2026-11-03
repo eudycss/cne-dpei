@@ -15,20 +15,20 @@ jest.mock('../components/FlujoPestanas', () => ({
 }));
 jest.mock('./EntregaMilitarScreen', () => ({ EntregaMilitarScreen: () => 'pantalla-entregar' }));
 jest.mock('./VerificacionDpiScreen', () => ({ VerificacionDpiScreen: () => 'pantalla-verificar' }));
-jest.mock('./KitsVerificadosScreen', () => ({ KitsVerificadosScreen: () => 'pantalla-verificados' }));
+jest.mock('./RetornoKitsScreen', () => ({ RetornoKitsScreen: () => 'pantalla-retorno' }));
 
 import { AsistenteFlow } from './AsistenteFlow';
 
 describe('AsistenteFlow', () => {
-  it('tiene, en orden de la jornada, la entrega al militar, la verificación al retorno y los verificados', () => {
+  it('tiene, en orden de la jornada, la entrega al militar, la verificación al retorno y quién falta llegar', () => {
     let r!: ReactTestRenderer;
     act(() => {
       r = create(<AsistenteFlow />);
     });
-    expect(r.root.findByProps({ testID: 'pestanas' }).props.children).toBe('Entregar a militar|Verificar retorno|Verificados');
+    expect(r.root.findByProps({ testID: 'pestanas' }).props.children).toBe('Entregar a militar|Verificar retorno|Retorno');
     const json = JSON.stringify(r.toJSON());
     expect(json).toContain('pantalla-entregar');
     expect(json).toContain('pantalla-verificar');
-    expect(json).toContain('pantalla-verificados');
+    expect(json).toContain('pantalla-retorno');
   });
 });
