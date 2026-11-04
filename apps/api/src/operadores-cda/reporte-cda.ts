@@ -76,6 +76,8 @@ export interface ReporteCda {
   desde: string;
   hasta: string;
   modo: ModoReporteCda;
+  /** false: el PDF no se limita por días (su tamaño no depende del rango, p. ej. el historial de fechas sueltas). */
+  limitarDiasPdf?: boolean;
   tablas: TablaReporte[];
 }
 
@@ -139,7 +141,7 @@ export function agruparPorDia<T extends { fecha: string }>(filas: T[]): Map<stri
 
 export async function generarReporte(r: ReporteCda, formato: FormatoReporteCda): Promise<ArchivoReporte> {
   // 100 operadores x 120 días en PDF tardan ~10 s en un equipo de escritorio: en Render bloquearía el API.
-  if (formato === 'pdf' && diasDelRango(r.desde, r.hasta) > MAX_DIAS_REPORTE_PDF) {
+  if (formato === 'pdf' && r.limitarDiasPdf !== false && diasDelRango(r.desde, r.hasta) > MAX_DIAS_REPORTE_PDF) {
     throw new BadRequestException(MENSAJE_MAX_DIAS_PDF);
   }
   const contenido = formato === 'pdf' ? await pdfReporte(r) : await excelReporte(r);

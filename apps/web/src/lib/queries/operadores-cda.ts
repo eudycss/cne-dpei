@@ -7,6 +7,7 @@ import type {
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
+  HistorialParejasCda,
   EditarParejaCdaRequest,
   ImportParejasCdaResult,
   IntercambiarParejaCdaRequest,
@@ -451,6 +452,18 @@ export async function importarParejasCda(
 export async function descargarPlantillaParejasCda(): Promise<void> {
   const res = await api.get<Blob>('/parejas-cda/plantilla.xlsx', { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], 'plantilla_parejas_cda.xlsx'));
+}
+
+const conFechas = (fechas: string[]) => new URLSearchParams(fechas.map((f) => ['fechas', f])).toString();
+
+/** Historial de parejas: quién fue y qué recintos se visitaron en las fechas elegidas. */
+export async function getHistorialParejasCda(fechas: string[]): Promise<HistorialParejasCda> {
+  const { data } = await api.get<HistorialParejasCda>(`/parejas-cda/historial?${conFechas(fechas)}`);
+  return data;
+}
+
+export function pedirReporteHistorialParejasCda(fechas: string[], formato: FormatoReporteCda) {
+  return api.get<Blob>(`/parejas-cda/historial/reporte.${formato}?${conFechas(fechas)}`, { responseType: 'blob' });
 }
 
 /** Reporte imprimible de las parejas del día (recinto, celular de cada uno y quién lleva el kit). */
