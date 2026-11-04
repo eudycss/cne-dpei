@@ -23,10 +23,12 @@ import { CargosCdaService } from './cargos-cda.service';
 import { EnlacesModule } from '../enlaces/enlaces.module';
 import { ReporteTecnicosCdaController } from './reporte-tecnicos-cda.controller';
 import { ReporteTecnicosCdaService } from './reporte-tecnicos-cda.service';
+import { HistorialParejasCdaController } from './historial-parejas-cda.controller';
+import { HistorialParejasCdaService } from './historial-parejas-cda.service';
 
 @Module({
   imports: [PermisosModulosModule, KitsModule, EnlacesModule],
-  controllers: [AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController, ParejasCdaController, ReporteTecnicosCdaController, CargosCdaController],
-  providers: [AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet, ParejasCdaService, ReporteTecnicosCdaService, CargosCdaService],
+  controllers: [AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController, ParejasCdaController, ReporteTecnicosCdaController, HistorialParejasCdaController, CargosCdaController],
+  providers: [AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet, ParejasCdaService, ReporteTecnicosCdaService, HistorialParejasCdaService, CargosCdaService],
 })
 export class OperadoresCdaModule {}

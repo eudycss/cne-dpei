@@ -1211,6 +1211,48 @@ export interface TecnicoParejasCda {
   parejas: number;
 }
 
+/** Una visita de un recinto en el historial: la pareja que fue ese día y su kit. */
+export interface VisitaHistorialCda {
+  /** AAAA-MM-DD */
+  fecha: string;
+  operador: string;
+  asistente: string | null;
+  kitCodigo: string | null;
+  /** Quién tiene el kit asignado en el sistema (uno de los dos); null = nadie de la pareja. */
+  llevaKit: string | null;
+}
+
+/** Operador o Asistente CDA en el historial de parejas de las fechas elegidas. */
+export interface PersonaHistorialCda {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  grupo: GrupoCda;
+  dispositivo: DispositivoCda | null;
+  /** false = oculto hoy (se muestra porque estuvo en una pareja). */
+  activo: boolean;
+  /** Fechas elegidas en las que estuvo en una pareja (vacío = no fue). */
+  fechas: string[];
+  /** Recintos a los que fue (código · nombre), sin repetir. */
+  recintos: string[];
+}
+
+export interface RecintoHistorialCda {
+  id: string;
+  codigo: string;
+  nombre: string;
+  canton: string;
+  /** Vacío = no visitado en las fechas elegidas. */
+  visitas: VisitaHistorialCda[];
+}
+
+/** Historial de parejas (pestaña "Historial"): quién fue y qué recintos se visitaron. */
+export interface HistorialParejasCda {
+  fechas: string[];
+  personas: PersonaHistorialCda[];
+  recintos: RecintoHistorialCda[];
+}
+
 export interface DisponiblesParejasCda {
   operadores: PersonaParejaCda[];
   asistentes: PersonaParejaCda[];

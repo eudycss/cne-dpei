@@ -1015,6 +1015,19 @@ export const tecnicosReporteParejasCdaSchema = z
   )
   .transform((xs) => [...new Set(xs)]);
 
+export const MAX_FECHAS_HISTORIAL_PAREJAS_CDA = 20;
+
+/** ?fechas= del historial de parejas: una (texto) o varias (repetido), sin repetir y en orden. */
+export const fechasHistorialParejasCdaSchema = z
+  .preprocess(
+    (v) => (typeof v === 'string' ? [v] : v),
+    z
+      .array(fechaParejaCdaSchema, { required_error: 'Elija al menos una fecha', invalid_type_error: 'Elija al menos una fecha' })
+      .min(1, 'Elija al menos una fecha')
+      .max(MAX_FECHAS_HISTORIAL_PAREJAS_CDA, `Elija como máximo ${MAX_FECHAS_HISTORIAL_PAREJAS_CDA} fechas`),
+  )
+  .transform((xs) => [...new Set(xs)].sort());
+
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 

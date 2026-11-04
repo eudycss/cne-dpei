@@ -12,6 +12,7 @@ import { MODULO_KEY, ModuloGuard } from '../permisos-modulos/modulo.guard';
 import { ParejasCdaController, parsearFecha } from './parejas-cda.controller';
 import { CargosCdaController, parsearClave } from './cargos-cda.controller';
 import { ReporteTecnicosCdaController, parsearTecnicos } from './reporte-tecnicos-cda.controller';
+import { HistorialParejasCdaController } from './historial-parejas-cda.controller';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -47,6 +48,11 @@ describe('RBAC de Operadores CDA', () => {
   it.each(['listar', 'fechas', 'qr', 'reporteXlsx', 'reportePdf'])('parejas.%s: los mismos tres roles y el módulo operadores-cda', (metodo) => {
     expect(rolesDe(ParejasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
     expect(Reflect.getMetadata(MODULO_KEY, (ParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
+  });
+
+  it.each(['ver', 'reporteXlsx', 'reportePdf'])('historial de parejas.%s: los mismos tres roles y el módulo operadores-cda', (metodo) => {
+    expect(rolesDe(HistorialParejasCdaController, metodo)).toEqual(TOMAN_ASISTENCIA);
+    expect(Reflect.getMetadata(MODULO_KEY, (HistorialParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
 
   it.each(['disponibles', 'plantilla', 'crear', 'editar', 'intercambiar', 'copiar', 'asignarKit', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(

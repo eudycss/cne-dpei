@@ -8,6 +8,7 @@ import { AsistenciaPanel } from './AsistenciaPanel';
 import { ActasPanel } from './ActasPanel';
 import { ParejasPanel } from './ParejasPanel';
 import { AtrasosPanel } from './AtrasosPanel';
+import { HistorialParejasPanel } from './HistorialParejasPanel';
 import { FILTROS_INGRESO } from './filtroIngreso';
 import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCargo } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
@@ -22,11 +23,12 @@ const SECCIONES = [
   { id: 'atrasos', etiqueta: 'Atrasos' },
   { id: 'actas', etiqueta: 'Actas de entrega' },
   { id: 'parejas', etiqueta: 'Parejas' },
+  { id: 'historial', etiqueta: 'Historial de parejas' },
 ] as const;
 
-/** Las parejas (operador + asistente por recinto) solo son de los dos cargos CDA. */
+/** Las parejas (operador + asistente por recinto) y su historial solo son de los dos cargos CDA. */
 const seccionesDe = (grupo: GrupoCda) =>
-  grupo === 'OPERADOR' || grupo === 'ASISTENTE' ? SECCIONES : SECCIONES.filter((s) => s.id !== 'parejas');
+  grupo === 'OPERADOR' || grupo === 'ASISTENTE' ? SECCIONES : SECCIONES.filter((s) => s.id !== 'parejas' && s.id !== 'historial');
 
 /**
  * Personal CDA y CPE, con el tema "CNE Futurista" de Figma. Dos niveles: el
@@ -104,6 +106,8 @@ export function OperadoresCdaPage() {
                 <ActasPanel acciones={acciones} />
               ) : seccion === 'parejas' ? (
                 <ParejasPanel />
+              ) : seccion === 'historial' ? (
+                <HistorialParejasPanel />
               ) : (
                 <AsistenciaPanel acciones={acciones} />
               )

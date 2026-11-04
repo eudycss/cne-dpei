@@ -5,6 +5,7 @@ import {
   crearParejaCdaSchema,
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
+  fechasHistorialParejasCdaSchema,
   filaParejaCdaSchema,
   intercambiarParejaCdaSchema,
   tecnicosReporteParejasCdaSchema,
@@ -16,6 +17,20 @@ const RE = '33333333-3333-4333-8333-333333333333';
 // Cédulas ecuatorianas válidas (dígito verificador correcto).
 const CEDULA_OP = '1710034065';
 const CEDULA_AS = '1713175071';
+
+describe('historial de parejas CDA', () => {
+  it('?fechas= acepta una (texto) o varias (arreglo), sin repetir y ordenadas', () => {
+    expect(fechasHistorialParejasCdaSchema.parse('2026-10-28')).toEqual(['2026-10-28']);
+    expect(fechasHistorialParejasCdaSchema.parse(['2026-11-01', '2026-10-28', '2026-11-01'])).toEqual(['2026-10-28', '2026-11-01']);
+  });
+
+  it('?fechas= rechaza vacío, fechas inválidas o más de 20', () => {
+    const muchas = Array.from({ length: 21 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
+    for (const v of [undefined, [], '', '2026-02-30', ['2026-10-28', 'ayer'], muchas, [20261028]]) {
+      expect(fechasHistorialParejasCdaSchema.safeParse(v).success).toBe(false);
+    }
+  });
+});
 
 describe('reporte por técnico de parejas CDA', () => {
   it('?tecnicos= acepta uno (texto) o varios (arreglo), sin repetir ni espacios sobrantes', () => {
