@@ -267,13 +267,17 @@ export class ParejasCdaService {
 
   /**
    * Copia la lista de `desde` a `hacia` (mismo operador, asistente, recinto y
-   * artículos). Solo la registra: el kit y la app quedan para "Aplicar a la
+   * artículos), con sus parejas de reserva. Solo la registra: el kit y la app quedan para "Aplicar a la
    * app", así se puede revisar antes. Omite a quien ya tiene pareja ese día
    * o está oculto, y dice por qué.
    */
   async copiar(desde: string, hacia: string, usuarioId: string): Promise<CopiarParejasCdaResult> {
     if (desde === hacia) throw new BadRequestException('Elija un día distinto');
-    const origen = await this.parejasDelDia(desde);
+    const origen = await this.prisma.parejaCda.findMany({
+      where: { fecha: fechaDb(desde) },
+      include: { recinto: { select: { codigoRecinto: true } }, operador: { select: { apellidosNombres: true } } },
+      orderBy: { creadoEn: 'asc' },
+    });
     if (!origen.length) throw new BadRequestException(`El ${desde} no tiene parejas para copiar`);
     const destino = await this.prisma.parejaCda.findMany({
       where: { fecha: fechaDb(hacia) },
@@ -290,7 +294,7 @@ export class ParejasCdaService {
         })
       ).map((o) => [o.id, o.grupo] as const),
     );
-    const recintosOrigen = [...new Set(origen.map((p) => p.recintoId))];
+    const recintosOrigen = [...new Set(conRecinto(origen.map((p) => p.recintoId)))];
     const recintosActivos = new Set(
       (
         await this.prisma.recinto.findMany({ where: { id: { in: recintosOrigen }, activo: true, tipo: 'CDA' }, select: { id: true } })
@@ -302,7 +306,7 @@ export class ParejasCdaService {
     // Mismo orden que el día de origen (decide qué pareja va a la app en un recinto con dos).
     const base = Date.now();
     for (const p of origen) {
-      const motivo = !recintosActivos.has(p.recintoId)
+      const motivo = p.recintoId && !recintosActivos.has(p.recintoId)
         ? 'El recinto ya no está activo'
         : activas.get(p.operadorCdaId) !== 'OPERADOR'
           ? 'El operador ya no está disponible (oculto o no es Operador CDA)'
@@ -314,7 +318,7 @@ export class ParejasCdaService {
                 ? 'El asistente ya tiene pareja ese día'
                 : null;
       if (motivo) {
-        omitidas.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto.codigoRecinto}`, motivo });
+        omitidas.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto?.codigoRecinto ?? 'Reserva'}`, motivo });
         continue;
       }
       ocupadas.add(p.operadorCdaId);
