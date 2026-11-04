@@ -7,6 +7,7 @@ import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCd
 import { useAuth } from '../../auth/AuthContext';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
+import { Pestanas } from '../../components/Pestanas';
 import { SearchInput } from '../../components/SearchInput';
 import {
   aplicarParejasCda,
@@ -25,6 +26,7 @@ import { CopiarParejasModal } from './CopiarParejasModal';
 import { AsignarKitModal } from './AsignarKitModal';
 import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
+import { PasarAReservaModal, ReservaParejas } from './ReservaParejas';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError } from './utils';
 
@@ -75,6 +77,7 @@ export function ParejasPanel() {
   const [copiando, setCopiando] = useState(false);
   const [asignandoKit, setAsignandoKit] = useState<{ pareja: ParejaCdaFila; kitPropio: boolean } | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
+  const [aReserva, setAReserva] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
   // El último paso a la app queda a la vista (los avisos emergentes desaparecen).
   const [resultado, setResultado] = useState<AplicarParejasCdaResult | null>(null);
@@ -135,6 +138,9 @@ export function ParejasPanel() {
   });
 
   const parejas = data?.parejas ?? [];
+  const reserva = data?.reserva ?? [];
+  // El día tiene lista aunque solo tenga parejas de reserva (salen en el reporte).
+  const hayLista = parejas.length + reserva.length > 0;
 
   /** Botón "Cambiar" de una celda (solo administrador). */
   const botonCambiar = (p: ParejaCdaFila, campo: CampoParejaCda, nombre: string) => {
@@ -242,7 +248,7 @@ export function ParejasPanel() {
             <button type="button" className="btn secondary" onClick={() => plantilla.mutate()} disabled={plantilla.isPending}>
               Descargar plantilla
             </button>
-            {parejas.length > 0 && (
+            {hayLista && (
               <button type="button" className="btn secondary" onClick={() => setCopiando(true)}>
                 Copiar a otro día
               </button>
@@ -264,7 +270,7 @@ export function ParejasPanel() {
           type="button"
           className="btn secondary"
           onClick={() => descargarReporte('pdf')}
-          disabled={parejas.length === 0 || !!reporte.descargando}
+          disabled={!hayLista || !!reporte.descargando}
           aria-busy={reporte.descargando === 'pdf'}
         >
           {reporte.descargando === 'pdf' ? 'Generando…' : 'Reporte PDF'}
@@ -273,7 +279,7 @@ export function ParejasPanel() {
           type="button"
           className="btn secondary"
           onClick={() => descargarReporte('xlsx')}
-          disabled={parejas.length === 0 || !!reporte.descargando}
+          disabled={!hayLista || !!reporte.descargando}
           aria-busy={reporte.descargando === 'xlsx'}
         >
           {reporte.descargando === 'xlsx' ? 'Generando…' : 'Reporte Excel'}
@@ -310,151 +316,191 @@ export function ParejasPanel() {
           {mensajeError(error, 'No se pudo cargar la lista')}
         </p>
       )}
-      {data && parejas.length === 0 && (
+      {data && !hayLista && (
         <p className="muted">Aún no hay parejas este día.{isAdmin && ' Agréguelas una por una o cargue la plantilla.'}</p>
       )}
-      {parejas.length > 0 && (
-        <>
-          <div className="ocda-filtros">
-            <span className="ocda-campo" style={{ flex: '1 1 260px', maxWidth: 420 }}>
-              <SearchInput
-                value={busqueda}
-                onChange={setBusqueda}
-                placeholder="Buscar por persona, código o recinto…"
-                ariaLabel="Buscar por persona, código o nombre de recinto"
+      {data && hayLista && (
+        <Pestanas
+          pestanas={[
+            { id: 'en-recintos', etiqueta: `En recintos (${parejas.length})` },
+            { id: 'reserva', etiqueta: `Reserva (${reserva.length})` },
+          ]}
+          porDefecto="en-recintos"
+          etiqueta="Parejas del día"
+          parametro="vista"
+        >
+          {(vista) =>
+            vista === 'reserva' ? (
+              <ReservaParejas
+                dia={dia}
+                reserva={reserva}
+                parejas={parejas}
+                isAdmin={isAdmin}
+                congelado={congelado}
+                justificacionInicial={justificacion}
+                onResultado={mostrarResultado}
               />
-            </span>
-          </div>
-          <p className="muted" role="status">
-            {!q
-              ? `${parejas.length} pareja(s) en ${recintos} recinto(s)`
-              : visibles.length
-                ? `${visibles.length} de ${parejas.length} pareja(s)`
-                : `Ninguna pareja coincide con "${busqueda.trim()}".`}
-          </p>
-          <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
-            <table>
-              <caption className="sr-only">
-                Parejas del {dia} agrupadas por recinto: operador, asistente, recinto, dispositivo y estado en la app
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">N°</th>
-                  <th scope="col">Operador CDA</th>
-                  <th scope="col">Asistente CDA</th>
-                  <th scope="col">Recinto</th>
-                  <th scope="col">Dispositivo</th>
-                  <th scope="col">App</th>
-                  {isAdmin && <th scope="col">Acciones</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((p, i) => (
-                  <tr key={p.id} className={inicioBloque(i) ? undefined : 'ocda-fila-bloque'}>
-                    {inicioBloque(i) && (
-                      <th
-                        scope="row"
-                        rowSpan={filasDelBloque(i)}
-                        className="mono ocda-n-recinto"
-                        style={{ textAlign: 'center', verticalAlign: 'middle' }}
-                      >
-                        {numeroRecinto.get(p.recinto.id)}
-                      </th>
-                    )}
-                    <td>
-                      {p.operador.apellidosNombres}
-                      <br />
-                      <span className="muted mono">{p.operador.cedula}</span>
-                      <CargoDistinto persona={p.operador} columna="OPERADOR" />
-                      {botonCambiar(p, 'OPERADOR', 'operador')}
-                    </td>
-                    <td>
-                      {p.asistente ? (
-                        <>
-                          {p.asistente.apellidosNombres}
-                          <br />
-                          <span className="muted mono">{p.asistente.cedula}</span>
-                          <CargoDistinto persona={p.asistente} columna="ASISTENTE" />
-                        </>
-                      ) : (
-                        <span className="muted">Sin asistente</span>
-                      )}
-                      {botonCambiar(p, 'ASISTENTE', 'asistente')}
-                    </td>
-                    <td>
-                      <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
-                      {p.recintoCompartido && (
-                        <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
-                          2 parejas
-                        </span>
-                      )}
-                      {botonCambiar(p, 'RECINTO', 'recinto')}
-                    </td>
-                    <td>
-                      <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
-                      <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
-                      {/* Lleva el kit el de Android del recinto; si nadie lo tiene, el operador (iPhone). */}
-                      {p.portador?.dispositivo === 'IPHONE' && (
-                        <span className="ocda-estado aviso">iPhone: la APK no se instala</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
-                      {p.portador &&
-                        (p.estado === 'SIN_KIT' ? (
-                          <div className="muted">Nadie lleva el kit · se asignará a {p.portador.apellidosNombres}</div>
-                        ) : (
-                          <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>
-                        ))}
-                      {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
-                      {/* "Sin kit", o la otra pareja del recinto cuando su kit quedó sin persona. */}
-                      {isAdmin && (p.estado === 'SIN_KIT' || (p.estado === 'SOLO_REGISTRADA' && p.puedeRecibirKit)) && (
-                        <div>
-                          <button
-                            type="button"
-                            className="ocda-btn-texto"
-                            aria-label={`Asignar kit a ${p.operador.apellidosNombres}`}
-                            onClick={() => setAsignandoKit({ pareja: p, kitPropio: false })}
-                          >
-                            Asignar kit
-                          </button>
-                        </div>
-                      )}
-                      {/* Otra pareja del recinto que también va con su propio dispositivo. */}
-                      {isAdmin && data?.evento && p.estado === 'SOLO_REGISTRADA' && !p.puedeRecibirKit && (
-                        <div>
-                          <button
-                            type="button"
-                            className="ocda-btn-texto"
-                            aria-label={`Darle su propio kit a ${p.operador.apellidosNombres}`}
-                            onClick={() => setAsignandoKit({ pareja: p, kitPropio: true })}
-                          >
-                            Darle su propio kit
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    {isAdmin && (
-                      <td>
-                        <button
-                          type="button"
-                          className="ocda-btn-texto peligro"
-                          aria-label={`Quitar la pareja de ${p.operador.apellidosNombres}`}
-                          onClick={() => {
-                            quitar.reset();
-                            setQuitarA(p);
-                          }}
-                        >
-                          Quitar
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+            ) : parejas.length === 0 ? (
+              <p className="muted">Ninguna pareja tiene recinto este día. Asígneselo a una de la pestaña Reserva.</p>
+            ) : (
+              <>
+                <div className="ocda-filtros">
+                  <span className="ocda-campo" style={{ flex: '1 1 260px', maxWidth: 420 }}>
+                    <SearchInput
+                      value={busqueda}
+                      onChange={setBusqueda}
+                      placeholder="Buscar por persona, código o recinto…"
+                      ariaLabel="Buscar por persona, código o nombre de recinto"
+                    />
+                  </span>
+                </div>
+                <p className="muted" role="status">
+                  {!q
+                    ? `${parejas.length} pareja(s) en ${recintos} recinto(s)`
+                    : visibles.length
+                      ? `${visibles.length} de ${parejas.length} pareja(s)`
+                      : `Ninguna pareja coincide con "${busqueda.trim()}".`}
+                </p>
+                <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
+                  <table>
+                    <caption className="sr-only">
+                      Parejas del {dia} agrupadas por recinto: operador, asistente, recinto, dispositivo y estado en la app
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">N°</th>
+                        <th scope="col">Operador CDA</th>
+                        <th scope="col">Asistente CDA</th>
+                        <th scope="col">Recinto</th>
+                        <th scope="col">Dispositivo</th>
+                        <th scope="col">App</th>
+                        {isAdmin && <th scope="col">Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filas.map((p, i) => (
+                        <tr key={p.id} className={inicioBloque(i) ? undefined : 'ocda-fila-bloque'}>
+                          {inicioBloque(i) && (
+                            <th
+                              scope="row"
+                              rowSpan={filasDelBloque(i)}
+                              className="mono ocda-n-recinto"
+                              style={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              {numeroRecinto.get(p.recinto.id)}
+                            </th>
+                          )}
+                          <td>
+                            {p.operador.apellidosNombres}
+                            <br />
+                            <span className="muted mono">{p.operador.cedula}</span>
+                            <CargoDistinto persona={p.operador} columna="OPERADOR" />
+                            {botonCambiar(p, 'OPERADOR', 'operador')}
+                          </td>
+                          <td>
+                            {p.asistente ? (
+                              <>
+                                {p.asistente.apellidosNombres}
+                                <br />
+                                <span className="muted mono">{p.asistente.cedula}</span>
+                                <CargoDistinto persona={p.asistente} columna="ASISTENTE" />
+                              </>
+                            ) : (
+                              <span className="muted">Sin asistente</span>
+                            )}
+                            {botonCambiar(p, 'ASISTENTE', 'asistente')}
+                          </td>
+                          <td>
+                            <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
+                            {p.recintoCompartido && (
+                              <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
+                                2 parejas
+                              </span>
+                            )}
+                            {botonCambiar(p, 'RECINTO', 'recinto')}
+                          </td>
+                          <td>
+                            <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
+                            <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
+                            {/* Lleva el kit el de Android del recinto; si nadie lo tiene, el operador (iPhone). */}
+                            {p.portador?.dispositivo === 'IPHONE' && (
+                              <span className="ocda-estado aviso">iPhone: la APK no se instala</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`ocda-estado ${ESTADO[p.estado].clase}`}>{ESTADO[p.estado].texto}</span>
+                            {p.portador &&
+                              (p.estado === 'SIN_KIT' ? (
+                                <div className="muted">Nadie lleva el kit · se asignará a {p.portador.apellidosNombres}</div>
+                              ) : (
+                                <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>
+                              ))}
+                            {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
+                            {/* "Sin kit", o la otra pareja del recinto cuando su kit quedó sin persona. */}
+                            {isAdmin && (p.estado === 'SIN_KIT' || (p.estado === 'SOLO_REGISTRADA' && p.puedeRecibirKit)) && (
+                              <div>
+                                <button
+                                  type="button"
+                                  className="ocda-btn-texto"
+                                  aria-label={`Asignar kit a ${p.operador.apellidosNombres}`}
+                                  onClick={() => setAsignandoKit({ pareja: p, kitPropio: false })}
+                                >
+                                  Asignar kit
+                                </button>
+                              </div>
+                            )}
+                            {/* Otra pareja del recinto que también va con su propio dispositivo. */}
+                            {isAdmin && data?.evento && p.estado === 'SOLO_REGISTRADA' && !p.puedeRecibirKit && (
+                              <div>
+                                <button
+                                  type="button"
+                                  className="ocda-btn-texto"
+                                  aria-label={`Darle su propio kit a ${p.operador.apellidosNombres}`}
+                                  onClick={() => setAsignandoKit({ pareja: p, kitPropio: true })}
+                                >
+                                  Darle su propio kit
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          {isAdmin && (
+                            <td>
+                              <div className="ocda-acciones-fila">
+                                {/* Cadena de custodia: el kit que ya salió sigue con su pareja y su recinto. */}
+                                {!p.kitSalio && (
+                                  <button
+                                    type="button"
+                                    className="ocda-btn-texto"
+                                    aria-label={`Pasar a reserva la pareja de ${p.operador.apellidosNombres}`}
+                                    title="Deja el recinto y queda de reserva este día"
+                                    onClick={() => setAReserva(p)}
+                                  >
+                                    Pasar a reserva
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="ocda-btn-texto peligro"
+                                  aria-label={`Quitar la pareja de ${p.operador.apellidosNombres}`}
+                                  onClick={() => {
+                                    quitar.reset();
+                                    setQuitarA(p);
+                                  }}
+                                >
+                                  Quitar
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          }
+        </Pestanas>
       )}
 
       {quitarA && (
@@ -481,6 +527,9 @@ export function ParejasPanel() {
             </div>
           </div>
         </Modal>
+      )}
+      {aReserva && (
+        <PasarAReservaModal pareja={aReserva} congelado={congelado} justificacionInicial={justificacion} onClose={() => setAReserva(null)} />
       )}
       {agregando && (
         <ParejaFormModal dia={dia} pareja={null} congelado={congelado} onResultado={mostrarResultado} onClose={() => setAgregando(false)} />
@@ -510,7 +559,7 @@ export function ParejasPanel() {
       {copiando && (
         <CopiarParejasModal
           desde={dia}
-          total={parejas.length}
+          total={parejas.length + reserva.length}
           onVerDia={(d) => {
             setCopiando(false);
             elegirDia(d);

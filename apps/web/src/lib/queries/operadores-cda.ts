@@ -418,6 +418,18 @@ export async function intercambiarParejaCda(id: string, body: IntercambiarPareja
   return data;
 }
 
+/** "Pasar a reserva": la pareja deja su recinto; su kit queda en el recinto sin operador. */
+export async function pasarAReservaParejaCda(id: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/${id}/reserva`, justificacion ? { justificacion } : {});
+  return data;
+}
+
+/** "Asignar a recinto" de una pareja de reserva: si el recinto tiene pareja, se intercambian. */
+export async function asignarRecintoParejaCda(id: string, recintoId: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/${id}/recinto`, { recintoId, ...(justificacion && { justificacion }) });
+  return data;
+}
+
 /** `justificacion`: obligatoria si la jornada ya inició y la pareja tenía el kit. */
 export async function quitarParejaCda(id: string, justificacion?: string): Promise<void> {
   if (justificacion) await api.delete(`/parejas-cda/${id}`, { data: { justificacion } });
