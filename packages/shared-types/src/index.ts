@@ -1253,6 +1253,51 @@ export interface HistorialParejasCda {
   recintos: RecintoHistorialCda[];
 }
 
+/** Persona en la propuesta de parejas para una nueva prueba. */
+export interface PersonaPropuestaCda {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  grupo: GrupoCda;
+  dispositivo: DispositivoCda | null;
+  /** Estuvo en una pareja en las fechas de referencia. */
+  yaFue: boolean;
+}
+
+export interface FilaPropuestaParejaCda {
+  recinto: RecintoParejaCda;
+  /** null = no alcanzó el personal: se elige a mano. */
+  operador: PersonaPropuestaCda | null;
+  asistente: PersonaPropuestaCda | null;
+  /** Pareja adicional de un recinto marcado. */
+  extra: boolean;
+}
+
+/**
+ * Propuesta automática (editable) para una nueva fecha: personal que no fue a
+ * los recintos no visitados en las fechas de referencia. No guarda nada.
+ */
+export interface PropuestaParejasCda {
+  fecha: string;
+  referencia: string[];
+  filas: FilaPropuestaParejaCda[];
+  /** Operadores y Asistentes CDA activos sin pareja en `fecha` (para cambiar a mano). */
+  personas: PersonaPropuestaCda[];
+}
+
+export interface PropuestaParejasCdaRequest {
+  fecha: string;
+  referencia: string[];
+  /** Recintos que llevan una pareja más. */
+  extras?: string[];
+}
+
+/** La propuesta ya editada: pasa por las mismas validaciones que la plantilla. */
+export interface CargarPropuestaParejasCdaRequest {
+  filas: { cedulaOperador: string; cedulaAsistente?: string | null; codigoRecinto: string }[];
+  justificacion?: string;
+}
+
 export interface DisponiblesParejasCda {
   operadores: PersonaParejaCda[];
   asistentes: PersonaParejaCda[];

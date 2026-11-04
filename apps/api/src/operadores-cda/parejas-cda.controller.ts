@@ -21,6 +21,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
+  cargarPropuestaParejasCdaSchema,
   copiarParejasCdaSchema,
   crearKitConParejaCdaSchema,
   crearParejaCdaSchema,
@@ -31,6 +32,7 @@ import {
   justificacionParejaCdaSchema,
 } from '@cne/shared-validation';
 import type {
+  CargarPropuestaParejasCdaRequest,
   CopiarParejasCdaRequest,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
@@ -231,6 +233,22 @@ export class ParejasCdaController {
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
     return this.parejas.aplicar(parsearFecha(fecha), body?.justificacion);
+  }
+
+  @Post('propuesta/cargar')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({
+    summary:
+      'Guarda la propuesta editada para ?fecha= con las validaciones de la plantilla. Sin ?guardar=true solo devuelve la vista previa; ?app=false guarda sin pasar a la app',
+  })
+  cargarPropuesta(
+    @Body(new ZodValidationPipe(cargarPropuestaParejasCdaSchema)) body: CargarPropuestaParejasCdaRequest,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('fecha') fecha?: unknown,
+    @Query('guardar') guardar?: string,
+    @Query('app') app?: string,
+  ) {
+    return this.parejas.cargarPropuesta(body.filas, parsearFecha(fecha), guardar === 'true', user.sub, app !== 'false', body.justificacion);
   }
 
   @Post('importar')

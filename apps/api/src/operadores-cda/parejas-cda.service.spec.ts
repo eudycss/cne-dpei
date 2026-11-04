@@ -646,6 +646,64 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  describe('cargarPropuesta (propuesta editada en la web)', () => {
+    beforeEach(() => {
+      prisma.operadorCda.findMany.mockResolvedValue([
+        { id: 'op1', cedula: '1710034065', grupo: 'OPERADOR', activo: true, apellidosNombres: 'PÉREZ ANA' },
+      ]);
+      prisma.recinto.findMany.mockResolvedValue([{ id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA', tipo: 'CDA' }]);
+    });
+
+    it('pasa por las validaciones de la plantilla y nunca crea personas', async () => {
+      prisma.parejaCda.create.mockResolvedValueOnce({ id: 'p1' });
+
+      const r = await service.cargarPropuesta(
+        [
+          { cedulaOperador: '1710034065', cedulaAsistente: null, codigoRecinto: '957' },
+          { cedulaOperador: '1712345675', codigoRecinto: '957' },
+          { cedulaOperador: '', codigoRecinto: '957' },
+        ],
+        DIA,
+        true,
+        'admin',
+        false,
+      );
+
+      expect(r.filas[0]).toMatchObject({ operador: { nombre: 'PÉREZ ANA' }, errores: [] });
+      expect(r.filas[1].errores).toContain('Cédula nueva 1712345675: falta nombre_operador');
+      expect(r.filas[2].errores.length).toBeGreaterThan(0);
+      expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.create).toHaveBeenCalledTimes(1);
+      expect(r).toMatchObject({ guardado: true, guardadas: 1, app: null });
+    });
+
+    it('numera las filas desde 1 (como la tabla de la web) y aplica las reglas de la plantilla', async () => {
+      const r = await service.cargarPropuesta(
+        [
+          { cedulaOperador: '1710034065', codigoRecinto: '957' },
+          { cedulaOperador: '1710034065', codigoRecinto: '957' },
+        ],
+        DIA,
+        false,
+        'admin',
+      );
+      expect(r.filas.map((f) => f.fila)).toEqual([1, 2]);
+      expect(r.filas[1].errores).toContain('La cédula 1710034065 está repetida (fila 1)');
+    });
+
+    it('al guardar con "pasar a la app", pasa las parejas guardadas a la app', async () => {
+      prisma.parejaCda.create.mockResolvedValueOnce({ id: 'p1' });
+      await service.cargarPropuesta([{ cedulaOperador: '1710034065', codigoRecinto: '957' }], DIA, true, 'admin', true);
+      expect(prisma.eventoElectoral.findFirst).toHaveBeenCalled();
+    });
+
+    it('vista previa: no guarda nada', async () => {
+      const r = await service.cargarPropuesta([{ cedulaOperador: '1710034065', codigoRecinto: '957' }], DIA, false, 'admin');
+      expect(r.guardado).toBe(false);
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('importar', () => {
     beforeEach(() => {
       prisma.operadorCda.findMany.mockResolvedValue([

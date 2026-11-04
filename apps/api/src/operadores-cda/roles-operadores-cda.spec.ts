@@ -55,6 +55,12 @@ describe('RBAC de Operadores CDA', () => {
     expect(Reflect.getMetadata(MODULO_KEY, (HistorialParejasCdaController.prototype as any)[metodo])).toBe('operadores-cda');
   });
 
+  it('propuesta de parejas: solo administrador (generar con el módulo; cargar como la plantilla)', () => {
+    expect(rolesDe(HistorialParejasCdaController, 'propuesta')).toEqual(['ADMINISTRADOR']);
+    expect(Reflect.getMetadata(MODULO_KEY, (HistorialParejasCdaController.prototype as any).propuesta)).toBe('operadores-cda');
+    expect(rolesDe(ParejasCdaController, 'cargarPropuesta')).toEqual(['ADMINISTRADOR']);
+  });
+
   it.each(['disponibles', 'plantilla', 'crear', 'editar', 'intercambiar', 'copiar', 'asignarKit', 'eliminar', 'aplicar', 'importar', 'disponiblesKit', 'crearKit'])(
     'parejas.%s: solo administrador',
     (metodo) => {

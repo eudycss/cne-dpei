@@ -6,6 +6,8 @@ import {
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
   fechasHistorialParejasCdaSchema,
+  cargarPropuestaParejasCdaSchema,
+  propuestaParejasCdaSchema,
   filaParejaCdaSchema,
   intercambiarParejaCdaSchema,
   tecnicosReporteParejasCdaSchema,
@@ -29,6 +31,36 @@ describe('historial de parejas CDA', () => {
     for (const v of [undefined, [], '', '2026-02-30', ['2026-10-28', 'ayer'], muchas, [20261028]]) {
       expect(fechasHistorialParejasCdaSchema.safeParse(v).success).toBe(false);
     }
+  });
+});
+
+describe('propuesta de parejas CDA', () => {
+  const R = '33333333-3333-4333-8333-333333333333';
+
+  it('pide la fecha nueva y al menos una de referencia; los recintos extra son opcionales', () => {
+    expect(propuestaParejasCdaSchema.parse({ fecha: '2026-11-10', referencia: ['2026-11-01', '2026-10-28'] })).toEqual({
+      fecha: '2026-11-10',
+      referencia: ['2026-10-28', '2026-11-01'],
+      extras: [],
+    });
+    expect(propuestaParejasCdaSchema.parse({ fecha: '2026-11-10', referencia: '2026-10-28', extras: [R] }).extras).toEqual([R]);
+  });
+
+  it('rechaza la fecha nueva igual a una de referencia, recintos inválidos o campos de más', () => {
+    for (const v of [
+      { fecha: '2026-10-28', referencia: ['2026-10-28'] },
+      { fecha: '2026-11-10', referencia: [] },
+      { fecha: '2026-11-10', referencia: ['2026-10-28'], extras: ['x'] },
+      { fecha: '2026-11-10', referencia: ['2026-10-28'], otro: 1 },
+    ]) {
+      expect(propuestaParejasCdaSchema.safeParse(v).success).toBe(false);
+    }
+  });
+
+  it('la propuesta editada lleva cédulas y código de recinto; al menos una fila', () => {
+    expect(cargarPropuestaParejasCdaSchema.safeParse({ filas: [{ cedulaOperador: CEDULA_OP, cedulaAsistente: null, codigoRecinto: '971' }] }).success).toBe(true);
+    expect(cargarPropuestaParejasCdaSchema.safeParse({ filas: [] }).success).toBe(false);
+    expect(cargarPropuestaParejasCdaSchema.safeParse({ filas: [{ cedulaOperador: CEDULA_OP, codigoRecinto: '971', nombre: 'x' }] }).success).toBe(false);
   });
 });
 

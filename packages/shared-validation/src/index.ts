@@ -1028,6 +1028,38 @@ export const fechasHistorialParejasCdaSchema = z
   )
   .transform((xs) => [...new Set(xs)].sort());
 
+/** Propuesta automática de parejas para `fecha` a partir de las fechas de referencia. */
+export const propuestaParejasCdaSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema,
+    referencia: fechasHistorialParejasCdaSchema,
+    extras: z.array(z.string().uuid('Recinto inválido')).max(300, 'Demasiados recintos marcados').default([]),
+  })
+  .strict()
+  .refine((d) => !d.referencia.includes(d.fecha), {
+    message: 'La fecha nueva no puede ser una de las de referencia',
+    path: ['fecha'],
+  });
+
+/** Propuesta editada en la web; las cédulas y códigos se validan como en la plantilla. */
+export const cargarPropuestaParejasCdaSchema = z
+  .object({
+    filas: z
+      .array(
+        z
+          .object({
+            cedulaOperador: z.string().trim().max(10, 'Cédula inválida'),
+            cedulaAsistente: z.string().trim().max(10, 'Cédula inválida').nullable().optional(),
+            codigoRecinto: z.string().trim().max(20, 'Código de recinto muy largo'),
+          })
+          .strict(),
+      )
+      .min(1, 'La propuesta no tiene parejas')
+      .max(300, 'Máximo 300 parejas'),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict();
+
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 

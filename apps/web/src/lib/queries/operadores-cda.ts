@@ -8,6 +8,9 @@ import type {
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
   HistorialParejasCda,
+  PropuestaParejasCda,
+  PropuestaParejasCdaRequest,
+  CargarPropuestaParejasCdaRequest,
   EditarParejaCdaRequest,
   ImportParejasCdaResult,
   IntercambiarParejaCdaRequest,
@@ -459,6 +462,24 @@ const conFechas = (fechas: string[]) => new URLSearchParams(fechas.map((f) => ['
 /** Historial de parejas: quién fue y qué recintos se visitaron en las fechas elegidas. */
 export async function getHistorialParejasCda(fechas: string[]): Promise<HistorialParejasCda> {
   const { data } = await api.get<HistorialParejasCda>(`/parejas-cda/historial?${conFechas(fechas)}`);
+  return data;
+}
+
+/** Propuesta automática (no guarda) para una nueva fecha. */
+export async function proponerParejasCda(body: PropuestaParejasCdaRequest): Promise<PropuestaParejasCda> {
+  const { data } = await api.post<PropuestaParejasCda>('/parejas-cda/historial/propuesta', body);
+  return data;
+}
+
+/** Vista previa (guardar=false) o guardado de la propuesta editada, con las reglas de la plantilla. */
+export async function cargarPropuestaParejasCda(
+  fecha: string,
+  guardar: boolean,
+  body: CargarPropuestaParejasCdaRequest,
+  opciones: { app?: boolean } = {},
+): Promise<ImportParejasCdaResult> {
+  const extra = (guardar ? '&guardar=true' : '') + (opciones.app === false ? '&app=false' : '');
+  const { data } = await api.post<ImportParejasCdaResult>(`/parejas-cda/propuesta/cargar?fecha=${fecha}${extra}`, body);
   return data;
 }
 
