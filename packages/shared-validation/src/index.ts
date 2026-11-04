@@ -1001,6 +1001,15 @@ export const intercambiarParejaCdaSchema = z
   .strict();
 export type IntercambiarParejaCdaInput = z.infer<typeof intercambiarParejaCdaSchema>;
 
+/** "Asignar a recinto" de una pareja de reserva (si el recinto tiene pareja, se intercambian). */
+export const asignarRecintoParejaCdaSchema = z
+  .object({ recintoId: z.string().uuid('Elija un recinto'), justificacion: justificacionParejaCdaSchema })
+  .strict();
+export type AsignarRecintoParejaCdaInput = z.infer<typeof asignarRecintoParejaCdaSchema>;
+
+/** Lo que va en codigo_recinto de la plantilla para dejar la pareja de reserva (sin recinto ni kit). */
+export const CODIGO_RESERVA_PAREJAS_CDA = 'RESERVA';
+
 /** "Sin técnico" en el reporte por técnico: recintos con parejas que no están en el distributivo. */
 export const SIN_TECNICO_PAREJAS_CDA = 'SIN_TECNICO';
 

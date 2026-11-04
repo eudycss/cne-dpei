@@ -367,6 +367,9 @@ const AUDIT_TABLE: Array<{
   { method: 'POST', pathRegex: /^\/parejas-cda\/copiar$/, accion: 'PAREJA_CDA_COPIAR', entidad: 'pareja_cda', campos: ['desde', 'hacia'] },
   // Intercambio entre dos parejas CDA del día: puede reasignar los kits en la app.
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/intercambiar$/, accion: 'PAREJA_CDA_INTERCAMBIAR', entidad: 'pareja_cda', campos: ['conId', 'campo', 'justificacion'] },
+  // Parejas de reserva: dejar el recinto (su kit queda sin operador) o recibir uno (puede intercambiarse con la titular).
+  { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/reserva$/, accion: 'PAREJA_CDA_RESERVA', entidad: 'pareja_cda', campos: ['justificacion'] },
+  { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/recinto$/, accion: 'PAREJA_CDA_ASIGNAR_RECINTO', entidad: 'pareja_cda', campos: ['recintoId', 'justificacion'] },
   // Fase 3 — kits electorales (HU11)
   { method: 'POST', pathRegex: /^\/kits$/, accion: 'KIT_CREATE', entidad: 'kit' },
   { method: 'POST', pathRegex: /^\/kits\/pdf-qr$/, accion: 'KIT_PDF_QR_EXPORT', entidad: 'kit' },

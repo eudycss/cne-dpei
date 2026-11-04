@@ -21,6 +21,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
+  asignarRecintoParejaCdaSchema,
   cargarPropuestaParejasCdaSchema,
   copiarParejasCdaSchema,
   crearKitConParejaCdaSchema,
@@ -32,6 +33,7 @@ import {
   justificacionParejaCdaSchema,
 } from '@cne/shared-validation';
 import type {
+  AsignarRecintoParejaCdaRequest,
   CargarPropuestaParejasCdaRequest,
   CopiarParejasCdaRequest,
   CrearKitConParejaCdaRequest,
@@ -196,6 +198,26 @@ export class ParejasCdaController {
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
     await this.parejas.eliminar(id, body?.justificacion);
+  }
+
+  @Post(':id/reserva')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Pasa la pareja a reserva: deja su recinto y su kit queda en el recinto sin operador' })
+  pasarAReserva(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
+  ) {
+    return this.parejas.pasarAReserva(id, body?.justificacion);
+  }
+
+  @Post(':id/recinto')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Asigna un recinto a una pareja de reserva (si el recinto tiene pareja, se intercambian)' })
+  asignarRecinto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(asignarRecintoParejaCdaSchema)) body: AsignarRecintoParejaCdaRequest,
+  ) {
+    return this.parejas.asignarRecinto(id, body.recintoId, body.justificacion);
   }
 
   @Post(':id/asignar-kit')
