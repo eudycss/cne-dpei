@@ -43,6 +43,8 @@ describe('EnlacesService', () => {
       count: jest.fn().mockResolvedValue(0),
     },
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
+    // Los NO CDA del buscador (no tienen enlace monitoreado).
+    recinto: { findMany: jest.fn(), findFirst: jest.fn() },
     enlaceCaida: {
       findMany: jest.fn().mockResolvedValue([]),
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -74,6 +76,8 @@ describe('EnlacesService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    prisma.recinto.findMany.mockResolvedValue([]);
+    prisma.recinto.findFirst.mockResolvedValue(null);
     distributivo.asignaciones.mockResolvedValue([]);
     encargados.encargados.mockResolvedValue(new Map());
     const moduleRef = await Test.createTestingModule({
@@ -1057,8 +1061,20 @@ describe('EnlacesService', () => {
         await service.procesarComandoTelegram('secreto123', {
           message: { text: '🚐 Salida DPEI', chat: { id: '-100999' } },
         });
-        expect(jornada.atenderMensaje).toHaveBeenCalledWith('-100999', '🚐 Salida DPEI');
+        expect(jornada.atenderMensaje).toHaveBeenCalledWith('-100999', '🚐 Salida DPEI', undefined);
         expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      });
+
+      it('un administrador anónimo (a nombre del grupo) llega a la Jornada sin remitente', async () => {
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '971', chat: { id: '-100999' }, from: { id: 1087968824, is_bot: true }, sender_chat: { id: '-100999' } },
+        });
+        expect(jornada.atenderMensaje).toHaveBeenCalledWith('-100999', '971', undefined);
+
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '971', chat: { id: '-100999' }, from: { id: 55 } },
+        });
+        expect(jornada.atenderMensaje).toHaveBeenLastCalledWith('-100999', '971', 55);
       });
 
       it('si la Jornada no lo atiende, el bot de enlaces sigue igual', async () => {
@@ -1683,6 +1699,60 @@ describe('EnlacesService', () => {
             expect(ficha).toContain('Estado: 🔴 FALLO');
           },
         );
+
+        describe('NO CDA (no tienen enlace: se buscan en los recintos)', () => {
+          const NO_CDA_5968 = {
+            codigoRecinto: '5968',
+            nombre: 'UECIB Manuel J Calle Bloque 3',
+            parroquia: 'EUGENIO ESPEJO',
+            canton: { nombre: 'OTAVALO' },
+          };
+          beforeEach(() => {
+            prisma.recinto.findMany.mockResolvedValue([NO_CDA_5968]);
+            prisma.recinto.findFirst.mockImplementation(({ where }: { where: { codigoRecinto: string } }) =>
+              Promise.resolve(
+                where.codigoRecinto === '5968'
+                  ? { codigoRecinto: '5968', nombre: NO_CDA_5968.nombre, cdaDestino: { codigoRecinto: '1008', nombre: 'Unidad Educativa Ilumán' } }
+                  : null,
+              ),
+            );
+          });
+
+          it('por código: dice a qué CDA entrega y manda la ficha de ese CDA', async () => {
+            await buscar('5968');
+            const textos = telegram.enviarHtml.mock.calls.map(([t]) => t);
+            expect(textos.at(-2)).toBe(
+              '🏫 <b>5968 · UECIB Manuel J Calle Bloque 3</b> es un NO CDA: entrega en el CDA <b>1008 · Unidad Educativa Ilumán</b>.',
+            );
+            expect(textos.at(-1)).toContain('📍 1008 (Ota) — Unidad Educativa Ilumán');
+            expect(prisma.recinto.findMany).toHaveBeenCalledWith(
+              expect.objectContaining({ where: { tipo: 'NO_CDA', activo: true } }),
+            );
+          });
+
+          it('por nombre: si coincide con un CDA y un NO CDA ofrece los dos, marcando el NO CDA', async () => {
+            prisma.recinto.findMany.mockResolvedValue([{ ...NO_CDA_5968, nombre: 'Escuela Ilumán Bloque 4' }]);
+            await buscar('iluman');
+            const [, , botones] = telegram.enviarHtml.mock.calls.at(-1);
+            const textos = (botones as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text);
+            expect(textos).toEqual(expect.arrayContaining(['5968 · Escuela Ilumán Bloque 4 (NO CDA)']));
+            expect(textos.some((t) => t.startsWith('1008 · '))).toBe(true);
+          });
+
+          it('el botón de un NO CDA (rec:5968) también lleva a su CDA', async () => {
+            await service.procesarComandoTelegram('secreto123', {
+              callback_query: { id: 'cb', data: 'rec:5968', message: { message_id: 3, chat: { id: '-100200300' } } },
+            });
+            expect(telegram.enviarHtml.mock.calls.at(-2)[0]).toContain('es un NO CDA: entrega en el CDA');
+          });
+
+          it('un NO CDA sin CDA destino dice que va directo a la Delegación', async () => {
+            prisma.recinto.findFirst.mockResolvedValue({ codigoRecinto: '1963', nombre: 'Piñán', cdaDestino: null });
+            prisma.recinto.findMany.mockResolvedValue([{ ...NO_CDA_5968, codigoRecinto: '1963', nombre: 'Piñán' }]);
+            await buscar('1963');
+            expect(telegram.enviarHtml.mock.calls.at(-1)[0]).toContain('va directo a la Delegación');
+          });
+        });
 
         it('el código exacto gana y no recorre la lista de recintos', async () => {
           await buscar('1290');

@@ -3,19 +3,27 @@ import { escapeHtml } from '../../auth/notifier';
 /**
  * Grupo "Jornada" de Telegram: quién falta y quién ya cumplió cada momento del
  * día (salida del DPEI, llegada y salida del recinto, llegada al DPEI), las
- * visitas a los NO CDA y los kits pendientes de entregar, agrupado por técnico.
- * Aquí solo hay funciones puras (estado y formato); los datos los arma
- * JornadaService.
+ * visitas a los NO CDA y los kits pendientes de entregar, agrupado por técnico
+ * o por cantón, y la ficha de un CDA ("Consultar CDA"). Aquí solo hay funciones
+ * puras (estado y formato); los datos los arma JornadaService.
  */
 
 export type MomentoJornada = 'SALIDA_DPI' | 'LLEGADA_RECINTO' | 'SALIDA_RECINTO' | 'LLEGADA_DPI';
 export type VistaJornada = MomentoJornada | 'NO_CDA' | 'KIT';
+/** Cómo se agrupan los resúmenes: por técnico del distributivo o por cantón. */
+export type AgrupacionJornada = 'tec' | 'can';
 
 export const MOMENTOS_JORNADA: MomentoJornada[] = ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'];
 
 export interface TecnicoJornada {
   /** Orden en el distributivo (desde 1); null = el recinto no figura en el distributivo. */
   numero: number | null;
+  nombre: string;
+}
+
+export interface CantonJornada {
+  /** Código del cantón (30 = Ibarra…); null = sin cantón. */
+  codigo: number | null;
   nombre: string;
 }
 
@@ -36,6 +44,7 @@ export interface UnidadJornada {
   codigoRecinto: string;
   nombreRecinto: string;
   tecnico: TecnicoJornada;
+  canton: CantonJornada;
   personas: PersonaJornada[];
   registros: Partial<Record<MomentoJornada, RegistroJornada>>;
   /** El Asistente Transversal registró la recepción del kit en la Delegación. */
@@ -46,7 +55,9 @@ export interface NoCdaJornada {
   codigoRecinto: string;
   nombreRecinto: string;
   codigoCda: string;
+  nombreCda: string;
   tecnico: TecnicoJornada;
+  canton: CantonJornada;
   /** Quienes llevan el kit de su CDA (vacío si el CDA no tiene kit). */
   personas: PersonaJornada[];
   visita: RegistroJornada | null;
@@ -56,6 +67,7 @@ export interface SinKitJornada {
   codigoRecinto: string;
   nombreRecinto: string;
   tecnico: TecnicoJornada;
+  canton: CantonJornada;
 }
 
 export interface Jornada {
@@ -77,6 +89,7 @@ export const BOTONES_JORNADA: Record<VistaJornada, string> = {
   NO_CDA: '🏫 Visitas NO CDA',
   KIT: '📦 Kit pendiente',
 };
+export const BOTON_CONSULTAR_CDA = '🔎 Consultar CDA';
 
 const TITULOS: Record<VistaJornada, string> = {
   SALIDA_DPI: '🚐 Salida del DPEI',
@@ -87,15 +100,14 @@ const TITULOS: Record<VistaJornada, string> = {
   KIT: '📦 Kit pendiente',
 };
 
-const YA_CUMPLIERON: Record<Exclude<VistaJornada, 'KIT'>, string> = {
+const YA_CUMPLIERON: Record<Exclude<VistaJornada, 'KIT' | 'NO_CDA'>, string> = {
   SALIDA_DPI: 'YA SALIERON',
   LLEGADA_RECINTO: 'YA LLEGARON',
   SALIDA_RECINTO: 'YA SALIERON DEL RECINTO',
   LLEGADA_DPI: 'YA LLEGARON AL DPEI',
-  NO_CDA: 'YA VISITADOS',
 };
 
-/** Código corto de cada vista en el callback_data ("jor:sd:3:0"). */
+/** Código corto de cada vista en el callback_data ("jor:sd:t:3:0"). */
 const CLAVE_VISTA: Record<VistaJornada, string> = {
   SALIDA_DPI: 'sd',
   LLEGADA_RECINTO: 'lr',
@@ -107,33 +119,51 @@ const CLAVE_VISTA: Record<VistaJornada, string> = {
 const VISTA_POR_CLAVE = new Map<string, VistaJornada>(
   (Object.entries(CLAVE_VISTA) as [VistaJornada, string][]).map(([v, c]) => [c, v]),
 );
+const CLAVE_AGRUPACION: Record<AgrupacionJornada, string> = { tec: 't', can: 'c' };
 
 export const PREFIJO_CALLBACK_JORNADA = 'jor:';
-/** Técnico: su número, "sin" (sin técnico), "res" (resumen) o "tod" (todos los que faltan). */
-const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
+/**
+ * "jor:<vista>:<t|c>:<grupo>:<página>". Grupo: número de técnico o código de cantón,
+ * "sin", "res" (resumen) o "tod" (todos los que faltan). Sin "t|c" (botones de antes)
+ * se toma por técnico.
+ */
+const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):(?:(t|c):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
+/** Ficha de un CDA: "jor:cda:1133" (codigo_recinto es VarChar(20)). */
+const CALLBACK_FICHA_CDA = /^jor:cda:([\w-]{1,20})$/;
 
 export type SeleccionJornada = number | 'sin' | 'res' | 'tod';
 
 export interface BotonJornada {
   vista: VistaJornada;
+  agrupacion: AgrupacionJornada;
   seleccion: SeleccionJornada;
   pagina: number;
 }
 
-export function callbackJornada({ vista, seleccion, pagina }: BotonJornada): string {
-  return `${PREFIJO_CALLBACK_JORNADA}${CLAVE_VISTA[vista]}:${seleccion}:${pagina}`;
+export function callbackJornada({ vista, agrupacion, seleccion, pagina }: BotonJornada): string {
+  return `${PREFIJO_CALLBACK_JORNADA}${CLAVE_VISTA[vista]}:${CLAVE_AGRUPACION[agrupacion]}:${seleccion}:${pagina}`;
 }
 
-/** null si el callback_data no es de la Jornada o viene mal formado. */
+export function callbackFichaCda(codigo: string): string {
+  return `${PREFIJO_CALLBACK_JORNADA}cda:${codigo}`;
+}
+
+/** null si el callback_data no es de un resumen de la Jornada o viene mal formado. */
 export function leerCallbackJornada(data: string | undefined): BotonJornada | null {
   const m = CALLBACK_JORNADA.exec(data ?? '');
   if (!m) return null;
   const vista = VISTA_POR_CLAVE.get(m[1])!;
-  const seleccion: SeleccionJornada = m[2] === 'sin' || m[2] === 'res' || m[2] === 'tod' ? m[2] : Number(m[2]);
-  return { vista, seleccion, pagina: Number(m[3]) };
+  const agrupacion: AgrupacionJornada = m[2] === 'c' ? 'can' : 'tec';
+  const seleccion: SeleccionJornada = m[3] === 'sin' || m[3] === 'res' || m[3] === 'tod' ? m[3] : Number(m[3]);
+  return { vista, agrupacion, seleccion, pagina: Number(m[4]) };
 }
 
-/** La vista que pide un botón fijo (o /salida…), o null si el texto no es de la Jornada. */
+/** El código del CDA de un botón de ficha, o null. */
+export function leerCallbackFichaCda(data: string | undefined): string | null {
+  return CALLBACK_FICHA_CDA.exec(data ?? '')?.[1] ?? null;
+}
+
+/** La vista que pide un botón fijo, o null si el texto no es de la Jornada. */
 export function vistaDeTexto(texto: string): VistaJornada | null {
   const limpio = texto.trim().toLowerCase();
   for (const [vista, boton] of Object.entries(BOTONES_JORNADA) as [VistaJornada, string][]) {
@@ -148,23 +178,59 @@ export function tecladoFijoJornada() {
       [{ text: BOTONES_JORNADA.SALIDA_DPI }, { text: BOTONES_JORNADA.LLEGADA_RECINTO }],
       [{ text: BOTONES_JORNADA.SALIDA_RECINTO }, { text: BOTONES_JORNADA.LLEGADA_DPI }],
       [{ text: BOTONES_JORNADA.NO_CDA }, { text: BOTONES_JORNADA.KIT }],
+      [{ text: BOTON_CONSULTAR_CDA }],
     ],
     resize_keyboard: true,
   };
 }
 
+// ─── Grupos (técnico o cantón) ──────────────────────────────────────────────
+
+/** Un grupo de un resumen: un técnico o un cantón. */
+export interface GrupoJornada {
+  clave: number | 'sin';
+  nombre: string;
+}
+
+type ConGrupo = { tecnico: TecnicoJornada; canton: CantonJornada };
+
+export function grupoDe(x: ConGrupo, agrupacion: AgrupacionJornada): GrupoJornada {
+  if (agrupacion === 'can') {
+    return x.canton.codigo === null ? { clave: 'sin', nombre: 'Sin cantón' } : { clave: x.canton.codigo, nombre: x.canton.nombre };
+  }
+  return x.tecnico.numero === null ? { clave: 'sin', nombre: 'Sin técnico' } : { clave: x.tecnico.numero, nombre: x.tecnico.nombre };
+}
+
+/** Técnicos en el orden del distributivo, o cantones por nombre; "Sin …" al final. */
+export function gruposDe(j: Jornada, agrupacion: AgrupacionJornada): GrupoJornada[] {
+  const vistos = new Map<number | 'sin', GrupoJornada>();
+  for (const x of [...j.unidades, ...j.noCdas, ...j.sinKit]) {
+    const g = grupoDe(x, agrupacion);
+    if (!vistos.has(g.clave)) vistos.set(g.clave, g);
+  }
+  return [...vistos.values()].sort((a, b) => {
+    if (a.clave === 'sin' || b.clave === 'sin') return a.clave === 'sin' ? 1 : -1;
+    return agrupacion === 'tec' ? a.clave - b.clave : a.nombre.localeCompare(b.nombre, 'es');
+  });
+}
+
+function delGrupo<T extends ConGrupo>(items: T[], g: GrupoJornada, agrupacion: AgrupacionJornada): T[] {
+  return items.filter((i) => grupoDe(i, agrupacion).clave === g.clave);
+}
+
 // ─── Estado de cada vista ───────────────────────────────────────────────────
 
 /** Una fila de la lista: el recinto en negrita, las personas debajo. */
-export interface ItemJornada {
-  tecnico: TecnicoJornada;
+export interface ItemJornada extends ConGrupo {
   codigoRecinto: string;
   nombreRecinto: string;
   personas: PersonaJornada[];
   /** Hora del registro (en "ya cumplieron") o de lo que dejó el kit pendiente. */
   registro: RegistroJornada | null;
-  /** Texto corto al lado del recinto (NO CDA: "CDA 1487"; kit: qué falta). */
+  /** Texto corto al lado del recinto (kit: qué falta). */
   nota?: string;
+  /** Solo NO CDA: su CDA, para agruparlos debajo de él. */
+  cda?: { codigo: string; nombre: string };
 }
 
 export interface EstadoVista {
@@ -172,7 +238,7 @@ export interface EstadoVista {
   cumplidos: ItemJornada[];
 }
 
-const porCodigo = (a: ItemJornada, b: ItemJornada) =>
+const porCodigo = (a: { codigoRecinto: string; nombreRecinto: string }, b: { codigoRecinto: string; nombreRecinto: string }) =>
   a.codigoRecinto.localeCompare(b.codigoRecinto, 'es', { numeric: true }) ||
   a.nombreRecinto.localeCompare(b.nombreRecinto, 'es');
 
@@ -183,11 +249,12 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
     const items = j.noCdas.map(
       (n): ItemJornada => ({
         tecnico: n.tecnico,
+        canton: n.canton,
         codigoRecinto: n.codigoRecinto,
         nombreRecinto: n.nombreRecinto,
         personas: n.personas,
         registro: n.visita,
-        nota: `CDA ${n.codigoCda}${n.personas.length === 0 ? ' · su CDA no tiene kit' : ''}`,
+        cda: { codigo: n.codigoCda, nombre: n.nombreCda },
       }),
     );
     return {
@@ -198,16 +265,8 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
   if (vista === 'KIT') {
     const faltan: ItemJornada[] = [];
     for (const u of j.unidades) {
-      const llegada = u.registros.LLEGADA_DPI ?? null;
-      if (llegada && !u.kitRecibido) {
-        faltan.push({ ...base(u), registro: llegada, nota: 'llegó al DPEI · el kit no se ha recibido' });
-      } else if (!llegada && u.kitRecibido) {
-        faltan.push({
-          ...base(u),
-          registro: { en: u.kitRecibido, sinSenal: false },
-          nota: 'kit recibido · falta marcar la llegada al DPEI',
-        });
-      }
+      const pendiente = kitPendiente(u);
+      if (pendiente) faltan.push({ ...base(u), ...pendiente });
     }
     return { faltan: faltan.sort(porCodigo), cumplidos: [] };
   }
@@ -218,25 +277,24 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
   };
 }
 
-function base(u: UnidadJornada): Omit<ItemJornada, 'registro'> {
-  return { tecnico: u.tecnico, codigoRecinto: u.codigoRecinto, nombreRecinto: u.nombreRecinto, personas: u.personas };
-}
-
-function claveTecnico(t: TecnicoJornada): number | 'sin' {
-  return t.numero ?? 'sin';
-}
-
-/** Técnicos en el orden del distributivo, con "Sin técnico" al final si hace falta. */
-export function tecnicosDe(j: Jornada): TecnicoJornada[] {
-  const vistos = new Map<number | 'sin', TecnicoJornada>();
-  for (const t of [...j.unidades, ...j.noCdas, ...j.sinKit].map((x) => x.tecnico)) {
-    if (!vistos.has(claveTecnico(t))) vistos.set(claveTecnico(t), t);
+/** Llegó al DPEI sin que se reciba el kit, o se recibió el kit sin marcar la llegada; null si está en regla. */
+function kitPendiente(u: UnidadJornada): { registro: RegistroJornada; nota: string } | null {
+  const llegada = u.registros.LLEGADA_DPI ?? null;
+  if (llegada && !u.kitRecibido) return { registro: llegada, nota: 'llegó al DPEI · el kit no se ha recibido' };
+  if (!llegada && u.kitRecibido) {
+    return { registro: { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
   }
-  return [...vistos.values()].sort((a, b) => (a.numero ?? Infinity) - (b.numero ?? Infinity));
+  return null;
 }
 
-function delTecnico<T extends { tecnico: TecnicoJornada }>(items: T[], t: TecnicoJornada): T[] {
-  return items.filter((i) => claveTecnico(i.tecnico) === claveTecnico(t));
+function base(u: UnidadJornada): Omit<ItemJornada, 'registro'> {
+  return {
+    tecnico: u.tecnico,
+    canton: u.canton,
+    codigoRecinto: u.codigoRecinto,
+    nombreRecinto: u.nombreRecinto,
+    personas: u.personas,
+  };
 }
 
 // ─── Formato ────────────────────────────────────────────────────────────────
@@ -244,7 +302,7 @@ function delTecnico<T extends { tecnico: TecnicoJornada }>(items: T[], t: Tecnic
 /** Límite de Telegram por mensaje (4096) con margen. */
 const MAX_LARGO_MENSAJE = 3800;
 const ANCHO_BARRA = 10;
-const ANCHO_BARRA_TECNICO = 5;
+const ANCHO_BARRA_GRUPO = 5;
 
 function barra(valor: number, total: number, ancho: number): string {
   const llenos = total > 0 ? Math.round((valor / total) * ancho) : 0;
@@ -272,14 +330,10 @@ export function telefonoTelegram(telefono: string | null): string | null {
   return digitos;
 }
 
-function nombreTecnico(t: TecnicoJornada): string {
-  return t.numero === null ? 'Sin técnico' : t.nombre;
-}
-
-function lineaPersonas(personas: PersonaJornada[]): string {
-  if (personas.length === 0) return '   <i>sin personas asignadas</i>';
+function lineaPersonas(personas: PersonaJornada[], sangria = '   '): string {
+  if (personas.length === 0) return `${sangria}<i>sin personas asignadas</i>`;
   return (
-    '   ' +
+    sangria +
     personas
       .map((p) => {
         const tel = telefonoTelegram(p.telefono);
@@ -289,28 +343,76 @@ function lineaPersonas(personas: PersonaJornada[]): string {
   );
 }
 
+function horaDe(r: RegistroJornada): string {
+  return `${hora(r.en)}${r.sinSenal ? ' 📴' : ''}`;
+}
+
 function bloqueItem(i: ItemJornada, conHora: boolean): string {
-  const horaTxt = conHora && i.registro ? ` · ${hora(i.registro.en)}${i.registro.sinSenal ? ' 📴' : ''}` : '';
+  const horaTxt = conHora && i.registro ? ` · ${horaDe(i.registro)}` : '';
   const nota = i.nota ? ` · <i>${escapeHtml(i.nota)}</i>` : '';
   return `<b>${escapeHtml(i.codigoRecinto)} · ${escapeHtml(i.nombreRecinto)}</b>${horaTxt}${nota}\n${lineaPersonas(i.personas)}`;
+}
+
+/**
+ * NO CDA agrupados debajo de su CDA ("1133 · … — 1 de 2 reportados"), primero
+ * los CDA a los que les falta alguno. Con `soloFaltan`, cada CDA lista solo sus pendientes.
+ */
+function bloquesNoCdaPorCda(items: ItemJornada[], soloFaltan: boolean): string[] {
+  const porCda = new Map<string, ItemJornada[]>();
+  for (const i of items) porCda.set(i.cda!.codigo, [...(porCda.get(i.cda!.codigo) ?? []), i]);
+  const cdas = [...porCda.values()].sort((a, b) => {
+    const pendientes = (xs: ItemJornada[]) => xs.filter((x) => !x.registro).length;
+    return (pendientes(b) > 0 ? 1 : 0) - (pendientes(a) > 0 ? 1 : 0) || porCodigo(
+      { codigoRecinto: a[0].cda!.codigo, nombreRecinto: a[0].cda!.nombre },
+      { codigoRecinto: b[0].cda!.codigo, nombreRecinto: b[0].cda!.nombre },
+    );
+  });
+  return cdas.flatMap((ncs) => {
+    const { codigo, nombre } = ncs[0].cda!;
+    const reportados = ncs.filter((n) => n.registro).length;
+    const visibles = soloFaltan ? ncs.filter((n) => !n.registro) : ncs;
+    if (visibles.length === 0) return [];
+    const lineas = [...visibles].sort((a, b) => (a.registro ? 1 : 0) - (b.registro ? 1 : 0) || porCodigo(a, b)).map(
+      (n) =>
+        `   ${n.registro ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
+        (n.registro ? ` · ${horaDe(n.registro)}` : ''),
+    );
+    return [
+      [
+        `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} reportado${ncs.length === 1 ? '' : 's'}`,
+        ncs[0].personas.length > 0 ? lineaPersonas(ncs[0].personas) : '   <i>su CDA no tiene kit</i>',
+        ...lineas,
+      ].join('\n'),
+    ];
+  });
 }
 
 function encabezado(j: Jornada, vista: VistaJornada, ahora: Date, sufijo = ''): string {
   return `<b>${TITULOS[vista]}${sufijo ? ` · ${escapeHtml(sufijo)}` : ''}</b> · ${hora(ahora)}\n<i>${escapeHtml(j.evento)}</i>`;
 }
 
-function avisoDistributivo(j: Jornada): string {
-  return j.sinDistributivo ? '\n\n⚠️ No se pudo leer el distributivo de técnicos: todo aparece en "Sin técnico".' : '';
+function avisoDistributivo(j: Jornada, agrupacion: AgrupacionJornada): string {
+  return j.sinDistributivo && agrupacion === 'tec'
+    ? '\n\n⚠️ No se pudo leer el distributivo de técnicos: todo aparece en "Sin técnico".'
+    : '';
 }
 
-function totalVista(e: EstadoVista): number {
-  return e.faltan.length + e.cumplidos.length;
+/** CDA con todos sus NO CDA reportados, de los CDA que tienen NO CDA. */
+function cdasCompletos(items: ItemJornada[]): { completos: number; total: number } {
+  const pendientes = new Map<string, number>();
+  for (const i of items) pendientes.set(i.cda!.codigo, (pendientes.get(i.cda!.codigo) ?? 0) + (i.registro ? 0 : 1));
+  return { completos: [...pendientes.values()].filter((p) => p === 0).length, total: pendientes.size };
 }
 
-/** Resumen de una vista: el avance total y una línea por técnico. */
-export function formatearResumenJornada(j: Jornada, vista: VistaJornada, ahora: Date): string {
+/** Resumen de una vista: el avance total y una línea por técnico o cantón. */
+export function formatearResumenJornada(
+  j: Jornada,
+  vista: VistaJornada,
+  ahora: Date,
+  agrupacion: AgrupacionJornada = 'tec',
+): string {
   const estado = estadoVista(j, vista);
-  const lineas = [encabezado(j, vista, ahora), ''];
+  const lineas = [encabezado(j, vista, ahora, agrupacion === 'can' ? 'por cantón' : ''), ''];
 
   if (vista === 'KIT') {
     lineas.push(
@@ -318,70 +420,81 @@ export function formatearResumenJornada(j: Jornada, vista: VistaJornada, ahora: 
         ? '✅ Nadie tiene el kit pendiente.'
         : `<b>${estado.faltan.length}</b> con el kit pendiente`,
     );
-    for (const t of tecnicosDe(j)) {
-      const n = delTecnico(estado.faltan, t).length;
-      if (n > 0) lineas.push(`${escapeHtml(nombreTecnico(t))} · ${n}`);
+    for (const g of gruposDe(j, agrupacion)) {
+      const n = delGrupo(estado.faltan, g, agrupacion).length;
+      if (n > 0) lineas.push(`${escapeHtml(g.nombre)} · ${n}`);
     }
-    return lineas.join('\n') + avisoDistributivo(j);
+    return lineas.join('\n') + avisoDistributivo(j, agrupacion);
   }
 
-  const total = totalVista(estado);
+  const total = estado.faltan.length + estado.cumplidos.length;
   if (total === 0) {
     lineas.push(vista === 'NO_CDA' ? 'No hay recintos NO CDA para este evento.' : 'Todavía no hay kits asignados en este evento.');
-    return lineas.join('\n') + avisoDistributivo(j);
+    return lineas.join('\n') + avisoDistributivo(j, agrupacion);
   }
   const hechos = estado.cumplidos.length;
   lineas.push(
     `<code>${barra(hechos, total, ANCHO_BARRA)}</code>  <b>${hechos} de ${total}</b>` +
       (estado.faltan.length > 0 ? ` · faltan ${estado.faltan.length}` : ' ✅'),
-    '',
   );
-  for (const t of tecnicosDe(j)) {
-    const f = delTecnico(estado.faltan, t).length;
-    const c = delTecnico(estado.cumplidos, t).length;
+  if (vista === 'NO_CDA') {
+    const { completos, total: cdas } = cdasCompletos([...estado.faltan, ...estado.cumplidos]);
+    lineas.push(`🏫 ${completos} de ${cdas} CDA con todos sus NO CDA reportados`);
+  }
+  lineas.push('');
+  for (const g of gruposDe(j, agrupacion)) {
+    const f = delGrupo(estado.faltan, g, agrupacion).length;
+    const c = delGrupo(estado.cumplidos, g, agrupacion).length;
     if (f + c === 0) continue;
     lineas.push(
-      `${escapeHtml(nombreTecnico(t))}  <code>${barra(c, f + c, ANCHO_BARRA_TECNICO)}</code> ${c}/${f + c}` +
+      `${escapeHtml(g.nombre)}  <code>${barra(c, f + c, ANCHO_BARRA_GRUPO)}</code> ${c}/${f + c}` +
         (f > 0 ? `  faltan ${f}` : '  ✅'),
     );
   }
   if (vista !== 'NO_CDA' && j.sinKit.length > 0) {
     lineas.push('', `⚪ ${j.sinKit.length} recinto${j.sinKit.length === 1 ? '' : 's'} CDA sin kit asignado (no cuentan)`);
   }
-  return lineas.join('\n') + avisoDistributivo(j);
+  return lineas.join('\n') + avisoDistributivo(j, agrupacion);
 }
 
-/** Páginas del detalle de un técnico (o de todos los que faltan, con "tod"). */
+/** Páginas del detalle de un técnico o cantón (o de todos los que faltan, con "tod"). */
 export function paginasDetalleJornada(
   j: Jornada,
   vista: VistaJornada,
   seleccion: number | 'sin' | 'tod',
   ahora: Date,
+  agrupacion: AgrupacionJornada = 'tec',
 ): string[] {
   const estado = estadoVista(j, vista);
-  const tecnico = seleccion === 'tod' ? null : tecnicosDe(j).find((t) => claveTecnico(t) === seleccion);
-  const faltan = tecnico ? delTecnico(estado.faltan, tecnico) : estado.faltan;
-  const cumplidos = tecnico ? delTecnico(estado.cumplidos, tecnico) : [];
+  const grupos = gruposDe(j, agrupacion);
+  const grupo = seleccion === 'tod' ? null : grupos.find((g) => g.clave === seleccion);
+  const faltan = grupo ? delGrupo(estado.faltan, grupo, agrupacion) : estado.faltan;
+  const cumplidos = grupo ? delGrupo(estado.cumplidos, grupo, agrupacion) : [];
   const total = faltan.length + cumplidos.length;
 
-  const sufijo = tecnico ? nombreTecnico(tecnico) : 'todos los que faltan';
-  const resumen =
-    vista === 'KIT' || !tecnico
-      ? `Faltan <b>${faltan.length}</b>`
-      : `Faltan <b>${faltan.length}</b> de ${total}`;
+  const sufijo = grupo ? grupo.nombre : 'todos los que faltan';
+  const resumen = vista === 'KIT' || !grupo ? `Faltan <b>${faltan.length}</b>` : `Faltan <b>${faltan.length}</b> de ${total}`;
   const cabeza = `${encabezado(j, vista, ahora, sufijo)}\n${resumen}`;
+
+  if (vista === 'NO_CDA') {
+    // En "todos los que faltan" se cuentan todos los NO CDA de cada CDA, pero solo se listan los pendientes.
+    const deCadaCda = grupo ? [...faltan, ...cumplidos] : [...estado.faltan, ...estado.cumplidos];
+    const bloques = faltan.length === 0 ? ['✅ No falta nadie.'] : [];
+    bloques.push(...bloquesNoCdaPorCda(deCadaCda, !grupo));
+    return paginar(cabeza, bloques);
+  }
 
   const bloques: string[] = [];
   if (faltan.length > 0) {
     bloques.push(`<b>⏳ ${vista === 'KIT' ? 'PENDIENTES' : 'FALTAN'} (${faltan.length})</b>`);
-    if (tecnico) {
+    if (grupo) {
       bloques.push(...faltan.map((i) => bloqueItem(i, vista === 'KIT')));
     } else {
-      // "Todos": agrupados por técnico para saber a quién llamar.
-      for (const t of tecnicosDe(j)) {
-        const suyos = delTecnico(faltan, t);
+      // "Todos": agrupados para saber a quién llamar.
+      for (const g of grupos) {
+        const suyos = delGrupo(faltan, g, agrupacion);
         if (suyos.length === 0) continue;
-        bloques.push(`<u>${escapeHtml(nombreTecnico(t))} (${suyos.length})</u>`, ...suyos.map((i) => bloqueItem(i, vista === 'KIT')));
+        bloques.push(`<u>${escapeHtml(g.nombre)} (${suyos.length})</u>`, ...suyos.map((i) => bloqueItem(i, vista === 'KIT')));
       }
     }
   } else {
@@ -390,8 +503,8 @@ export function paginasDetalleJornada(
   if (cumplidos.length > 0 && vista !== 'KIT') {
     bloques.push(`<b>✅ ${YA_CUMPLIERON[vista]} (${cumplidos.length})</b>`, ...cumplidos.map((i) => bloqueItem(i, true)));
   }
-  if (tecnico && vista !== 'NO_CDA' && vista !== 'KIT') {
-    const sinKit = delTecnico(j.sinKit, tecnico);
+  if (grupo && vista !== 'KIT') {
+    const sinKit = delGrupo(j.sinKit, grupo, agrupacion);
     if (sinKit.length > 0) {
       bloques.push(
         `<b>⚪ SIN KIT ASIGNADO (${sinKit.length})</b>`,
@@ -416,46 +529,170 @@ function paginar(cabeza: string, bloques: string[]): string[] {
     }
   }
   paginas.push(actual);
-  return paginas.map((p, i) =>
-    `${cabeza}${paginas.length > 1 ? ` · pág. ${i + 1}/${paginas.length}` : ''}\n\n${p}`,
-  );
+  return paginas.map((p, i) => `${cabeza}${paginas.length > 1 ? ` · pág. ${i + 1}/${paginas.length}` : ''}\n\n${p}`);
 }
 
-/** Botones de técnicos (con cuántos faltan) bajo el resumen o el detalle. */
+type BotonInline = { text: string; callback_data: string };
+
+/** Botones de técnicos o cantones (con cuántos faltan) bajo el resumen o el detalle. */
 export function tecladoJornada(
   j: Jornada,
   vista: VistaJornada,
   seleccion: SeleccionJornada = 'res',
   pagina = 0,
   paginas = 1,
+  agrupacion: AgrupacionJornada = 'tec',
 ) {
   const estado = estadoVista(j, vista);
-  const botones = tecnicosDe(j)
-    .map((t) => {
-      const f = delTecnico(estado.faltan, t).length;
-      const c = vista === 'KIT' ? 0 : delTecnico(estado.cumplidos, t).length;
+  const boton = (b: Omit<BotonJornada, 'vista' | 'agrupacion'> & Partial<BotonJornada>) =>
+    callbackJornada({ vista, agrupacion, ...b });
+  const botones = gruposDe(j, agrupacion)
+    .map((g) => {
+      const f = delGrupo(estado.faltan, g, agrupacion).length;
+      const c = vista === 'KIT' ? 0 : delGrupo(estado.cumplidos, g, agrupacion).length;
       if (f + c === 0) return null;
-      const clave = claveTecnico(t);
-      const texto = `${nombreTecnico(t)} · ${f > 0 ? f : '✅'}`;
-      return {
-        text: clave === seleccion ? `• ${texto} •` : texto,
-        callback_data: callbackJornada({ vista, seleccion: clave, pagina: 0 }),
-      };
+      const texto = `${g.nombre} · ${f > 0 ? f : '✅'}`;
+      return { text: g.clave === seleccion ? `• ${texto} •` : texto, callback_data: boton({ seleccion: g.clave, pagina: 0 }) };
     })
-    .filter((b): b is { text: string; callback_data: string } => b !== null);
+    .filter((b): b is BotonInline => b !== null);
 
-  const filas: { text: string; callback_data: string }[][] = [];
+  const filas: BotonInline[][] = [];
   for (let i = 0; i < botones.length; i += 3) filas.push(botones.slice(i, i + 3));
 
-  const navegacion: { text: string; callback_data: string }[] = [];
-  if (seleccion !== 'res') navegacion.push({ text: '◀ Resumen', callback_data: callbackJornada({ vista, seleccion: 'res', pagina: 0 }) });
-  if (pagina > 0) navegacion.push({ text: '◀ Pág.', callback_data: callbackJornada({ vista, seleccion, pagina: pagina - 1 }) });
-  if (pagina < paginas - 1) navegacion.push({ text: 'Pág. ▶', callback_data: callbackJornada({ vista, seleccion, pagina: pagina + 1 }) });
-  navegacion.push({ text: '↻ Actualizar', callback_data: callbackJornada({ vista, seleccion, pagina }) });
+  const navegacion: BotonInline[] = [];
+  if (seleccion !== 'res') navegacion.push({ text: '◀ Resumen', callback_data: boton({ seleccion: 'res', pagina: 0 }) });
+  if (pagina > 0) navegacion.push({ text: '◀ Pág.', callback_data: boton({ seleccion, pagina: pagina - 1 }) });
+  if (pagina < paginas - 1) navegacion.push({ text: 'Pág. ▶', callback_data: boton({ seleccion, pagina: pagina + 1 }) });
+  navegacion.push({ text: '↻ Actualizar', callback_data: boton({ seleccion, pagina }) });
   filas.push(navegacion);
 
-  if (seleccion === 'res' && estado.faltan.length > 0) {
-    filas.push([{ text: 'Ver todos los que faltan', callback_data: callbackJornada({ vista, seleccion: 'tod', pagina: 0 }) }]);
+  if (seleccion === 'res') {
+    if (estado.faltan.length > 0) {
+      filas.push([{ text: 'Ver todos los que faltan', callback_data: boton({ seleccion: 'tod', pagina: 0 }) }]);
+    }
+    filas.push([
+      {
+        text: agrupacion === 'tec' ? '• 👷 Por técnico •' : '👷 Por técnico',
+        callback_data: boton({ agrupacion: 'tec', seleccion: 'res', pagina: 0 }),
+      },
+      {
+        text: agrupacion === 'can' ? '• 🗺️ Por cantón •' : '🗺️ Por cantón',
+        callback_data: boton({ agrupacion: 'can', seleccion: 'res', pagina: 0 }),
+      },
+    ]);
   }
   return { inline_keyboard: filas };
+}
+
+// ─── Consultar CDA ──────────────────────────────────────────────────────────
+
+const ETIQUETA_MOMENTO: Record<MomentoJornada, [hecho: string, falta: string]> = {
+  SALIDA_DPI: ['🚐 Salió del DPEI', '🚐 Falta salir del DPEI'],
+  LLEGADA_RECINTO: ['📍 Llegó al recinto', '📍 Falta llegar al recinto'],
+  SALIDA_RECINTO: ['🏁 Salió del recinto', '🏁 Falta salir del recinto'],
+  LLEGADA_DPI: ['🏢 Llegó al DPEI', '🏢 Falta llegar al DPEI'],
+};
+
+/**
+ * Ficha de un CDA: técnico y cantón, cada pareja con sus 4 momentos, el kit y
+ * las personas, y sus NO CDA reportados o pendientes. null si el código no es
+ * un CDA de la jornada.
+ */
+export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): string | null {
+  const unidades = j.unidades.filter((u) => u.codigoRecinto === codigo);
+  const sinKit = j.sinKit.find((s) => s.codigoRecinto === codigo);
+  const ref = unidades[0] ?? sinKit;
+  if (!ref) return null;
+  const tecnico = ref.tecnico.numero === null ? 'sin técnico' : `Técnico: ${ref.tecnico.nombre}`;
+  const lineas = [
+    `<b>🔎 ${escapeHtml(codigo)} · ${escapeHtml(ref.nombreRecinto)}</b> · ${hora(ahora)}`,
+    `${escapeHtml(ref.canton.nombre)} · ${escapeHtml(tecnico)}`,
+    `<i>${escapeHtml(j.evento)}</i>`,
+  ];
+
+  if (unidades.length === 0) lineas.push('', '⚪ Sin kit asignado en este evento.');
+  unidades.forEach((u, i) => {
+    lineas.push('');
+    if (unidades.length > 1) lineas.push(`<u>Pareja ${i + 1}</u>`);
+    for (const m of MOMENTOS_JORNADA) {
+      const r = u.registros[m];
+      lineas.push(r ? `${ETIQUETA_MOMENTO[m][0]} ${horaDe(r)}` : ETIQUETA_MOMENTO[m][1]);
+    }
+    const pendiente = kitPendiente(u);
+    lineas.push(
+      u.kitRecibido
+        ? `📦 Kit recibido en el DPEI ${hora(u.kitRecibido)}${pendiente ? ' · falta marcar la llegada al DPEI' : ''}`
+        : `📦 Kit: aún no se recibe en el DPEI${pendiente ? ' · ⚠️ ya llegó al DPEI' : ''}`,
+    );
+    lineas.push(lineaPersonas(u.personas, ''));
+  });
+
+  const ncs = j.noCdas.filter((n) => n.codigoCda === codigo).sort(porCodigo);
+  if (ncs.length > 0) {
+    const reportados = ncs.filter((n) => n.visita).length;
+    lineas.push('', `🏫 <b>NO CDA: ${reportados} de ${ncs.length} reportado${ncs.length === 1 ? '' : 's'}</b>`);
+    for (const n of [...ncs].sort((a, b) => (a.visita ? 1 : 0) - (b.visita ? 1 : 0))) {
+      lineas.push(
+        `   ${n.visita ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
+          (n.visita ? ` · ${horaDe(n.visita)}` : ''),
+      );
+    }
+  }
+  return recortarPorLineas(lineas);
+}
+
+/** Si no cabe en un mensaje, quita líneas completas del final (nunca corta una etiqueta HTML) y lo dice. */
+function recortarPorLineas(lineas: string[]): string {
+  if (lineas.join('\n').length <= MAX_LARGO_MENSAJE) return lineas.join('\n');
+  const quedan = [...lineas];
+  let quitadas = 0;
+  const aviso = (n: number) => `<i>… y ${n} línea${n === 1 ? '' : 's'} más</i>`;
+  while (quedan.length > 1 && [...quedan, aviso(quitadas)].join('\n').length > MAX_LARGO_MENSAJE) {
+    quedan.pop();
+    quitadas++;
+  }
+  return [...quedan, aviso(quitadas)].join('\n');
+}
+
+/** Botón ↻ bajo la ficha de un CDA. */
+export function tecladoFichaCda(codigo: string) {
+  return { inline_keyboard: [[{ text: '↻ Actualizar', callback_data: callbackFichaCda(codigo) }]] };
+}
+
+/** Recinto que se puede consultar: un CDA de la jornada o un NO CDA (que lleva a su CDA). */
+export interface ConsultableJornada {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  canton: string | null;
+  parroquia: string;
+  /** El CDA cuya ficha se muestra (el mismo código si es CDA). */
+  codigoCda: string;
+  esNoCda: boolean;
+}
+
+export function consultablesDe(j: Jornada): ConsultableJornada[] {
+  const vistos = new Map<string, ConsultableJornada>();
+  for (const c of [...j.unidades, ...j.sinKit]) {
+    if (vistos.has(c.codigoRecinto)) continue;
+    vistos.set(c.codigoRecinto, {
+      codigoRecinto: c.codigoRecinto,
+      nombreRecinto: c.nombreRecinto,
+      canton: c.canton.nombre,
+      parroquia: '',
+      codigoCda: c.codigoRecinto,
+      esNoCda: false,
+    });
+  }
+  for (const n of j.noCdas) {
+    if (vistos.has(n.codigoRecinto)) continue;
+    vistos.set(n.codigoRecinto, {
+      codigoRecinto: n.codigoRecinto,
+      nombreRecinto: n.nombreRecinto,
+      canton: n.canton.nombre,
+      parroquia: '',
+      codigoCda: n.codigoCda,
+      esNoCda: true,
+    });
+  }
+  return [...vistos.values()];
 }
