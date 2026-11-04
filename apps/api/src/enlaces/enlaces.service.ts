@@ -42,6 +42,7 @@ import {
 import { AsistenteService } from './asistente/asistente.service';
 import { buscarRecintosDetalle } from './asistente/buscar-recintos';
 import { asistenteHabilitado } from './asistente/llm.client';
+import { JornadaService } from './jornada/jornada.service';
 
 const CONFIG_ID = 1;
 const CANTON_MAX_LEN = 100;
@@ -170,6 +171,7 @@ export class EnlacesService {
     private readonly escalamiento: EnlacesEscalamientoService,
     private readonly asistente: AsistenteService,
     private readonly encargados: EncargadosRecintosClient,
+    private readonly jornada: JornadaService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -611,7 +613,10 @@ export class EnlacesService {
     }
 
     if (update.callback_query) {
-      await this.procesarBotonTelegram(update.callback_query);
+      const boton = update.callback_query;
+      // Los botones del grupo Jornada los atiende JornadaService; el resto, el bot de enlaces.
+      if (await this.jornada.atenderBoton(boton.message?.chat?.id, boton.id, boton.data, boton.message?.message_id)) return;
+      await this.procesarBotonTelegram(boton);
       return;
     }
 
@@ -619,6 +624,7 @@ export class EnlacesService {
     const texto = textoOriginal?.toLowerCase();
     const chatId = update.message?.chat?.id;
     if (!textoOriginal || !texto || chatId === undefined) return;
+    if (await this.jornada.atenderMensaje(chatId, textoOriginal)) return;
 
     const tipoChat = tipoChatTelegram(chatId);
     if (!tipoChat) {

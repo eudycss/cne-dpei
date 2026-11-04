@@ -277,6 +277,28 @@ describe('TelegramNotifier', () => {
     delete process.env.TELEGRAM_CHAT_ID;
   });
 
+  describe('editarHtml', () => {
+    it('edita ese mensaje con el texto en HTML y sus botones, en el chat de responderEn', async () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+      const notifier = new TelegramNotifier();
+      const botones = { inline_keyboard: [[{ text: '↻', callback_data: 'jor:sd:res:0' }]] };
+
+      await notifier.responderEn('-100777', () => notifier.editarHtml(42, '<b>Hola</b>', 'la prueba', botones));
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/editMessageText');
+      expect(JSON.parse(opts.body)).toEqual({
+        chat_id: '-100777',
+        message_id: 42,
+        text: '<b>Hola</b>',
+        parse_mode: 'HTML',
+        reply_markup: botones,
+      });
+    });
+  });
+
   describe('enviarListaActual', () => {
     it('si la lista no cabe en un mensaje, manda cada parte en orden', async () => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';
