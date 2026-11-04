@@ -25,6 +25,8 @@ jest.mock('../auth/notifier', () => ({
   resolveNotifier: () => ({ sendEnlaceCaido, sendEnlaceRecuperado }),
 }));
 
+import { JornadaService } from './jornada/jornada.service';
+
 describe('EnlacesService', () => {
   let service: EnlacesService;
 
@@ -60,6 +62,10 @@ describe('EnlacesService', () => {
     responderBoton: jest.fn().mockResolvedValue(undefined),
     responderEn: jest.fn((_chatId: string, fn: () => Promise<unknown>) => fn()),
   };
+  const jornada = {
+    atenderMensaje: jest.fn().mockResolvedValue(false),
+    atenderBoton: jest.fn().mockResolvedValue(false),
+  };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
   const asistente = {
     responder: jest.fn().mockResolvedValue(undefined),
@@ -82,6 +88,7 @@ describe('EnlacesService', () => {
         { provide: EncargadosRecintosClient, useValue: encargados },
         { provide: EnlacesEscalamientoService, useValue: escalamiento },
         { provide: AsistenteService, useValue: asistente },
+        { provide: JornadaService, useValue: jornada },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);
@@ -1039,6 +1046,47 @@ describe('EnlacesService', () => {
       ]);
     });
 
+    describe('grupo Jornada', () => {
+      beforeEach(() => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+      });
+
+      it('un mensaje que atiende la Jornada no pasa al bot de enlaces', async () => {
+        jornada.atenderMensaje.mockResolvedValueOnce(true);
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '🚐 Salida DPEI', chat: { id: '-100999' } },
+        });
+        expect(jornada.atenderMensaje).toHaveBeenCalledWith('-100999', '🚐 Salida DPEI');
+        expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      });
+
+      it('si la Jornada no lo atiende, el bot de enlaces sigue igual', async () => {
+        prisma.enlaceRecinto.findMany.mockResolvedValue([]);
+        await service.procesarComandoTelegram('secreto123', {
+          message: { text: '/caidos', chat: { id: '-100200300' } },
+        });
+        expect(jornada.atenderMensaje).toHaveBeenCalled();
+        expect(telegram.enviarListaActual).toHaveBeenCalled();
+      });
+
+      it('un botón de la Jornada se le pasa con chat, id, data y mensaje', async () => {
+        jornada.atenderBoton.mockResolvedValueOnce(true);
+        await service.procesarComandoTelegram('secreto123', {
+          callback_query: { id: 'cb1', data: 'jor:sd:2:0', message: { message_id: 7, chat: { id: '-100999' } } },
+        });
+        expect(jornada.atenderBoton).toHaveBeenCalledWith('-100999', 'cb1', 'jor:sd:2:0', 7);
+        expect(telegram.responderBoton).not.toHaveBeenCalled();
+      });
+
+      it('con el secreto inválido no llega nada a la Jornada', async () => {
+        await service.procesarComandoTelegram('otro', {
+          message: { text: '🚐 Salida DPEI', chat: { id: '-100999' } },
+        });
+        expect(jornada.atenderMensaje).not.toHaveBeenCalled();
+      });
+    });
+
     it('responde con la lista de caídos cuando se toca el botón fijo del teclado', async () => {
       process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
       process.env.TELEGRAM_CHAT_ID = '-100200300';
@@ -1227,6 +1275,7 @@ describe('EnlacesService', () => {
             { provide: EncargadosRecintosClient, useValue: encargados },
             { provide: EnlacesEscalamientoService, useValue: escalamiento },
             { provide: AsistenteService, useValue: asistente },
+            { provide: JornadaService, useValue: jornada },
           ],
         }).compile();
         const real = moduleRef.get(EnlacesService);

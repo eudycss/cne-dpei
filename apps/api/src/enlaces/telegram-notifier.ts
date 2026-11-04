@@ -691,6 +691,15 @@ export class TelegramNotifier {
     await this.enviarMensaje(texto, descripcion, 'HTML', botones);
   }
 
+  /** Reemplaza el texto (ya escapado por quien llama) y los botones de un mensaje del bot. */
+  async editarHtml(messageId: number, texto: string, descripcion: string, botones: object): Promise<void> {
+    await this.llamar(
+      'editMessageText',
+      { message_id: messageId, text: texto, parse_mode: 'HTML', reply_markup: botones },
+      descripcion,
+    );
+  }
+
   /** "escribiendo…" en el chat mientras el asistente consulta al modelo. */
   async indicarEscribiendo(): Promise<void> {
     await this.llamar('sendChatAction', { action: 'typing' }, 'el indicador de escribiendo');

@@ -16,6 +16,7 @@ import { DistributivoNoConfigurado, DistributivoTecnicosClient } from './distrib
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { AsistenteService } from './asistente/asistente.service';
+import { JornadaService } from './jornada/jornada.service';
 
 // Solo se reemplaza el notificador de correo; escapeHtml es el real.
 jest.mock('../auth/notifier', () => ({
@@ -54,6 +55,7 @@ describe('Asignaciones CDA — botón del bot', () => {
         { provide: EncargadosRecintosClient, useValue: { encargados: jest.fn().mockResolvedValue(new Map()) } },
         { provide: EnlacesEscalamientoService, useValue: escalamiento },
         { provide: AsistenteService, useValue: {} },
+        { provide: JornadaService, useValue: { atenderMensaje: jest.fn().mockResolvedValue(false), atenderBoton: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();
     service = moduleRef.get(EnlacesService);
