@@ -214,8 +214,15 @@ describe('leerRecintosSheet', () => {
         juntasFemeninas: 10,
         juntasMasculinas: 9,
         esDificilAcceso: false,
+        coordenadasRearmadas: true,
       });
-      expect(r[1]).toMatchObject({ tipo: 'NO_CDA', cdaDestinoCodigo: '1008', latitud: 0.273666, longitud: -78.2335176 });
+      expect(r[1]).toMatchObject({
+        tipo: 'NO_CDA',
+        cdaDestinoCodigo: '1008',
+        latitud: 0.273666,
+        longitud: -78.2335176,
+        coordenadasRearmadas: true,
+      });
     });
 
     it('salta filas con CDA distinto de SI/NO y falla claro si falta una columna', () => {
@@ -237,6 +244,11 @@ describe('leerRecintosSheet', () => {
       ['-78,125,853', 'lng', -78.125853],
       ['-782,335,176', 'lng', -78.2335176],
       ['-79,21175', 'lng', -79.21175],
+      ['3.47627E-1', 'lat', 0.347627],
+      ['0,347,627', 'lat', 0.347627],
+      // Latitud que perdió sus ceros finales (0.189000): 0.0189 queda fuera, así que es 0.189.
+      ['18.9', 'lat', 0.189],
+      ['744.083', 'lat', 0.744083],
     ] as const)('"%s" (%s) → %s', (valor, eje, esperado) => {
       expect(aCoordenada(valor, eje)).toBeCloseTo(esperado, 9);
     });
@@ -246,6 +258,20 @@ describe('leerRecintosSheet', () => {
       ['sin dato', 'lat'],
       ['-79,707,364', 'lng'],
       ['-77,1', 'lng'],
+      // Columnas intercambiadas: una longitud en la latitud (y al revés) no se acepta.
+      ['-78.125853', 'lat'],
+      ['-78,125,853', 'lat'],
+      ['0.347627', 'lng'],
+      ['347.627', 'lng'],
+      // Latitud sur o longitud este: fuera de Imbabura.
+      ['-0.05', 'lat'],
+      ['0.05', 'lat'],
+      ['78,125,853', 'lng'],
+      // Rellenos típicos y valores con muy pocos dígitos para adivinar.
+      ['0', 'lat'],
+      ['1', 'lat'],
+      ['-78', 'lng'],
+      ['3.4e5', 'lat'],
     ] as const)('"%s" (%s) no es una coordenada de Imbabura', (valor, eje) => {
       expect(aCoordenada(valor, eje)).toBeNull();
     });

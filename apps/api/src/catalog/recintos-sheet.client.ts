@@ -29,6 +29,8 @@ export interface RecintoSheet {
   longitud: number | null;
   /** null = el archivo no lo dice (formato 2027): se conserva lo que tiene la base. */
   tieneInternet: boolean | null;
+  /** Alguna coordenada se rearmó desde un valor dañado (formato 2027): la vista previa lo avisa. */
+  coordenadasRearmadas?: boolean;
   coberturaMovil: boolean | null;
   numeroElectores: number | null;
   juntasFemeninas: number | null;
@@ -154,6 +156,8 @@ function leerDistributivo(ws: ExcelJS.Worksheet): RecintoSheet[] {
     const cda = normalizarEncabezado(celda('cda'));
     if (cda !== 'SI' && cda !== 'NO') return;
     const tipo: TipoRecinto = cda === 'SI' ? 'CDA' : 'NO_CDA';
+    const lat = leerCoordenada(celda('latitud'), 'lat');
+    const lng = leerCoordenada(celda('longitud'), 'lng');
 
     recintos.push({
       codigoRecinto,
@@ -164,8 +168,9 @@ function leerDistributivo(ws: ExcelJS.Worksheet): RecintoSheet[] {
       zona: textoOpcional(celda('zona')),
       tipo,
       cdaDestinoCodigo: tipo === 'NO_CDA' ? textoOpcional(celda('cdaDestino')) : null,
-      latitud: aCoordenada(celda('latitud'), 'lat'),
-      longitud: aCoordenada(celda('longitud'), 'lng'),
+      latitud: lat.valor,
+      longitud: lng.valor,
+      coordenadasRearmadas: lat.rearmada || lng.rearmada,
       tieneInternet: null,
       coberturaMovil: null,
       numeroElectores: aEntero(celda('electores')),
@@ -179,8 +184,8 @@ function leerDistributivo(ws: ExcelJS.Worksheet): RecintoSheet[] {
   return [...porCodigo.values()];
 }
 
-/** Imbabura queda entre 0,1° y 0,9° N y entre 77,7° y 79,2° O: así se decide si una coordenada se leyó bien. */
-const RANGO = { lat: [0, 1], lng: [-79.3, -77.6] } as const;
+/** Imbabura (con un margen pequeño) queda entre 0,1° y 0,95° N y entre 77,65° y 79,3° O (el recinto más al sur está en 0,167°). */
+const RANGO = { lat: [0.1, 0.95], lng: [-79.3, -77.65] } as const;
 
 /**
  * El archivo 2027 trae coordenadas con los separadores dañados: "347.627" por
@@ -189,18 +194,40 @@ const RANGO = { lat: [0, 1], lng: [-79.3, -77.6] } as const;
  * "0.ddd…", longitud "-dd.ddd…") y solo se acepta si así cae en Imbabura.
  */
 export function aCoordenada(valor: string, eje: 'lat' | 'lng'): number | null {
+  return leerCoordenada(valor, eje).valor;
+}
+
+/** Con menos dígitos que esto el valor es un relleno ("0", "1", "-78"), no una coordenada. */
+const MIN_DIGITOS_REARMADO = { lat: 3, lng: 4 } as const;
+
+function leerCoordenada(valor: string, eje: 'lat' | 'lng'): { valor: number | null; rearmada: boolean } {
+  const nada = { valor: null, rearmada: false };
   const [min, max] = RANGO[eje];
   const enRango = (n: number) => Number.isFinite(n) && n >= min && n <= max;
   const limpio = valor.trim();
-  if (!limpio) return null;
-  if (/^-?\d+([.,]\d+)?$/.test(limpio)) {
+  if (!limpio) return nada;
+  // Leído tal cual: con parte decimal (una coordenada nunca es entera), también en notación científica.
+  if (/^-?\d+[.,]\d+(e-?\d+)?$/i.test(limpio)) {
     const directo = Number(limpio.replace(',', '.'));
-    if (enRango(directo)) return directo;
+    if (enRango(directo)) return { valor: directo, rearmada: false };
   }
+  // Solo se rearma un valor hecho de dígitos y separadores, con el signo de Imbabura:
+  // latitud norte (sin "-") y longitud oeste (con "-"). Así una longitud en la columna
+  // de la latitud no se convierte en una latitud creíble.
+  if (!/^-?[\d.,]+$/.test(limpio)) return nada;
+  const negativo = limpio.startsWith('-');
+  if ((eje === 'lat') === negativo) return nada;
   const digitos = limpio.replace(/\D/g, '').replace(/^0+/, '');
-  if (!digitos) return null;
-  const rearmado = eje === 'lat' ? Number(`0.${digitos}`) : -Number(`${digitos.slice(0, 2)}.${digitos.slice(2)}`);
-  return enRango(rearmado) ? rearmado : null;
+  if (digitos.length < MIN_DIGITOS_REARMADO[eje]) return nada;
+  // Latitud: "0.ddd" o, si se perdió un cero, "0.0ddd". Solo se acepta si una sola de las
+  // dos cae en Imbabura ("18.9" → 0.189, porque 0.0189 queda fuera); si caen las dos, no se adivina.
+  // Longitud: siempre "-dd.ddd" (77, 78 o 79 grados).
+  const candidatos =
+    eje === 'lat'
+      ? [Number(`0.${digitos}`), Number(`0.0${digitos}`)]
+      : [-Number(`${digitos.slice(0, 2)}.${digitos.slice(2)}`)];
+  const validos = candidatos.filter(enRango);
+  return validos.length === 1 ? { valor: validos[0], rearmada: true } : nada;
 }
 
 /** Hoja1 trae títulos arriba: se busca la fila que tenga CODIGO RECINTO, no se asume la primera. */

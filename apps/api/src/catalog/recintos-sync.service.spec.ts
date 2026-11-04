@@ -155,6 +155,21 @@ describe('RecintosSyncService', () => {
       expect(update!.slice(1).slice(9, 11)).toEqual([true, true]);
     });
 
+    it('avisa en la vista previa cuando una ubicación que cambia salió de una coordenada corregida', async () => {
+      filasSheet = [
+        { ...cda28, latitud: 0.36, coordenadasRearmadas: true },
+        // Rearmada pero igual a la base: no hace falta avisar.
+        { ...noCda182, coordenadasRearmadas: true },
+        sheet({ codigoRecinto: '8320', tipo: 'NO_CDA', cdaDestinoCodigo: '28', coordenadasRearmadas: true }),
+      ];
+
+      const p = await service.preview();
+      const nota = (codigo: string) => p.cambios.find((c) => c.codigoRecinto === codigo)?.nota;
+      expect(nota('28')).toBe('Coordenadas corregidas desde el archivo (0.36, -78.12): verifíquelas en el mapa.');
+      expect(nota('8320')).toMatch(/Coordenadas corregidas/);
+      expect(p.cambios.find((c) => c.codigoRecinto === '182')).toBeUndefined();
+    });
+
     it('ignora diferencias de coordenadas menores al redondeo del Sheet', async () => {
       filasSheet = [{ ...cda28, latitud: 0.3500004 }, noCda182];
 

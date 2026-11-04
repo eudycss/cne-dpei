@@ -298,6 +298,17 @@ export class RecintosSyncService {
         coberturaMovil: fila.coberturaMovil ?? existente?.coberturaMovil ?? false,
         cdaDestinoCodigo,
       };
+      // Una ubicación rearmada desde un valor dañado se avisa para revisarla en el mapa antes de aplicar.
+      const cambiaUbicacion =
+        !existente ||
+        existente.lat === null ||
+        existente.lng === null ||
+        Math.abs(existente.lat - destino.latitud) > TOLERANCIA_COORD ||
+        Math.abs(existente.lng - destino.longitud) > TOLERANCIA_COORD;
+      if (fila.coordenadasRearmadas && cambiaUbicacion) {
+        const aviso = `Coordenadas corregidas desde el archivo (${destino.latitud}, ${destino.longitud}): verifíquelas en el mapa.`;
+        nota = nota ? `${nota} ${aviso}` : aviso;
+      }
       if (!existente) {
         escribir.push({
           cambio: { codigoRecinto: fila.codigoRecinto, nombre: fila.nombre, accion: 'CREAR', cambios: [], nota },
