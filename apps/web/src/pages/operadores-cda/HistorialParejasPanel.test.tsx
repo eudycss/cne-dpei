@@ -9,7 +9,8 @@ import { OperadoresCdaPage } from './OperadoresCdaPage';
 import { api } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
-vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles: ['TECNICO_SUPERVISOR'] } }) }));
+const auth = vi.hoisted(() => ({ roles: ['TECNICO_SUPERVISOR'] }));
+vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { roles: auth.roles } }) }));
 vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -86,6 +87,7 @@ const nombres = (region: string) => filas(region).map((f) => within(f).getByRole
 describe('Historial de parejas', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    auth.roles = ['TECNICO_SUPERVISOR'];
   });
 
   it('la pestaña solo existe en Operadores y Asistentes CDA', async () => {
@@ -109,6 +111,8 @@ describe('Historial de parejas', () => {
       expect.stringContaining('PÉREZ ANA'),
     ]);
     expect(within(filas('Personal del historial')[2]).getByText('Oculto')).toBeInTheDocument();
+    // La propuesta para una nueva prueba solo la arma el administrador.
+    expect(screen.queryByRole('button', { name: 'Propuesta para nueva prueba' })).not.toBeInTheDocument();
   });
 
   it('quitar una fecha vuelve a pedir el historial solo con las que quedan; sin ninguna, lo avisa', async () => {
@@ -203,6 +207,14 @@ describe('Historial de parejas', () => {
     renderPagina();
     const [fila] = await screen.findAllByRole('row').then(() => filas('Personal del historial'));
     expect(fila).toHaveTextContent('Digitadores');
+  });
+
+  it('el administrador abre la propuesta con las fechas elegidas como referencia', async () => {
+    auth.roles = ['ADMINISTRADOR'];
+    mockApi();
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Propuesta para nueva prueba' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Referencia: 2026-10-28, 2026-11-01');
   });
 
   it('sin listas de parejas lo dice', async () => {

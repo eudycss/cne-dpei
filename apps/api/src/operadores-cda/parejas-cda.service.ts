@@ -5,6 +5,7 @@ import { filaParejaCdaSchema } from '@cne/shared-validation';
 import type {
   AplicarParejasCdaResult,
   CampoParejaCda,
+  CargarPropuestaParejasCdaRequest,
   CopiarParejasCdaResult,
   DispositivoCda,
   CrearKitConParejaCdaRequest,
@@ -701,7 +702,39 @@ export class ParejasCdaService {
     const filas = (await parseUploadRows(file)).map(normalizarFila);
     if (filas.length === 0) throw new BadRequestException('La plantilla no tiene filas');
     if (filas.length > MAX_FILAS) throw new BadRequestException(`La plantilla tiene ${filas.length} filas: máximo ${MAX_FILAS}`);
+    return this.cargarFilas(filas, fecha, guardar, usuarioId, pasarAApp, justificacion, 2);
+  }
 
+  /**
+   * La propuesta automática ya editada en la web: pasa por las mismas
+   * validaciones y el mismo guardado que la plantilla (sin crear personas:
+   * no trae nombres, así que una cédula desconocida queda con error).
+   */
+  async cargarPropuesta(
+    propuesta: CargarPropuestaParejasCdaRequest['filas'],
+    fecha: string,
+    guardar: boolean,
+    usuarioId: string,
+    pasarAApp = true,
+    justificacion?: string,
+  ): Promise<ImportParejasCdaResult> {
+    const filas = propuesta.map((p) =>
+      normalizarFila({ cedula_operador: p.cedulaOperador, cedula_asistente: p.cedulaAsistente ?? '', codigo_recinto: p.codigoRecinto }),
+    );
+    // Numeradas desde 1, como la tabla de la web.
+    return this.cargarFilas(filas, fecha, guardar, usuarioId, pasarAApp, justificacion, 1);
+  }
+
+  /** `primeraFila`: número de la primera fila en los mensajes (2 en el Excel: la 1 es el encabezado). */
+  private async cargarFilas(
+    filas: ReturnType<typeof normalizarFila>[],
+    fecha: string,
+    guardar: boolean,
+    usuarioId: string,
+    pasarAApp: boolean,
+    justificacion: string | undefined,
+    primeraFila: number,
+  ): Promise<ImportParejasCdaResult> {
     const cedulas = [...new Set(filas.flatMap((f) => [f.cedula_operador, f.cedula_asistente]).filter(Boolean))];
     const [personas, recintos, previas, catalogo] = await Promise.all([
       this.prisma.operadorCda.findMany({
@@ -731,7 +764,7 @@ export class ParejasCdaService {
     const resultado: FilaImportParejaCda[] = [];
     const validas: { fila: FilaImportParejaCda; datos: ReturnType<typeof normalizarFila>; recintoId: string }[] = [];
     filas.forEach((datos, i) => {
-      const numero = i + 2;
+      const numero = i + primeraFila;
       const errores: string[] = [];
       const avisos: string[] = [];
       const parsed = filaParejaCdaSchema.safeParse(datos);

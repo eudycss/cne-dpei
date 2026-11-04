@@ -5,6 +5,7 @@ import type { AplicarParejasCdaResult, ImportParejasCdaResult } from '@cne/share
 import { Modal } from '../../components/Modal';
 import { importarParejasCda } from '../../lib/queries/operadores-cda';
 import { resumenApp } from './resumenParejas';
+import { VistaPreviaParejas } from './VistaPreviaParejas';
 import { mensajeError } from './utils';
 
 /**
@@ -125,75 +126,7 @@ export function ImportarParejasModal({
           </div>
         )}
 
-        {vista && (
-          <>
-            <p role="status">
-              <strong>{validas}</strong> pareja(s) lista(s) para guardar
-              {conError > 0 && (
-                <>
-                  {' '}· <strong>{conError}</strong> fila(s) con error (no se guardan)
-                </>
-              )}
-            </p>
-            <div style={{ maxHeight: 380, overflow: 'auto' }} tabIndex={0} role="region" aria-label="Vista previa de las parejas">
-              <table>
-                <caption className="sr-only">Vista previa de las parejas</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Fila</th>
-                    <th scope="col">Recinto</th>
-                    <th scope="col">Operador CDA</th>
-                    <th scope="col">Asistente CDA</th>
-                    <th scope="col">Observaciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vista.filas.map((f) => (
-                    <tr key={f.fila}>
-                      <td>{f.fila}</td>
-                      <td>{f.recinto ? `${f.recinto.codigo} · ${f.recinto.nombre}` : '—'}</td>
-                      <td>
-                        {f.operador.nombre ?? '—'}
-                        <br />
-                        <span className="muted mono">{f.operador.cedula}</span>
-                        {f.operador.nuevo && <span className="ocda-estado pendiente">Nuevo</span>}
-                      </td>
-                      <td>
-                        {f.asistente ? (
-                          <>
-                            {f.asistente.nombre ?? '—'}
-                            <br />
-                            <span className="muted mono">{f.asistente.cedula}</span>
-                            {f.asistente.nuevo && <span className="ocda-estado pendiente">Nuevo</span>}
-                          </>
-                        ) : (
-                          <span className="muted">Sin asistente</span>
-                        )}
-                      </td>
-                      <td>
-                        {f.errores.length === 0 && f.avisos.length === 0 && <span className="ocda-estado ok">Lista</span>}
-                        {f.errores.length > 0 && (
-                          <ul className="ocda-obs error" aria-label={`Errores de la fila ${f.fila}`}>
-                            {f.errores.map((e) => (
-                              <li key={e}>{e}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {f.avisos.length > 0 && (
-                          <ul className="ocda-obs aviso" aria-label={`Avisos de la fila ${f.fila}`}>
-                            {f.avisos.map((a) => (
-                              <li key={a}>{a}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        {vista && <VistaPreviaParejas vista={vista} />}
 
         <div className="row" style={{ justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
           <button type="button" className="btn secondary" onClick={onClose} disabled={guardar.isPending}>

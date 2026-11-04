@@ -7,6 +7,8 @@ import { SearchInput } from '../../components/SearchInput';
 import { getFechasParejasCda, getHistorialParejasCda, pedirReporteHistorialParejasCda } from '../../lib/queries/operadores-cda';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import { Kpi } from './Kpi';
+import { PropuestaParejasModal } from './PropuestaParejasModal';
+import { useAuth } from '../../auth/AuthContext';
 import { useCargosCda } from './grupo';
 import { mensajeError } from './utils';
 
@@ -25,6 +27,9 @@ const pasaEstado = (estado: Estado, fue: boolean) => !estado || (estado === 'SI'
  * de cada visita. Sirve para armar la siguiente prueba técnica. Solo lectura.
  */
 export function HistorialParejasPanel() {
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const [proponiendo, setProponiendo] = useState(false);
   const { data: conLista } = useQuery({ queryKey: ['parejas-cda', 'fechas'], queryFn: getFechasParejasCda });
   // null = todavía no se tocó: las fechas con lista más recientes (hasta el máximo).
   const [elegidas, setElegidas] = useState<string[] | null>(null);
@@ -163,6 +168,11 @@ export function HistorialParejasPanel() {
             >
               {reporte.descargando === 'xlsx' ? 'Generando…' : 'Reporte Excel'}
             </button>
+            {isAdmin && (
+              <button type="button" className="btn" onClick={() => setProponiendo(true)}>
+                Propuesta para nueva prueba
+              </button>
+            )}
           </div>
 
           <div className="ocda-filtros">
@@ -231,6 +241,7 @@ export function HistorialParejasPanel() {
           </p>
 
           {vista === 'personal' ? <TablaPersonal personas={personasVisibles} /> : <TablaRecintos recintos={recintosVisibles} />}
+          {proponiendo && <PropuestaParejasModal referencia={fechas} recintos={recintos} onClose={() => setProponiendo(false)} />}
         </>
       )}
     </section>
