@@ -172,7 +172,7 @@ describe('HistorialParejasCdaService', () => {
 
     expect(prisma.operadorCda.findMany.mock.calls[0][0].where).toEqual({ grupo: { in: ['OPERADOR', 'ASISTENTE'] }, activo: true });
     expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true });
-    expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: { in: [new Date('2026-10-28T00:00:00Z')] } });
+    expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: { in: [new Date('2026-10-28T00:00:00Z')] }, recintoId: { not: null } });
     // Ningún select trae teléfonos.
     expect(JSON.stringify(prisma.parejaCda.findMany.mock.calls[0][0].select)).not.toContain('telefono');
     expect(h.personas.map((x) => [x.id, x.fechas])).toEqual([

@@ -10,6 +10,10 @@ import { type ArchivoReporte, generarReporte } from './reporte-cda';
 const PERSONA = { id: true, apellidosNombres: true, cedula: true, grupo: true, dispositivo: true, activo: true } as const;
 const RECINTO = { id: true, codigoRecinto: true, nombre: true, canton: { select: { nombre: true } } } as const;
 
+/** Recintos de las parejas, sin las de reserva (no tienen). */
+const recintosDe = (parejas: { recintoId: string | null }[]) =>
+  new Set(parejas.map((p) => p.recintoId).filter((id): id is string => !!id));
+
 /** Pestaña "Historial" de Parejas: solo lee (no cambia listas ni kits). */
 @Injectable()
 export class HistorialParejasCdaService {
@@ -20,7 +24,8 @@ export class HistorialParejasCdaService {
       this.prisma.operadorCda.findMany({ where: { grupo: { in: ['OPERADOR', 'ASISTENTE'] }, activo: true }, select: PERSONA }),
       this.prisma.recinto.findMany({ where: { tipo: 'CDA', activo: true }, select: RECINTO }),
       this.prisma.parejaCda.findMany({
-        where: { fecha: { in: fechas.map(fechaDb) } },
+        // Las de reserva no fueron a ningún recinto: no son visitas.
+        where: { fecha: { in: fechas.map(fechaDb) }, recintoId: { not: null } },
         select: {
           fecha: true,
           recinto: { select: RECINTO },
@@ -37,6 +42,7 @@ export class HistorialParejasCdaService {
       recintos,
       parejas.map((p) => ({
         ...p,
+        recinto: p.recinto as NonNullable<typeof p.recinto>,
         fecha: diaDeFechaDb(p.fecha),
         operador: p.operador as PersonaBase & { usuarioId: string | null },
         asistente: p.asistente as (PersonaBase & { usuarioId: string | null }) | null,
@@ -67,9 +73,9 @@ export class HistorialParejasCdaService {
       personas,
       recintos: recintos.map((r) => ({ id: r.id, codigo: r.codigoRecinto, nombre: r.nombre, ...(r.canton && { canton: r.canton.nombre }) })),
       fueron: integrantes(previas),
-      visitados: new Set(previas.map((p) => p.recintoId)),
+      visitados: recintosDe(previas),
       personasDelDia: integrantes(delDia),
-      recintosDelDia: new Set(delDia.map((p) => p.recintoId)),
+      recintosDelDia: recintosDe(delDia),
       extras: new Set(extras),
     });
     return { fecha, referencia, filas, personas: disponibles };

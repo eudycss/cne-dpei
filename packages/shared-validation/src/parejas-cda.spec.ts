@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asignarRecintoParejaCdaSchema,
+  CODIGO_RESERVA_PAREJAS_CDA,
   cambiarDispositivoOperadorCdaSchema,
   copiarParejasCdaSchema,
   crearParejaCdaSchema,
@@ -145,5 +147,18 @@ describe('parejas CDA por día', () => {
     expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'KIT' }).success).toBe(false);
     expect(intercambiarParejaCdaSchema.safeParse({ conId: OP }).success).toBe(false);
     expect(intercambiarParejaCdaSchema.safeParse({ conId: OP, campo: 'RECINTO', extra: 1 }).success).toBe(false);
+  });
+
+  it('asignar recinto a una pareja de reserva: un recinto y, si va, la justificación; nada más', () => {
+    expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: RE }).success).toBe(true);
+    expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: RE, justificacion: 'Reemplazo' }).success).toBe(true);
+    expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: '957' }).success).toBe(false);
+    expect(asignarRecintoParejaCdaSchema.safeParse({}).success).toBe(false);
+    expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: RE, kitId: OP }).success).toBe(false);
+  });
+
+  it('la plantilla acepta RESERVA como código de recinto', () => {
+    const r = filaParejaCdaSchema.safeParse({ cedula_operador: CEDULA_OP, telefono_operador: '', telefono_asistente: '', codigo_recinto: CODIGO_RESERVA_PAREJAS_CDA });
+    expect(r.success).toBe(true);
   });
 });

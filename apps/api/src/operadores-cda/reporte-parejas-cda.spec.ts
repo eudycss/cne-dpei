@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import type { ParejaCdaFila, ParejasCdaDia, PersonaParejaCda } from '@cne/shared-types';
+import type { ParejaCdaFila, ParejaReservaCda, ParejasCdaDia, PersonaParejaCda } from '@cne/shared-types';
 
 import { generarReporte } from './reporte-cda';
 import { reporteParejas } from './reporte-parejas-cda';
@@ -34,11 +34,19 @@ const fila = (codigo: string, extra: Partial<ParejaCdaFila> = {}): ParejaCdaFila
   };
 };
 
-const dia = (parejas: ParejaCdaFila[]): ParejasCdaDia => ({
+const dia = (parejas: ParejaCdaFila[], reserva: ParejaReservaCda[] = []): ParejasCdaDia => ({
   fecha: '2026-11-01',
   evento: { id: 'e1', nombre: 'Primer Simulacro 01 nov' },
   congelado: false,
   parejas,
+  reserva,
+});
+
+const reservada = (id: string, operador: PersonaParejaCda, asistente: PersonaParejaCda | null): ParejaReservaCda => ({
+  id,
+  fecha: '2026-11-01',
+  operador,
+  asistente,
 });
 
 const COLUMNAS = [
@@ -120,7 +128,7 @@ describe('reporteParejas', () => {
       ['Personas', 5],
       ['Personas sin pareja', 1],
       ['Celulares sin registrar', 1],
-      ['Activos sin pareja', 0],
+      ['Parejas de reserva', 0],
     ]);
   });
 
@@ -149,8 +157,7 @@ describe('reporteParejas', () => {
       dia([
         fila('28', { operador: otro('OP A', '1710034065', '0991111111', 'IPHONE'), asistente, portador: asistente }),
         fila('96', { operador: otro('OP B', '1713175071', '0992222222', 'ANDROID') }),
-      ]),
-      [otro('SOLO C', '1714444444', '0993333333', null)],
+      ], [reservada('r1', otro('SOLO C', '1714444444', '0993333333', null), null)]),
     );
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await generarReporte(r, 'xlsx')).contenido as never);
@@ -170,32 +177,46 @@ describe('reporteParejas', () => {
     expect(r.tablas[0].filas[0][2]).toBe('');
   });
 
-  it('segunda hoja: operadores y asistentes activos que no están en ninguna pareja del día, con cédula y celular', () => {
-    const r = reporteParejas(dia([fila('28')]), [
-      { ...persona('ZAMBRANO ANA', null), grupo: 'ASISTENTE', cedula: '1001001001' },
-      { ...persona('ANDRADE LUIS'), cedula: '1002002002' },
-    ]);
+  it('segunda hoja: las parejas de reserva cargadas para el día (no todos los activos sin pareja), con cédula y celular', () => {
+    const r = reporteParejas(
+      dia(
+        [fila('28')],
+        [
+          reservada('r1', { ...persona('ZAMBRANO ANA', null), cedula: '1001001001' }, { ...persona('ROSALES LUIS'), cedula: '1002002002' }),
+          reservada('r2', { ...persona('SOLANO PEDRO'), cedula: '1003003003' }, null),
+        ],
+      ),
+    );
     const t = r.tablas[1];
 
     expect(r.tablas).toHaveLength(2);
-    expect(t.hoja).toBe('Sin pareja');
-    expect(t.titulo).toBe('Operadores y Asistentes CDA activos sin pareja el 01/11/2026');
-    expect(t.columnas.map((c) => c.titulo)).toEqual(['N°', 'Apellidos y nombres', 'Cédula', 'Cargo', 'Celular']);
-    expect(t.filas).toEqual([
-      [1, 'ANDRADE LUIS', '1002002002', 'Operador CDA', 'Android'],
-      [2, 'ZAMBRANO ANA', '1001001001', 'Asistente CDA', 'Sin registrar'],
+    expect(t.hoja).toBe('Reserva');
+    expect(t.titulo).toBe('Parejas de reserva del 01/11/2026 (sin recinto ni kit)');
+    expect(t.columnas.map((c) => c.titulo)).toEqual([
+      'N°',
+      'Operador',
+      'Cédula operador',
+      'Celular operador',
+      'Asistente',
+      'Cédula asistente',
+      'Celular asistente',
     ]);
-    expect(r.tablas[0].anexo?.filas).toContainEqual(['Activos sin pareja', 2]);
+    expect(t.filas).toEqual([
+      [1, 'SOLANO PEDRO', '1003003003', 'Android', '— (sin asistente)', '', ''],
+      [2, 'ZAMBRANO ANA', '1001001001', 'Sin registrar', 'ROSALES LUIS', '1002002002', 'Android'],
+    ]);
+    expect(r.tablas[0].anexo?.filas).toContainEqual(['Parejas de reserva', 2]);
   });
 
-  it('en la hoja sin pareja, un nombre con "=" queda como texto y un cargo distinto usa su nombre registrado', () => {
-    const t = reporteParejas(dia([fila('28')]), [{ ...persona('=CMD()'), grupo: 'DIGITADOR', cedula: '1003003003' }]).tablas[1];
-    expect(t.filas).toEqual([[1, '=CMD()', '1003003003', 'DIGITADOR CPE', 'Android']]);
+  it('sin parejas de reserva, la segunda hoja lo dice en vez de quedar vacía', () => {
+    const t = reporteParejas(dia([fila('28')])).tablas[1];
+    expect(t.filas).toEqual([['', 'Este día no tiene parejas de reserva', '', '', '', '', '']]);
   });
 
-  it('si todos los activos tienen pareja, la segunda hoja lo dice en vez de quedar vacía', () => {
-    const t = reporteParejas(dia([fila('28')]), []).tablas[1];
-    expect(t.filas).toEqual([['', 'Todos los Operadores y Asistentes CDA activos tienen pareja este día', '', '', '']]);
+  it('un día con solo parejas de reserva también se puede imprimir', () => {
+    const r = reporteParejas(dia([], [reservada('r1', persona('SOLANO PEDRO'), null)]));
+    expect(r.tablas[0].filas).toEqual([]);
+    expect(r.tablas[1].filas).toHaveLength(1);
   });
 
   it('día sin parejas: 400 en vez de un reporte vacío', () => {

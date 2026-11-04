@@ -1201,6 +1201,22 @@ export interface ParejasCdaDia {
   /** La jornada de ese evento ya inició: pasar cambios a la app pide justificación. */
   congelado: boolean;
   parejas: ParejaCdaFila[];
+  /** Parejas de reserva del día: sin recinto, no reciben kit ni salen en la app. */
+  reserva: ParejaReservaCda[];
+}
+
+/** Pareja de reserva: registrada el día pero sin recinto hasta que se le asigna uno. */
+export interface ParejaReservaCda {
+  id: string;
+  /** AAAA-MM-DD */
+  fecha: string;
+  operador: PersonaParejaCda;
+  asistente: PersonaParejaCda | null;
+}
+
+export interface AsignarRecintoParejaCdaRequest {
+  recintoId: string;
+  justificacion?: string;
 }
 
 /** Un técnico del distributivo con lo que tiene ese día ("Reporte por técnico" de Parejas). */
@@ -1365,6 +1381,8 @@ export interface FilaImportParejaCda {
   operador: { cedula: string; nombre: string | null; nuevo: boolean };
   asistente: { cedula: string; nombre: string | null; nuevo: boolean } | null;
   recinto: RecintoParejaCda | null;
+  /** codigo_recinto = RESERVA: la pareja queda de reserva (sin recinto ni kit). */
+  reserva: boolean;
   articulos: string | null;
   errores: string[];
   avisos: string[];

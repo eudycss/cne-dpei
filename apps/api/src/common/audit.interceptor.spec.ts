@@ -135,6 +135,31 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('pasar a reserva y asignar recinto a una pareja CDA quedan en la bitácora', async () => {
+    const reserva = await auditar({
+      method: 'POST',
+      originalUrl: `/parejas-cda/${OTRO}/reserva`,
+      params: { id: OTRO },
+      body: { justificacion: 'Se cambió de turno' },
+      user: ADMIN,
+    });
+    expect(reserva.data).toMatchObject({ accion: 'PAREJA_CDA_RESERVA', entidad: 'pareja_cda', entidadId: OTRO });
+
+    const recinto = await auditar({
+      method: 'POST',
+      originalUrl: `/parejas-cda/${OTRO}/recinto`,
+      params: { id: OTRO },
+      body: { recintoId: ADMIN.sub },
+      user: ADMIN,
+    });
+    expect(recinto.data).toMatchObject({
+      accion: 'PAREJA_CDA_ASIGNAR_RECINTO',
+      entidad: 'pareja_cda',
+      entidadId: OTRO,
+      datosDespues: { recintoId: ADMIN.sub },
+    });
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',
