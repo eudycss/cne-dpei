@@ -1696,7 +1696,7 @@ describe('ParejasCdaService', () => {
 
       const r = await service.copiar(DIA, HACIA, 'uAdmin');
 
-      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA, recintoId: { not: null } });
+      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA });
       expect(prisma.parejaCda.findMany.mock.calls[1][0].where).toEqual({ fecha: new Date(`${HACIA}T00:00:00Z`) });
       const data = prisma.parejaCda.createMany.mock.calls[0][0].data;
       expect(data.map(({ creadoEn, ...d }: { creadoEn: Date }) => d)).toEqual([
@@ -1928,6 +1928,31 @@ describe('ParejasCdaService', () => {
       prisma.recinto.findUnique.mockResolvedValueOnce({ activo: true, tipo: 'NO_CDA', codigoRecinto: '20', nombre: 'X' });
       await expect(service.asignarRecinto('pR', 'rNo')).rejects.toThrow('El recinto no es CDA');
       expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('copiar la lista lleva también las parejas de reserva (sin recinto)', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja(), RESERVA]).mockResolvedValueOnce([]);
+      prisma.operadorCda.findMany.mockResolvedValue([
+        { id: 'op1', grupo: 'OPERADOR' },
+        { id: 'as1', grupo: 'ASISTENTE' },
+        { id: 'op7', grupo: 'OPERADOR' },
+      ]);
+      prisma.recinto.findMany.mockResolvedValue([{ id: 'r1' }]);
+
+      const r = await service.copiar(DIA, '2026-11-05', 'uAdmin');
+
+      expect(r).toEqual({ copiadas: 2, omitidas: [] });
+      expect(prisma.recinto.findMany.mock.calls[0][0].where.id).toEqual({ in: ['r1'] });
+      expect(prisma.parejaCda.createMany.mock.calls[0][0].data.map((d: { recintoId: string | null }) => d.recintoId)).toEqual(['r1', null]);
+    });
+
+    it('copiar: una pareja de reserva cuyo operador ya tiene pareja ese día se omite y lo dice', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([RESERVA]).mockResolvedValueOnce([{ operadorCdaId: 'op7', asistenteCdaId: null }]);
+      prisma.operadorCda.findMany.mockResolvedValue([{ id: 'op7', grupo: 'OPERADOR' }]);
+
+      const r = await service.copiar(DIA, '2026-11-05', 'uAdmin');
+
+      expect(r).toEqual({ copiadas: 0, omitidas: [{ pareja: 'SOLANO PEDRO · Reserva', motivo: 'El operador ya tiene pareja ese día' }] });
     });
 
     it('una pareja de reserva no recibe kit hasta tener recinto', async () => {

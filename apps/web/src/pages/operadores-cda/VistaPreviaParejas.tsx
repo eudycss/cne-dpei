@@ -7,10 +7,12 @@ import type { ImportParejasCdaResult } from '@cne/shared-types';
 export function VistaPreviaParejas({ vista, primeraColumna = 'Fila' }: { vista: ImportParejasCdaResult; primeraColumna?: string }) {
   const conError = vista.filas.filter((f) => f.errores.length > 0).length;
   const validas = vista.filas.length - conError;
+  const deReserva = vista.filas.filter((f) => f.reserva && f.errores.length === 0).length;
   return (
     <>
       <p role="status">
         <strong>{validas}</strong> pareja(s) lista(s) para guardar
+        {deReserva > 0 && <> ({deReserva} de reserva)</>}
         {conError > 0 && (
           <>
             {' '}· <strong>{conError}</strong> fila(s) con error (no se guardan)
@@ -33,7 +35,17 @@ export function VistaPreviaParejas({ vista, primeraColumna = 'Fila' }: { vista: 
             {vista.filas.map((f) => (
               <tr key={f.fila}>
                 <td>{f.fila}</td>
-                <td>{f.recinto ? `${f.recinto.codigo} · ${f.recinto.nombre}` : '—'}</td>
+                <td>
+                  {f.reserva ? (
+                    <span className="ocda-estado vacio" title="Sin recinto ni kit: se le asigna un recinto en la pestaña Reserva">
+                      Reserva
+                    </span>
+                  ) : f.recinto ? (
+                    `${f.recinto.codigo} · ${f.recinto.nombre}`
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td>
                   {f.operador.nombre ?? '—'}
                   <br />

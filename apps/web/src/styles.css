@@ -972,3 +972,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   .ocda-kpi-barra span, .ocda-check, .ocda-tabla tbody tr, .tema-futurista .btn { transition: none; }
 }
+
+/* Acciones de una fila de Parejas: "Pasar a reserva" y "Quitar" sin pegarse en pantallas angostas. */
+.ocda-acciones-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.ocda-acciones-fila .ocda-btn-texto.peligro { margin-left: 0; }

@@ -872,4 +872,215 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(screen.queryByRole('button', { name: /^Cambiar / })).not.toBeInTheDocument();
     });
   });
+
+  describe('parejas de reserva', () => {
+    const SOLANO = { id: 'op7', apellidosNombres: 'SOLANO PEDRO', cedula: '1003003003', telefono: null, dispositivo: null, grupo: 'OPERADOR' as const };
+    const RESERVA = { id: 'pR', fecha: DIA, operador: SOLANO, asistente: null };
+    const R228 = { id: 'r2', codigo: '228', nombre: 'UE ALFREDO PÉREZ' };
+
+    it('dos pestañas con el total de cada una; la de reserva muestra cada pareja en una tarjeta', async () => {
+      mockApi({ reserva: [RESERVA] });
+      renderPagina();
+
+      expect(await screen.findByRole('tab', { name: 'En recintos (1)' })).toHaveAttribute('aria-selected', 'true');
+      await userEvent.click(screen.getByRole('tab', { name: 'Reserva (1)' }));
+
+      const lista = screen.getByRole('list', { name: `Parejas de reserva del ${DIA}` });
+      expect(lista).toHaveTextContent('SOLANO PEDRO');
+      expect(lista).toHaveTextContent('Sin asistente');
+      expect(within(lista).getByRole('button', { name: 'Asignar a recinto la pareja de reserva de SOLANO PEDRO' })).toBeInTheDocument();
+    });
+
+    it('sin parejas de reserva, la pestaña explica cómo cargarlas', async () => {
+      mockApi({ reserva: [] });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      expect(await screen.findByText('No hay parejas de reserva este día.')).toBeInTheDocument();
+    });
+
+    it('un día con solo parejas de reserva deja descargar el reporte', async () => {
+      mockApi({ parejas: [], reserva: [RESERVA] });
+      renderPagina();
+      expect(await screen.findByRole('tab', { name: 'Reserva (1)' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reporte Excel' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Aplicar a la app' })).toBeDisabled();
+    });
+
+    it('asignar a un recinto ocupado avisa quién pasa a reserva antes de intercambiar', async () => {
+      mockApi({ reserva: [RESERVA] }, { recintos: [R957, R228] });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar a recinto la pareja de reserva de SOLANO PEDRO' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar a recinto' });
+      const combo = await within(dialogo).findByRole('combobox', { name: 'Recinto CDA' });
+      // Libres primero.
+      expect(within(combo).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        'Elija un recinto',
+        '228 · UE ALFREDO PÉREZ — libre',
+        '957 · UE ATAHUALPA — ocupado por PÉREZ ANA',
+      ]);
+
+      await userEvent.selectOptions(combo, 'r1');
+      expect(dialogo).toHaveTextContent('PÉREZ ANA y RUIZ JUAN pasan a reserva y su kit KIT-0001 pasa a esta pareja');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, intercambiar' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/pR/recinto', { recintoId: 'r1' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Asignar a recinto' })).not.toBeInTheDocument());
+    });
+
+    it('pasar a reserva avisa que el kit sale de la app y llama a la API', async () => {
+      mockApi();
+      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Pasar a reserva la pareja de PÉREZ ANA' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Pasar a reserva' });
+      expect(dialogo).toHaveTextContent('El kit KIT-0001 se quitará de la app de PÉREZ ANA');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, pasar a reserva' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/reserva', {}));
+      await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: 'Pareja pasada a reserva', description: 'PÉREZ ANA' }));
+    });
+
+    it('la pareja cuyo kit ya salió no ofrece "Pasar a reserva"', async () => {
+      mockApi({ parejas: [fila({ kitSalio: true })] });
+      renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('button', { name: 'Pasar a reserva la pareja de PÉREZ ANA' })).not.toBeInTheDocument();
+    });
+
+    const abrirAsignar = async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar a recinto la pareja de reserva de SOLANO PEDRO' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar a recinto' });
+      return { dialogo, combo: await within(dialogo).findByRole('combobox', { name: 'Recinto CDA' }) };
+    };
+    const SIN_ERRORES = { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] };
+
+    it('asignar a un recinto libre lo explica y asigna (sin intercambio)', async () => {
+      mockApi({ reserva: [RESERVA] }, { recintos: [R957, R228] });
+      postMock.mockResolvedValueOnce({ data: SIN_ERRORES });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      const { dialogo, combo } = await abrirAsignar();
+
+      await userEvent.selectOptions(combo, 'r2');
+      expect(dialogo).toHaveTextContent('El recinto está libre');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/pR/recinto', { recintoId: 'r2' }));
+    });
+
+    it('si el kit de la pareja del recinto ya salió, no deja intercambiar', async () => {
+      mockApi({ parejas: [fila({ kitSalio: true })], reserva: [RESERVA] }, { recintos: [R957] });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      const { dialogo, combo } = await abrirAsignar();
+
+      await userEvent.selectOptions(combo, 'r1');
+      expect(dialogo).toHaveTextContent('ya salió de la Delegación');
+      expect(within(dialogo).getByRole('button', { name: 'Sí, intercambiar' })).toBeDisabled();
+    });
+
+    it('guardado pero sin pasar a la app: muestra el motivo y solo deja cerrar', async () => {
+      mockApi({ reserva: [RESERVA] }, { recintos: [R228] });
+      postMock.mockResolvedValueOnce({ data: { ...SIN_ERRORES, enApp: 0, errores: [{ pareja: 'SOLANO PEDRO · 228', error: 'Faltan artículos' }] } });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      const { dialogo, combo } = await abrirAsignar();
+
+      await userEvent.selectOptions(combo, 'r2');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('Faltan artículos');
+      expect(within(dialogo).getByRole('button', { name: 'Asignar' })).toBeDisabled();
+      expect(within(dialogo).getByRole('button', { name: 'Cerrar' })).toBeEnabled();
+    });
+
+    it('jornada iniciada: asignar pide justificación y la envía', async () => {
+      mockApi({ congelado: true, reserva: [RESERVA] }, { recintos: [R228] });
+      postMock.mockResolvedValueOnce({ data: SIN_ERRORES });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      const { dialogo, combo } = await abrirAsignar();
+
+      await userEvent.selectOptions(combo, 'r2');
+      expect(within(dialogo).getByRole('button', { name: 'Asignar' })).toBeDisabled();
+      await userEvent.type(within(dialogo).getByLabelText('Justificación (la jornada ya inició)'), 'Se enfermó el titular');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith('/parejas-cda/pR/recinto', { recintoId: 'r2', justificacion: 'Se enfermó el titular' }),
+      );
+    });
+
+    it('jornada iniciada: pasar a reserva una pareja con kit pide justificación; sin kit, no', async () => {
+      mockApi({ congelado: true, parejas: [fila(), fila({ id: 'p2', operador: LUIS, recinto: R228, estado: 'SIN_KIT', kitCodigo: null })] });
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Pasar a reserva la pareja de PÉREZ ANA' }));
+      let dialogo = screen.getByRole('dialog', { name: 'Pasar a reserva' });
+      expect(within(dialogo).getByRole('button', { name: 'Sí, pasar a reserva' })).toBeDisabled();
+      expect(within(dialogo).getByLabelText('Justificación (la jornada ya inició)')).toBeRequired();
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva la pareja de MORA LUIS' }));
+      dialogo = screen.getByRole('dialog', { name: 'Pasar a reserva' });
+      expect(within(dialogo).queryByLabelText('Justificación (la jornada ya inició)')).not.toBeInTheDocument();
+      expect(within(dialogo).getByRole('button', { name: 'Sí, pasar a reserva' })).toBeEnabled();
+    });
+
+    it('si la API rechaza pasar a reserva, el error se ve en el diálogo', async () => {
+      mockApi();
+      postMock.mockRejectedValueOnce({ isAxiosError: true, response: { data: { message: 'El kit KIT-0001 ya salió de la Delegación' } } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Pasar a reserva la pareja de PÉREZ ANA' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Pasar a reserva' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, pasar a reserva' }));
+      expect(await within(dialogo).findByRole('alert')).toBeInTheDocument();
+    });
+
+    it('quitar una pareja de reserva pide confirmación y la borra', async () => {
+      mockApi({ reserva: [RESERVA] });
+      const deleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
+      deleteMock.mockResolvedValueOnce({});
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Quitar la pareja de reserva de SOLANO PEDRO' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Quitar pareja de reserva' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, quitar' }));
+      await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('/parejas-cda/pR'));
+      await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: 'Pareja de reserva quitada', description: 'SOLANO PEDRO' }));
+    });
+
+    it('quien no es administrador ve las parejas de reserva pero no puede moverlas', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ reserva: [RESERVA] });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      expect(await screen.findByRole('list', { name: `Parejas de reserva del ${DIA}` })).toHaveTextContent('SOLANO PEDRO');
+      expect(screen.queryByRole('button', { name: /Asignar a recinto/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Quitar la pareja de reserva/ })).not.toBeInTheDocument();
+    });
+
+    it('con solo parejas de reserva, la pestaña En recintos lo explica', async () => {
+      mockApi({ parejas: [], reserva: [RESERVA] });
+      renderPagina();
+      expect(await screen.findByText(/Ninguna pareja tiene recinto este día/)).toBeInTheDocument();
+    });
+
+    it('la vista previa de la plantilla marca las filas de reserva', async () => {
+      mockApi({ parejas: [] });
+      const vista: ImportParejasCdaResult = {
+        fecha: DIA,
+        guardado: false,
+        guardadas: 0,
+        app: null,
+        filas: [
+          { fila: 2, operador: { cedula: SOLANO.cedula, nombre: SOLANO.apellidosNombres, nuevo: false }, asistente: null, recinto: null, reserva: true, articulos: null, errores: [], avisos: [] },
+        ],
+      };
+      postMock.mockResolvedValueOnce({ data: vista });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Cargar plantilla' }));
+      const archivo = new File(['x'], 'parejas.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      await userEvent.upload(screen.getByLabelText('Plantilla (.xlsx)'), archivo);
+
+      const previa = await screen.findByRole('region', { name: 'Vista previa de las parejas' });
+      expect(within(previa).getAllByRole('row')[1]).toHaveTextContent('Reserva');
+      expect(screen.getByText(/\(1 de reserva\)/)).toBeInTheDocument();
+    });
+  });
 });
