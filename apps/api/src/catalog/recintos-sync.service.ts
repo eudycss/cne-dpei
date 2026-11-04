@@ -34,10 +34,12 @@ interface RecintoBd {
 }
 
 /** Lo que se va a escribir para un recinto del Sheet (ya validado). */
-interface Destino extends Omit<RecintoSheet, 'cantonCodigo' | 'latitud' | 'longitud'> {
+interface Destino extends Omit<RecintoSheet, 'cantonCodigo' | 'latitud' | 'longitud' | 'tieneInternet' | 'coberturaMovil'> {
   cantonId: number;
   latitud: number;
   longitud: number;
+  tieneInternet: boolean;
+  coberturaMovil: boolean;
 }
 
 interface Plan {
@@ -291,8 +293,22 @@ export class RecintosSyncService {
         cantonId: canton.id,
         latitud: fila.latitud!,
         longitud: fila.longitud!,
+        // El formato 2027 no trae internet ni cobertura: se conserva lo que ya tiene la base.
+        tieneInternet: fila.tieneInternet ?? existente?.tieneInternet ?? false,
+        coberturaMovil: fila.coberturaMovil ?? existente?.coberturaMovil ?? false,
         cdaDestinoCodigo,
       };
+      // Una ubicación rearmada desde un valor dañado se avisa para revisarla en el mapa antes de aplicar.
+      const cambiaUbicacion =
+        !existente ||
+        existente.lat === null ||
+        existente.lng === null ||
+        Math.abs(existente.lat - destino.latitud) > TOLERANCIA_COORD ||
+        Math.abs(existente.lng - destino.longitud) > TOLERANCIA_COORD;
+      if (fila.coordenadasRearmadas && cambiaUbicacion) {
+        const aviso = `Coordenadas corregidas desde el archivo (${destino.latitud}, ${destino.longitud}): verifíquelas en el mapa.`;
+        nota = nota ? `${nota} ${aviso}` : aviso;
+      }
       if (!existente) {
         escribir.push({
           cambio: { codigoRecinto: fila.codigoRecinto, nombre: fila.nombre, accion: 'CREAR', cambios: [], nota },

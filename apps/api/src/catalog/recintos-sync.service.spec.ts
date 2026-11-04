@@ -132,6 +132,44 @@ describe('RecintosSyncService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
+    it('si el archivo no trae internet ni cobertura (formato 2027) conserva lo de la base; uno nuevo queda en No', async () => {
+      filasSheet = [
+        { ...cda28, tieneInternet: null, coberturaMovil: null, juntasFemeninas: 2 },
+        noCda182,
+        sheet({ codigoRecinto: '8320', tipo: 'NO_CDA', cdaDestinoCodigo: '28', tieneInternet: null, coberturaMovil: null }),
+      ];
+
+      const p = await service.preview();
+      expect(p.cambios.find((c) => c.codigoRecinto === '28')?.cambios).toEqual([
+        { campo: 'Juntas femeninas', antes: '1', despues: '2' },
+      ]);
+
+      await service.aplicar();
+      const inserts = tx.$executeRaw.mock.calls.filter(([sql]) => String((sql as unknown as string[]).join('')).includes('INSERT'));
+      expect(inserts).toHaveLength(1);
+      // Parámetros del INSERT: id, código, nombre, dirección, cantón, parroquia, zona, tipo, CDA, long, lat, internet, cobertura…
+      expect(inserts[0].slice(1).slice(11, 13)).toEqual([false, false]);
+      const update = tx.$executeRaw.mock.calls.find(([sql]) => String((sql as unknown as string[]).join('')).includes('UPDATE recintos'));
+      // Parámetros del UPDATE: nombre, dirección, cantón, parroquia, zona, tipo, CDA, long, lat, internet, cobertura…
+      // El 28 conserva internet y cobertura (Sí) de la base.
+      expect(update!.slice(1).slice(9, 11)).toEqual([true, true]);
+    });
+
+    it('avisa en la vista previa cuando una ubicación que cambia salió de una coordenada corregida', async () => {
+      filasSheet = [
+        { ...cda28, latitud: 0.36, coordenadasRearmadas: true },
+        // Rearmada pero igual a la base: no hace falta avisar.
+        { ...noCda182, coordenadasRearmadas: true },
+        sheet({ codigoRecinto: '8320', tipo: 'NO_CDA', cdaDestinoCodigo: '28', coordenadasRearmadas: true }),
+      ];
+
+      const p = await service.preview();
+      const nota = (codigo: string) => p.cambios.find((c) => c.codigoRecinto === codigo)?.nota;
+      expect(nota('28')).toBe('Coordenadas corregidas desde el archivo (0.36, -78.12): verifíquelas en el mapa.');
+      expect(nota('8320')).toMatch(/Coordenadas corregidas/);
+      expect(p.cambios.find((c) => c.codigoRecinto === '182')).toBeUndefined();
+    });
+
     it('ignora diferencias de coordenadas menores al redondeo del Sheet', async () => {
       filasSheet = [{ ...cda28, latitud: 0.3500004 }, noCda182];
 
