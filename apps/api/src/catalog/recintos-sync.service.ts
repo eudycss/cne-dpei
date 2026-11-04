@@ -34,10 +34,12 @@ interface RecintoBd {
 }
 
 /** Lo que se va a escribir para un recinto del Sheet (ya validado). */
-interface Destino extends Omit<RecintoSheet, 'cantonCodigo' | 'latitud' | 'longitud'> {
+interface Destino extends Omit<RecintoSheet, 'cantonCodigo' | 'latitud' | 'longitud' | 'tieneInternet' | 'coberturaMovil'> {
   cantonId: number;
   latitud: number;
   longitud: number;
+  tieneInternet: boolean;
+  coberturaMovil: boolean;
 }
 
 interface Plan {
@@ -291,6 +293,9 @@ export class RecintosSyncService {
         cantonId: canton.id,
         latitud: fila.latitud!,
         longitud: fila.longitud!,
+        // El formato 2027 no trae internet ni cobertura: se conserva lo que ya tiene la base.
+        tieneInternet: fila.tieneInternet ?? existente?.tieneInternet ?? false,
+        coberturaMovil: fila.coberturaMovil ?? existente?.coberturaMovil ?? false,
         cdaDestinoCodigo,
       };
       if (!existente) {
