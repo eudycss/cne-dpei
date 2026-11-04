@@ -54,7 +54,9 @@ export interface TelegramUpdate {
   message?: {
     text?: string;
     chat?: { id: number | string };
-    from?: { id: number | string };
+    from?: { id: number | string; is_bot?: boolean };
+    /** Mensaje enviado a nombre del grupo o un canal (administrador anónimo): from es un bot genérico. */
+    sender_chat?: { id: number | string };
   };
   /** Toque de un botón bajo un mensaje del bot (Hoy/Semana/Mes de estadísticas, técnicos de asignaciones, recinto elegido). */
   callback_query?: {
@@ -624,7 +626,9 @@ export class EnlacesService {
     const texto = textoOriginal?.toLowerCase();
     const chatId = update.message?.chat?.id;
     if (!textoOriginal || !texto || chatId === undefined) return;
-    if (await this.jornada.atenderMensaje(chatId, textoOriginal)) return;
+    // Un administrador anónimo llega como un bot compartido: no identifica a la persona.
+    const remitente = update.message?.sender_chat || update.message?.from?.is_bot ? undefined : update.message?.from?.id;
+    if (await this.jornada.atenderMensaje(chatId, textoOriginal, remitente)) return;
 
     const tipoChat = tipoChatTelegram(chatId);
     if (!tipoChat) {
@@ -875,14 +879,28 @@ export class EnlacesService {
     const exacto = await this.prisma.enlaceRecinto.findUnique({ where: { codigoRecinto: texto }, select: SELECT_FICHA });
     if (exacto) return this.enviarFichaRecinto(exacto);
 
-    const candidatos = await this.prisma.enlaceRecinto.findMany({
-      select: { codigoRecinto: true, nombreRecinto: true, canton: true },
-      orderBy: { codigoRecinto: 'asc' },
-    });
-    const { recintos } = buscarRecintosDetalle(
-      texto,
-      candidatos.map((c) => ({ ...c, parroquia: '' })),
-    );
+    const [candidatos, noCdas] = await Promise.all([
+      this.prisma.enlaceRecinto.findMany({
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true },
+        orderBy: { codigoRecinto: 'asc' },
+      }),
+      // Los NO CDA no tienen enlace monitoreado: se buscan aparte y llevan a la ficha de su CDA.
+      this.prisma.recinto.findMany({
+        where: { tipo: 'NO_CDA', activo: true },
+        select: { codigoRecinto: true, nombre: true, parroquia: true, canton: { select: { nombre: true } } },
+        orderBy: { codigoRecinto: 'asc' },
+      }),
+    ]);
+    const codigosNoCda = new Set(noCdas.map((n) => n.codigoRecinto));
+    const { recintos } = buscarRecintosDetalle(texto, [
+      ...candidatos.map((c) => ({ ...c, parroquia: '' })),
+      ...noCdas.map((n) => ({
+        codigoRecinto: n.codigoRecinto,
+        nombreRecinto: n.nombre,
+        canton: n.canton?.nombre ?? null,
+        parroquia: n.parroquia ?? '',
+      })),
+    ]);
     if (recintos.length === 0) return this.avisarRecintoNoEncontrado(texto);
     if (recintos.length === 1) return this.responderCodigoRecinto(recintos[0].codigoRecinto);
 
@@ -894,7 +912,10 @@ export class EnlacesService {
       'la lista de recintos de buscar recinto',
       {
         inline_keyboard: elegibles.map((r) => [
-          { text: `${r.codigoRecinto} · ${r.nombreRecinto}`.slice(0, 60), callback_data: `${PREFIJO_CALLBACK_FICHA}${r.codigoRecinto}` },
+          {
+            text: `${r.codigoRecinto} · ${r.nombreRecinto}${codigosNoCda.has(r.codigoRecinto) ? ' (NO CDA)' : ''}`.slice(0, 60),
+            callback_data: `${PREFIJO_CALLBACK_FICHA}${r.codigoRecinto}`,
+          },
         ]),
       },
     );
@@ -904,8 +925,34 @@ export class EnlacesService {
    * avisa si no existe, para que la persona no piense que el bot no le respondió. */
   private async responderCodigoRecinto(codigo: string): Promise<void> {
     const recinto = await this.prisma.enlaceRecinto.findUnique({ where: { codigoRecinto: codigo }, select: SELECT_FICHA });
-    if (!recinto) return this.avisarRecintoNoEncontrado(codigo);
-    await this.enviarFichaRecinto(recinto);
+    if (recinto) return this.enviarFichaRecinto(recinto);
+    if (await this.responderNoCda(codigo)) return;
+    await this.avisarRecintoNoEncontrado(codigo);
+  }
+
+  /** Un NO CDA: dice a qué CDA entrega y manda la ficha de ese CDA. false si el código no es un NO CDA. */
+  private async responderNoCda(codigo: string): Promise<boolean> {
+    const noCda = await this.prisma.recinto.findFirst({
+      where: { codigoRecinto: codigo, tipo: 'NO_CDA', activo: true },
+      select: { codigoRecinto: true, nombre: true, cdaDestino: { select: { codigoRecinto: true, nombre: true } } },
+    });
+    if (!noCda) return false;
+    const nombre = `${escapeHtml(noCda.codigoRecinto)} · ${escapeHtml(noCda.nombre)}`;
+    if (!noCda.cdaDestino) {
+      await this.telegram.enviarHtml(
+        `🏫 <b>${nombre}</b> es un NO CDA que no entrega en un CDA (va directo a la Delegación).`,
+        'el resultado de búsqueda de un NO CDA',
+      );
+      return true;
+    }
+    const cda = noCda.cdaDestino;
+    await this.telegram.enviarHtml(
+      `🏫 <b>${nombre}</b> es un NO CDA: entrega en el CDA <b>${escapeHtml(cda.codigoRecinto)} · ${escapeHtml(cda.nombre)}</b>.`,
+      'el resultado de búsqueda de un NO CDA',
+    );
+    const enlace = await this.prisma.enlaceRecinto.findUnique({ where: { codigoRecinto: cda.codigoRecinto }, select: SELECT_FICHA });
+    if (enlace) await this.enviarFichaRecinto(enlace);
+    return true;
   }
 
   /** Texto plano (no HTML): lo que escribió la persona va tal cual sin riesgo. */

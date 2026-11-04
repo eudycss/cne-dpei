@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../db/prisma.service';
 import { DistributivoNoConfigurado, DistributivoTecnicosClient } from '../distributivo-tecnicos.client';
 import { TelegramNotifier } from '../telegram-notifier';
-import { BOTONES_JORNADA } from './jornada';
+import { BOTONES_JORNADA, BOTON_CONSULTAR_CDA } from './jornada';
 import { JornadaService, diaDeJornada, esChatJornada } from './jornada.service';
 
 const CHAT = '-100777';
@@ -34,13 +34,13 @@ describe('JornadaService', () => {
       {
         id: 'k1',
         operadorId: 'u1',
-        recinto: { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura' },
+        recinto: { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
         operador: { nombres: 'Ana', apellidos: 'Pérez', telefono: '0990000001' },
       },
       {
         id: 'k2',
         operadorId: 'u2',
-        recinto: { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela' },
+        recinto: { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela', canton: { codigo: '30', nombre: 'IBARRA' } },
         operador: { nombres: 'Luis', apellidos: 'Mora', telefono: null },
       },
     ]);
@@ -48,11 +48,11 @@ describe('JornadaService', () => {
       Promise.resolve(
         where.tipo === 'CDA'
           ? [
-              { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura' },
-              { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela' },
-              { id: 'r3', codigoRecinto: '1500', nombre: 'Sin kit' },
+              { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
+              { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela', canton: { codigo: '30', nombre: 'IBARRA' } },
+              { id: 'r3', codigoRecinto: '1500', nombre: 'Sin kit', canton: null },
             ]
-          : [{ id: 'n1', codigoRecinto: '2001', nombre: 'Escuelita', cdaDestinoId: 'r1' }],
+          : [{ id: 'n1', codigoRecinto: '2001', nombre: 'Escuelita', cdaDestinoId: 'r1', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } }],
       ),
     );
     prisma.parejaCda.findMany.mockResolvedValue([
@@ -139,6 +139,7 @@ describe('JornadaService', () => {
           codigoRecinto: '971',
           nombreRecinto: 'UE Chaltura',
           tecnico: { numero: 1, nombre: 'Jairo' },
+          canton: { codigo: 45, nombre: 'ANTONIO ANTE' },
           personas: [
             { nombre: 'PEREZ ANA', telefono: '0991111111', rol: 'Op.' },
             { nombre: 'RUIZ JUAN', telefono: '0992222222', rol: 'Asis.' },
@@ -150,18 +151,28 @@ describe('JornadaService', () => {
           codigoRecinto: '1487',
           nombreRecinto: 'UE Apuela',
           tecnico: { numero: 2, nombre: 'Carlos' },
+          canton: { codigo: 30, nombre: 'IBARRA' },
           // Sin pareja: quien tiene el kit en la app.
           personas: [{ nombre: 'Mora Luis', telefono: null, rol: 'Op.' }],
           registros: {},
           kitRecibido: null,
         },
       ]);
-      expect(j.sinKit).toEqual([{ codigoRecinto: '1500', nombreRecinto: 'Sin kit', tecnico: { numero: null, nombre: '' } }]);
+      expect(j.sinKit).toEqual([
+        {
+          codigoRecinto: '1500',
+          nombreRecinto: 'Sin kit',
+          tecnico: { numero: null, nombre: '' },
+          canton: { codigo: null, nombre: 'Sin cantón' },
+        },
+      ]);
       expect(j.noCdas).toEqual([
         {
           codigoRecinto: '2001',
           nombreRecinto: 'Escuelita',
           codigoCda: '971',
+          nombreCda: 'UE Chaltura',
+          canton: { codigo: 45, nombre: 'ANTONIO ANTE' },
           tecnico: { numero: 1, nombre: 'Jairo' },
           personas: j.unidades[0].personas,
           visita: { en: T('2026-11-29T15:00:00Z'), sinSenal: false },
@@ -260,7 +271,7 @@ describe('JornadaService', () => {
       expect(telegram.responderEn).toHaveBeenCalledWith(CHAT, expect.any(Function));
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
       expect(texto).toContain('<b>1 de 2</b> · faltan 1');
-      expect(JSON.stringify(botones)).toContain('jor:sd:1:0');
+      expect(JSON.stringify(botones)).toContain('jor:sd:t:1:0');
     });
 
     it.each(['/jornada', '/jornada@CNE_Enlaces_bot', '/start', '/menu@CNE_Enlaces_bot'])('"%s" manda el teclado de la Jornada', async (texto) => {
@@ -293,7 +304,7 @@ describe('JornadaService', () => {
   });
 
   describe('botones bajo los mensajes', () => {
-    it('un técnico edita el mismo mensaje con su detalle', async () => {
+    it('un técnico edita el mismo mensaje con su detalle (también con un botón de antes, sin agrupación)', async () => {
       expect(await service.atenderBoton(CHAT, 'cb', 'jor:sd:1:0', 55)).toBe(true);
       expect(telegram.responderBoton).toHaveBeenCalledWith('cb');
       const [messageId, texto] = telegram.editarHtml.mock.calls[0];
@@ -301,6 +312,18 @@ describe('JornadaService', () => {
       expect(texto).toContain('Salida del DPEI · Jairo');
       expect(texto).toContain('<b>971 · UE Chaltura</b> · 08:12 📴');
       expect(texto).toContain('+593991111111');
+    });
+
+    it('por cantón: un cantón muestra solo sus recintos y el resumen se arma por cantón', async () => {
+      await service.atenderBoton(CHAT, 'cb', 'jor:sd:c:30:0', 55);
+      const detalle = telegram.editarHtml.mock.calls[0][1];
+      expect(detalle).toContain('Salida del DPEI · IBARRA');
+      expect(detalle).toContain('1487');
+      expect(detalle).not.toContain('971 ·');
+
+      await service.atenderBoton(CHAT, 'cb2', 'jor:sd:c:res:0', 56);
+      expect(telegram.editarHtml.mock.calls[1][1]).toContain('por cantón');
+      expect(JSON.stringify(telegram.editarHtml.mock.calls[1][3])).toContain('jor:sd:c:45:0');
     });
 
     it('"res" vuelve al resumen en el mismo mensaje', async () => {
@@ -336,6 +359,94 @@ describe('JornadaService', () => {
       expect(await service.atenderBoton('-100200', 'cb', 'jor:sd:1:0', 55)).toBe(false);
       expect(await service.atenderBoton(CHAT, 'cb', 'asig:1', 55)).toBe(false);
       expect(telegram.responderBoton).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Consultar CDA', () => {
+    it('el botón pide el código y el siguiente mensaje de esa persona se busca', async () => {
+      expect(await service.atenderMensaje(CHAT, BOTON_CONSULTAR_CDA, 9)).toBe(true);
+      expect(telegram.enviarHtml.mock.calls[0][0]).toContain('Escriba el código o el nombre del CDA');
+
+      expect(await service.atenderMensaje(CHAT, '971', 9)).toBe(true);
+      const [ficha, , botones] = telegram.enviarHtml.mock.calls[1];
+      expect(ficha).toContain('<b>🔎 971 · UE Chaltura</b>');
+      expect(ficha).toContain('ANTONIO ANTE · Técnico: Jairo');
+      expect(ficha).toContain('🚐 Salió del DPEI 08:12 📴');
+      expect(ficha).toContain('🏫 <b>NO CDA: 1 de 1 reportado</b>');
+      expect(JSON.stringify(botones)).toContain('jor:cda:971');
+
+      // La espera se consumió: otro texto ya no es de la Jornada.
+      expect(await service.atenderMensaje(CHAT, 'hola', 9)).toBe(false);
+    });
+
+    it('el pedido usa "responder" (funciona con la privacidad de grupos del bot) y /cda solo hace lo mismo', async () => {
+      await service.atenderMensaje(CHAT, '/cda', 9);
+      const [texto, , markup] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toContain('Escriba el código o el nombre del CDA');
+      expect(markup).toEqual(expect.objectContaining({ force_reply: true }));
+      expect(await service.atenderMensaje(CHAT, '1487', 9)).toBe(true);
+      expect(telegram.enviarHtml.mock.calls[1][0]).toContain('🔎 1487 · UE Apuela');
+    });
+
+    it('mientras espera, otro comando no se toma como el código', async () => {
+      await service.atenderMensaje(CHAT, BOTON_CONSULTAR_CDA, 9);
+      expect(await service.atenderMensaje(CHAT, '/preguntar algo', 9)).toBe(false);
+      // La espera sigue: el código llega después.
+      expect(await service.atenderMensaje(CHAT, '971', 9)).toBe(true);
+    });
+
+    it('la espera vence a los 5 minutos', async () => {
+      const ahora = jest.spyOn(Date, 'now').mockReturnValue(T('2026-11-29T15:00:00Z').getTime());
+      try {
+        await service.atenderMensaje(CHAT, BOTON_CONSULTAR_CDA, 9);
+        ahora.mockReturnValue(T('2026-11-29T15:05:01Z').getTime());
+        expect(await service.atenderMensaje(CHAT, '971', 9)).toBe(false);
+      } finally {
+        ahora.mockRestore();
+      }
+    });
+
+    it('la espera es de cada persona: otra persona escribiendo no la usa', async () => {
+      await service.atenderMensaje(CHAT, BOTON_CONSULTAR_CDA, 9);
+      expect(await service.atenderMensaje(CHAT, '971', 10)).toBe(false);
+    });
+
+    it('un NO CDA lleva a la ficha de su CDA y lo dice', async () => {
+      await service.atenderMensaje(CHAT, '/cda 2001');
+      const [texto] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toContain('🏫 2001 · Escuelita es un NO CDA de este CDA');
+      expect(texto).toContain('🔎 971 · UE Chaltura');
+    });
+
+    it('/cda con un nombre que coincide con varios da botones para elegir', async () => {
+      const kits = await prisma.kitElectoral.findMany();
+      prisma.kitElectoral.findMany.mockResolvedValue([kits[0], { ...kits[1], recinto: { ...kits[1].recinto, nombre: 'UE Chaltura Bajo' } }]);
+      await service.atenderMensaje(CHAT, '/cda@CNE_Enlaces_bot chaltura');
+      const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toContain('Encontré');
+      const datos = (botones as { inline_keyboard: { callback_data: string }[][] }).inline_keyboard.flat().map((b) => b.callback_data);
+      expect(datos).toEqual(expect.arrayContaining(['jor:cda:971', 'jor:cda:1487']));
+    });
+
+    it('si no encuentra nada lo dice (escapando lo escrito)', async () => {
+      await service.atenderMensaje(CHAT, '/cda <zzz>');
+      expect(telegram.enviarHtml.mock.calls[0][0]).toContain('No encontré un CDA o NO CDA con "&lt;zzz&gt;"');
+    });
+
+    it('sin remitente (administrador anónimo) explica cómo usar /cda', async () => {
+      await service.atenderMensaje(CHAT, BOTON_CONSULTAR_CDA);
+      expect(telegram.enviarHtml.mock.calls[0][0]).toContain('/cda');
+    });
+
+    it('el botón de una ficha edita el mismo mensaje con la ficha al día', async () => {
+      expect(await service.atenderBoton(CHAT, 'cb', 'jor:cda:1487', 77)).toBe(true);
+      const [messageId, texto, , botones] = telegram.editarHtml.mock.calls[0];
+      expect(messageId).toBe(77);
+      expect(texto).toContain('🔎 1487 · UE Apuela');
+      expect(JSON.stringify(botones)).toContain('jor:cda:1487');
+
+      await service.atenderBoton(CHAT, 'cb2', 'jor:cda:9999', 78);
+      expect(telegram.editarHtml.mock.calls[1][1]).toBe('El CDA 9999 no está en este evento.');
     });
   });
 });

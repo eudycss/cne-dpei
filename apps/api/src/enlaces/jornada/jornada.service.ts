@@ -1,16 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distributivo-tecnicos.client';
+import { escapeHtml } from '../../auth/notifier';
+import { buscarRecintosDetalle } from '../asistente/buscar-recintos';
 import { TelegramNotifier } from '../telegram-notifier';
 import {
+  BOTON_CONSULTAR_CDA,
   MOMENTOS_JORNADA,
+  callbackFichaCda,
+  consultablesDe,
+  formatearFichaCda,
   formatearResumenJornada,
+  gruposDe,
+  leerCallbackFichaCda,
   leerCallbackJornada,
   paginasDetalleJornada,
-  tecnicosDe,
+  tecladoFichaCda,
   tecladoFijoJornada,
   tecladoJornada,
   vistaDeTexto,
+  type BotonJornada,
+  type CantonJornada,
   type Jornada,
   type MomentoJornada,
   type PersonaJornada,
@@ -24,6 +34,25 @@ import {
 const PAUSA_ENTRE_TOQUES_MS = 1500;
 
 const SIN_TECNICO: TecnicoJornada = { numero: null, nombre: '' };
+const SIN_CANTON: CantonJornada = { codigo: null, nombre: 'Sin cantón' };
+
+/** "Consultar CDA": cuánto espera el bot el código o nombre después de tocar el botón. */
+const ESPERA_CONSULTA_MS = 5 * 60_000;
+/** Varios resultados: hasta tantos botones para elegir. */
+const MAX_BOTONES_CONSULTA = 8;
+/** Lo escrito se usa y se repite hasta este largo. */
+const MAX_LARGO_CONSULTA = 60;
+
+function cantonDe(c: { codigo: string; nombre: string } | null | undefined): CantonJornada {
+  const codigo = Number(c?.codigo);
+  return c && Number.isInteger(codigo) && codigo > 0 ? { codigo, nombre: c.nombre } : SIN_CANTON;
+}
+
+/** "/cda 1133" (con o sin @bot): consulta directa sin tocar el botón. */
+function consultaDeComando(texto: string): string | null {
+  const m = /^\/cda(?:@\w+)?(?:\s+(.+))?$/is.exec(texto.trim());
+  return m ? (m[1] ?? '').trim() : null;
+}
 
 /** true si el chat es el grupo Jornada (TELEGRAM_CHAT_ID_JORNADA). Sin la variable, el grupo está apagado. */
 export function esChatJornada(chatId: number | string | undefined): boolean {
@@ -59,6 +88,8 @@ function esComandoMenu(texto: string): boolean {
 export class JornadaService {
   private readonly log = new Logger('JornadaTelegram');
   private readonly ultimoToque = new Map<string, number>();
+  /** "chat:usuario" → cuándo tocó "Consultar CDA" (espera el código o nombre). */
+  private readonly esperandoConsulta = new Map<string, number>();
   private cache: { en: number; carga: Promise<Jornada | null> } | null = null;
 
   constructor(
@@ -68,12 +99,27 @@ export class JornadaService {
   ) {}
 
   /** Un mensaje del grupo Jornada. Devuelve false si no es de la Jornada (lo atiende el bot de enlaces). */
-  async atenderMensaje(chatId: number | string, texto: string): Promise<boolean> {
+  async atenderMensaje(chatId: number | string, texto: string, userId?: number | string): Promise<boolean> {
     if (!esChatJornada(chatId)) return false;
+    const chat = String(chatId);
+    // Sin remitente identificable (administrador anónimo o un canal) no se puede aislar la espera de cada persona.
+    const claveEspera = userId !== undefined ? `${chat}:${userId}` : undefined;
+    const comando = consultaDeComando(texto);
+    // El botón o "/cda" solo: se pide el código o nombre.
+    if (texto.trim().toLowerCase() === BOTON_CONSULTAR_CDA.toLowerCase() || comando === '') {
+      await this.telegram.responderEn(chat, () => this.pedirConsulta(claveEspera));
+      return true;
+    }
+    if (comando !== null) {
+      if (claveEspera) this.esperandoConsulta.delete(claveEspera);
+      await this.telegram.responderEn(chat, () => this.conAvisoError(() => this.consultarCda(comando)));
+      return true;
+    }
     if (esComandoMenu(texto)) {
       await this.telegram.responderEn(String(chatId), () =>
         this.telegram.enviarHtml(
-          '<b>📋 Jornada</b>\nToque un botón para ver quién falta y quién ya cumplió, por técnico.',
+          '<b>📋 Jornada</b>\nToque un botón para ver quién falta y quién ya cumplió, por técnico o por cantón.\n' +
+            'Con 🔎 Consultar CDA vea un CDA puntual (también escribiendo /cda y su código o nombre).',
           'el menú de la jornada',
           tecladoFijoJornada(),
         ),
@@ -81,9 +127,106 @@ export class JornadaService {
       return true;
     }
     const vista = vistaDeTexto(texto);
-    if (!vista) return false;
-    await this.telegram.responderEn(String(chatId), () => this.conAvisoError(() => this.enviarResumen(vista)));
-    return true;
+    if (vista) {
+      if (claveEspera) this.esperandoConsulta.delete(claveEspera);
+      await this.telegram.responderEn(chat, () => this.conAvisoError(() => this.enviarResumen(vista)));
+      return true;
+    }
+    // Otro comando ("/preguntar", "/caidos"…) no se toma como el código que se esperaba.
+    if (claveEspera && !texto.trim().startsWith('/') && this.esperaVigente(claveEspera)) {
+      this.esperandoConsulta.delete(claveEspera);
+      await this.telegram.responderEn(chat, () => this.conAvisoError(() => this.consultarCda(texto)));
+      return true;
+    }
+    return false;
+  }
+
+  private async pedirConsulta(claveEspera: string | undefined): Promise<void> {
+    if (!claveEspera) {
+      await this.telegram.enviarHtml(
+        'Escriba <code>/cda</code> seguido del código o nombre del CDA (por ejemplo <code>/cda 1133</code>).',
+        'el aviso de consulta sin remitente',
+        tecladoFijoJornada(),
+      );
+      return;
+    }
+    this.limpiarEsperas();
+    this.esperandoConsulta.set(claveEspera, Date.now());
+    // "Responder" en vez del teclado fijo: aunque el bot tenga la privacidad de grupos activada,
+    // la respuesta a su mensaje le llega.
+    await this.telegram.enviarHtml(
+      '✏️ Escriba el código o el nombre del CDA (o de un NO CDA para ver su CDA).',
+      'el pedido de consulta de CDA',
+      { force_reply: true, input_field_placeholder: 'Código o nombre del CDA' },
+    );
+  }
+
+  private esperaVigente(clave: string, ahora = Date.now()): boolean {
+    const desde = this.esperandoConsulta.get(clave);
+    return desde !== undefined && ahora - desde <= ESPERA_CONSULTA_MS;
+  }
+
+  /** Las esperas viejas se borran: el mapa no crece sin límite. */
+  private limpiarEsperas(ahora = Date.now()): void {
+    for (const [clave, desde] of this.esperandoConsulta) {
+      if (ahora - desde > ESPERA_CONSULTA_MS) this.esperandoConsulta.delete(clave);
+    }
+  }
+
+  /** Busca un CDA (o un NO CDA, que lleva a su CDA) por código o nombre y manda su ficha. */
+  private async consultarCda(escrito: string): Promise<void> {
+    const texto = Array.from(escrito.trim()).slice(0, MAX_LARGO_CONSULTA).join('');
+    if (!texto) {
+      await this.telegram.enviarHtml('Escriba el código o el nombre del CDA.', 'el aviso de consulta vacía', tecladoFijoJornada());
+      return;
+    }
+    const jornada = await this.cargar();
+    if (!jornada) {
+      await this.telegram.enviarHtml('No hay un evento electoral activo.', 'el aviso sin evento', tecladoFijoJornada());
+      return;
+    }
+    const { recintos } = buscarRecintosDetalle(texto, consultablesDe(jornada));
+    const cdas = [...new Set(recintos.map((r) => r.codigoCda))];
+    if (cdas.length === 0) {
+      await this.telegram.enviarHtml(
+        `⚠️ No encontré un CDA o NO CDA con "${escapeHtml(texto)}". Pruebe con el código o con otra parte del nombre.`,
+        'el aviso de CDA no encontrado',
+        tecladoFijoJornada(),
+      );
+      return;
+    }
+    if (cdas.length === 1) {
+      const desde = recintos.find((r) => r.esNoCda && r.codigoCda === cdas[0]);
+      const aviso =
+        desde && recintos.length === 1
+          ? `🏫 ${escapeHtml(desde.codigoRecinto)} · ${escapeHtml(desde.nombreRecinto)} es un NO CDA de este CDA:\n\n`
+          : '';
+      await this.enviarFicha(jornada, cdas[0], aviso);
+      return;
+    }
+    const elegibles = recintos.slice(0, MAX_BOTONES_CONSULTA);
+    await this.telegram.enviarHtml(
+      `🔎 Encontré ${recintos.length} recintos para "${escapeHtml(texto)}". Toque uno para ver su CDA.` +
+        (recintos.length > elegibles.length ? `\nSe muestran ${elegibles.length}: escriba más detalle o use el código.` : ''),
+      'la lista de CDA encontrados',
+      {
+        inline_keyboard: elegibles.map((r) => [
+          {
+            text: `${r.codigoRecinto} · ${r.nombreRecinto}${r.esNoCda ? ` (NO CDA de ${r.codigoCda})` : ''}`.slice(0, 60),
+            callback_data: callbackFichaCda(r.codigoCda),
+          },
+        ]),
+      },
+    );
+  }
+
+  private async enviarFicha(jornada: Jornada, codigo: string, prefijo = ''): Promise<void> {
+    const ficha = formatearFichaCda(jornada, codigo, new Date());
+    if (!ficha) {
+      await this.telegram.enviarHtml(`El CDA ${escapeHtml(codigo)} no está en este evento.`, 'el aviso de CDA fuera del evento', tecladoFijoJornada());
+      return;
+    }
+    await this.telegram.enviarHtml(`${prefijo}${ficha}`, 'la ficha del CDA', tecladoFichaCda(codigo));
   }
 
   /** Un botón bajo un mensaje de la Jornada. Devuelve false si el botón no es de la Jornada. */
@@ -94,13 +237,14 @@ export class JornadaService {
     messageId: number | undefined,
   ): Promise<boolean> {
     const boton = leerCallbackJornada(data);
-    if (!boton || !esChatJornada(chatId)) return false;
+    const fichaCda = boton ? null : leerCallbackFichaCda(data);
+    if ((!boton && !fichaCda) || !esChatJornada(chatId)) return false;
     await this.telegram.responderEn(String(chatId), async () => {
       // Primero se contesta el toque, para que el botón no quede "cargando".
       await this.telegram.responderBoton(callbackId);
       if (typeof messageId !== 'number') return;
       if (this.toqueDemasiadoSeguido(`${chatId}:${messageId}:${data}`)) return;
-      await this.conAvisoError(() => this.mostrar(messageId, boton.vista, boton.seleccion, boton.pagina));
+      await this.conAvisoError(() => (boton ? this.mostrar(messageId, boton) : this.mostrarFicha(messageId, fichaCda!)));
     });
     return true;
   }
@@ -119,38 +263,45 @@ export class JornadaService {
     );
   }
 
-  private async mostrar(
-    messageId: number,
-    vista: VistaJornada,
-    seleccion: number | 'sin' | 'res' | 'tod',
-    pagina: number,
-  ): Promise<void> {
+  /** Botón de una ficha (elegir CDA o ↻): cambia ese mensaje a la ficha al día. */
+  private async mostrarFicha(messageId: number, codigo: string): Promise<void> {
+    const jornada = await this.cargar();
+    const ficha = jornada ? formatearFichaCda(jornada, codigo, new Date()) : null;
+    await this.telegram.editarHtml(
+      messageId,
+      ficha ?? (jornada ? `El CDA ${escapeHtml(codigo)} no está en este evento.` : 'No hay un evento electoral activo.'),
+      'la ficha del CDA',
+      ficha ? tecladoFichaCda(codigo) : { inline_keyboard: [] },
+    );
+  }
+
+  private async mostrar(messageId: number, { vista, agrupacion, seleccion, pagina }: BotonJornada): Promise<void> {
     const jornada = await this.cargar();
     if (!jornada) {
       await this.telegram.editarHtml(messageId, 'No hay un evento electoral activo.', 'el aviso sin evento', { inline_keyboard: [] });
       return;
     }
     const ahora = new Date();
-    // Un técnico que ya no está en el distributivo vuelve al resumen.
+    // Un técnico o cantón que ya no está vuelve al resumen.
     const existe =
-      seleccion === 'res' || seleccion === 'tod' || tecnicosDe(jornada).some((t) => (t.numero ?? 'sin') === seleccion);
+      seleccion === 'res' || seleccion === 'tod' || gruposDe(jornada, agrupacion).some((g) => g.clave === seleccion);
     if (seleccion === 'res' || !existe) {
       await this.telegram.editarHtml(
         messageId,
-        formatearResumenJornada(jornada, vista, ahora),
+        formatearResumenJornada(jornada, vista, ahora, agrupacion),
         'el resumen de la jornada',
-        tecladoJornada(jornada, vista),
+        tecladoJornada(jornada, vista, 'res', 0, 1, agrupacion),
       );
       return;
     }
-    const paginas = paginasDetalleJornada(jornada, vista, seleccion, ahora);
+    const paginas = paginasDetalleJornada(jornada, vista, seleccion, ahora, agrupacion);
     // Si la lista se acortó desde que se tocó, se muestra la última página que queda.
     const actual = Math.min(pagina, paginas.length - 1);
     await this.telegram.editarHtml(
       messageId,
       paginas[actual],
       'el detalle de la jornada',
-      tecladoJornada(jornada, vista, seleccion, actual, paginas.length),
+      tecladoJornada(jornada, vista, seleccion, actual, paginas.length, agrupacion),
     );
   }
 
@@ -204,13 +355,13 @@ export class JornadaService {
         select: {
           id: true,
           operadorId: true,
-          recinto: { select: { id: true, codigoRecinto: true, nombre: true } },
+          recinto: { select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { codigo: true, nombre: true } } } },
           operador: { select: { nombres: true, apellidos: true, telefono: true } },
         },
       }),
       this.prisma.recinto.findMany({
         where: { tipo: 'CDA', activo: true },
-        select: { id: true, codigoRecinto: true, nombre: true },
+        select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { codigo: true, nombre: true } } },
       }),
       this.leerDistributivo(),
     ]);
@@ -245,7 +396,13 @@ export class JornadaService {
       }),
       this.prisma.recinto.findMany({
         where: { tipo: 'NO_CDA', activo: true, cdaDestinoId: { not: null } },
-        select: { id: true, codigoRecinto: true, nombre: true, cdaDestinoId: true },
+        select: {
+          id: true,
+          codigoRecinto: true,
+          nombre: true,
+          cdaDestinoId: true,
+          canton: { select: { codigo: true, nombre: true } },
+        },
       }),
     ]);
     const visitas = await this.prisma.eventoTracking.findMany({
@@ -314,6 +471,7 @@ export class JornadaService {
         codigoRecinto: k.recinto!.codigoRecinto,
         nombreRecinto: k.recinto!.nombre,
         tecnico: tecnicoDe(k.recinto!.codigoRecinto),
+        canton: cantonDe(k.recinto!.canton),
         personas,
         registros: registrosPorOperador.get(k.operadorId!) ?? {},
         kitRecibido: recibidoDelOperador(k.operadorId!),
@@ -335,6 +493,8 @@ export class JornadaService {
           codigoRecinto: n.codigoRecinto,
           nombreRecinto: n.nombre,
           codigoCda: cda.codigoRecinto,
+          nombreCda: cda.nombre,
+          canton: cantonDe(n.canton),
           // Si el distributivo no trae el NO CDA, va con el técnico de su CDA.
           tecnico: tecnicoPorCodigo.get(n.codigoRecinto) ?? tecnicoDe(cda.codigoRecinto),
           personas: personasPorRecinto.get(cda.id) ?? [],
@@ -345,7 +505,12 @@ export class JornadaService {
     const conKit = new Set(kits.map((k) => k.recinto!.id));
     const sinKit = cdas
       .filter((c) => !conKit.has(c.id))
-      .map((c) => ({ codigoRecinto: c.codigoRecinto, nombreRecinto: c.nombre, tecnico: tecnicoDe(c.codigoRecinto) }));
+      .map((c) => ({
+        codigoRecinto: c.codigoRecinto,
+        nombreRecinto: c.nombre,
+        tecnico: tecnicoDe(c.codigoRecinto),
+        canton: cantonDe(c.canton),
+      }));
 
     return {
       evento: evento.nombre,
