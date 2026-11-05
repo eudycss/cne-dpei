@@ -269,6 +269,34 @@ describe('RecintosService', () => {
       );
     });
 
+    it('al buscar CDA también trae el CDA de un NO-CDA que coincide, con ese NO-CDA', async () => {
+      const noCda = { id: 'nc-1', codigoRecinto: '1234', nombre: 'Escuela Sin Kit', cdaDestinoId: recintoId };
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // ningún CDA coincide por sí mismo
+        .mockResolvedValueOnce([{ id: 'nc-1' }]); // NO-CDA que coincide
+      prisma.recinto.findMany
+        .mockResolvedValueOnce([noCda])
+        .mockResolvedValueOnce([recintoRow()]);
+      prisma.recinto.count.mockResolvedValueOnce(1);
+
+      const res = await service.listRecintos({ tipo: 'CDA', search: '1234' });
+
+      expect(prisma.recinto.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tipo: 'CDA', id: { in: [recintoId] } }) }),
+      );
+      expect(res.items[0].noCdasCoincidentes).toEqual([{ id: 'nc-1', codigoRecinto: '1234', nombre: 'Escuela Sin Kit' }]);
+    });
+
+    it('sin búsqueda no consulta los NO-CDA ni marca coincidencias', async () => {
+      prisma.recinto.count.mockResolvedValueOnce(1);
+      prisma.recinto.findMany.mockResolvedValueOnce([recintoRow()]);
+
+      const res = await service.listRecintos({ tipo: 'CDA' });
+
+      expect(prisma.recinto.findMany).toHaveBeenCalledTimes(1);
+      expect(res.items[0].noCdasCoincidentes).toBeUndefined();
+    });
+
     it('no lista los recintos ocultos ni los cuenta como NO-CDA de un CDA', async () => {
       prisma.recinto.count.mockResolvedValueOnce(0);
       prisma.recinto.findMany.mockResolvedValueOnce([]);
