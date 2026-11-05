@@ -1743,3 +1743,111 @@ export interface MisModulosResponse {
   /** Solo las acciones de módulos que el usuario ve. */
   permisos: string[];
 }
+
+// ---- Simulador de digitación de actas (práctica tipo SIER) ----
+
+export interface PracticaDigitacion {
+  id: string;
+  nombre: string;
+  filasPorActa: number;
+  votoMin: number;
+  votoMax: number;
+  metaActas: number;
+  plazoMinutos: number;
+  /** ISO 8601: desde cuándo se puede empezar. */
+  inicio: string;
+  /** ISO 8601: hasta cuándo se puede empezar. */
+  fin: string;
+  pctDigitosDistintos: number;
+  intentosMax: number;
+  activa: boolean;
+  /** Claves de cargos_cda habilitados. */
+  cargos: string[];
+  /** Personas agregadas aunque su cargo no esté habilitado. */
+  incluir: string[];
+  /** Personas quitadas aunque su cargo esté habilitado. */
+  excluir: string[];
+  /** Con intentos, ya no cambian filas, rango, meta, plazo ni % de dígitos distintos. */
+  intentos: number;
+  creadoEn: string;
+}
+
+export interface NovedadDigitacion {
+  id: string;
+  nombre: string;
+  activa: boolean;
+  orden: number;
+}
+
+/** Práctica que la persona puede hacer, tal como la ve en la página pública. */
+export interface PracticaDisponibleSimulador {
+  id: string;
+  nombre: string;
+  metaActas: number;
+  plazoMinutos: number;
+  filasPorActa: number;
+  fin: string;
+  intentosUsados: number;
+  intentosMax: number;
+  /** Hay un intento con tiempo: "iniciar" lo retoma en vez de gastar otro. */
+  enCurso: boolean;
+}
+
+export interface IngresoSimuladorResponse {
+  /** Enmascarado: con solo la cédula no se revela el nombre completo. */
+  nombre: string;
+  cargo: string;
+  practicas: PracticaDisponibleSimulador[];
+}
+
+export interface EstadoIntentoSimulador {
+  practica: string;
+  /** Nombre enmascarado y cargo, como en la barra del SIER. */
+  nombre: string;
+  cargo: string;
+  numeroIntento: number;
+  metaActas: number;
+  completadas: number;
+  /** Actas sin ningún error en el primer guardado. */
+  perfectas: number;
+  iniciadoEn: string;
+  venceEn: string;
+  terminado: boolean;
+  /** Motivo del cierre, si terminó. */
+  motivo: 'META' | 'TIEMPO' | null;
+}
+
+export interface IniciarSimuladorResponse {
+  /** Va en el cuerpo de cada request siguiente; no se guarda en la base. */
+  token: string;
+  estado: EstadoIntentoSimulador;
+}
+
+export interface FilaActaSimulador {
+  /** El número en letras ("Sesenta y dos"): es lo que vale. */
+  letras: string;
+  /** Tres casilleros ("062"); pueden no coincidir con las letras a propósito. */
+  digitos: string;
+}
+
+export interface ActaSimulador {
+  id: string;
+  numero: number;
+  filas: FilaActaSimulador[];
+}
+
+export interface NuevaActaSimuladorResponse {
+  estado: EstadoIntentoSimulador;
+  /** null si el intento ya terminó. */
+  acta: ActaSimulador | null;
+}
+
+export interface GuardarActaSimuladorResponse {
+  /** true si todas las filas quedaron bien y el acta se cerró. */
+  guardada: boolean;
+  /** Índices (desde 0) de las filas que hay que corregir. */
+  filasIncorrectas: number[];
+  estado: EstadoIntentoSimulador;
+  /** Cada AVISO_CADA_ACTAS actas: cuántas de las últimas salieron perfectas. */
+  aviso: { perfectas: number; de: number } | null;
+}

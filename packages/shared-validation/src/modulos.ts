@@ -18,6 +18,7 @@ export const MODULO_WEB_IDS = [
   'incidencias',
   'alertas',
   'operadores-cda',
+  'simulador-digitacion',
   'cadena-custodia',
   'reportes',
   'powerbi-cdas',
@@ -60,6 +61,15 @@ export const MODULOS_WEB: readonly ModuloWeb[] = [
     ruta: '/operadores-cda',
     rolesPermitidos: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
     rolesPorDefecto: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
+  },
+  {
+    id: 'simulador-digitacion',
+    etiqueta: 'Simulador de digitación',
+    seccion: 'Personal',
+    ruta: '/simulador-digitacion',
+    // De fábrica solo el ADMINISTRADOR; se activa a otros roles en "Módulos por rol".
+    rolesPermitidos: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
+    rolesPorDefecto: [],
   },
   {
     id: 'cadena-custodia',

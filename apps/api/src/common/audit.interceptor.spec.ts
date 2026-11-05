@@ -527,6 +527,47 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
   });
 
+  it('simulador de digitación: configuración sin personas, quién empieza, y las actas no se auditan', async () => {
+    const PRACTICA = '44444444-4444-4444-8444-444444444444';
+    const crear = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/simulador-digitacion/practicas',
+        body: { nombre: 'P1', metaActas: 200, cargos: ['DIGITADOR'], incluir: [OTRO], excluir: [] },
+        user: ADMIN,
+      },
+      { id: PRACTICA },
+    );
+    expect(crear.data).toMatchObject({
+      accion: 'PRACTICA_DIGITACION_CREAR',
+      entidad: 'practica_digitacion',
+      entidadId: PRACTICA,
+      datosDespues: { nombre: 'P1', metaActas: 200, cargos: ['DIGITADOR'] },
+    });
+    expect(JSON.stringify(crear.data)).not.toContain(OTRO);
+
+    const editar = await auditar({
+      method: 'PUT', originalUrl: `/simulador-digitacion/practicas/${PRACTICA}`, params: { id: PRACTICA }, body: { nombre: 'P2' }, user: ADMIN,
+    });
+    expect(editar.data).toMatchObject({ accion: 'PRACTICA_DIGITACION_EDITAR', entidadId: PRACTICA });
+
+    const iniciar = await auditar(
+      { method: 'POST', originalUrl: '/publico/simulador/iniciar', body: { cedula: '1710034065', practicaId: PRACTICA }, operadorCdaId: OTRO },
+      { token: 'secreto-que-no-debe-quedar' },
+    );
+    expect(iniciar.data).toMatchObject({
+      usuarioId: null,
+      accion: 'PRACTICA_DIGITACION_INICIAR',
+      entidadId: OTRO,
+      datosDespues: { practicaId: PRACTICA },
+    });
+    expect(JSON.stringify(iniciar.data)).not.toContain('secreto-que-no-debe-quedar');
+    expect(JSON.stringify(iniciar.data)).not.toContain('1710034065');
+
+    const guardar = await auditar({ method: 'POST', originalUrl: '/publico/simulador/guardar', body: { token: 'x', valores: [1] } });
+    expect(guardar.create).not.toHaveBeenCalled();
+  });
+
   it('gestión de cargos CDA: queda la clave, el nombre, el centro y si se desactivó', async () => {
     const crear = await auditar(
       { method: 'POST', originalUrl: '/cargos-cda', body: { nombre: 'Jefes de sala', centro: 'CPE' }, user: ADMIN },

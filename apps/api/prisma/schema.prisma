@@ -752,6 +752,7 @@ model CargoCda {
   cambiosDesde    CambioCargoCda[] @relation("CambioCargoCdaAnterior")
   cambiosHacia    CambioCargoCda[] @relation("CambioCargoCdaNuevo")
   actas           ActaEntregaCda[]
+  practicasDigitacion PracticaDigitacionCargo[]
 
   @@map("cargos_cda")
 }
@@ -786,6 +787,8 @@ model OperadorCda {
   cambiosCargo CambioCargoCda[]
   parejasComoOperador  ParejaCda[] @relation("ParejaCdaOperador")
   parejasComoAsistente ParejaCda[] @relation("ParejaCdaAsistente")
+  practicasDigitacion  PracticaDigitacionPersona[]
+  intentosDigitacion   IntentoDigitacion[]
 
   @@index([grupo, activo])
   @@map("operadores_cda")
@@ -982,4 +985,111 @@ model ParejaCda {
   @@unique([fecha, asistenteCdaId], map: "uq_parejas_cda_fecha_asistente")
   @@index([fecha, recintoId], map: "idx_parejas_cda_fecha_recinto")
   @@map("parejas_cda")
+}
+
+// ---- Simulador de digitación de actas (práctica tipo SIER) ----
+
+/// Práctica: a quién aplica, cómo son sus actas, la meta y el tiempo.
+model PracticaDigitacion {
+  id                  String   @id @default(uuid()) @db.Uuid
+  nombre              String   @db.VarChar(120)
+  filasPorActa        Int      @map("filas_por_acta")
+  votoMin             Int      @map("voto_min")
+  votoMax             Int      @map("voto_max")
+  metaActas           Int      @map("meta_actas")
+  plazoMinutos        Int      @map("plazo_minutos")
+  /// Ventana para EMPEZAR un intento; el plazo corre desde que empieza.
+  inicio              DateTime @db.Timestamptz(6)
+  fin                 DateTime @db.Timestamptz(6)
+  pctDigitosDistintos Int      @default(0) @map("pct_digitos_distintos")
+  intentosMax         Int      @default(1) @map("intentos_max")
+  activa              Boolean  @default(true)
+  creadoEn            DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn       DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  cargos   PracticaDigitacionCargo[]
+  personas PracticaDigitacionPersona[]
+  intentos IntentoDigitacion[]
+
+  @@map("practicas_digitacion")
+}
+
+model PracticaDigitacionCargo {
+  practicaId String             @map("practica_id") @db.Uuid
+  practica   PracticaDigitacion @relation(fields: [practicaId], references: [id], onDelete: Cascade)
+  cargo      String             @db.VarChar(40)
+  cargoCda   CargoCda           @relation(fields: [cargo], references: [clave], onUpdate: Cascade, onDelete: Restrict)
+
+  @@id([practicaId, cargo])
+  @@map("practica_digitacion_cargos")
+}
+
+/// Excepciones a los cargos: incluida = true la agrega, false la quita.
+model PracticaDigitacionPersona {
+  practicaId String             @map("practica_id") @db.Uuid
+  practica   PracticaDigitacion @relation(fields: [practicaId], references: [id], onDelete: Cascade)
+  operadorId String             @map("operador_id") @db.Uuid
+  operador   OperadorCda        @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  incluida   Boolean
+
+  @@id([practicaId, operadorId])
+  @@index([operadorId])
+  @@map("practica_digitacion_personas")
+}
+
+model IntentoDigitacion {
+  id               String             @id @default(uuid()) @db.Uuid
+  practicaId       String             @map("practica_id") @db.Uuid
+  practica         PracticaDigitacion @relation(fields: [practicaId], references: [id], onDelete: Restrict)
+  operadorId       String             @map("operador_id") @db.Uuid
+  operador         OperadorCda        @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+  numero           Int
+  /// Cargo al empezar (el reporte no cambia si después la cambian de cargo).
+  cargo            String             @db.VarChar(80)
+  /// sha256 del token de la sesión; se rota cada vez que se retoma.
+  tokenHash        String             @unique @map("token_hash") @db.VarChar(64)
+  iniciadoEn       DateTime           @default(now()) @map("iniciado_en") @db.Timestamptz(6)
+  venceEn          DateTime           @map("vence_en") @db.Timestamptz(6)
+  terminadoEn      DateTime?          @map("terminado_en") @db.Timestamptz(6)
+  /// Último uso de la sesión: mientras sea reciente, nadie más puede retomar el intento.
+  ultimaActividadEn DateTime          @default(now()) @map("ultima_actividad_en") @db.Timestamptz(6)
+  actasCompletadas Int                @default(0) @map("actas_completadas")
+  actasPerfectas   Int                @default(0) @map("actas_perfectas")
+  filasFallidas    Int                @default(0) @map("filas_fallidas")
+
+  actas ActaDigitacion[]
+
+  @@unique([practicaId, operadorId, numero])
+  @@index([operadorId])
+  @@map("intentos_digitacion")
+}
+
+/// Acta generada por el servidor. "valores" es lo correcto (lo que dicen las letras).
+model ActaDigitacion {
+  id             String            @id @default(uuid()) @db.Uuid
+  intentoId      String            @map("intento_id") @db.Uuid
+  intento        IntentoDigitacion @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+  numero         Int
+  valores        Int[]
+  /// Lo que muestran los casilleros de dígitos (puede diferir a propósito).
+  digitos        Int[]
+  /// Lo que digitó la primera vez que guardó (-1 = casilla vacía). Es lo que se califica.
+  primerGuardado Int[]             @map("primer_guardado")
+  filasFallidas  Int?              @map("filas_fallidas")
+  guardados      Int               @default(0)
+  entregadaEn    DateTime          @default(now()) @map("entregada_en") @db.Timestamptz(6)
+  completadaEn   DateTime?         @map("completada_en") @db.Timestamptz(6)
+
+  @@unique([intentoId, numero])
+  @@map("actas_digitacion")
+}
+
+/// Catálogo de novedades del SIER (se califican en una fase posterior).
+model NovedadDigitacion {
+  id     String  @id @default(uuid()) @db.Uuid
+  nombre String  @unique @db.VarChar(120)
+  activa Boolean @default(true)
+  orden  Int
+
+  @@map("novedades_digitacion")
 }

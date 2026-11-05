@@ -14,6 +14,7 @@ import { IncidenciasController } from '../incidencias/incidencias.controller';
 import { AlertasController } from '../alertas/alertas.controller';
 import { OperadoresCdaController } from '../operadores-cda/operadores-cda.controller';
 import { CustodiaController } from '../custodia/custodia.controller';
+import { SimuladorController } from '../simulador/simulador.controller';
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
 const rolesDe = (controlador: any, metodo: string) =>
@@ -35,6 +36,7 @@ const ENDPOINT: Record<ModuloWebId, [controlador: unknown, metodo: string] | nul
   incidencias: [IncidenciasController, 'list'],
   alertas: [AlertasController, 'list'],
   'operadores-cda': [OperadoresCdaController, 'list'],
+  'simulador-digitacion': [SimuladorController, 'listar'],
   'cadena-custodia': [CustodiaController, 'informe'],
   reportes: [TrackingController, 'reporteNoCda'],
   // Power BI controla su propio acceso: no consume el API.
