@@ -1763,13 +1763,37 @@ export interface PracticaDigitacion {
   activa: boolean;
   /** Claves de cargos_cda habilitados. */
   cargos: string[];
-  /** Personas agregadas aunque su cargo no esté habilitado. */
-  incluir: string[];
-  /** Personas quitadas aunque su cargo esté habilitado. */
-  excluir: string[];
+  /** Excepciones: incluida = agregada aunque su cargo no esté; si no, quitada. */
+  personas: PersonaPracticaDigitacion[];
+  /** Personas activas a las que aplica hoy (cargos + agregadas − quitadas). */
+  alcance: number;
   /** Con intentos, ya no cambian filas, rango, meta, plazo ni % de dígitos distintos. */
   intentos: number;
   creadoEn: string;
+}
+
+/** Persona del personal CDA/CPE, para elegirla en una práctica. */
+export interface PersonaSimulador {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  /** Clave del cargo (cargos_cda). */
+  grupo: string;
+  /** Nombre visible del cargo. */
+  cargo: string;
+  activo: boolean;
+}
+
+export interface PersonaPracticaDigitacion extends PersonaSimulador {
+  incluida: boolean;
+}
+
+export interface CargoSimulador {
+  clave: string;
+  nombre: string;
+  centro: string;
+  /** Personas activas con ese cargo. */
+  personas: number;
 }
 
 export interface NovedadDigitacion {

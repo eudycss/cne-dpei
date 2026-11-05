@@ -13,6 +13,7 @@ import {
   PackageCheck,
   IdCard,
   SlidersHorizontal,
+  Keyboard,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -43,6 +44,7 @@ export function Layout() {
   const pasosVisibles = PASOS_PREPARACION.filter((p) => puedeVer(p.modulo));
   const verPreparacion = puedeVer('inicio') || pasosVisibles.length > 0;
   const verOperacion = puedeVer('monitoreo') || puedeVer('incidencias') || puedeVer('alertas');
+  const verPersonal = puedeVer('operadores-cda') || puedeVer('simulador-digitacion');
   const verInformes = puedeVer('cadena-custodia') || puedeVer('reportes') || puedeVer('powerbi-cdas');
 
   return (
@@ -92,12 +94,20 @@ export function Layout() {
                 )}
               </SeccionMenu>
             )}
-            {puedeVer('operadores-cda') && (
+            {verPersonal && (
               <SeccionMenu id="menu-personal" titulo="Personal">
-                <NavLink to="/operadores-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
-                  <IdCard size={16} aria-hidden="true" />
-                  <span>CDA y CPE</span>
-                </NavLink>
+                {puedeVer('operadores-cda') && (
+                  <NavLink to="/operadores-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <IdCard size={16} aria-hidden="true" />
+                    <span>CDA y CPE</span>
+                  </NavLink>
+                )}
+                {puedeVer('simulador-digitacion') && (
+                  <NavLink to="/simulador-digitacion" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <Keyboard size={16} aria-hidden="true" />
+                    <span>Simulador de digitación</span>
+                  </NavLink>
+                )}
               </SeccionMenu>
             )}
             {verInformes && (

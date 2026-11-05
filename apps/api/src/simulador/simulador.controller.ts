@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -40,6 +40,19 @@ export class SimuladorController {
   @ApiOperation({ summary: 'Prácticas de digitación (también las desactivadas)' })
   listar() {
     return this.practicas.listar();
+  }
+
+  @Get('cargos')
+  @ApiOperation({ summary: 'Cargos activos del personal CDA/CPE, con cuántas personas tienen' })
+  listarCargos() {
+    return this.practicas.listarCargos();
+  }
+
+  @Get('personas')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Busca personal activo por nombre o cédula (máx. 20) para agregar o quitar' })
+  buscarPersonas(@Query('q') q: unknown) {
+    return this.practicas.buscarPersonas(typeof q === 'string' ? q : '');
   }
 
   @Get('practicas/:id')

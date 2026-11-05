@@ -25,6 +25,15 @@ const INPUT: PracticaDigitacionInput = {
   excluir: [P2],
 };
 
+const persona = (id: string, apellidosNombres: string, grupo: string) => ({
+  id,
+  apellidosNombres,
+  cedula: '1710034065',
+  grupo,
+  activo: true,
+  cargoCda: { nombre: grupo === 'DIGITADOR' ? 'Digitadores' : 'Operadores CDA' },
+});
+
 const fila = (intentos = 0, o: Record<string, unknown> = {}) => ({
   id: ID,
   ...INPUT,
@@ -35,8 +44,8 @@ const fila = (intentos = 0, o: Record<string, unknown> = {}) => ({
   actualizadoEn: new Date('2026-11-05T12:00:00Z'),
   cargos: [{ cargo: 'DIGITADOR' }],
   personas: [
-    { operadorId: P1, incluida: true },
-    { operadorId: P2, incluida: false },
+    { incluida: true, operador: persona(P1, 'ANA PÉREZ', 'OPERADOR') },
+    { incluida: false, operador: persona(P2, 'LUIS MORA', 'DIGITADOR') },
   ],
   _count: { intentos },
   ...o,
@@ -49,6 +58,8 @@ describe('PracticasDigitacionService', () => {
     practicaDigitacion: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     practicaDigitacionCargo: { createMany: jest.fn(), deleteMany: jest.fn() },
     practicaDigitacionPersona: { createMany: jest.fn(), deleteMany: jest.fn() },
+    operadorCda: { count: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
+    cargoCda: { findMany: jest.fn() },
     novedadDigitacion: { findMany: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
@@ -62,9 +73,42 @@ describe('PracticasDigitacionService', () => {
     service = new PracticasDigitacionService(prisma as unknown as PrismaService);
   });
 
-  it('obtener: separa personas agregadas y quitadas', async () => {
+  it('obtener: personas con nombre y cargo, y a cuántas aplica', async () => {
+    prisma.operadorCda.count.mockResolvedValue(41);
     const p = await service.obtener(ID);
-    expect(p).toMatchObject({ id: ID, cargos: ['DIGITADOR'], incluir: [P1], excluir: [P2], intentos: 0, inicio: INPUT.inicio });
+    expect(p).toMatchObject({ id: ID, cargos: ['DIGITADOR'], intentos: 0, inicio: INPUT.inicio, alcance: 41 });
+    expect(p.personas).toEqual([
+      { id: P1, apellidosNombres: 'ANA PÉREZ', cedula: '1710034065', grupo: 'OPERADOR', cargo: 'Operadores CDA', activo: true, incluida: true },
+      { id: P2, apellidosNombres: 'LUIS MORA', cedula: '1710034065', grupo: 'DIGITADOR', cargo: 'Digitadores', activo: true, incluida: false },
+    ]);
+    // Alcance: activos de los cargos sin los quitados, más los agregados.
+    expect(prisma.operadorCda.count).toHaveBeenCalledWith({
+      where: { activo: true, OR: [{ grupo: { in: ['DIGITADOR'] }, id: { notIn: [P2] } }, { id: { in: [P1] } }] },
+    });
+  });
+
+  it.each(['', '  ', 'a', ' 1 '])('buscarPersonas con menos de 2 caracteres (%p) no lista a nadie', async (q) => {
+    await expect(service.buscarPersonas(q)).resolves.toEqual([]);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.operadorCda.findMany).not.toHaveBeenCalled();
+  });
+
+  it('buscarPersonas: activos que coinciden, máximo 20', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: P1 }]);
+    prisma.operadorCda.findMany.mockResolvedValue([persona(P1, 'ANA PÉREZ', 'OPERADOR')]);
+    const r = await service.buscarPersonas('ana');
+    expect(r).toEqual([{ id: P1, apellidosNombres: 'ANA PÉREZ', cedula: '1710034065', grupo: 'OPERADOR', cargo: 'Operadores CDA', activo: true }]);
+    expect(prisma.operadorCda.findMany.mock.calls[0][0]).toMatchObject({ where: { activo: true, id: { in: [P1] } }, take: 20 });
+  });
+
+  it('listarCargos: solo activos, con su personal activo', async () => {
+    prisma.cargoCda.findMany.mockResolvedValue([{ clave: 'DIGITADOR', nombre: 'Digitadores', centro: 'CPE' }, { clave: 'X', nombre: 'X', centro: 'CDA' }]);
+    prisma.operadorCda.groupBy.mockResolvedValue([{ grupo: 'DIGITADOR', _count: { _all: 30 } }]);
+    await expect(service.listarCargos()).resolves.toEqual([
+      { clave: 'DIGITADOR', nombre: 'Digitadores', centro: 'CPE', personas: 30 },
+      { clave: 'X', nombre: 'X', centro: 'CDA', personas: 0 },
+    ]);
+    expect(prisma.cargoCda.findMany.mock.calls[0][0].where).toEqual({ activo: true });
   });
 
   it('obtener inexistente: 404', async () => {

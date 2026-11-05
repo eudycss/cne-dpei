@@ -24,6 +24,7 @@ import { CadenaCustodiaPage } from './pages/reportes/CadenaCustodiaPage';
 import { Inicio } from './pages/Inicio';
 import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
 import { PermisosModulosPage } from './pages/permisos-modulos/PermisosModulosPage';
+import { SimuladorPage } from './pages/simulador/SimuladorPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -152,6 +153,15 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']} modulo="operadores-cda">
               <OperadoresCdaPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Simulador de digitación: de fábrica solo Administrador; se activa a otros roles por módulo */}
+        <Route
+          path="/simulador-digitacion"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']} modulo="simulador-digitacion">
+              <SimuladorPage />
             </ProtectedRoute>
           }
         />

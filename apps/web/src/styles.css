@@ -976,3 +976,26 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 /* Acciones de una fila de Parejas: "Pasar a reserva" y "Quitar" sin pegarse en pantallas angostas. */
 .ocda-acciones-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 .ocda-acciones-fila .ocda-btn-texto.peligro { margin-left: 0; }
+
+/* ---- Simulador de digitación (administración) ---- */
+.sim-barra { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.sim-subtitulo { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.sim-detalle { font-size: 0.75rem; font-weight: 400; margin-top: 0.15rem; }
+.sim-nota { margin: 0; font-size: 0.8rem; }
+.sim-cargos, .sim-personas { display: flex; flex-direction: column; gap: 0.6rem; }
+.sim-cargos-lista { display: grid; gap: 0.4rem 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.sim-check { display: flex; align-items: center; gap: 0.55rem; min-height: 44px; font-size: 0.85rem; cursor: pointer; }
+.sim-check input { width: 18px; height: 18px; accent-color: var(--f-cian); }
+.sim-check input:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.sim-resultados, .sim-excepciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.sim-resultados li, .sim-excepciones li {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  min-height: 44px; padding: 0.35rem 0.75rem; border: 1px solid var(--f-border-subtle); border-radius: 10px; font-size: 0.85rem;
+}
+.sim-excepciones li { justify-content: flex-start; }
+.sim-excepciones li > button { margin-left: auto; }
+.sim-agregar { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0; }
+.sim-agregar .ocda-form-campo { flex: 1; min-width: 240px; }
+.sim-inactiva { margin-left: 0.5rem; }
+.sim-cargos:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
+.sim-nota:empty { display: none; }

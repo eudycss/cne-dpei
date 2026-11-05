@@ -1,13 +1,26 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { NovedadDigitacion, PracticaDigitacion } from '@cne/shared-types';
+import type { CargoSimulador, NovedadDigitacion, PersonaSimulador, PracticaDigitacion } from '@cne/shared-types';
 import type { PracticaDigitacionInput } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
+import { idsPorBusqueda } from '../common/busqueda-sql';
+
+/** Igual que la web: con 1 letra saldría medio personal (nombre y cédula). */
+export const MIN_BUSQUEDA = 2;
+
+const PERSONA = {
+  select: { id: true, apellidosNombres: true, cedula: true, grupo: true, activo: true, cargoCda: { select: { nombre: true } } },
+};
+type FilaPersona = Prisma.OperadorCdaGetPayload<typeof PERSONA>;
+
+export function aPersona(p: FilaPersona): PersonaSimulador {
+  return { id: p.id, apellidosNombres: p.apellidosNombres, cedula: p.cedula, grupo: p.grupo, cargo: p.cargoCda.nombre, activo: p.activo };
+}
 
 const INCLUIR = {
   cargos: { select: { cargo: true }, orderBy: { cargo: 'asc' as const } },
-  personas: { select: { operadorId: true, incluida: true } },
+  personas: { select: { incluida: true, operador: PERSONA }, orderBy: { operador: { apellidosNombres: 'asc' as const } } },
   _count: { select: { intentos: true } },
 };
 
@@ -16,7 +29,7 @@ type FilaPractica = Prisma.PracticaDigitacionGetPayload<{ include: typeof INCLUI
 /** Campos que definen cómo se califica: con intentos ya hechos no se tocan. */
 const CAMPOS_FIJOS_CON_INTENTOS = ['filasPorActa', 'votoMin', 'votoMax', 'metaActas', 'plazoMinutos', 'pctDigitosDistintos'] as const;
 
-export function aPractica(f: FilaPractica): PracticaDigitacion {
+export function aPractica(f: FilaPractica, alcance: number): PracticaDigitacion {
   return {
     id: f.id,
     nombre: f.nombre,
@@ -31,8 +44,8 @@ export function aPractica(f: FilaPractica): PracticaDigitacion {
     intentosMax: f.intentosMax,
     activa: f.activa,
     cargos: f.cargos.map((c) => c.cargo),
-    incluir: f.personas.filter((p) => p.incluida).map((p) => p.operadorId),
-    excluir: f.personas.filter((p) => !p.incluida).map((p) => p.operadorId),
+    personas: f.personas.map((p) => ({ ...aPersona(p.operador), incluida: p.incluida })),
+    alcance,
     intentos: f._count.intentos,
     creadoEn: f.creadoEn.toISOString(),
   };
@@ -79,13 +92,52 @@ export class PracticasDigitacionService {
 
   async listar(): Promise<PracticaDigitacion[]> {
     const filas = await this.prisma.practicaDigitacion.findMany({ include: INCLUIR, orderBy: { creadoEn: 'desc' } });
-    return filas.map(aPractica);
+    return Promise.all(filas.map(async (f) => aPractica(f, await this.alcance(f))));
   }
 
   async obtener(id: string): Promise<PracticaDigitacion> {
     const fila = await this.prisma.practicaDigitacion.findUnique({ where: { id }, include: INCLUIR });
     if (!fila) throw new NotFoundException('Práctica no encontrada');
-    return aPractica(fila);
+    return aPractica(fila, await this.alcance(fila));
+  }
+
+  /** Personal activo para elegir (máx. 20). Con menos de 2 caracteres no se lista a nadie. */
+  async buscarPersonas(q: string): Promise<PersonaSimulador[]> {
+    if (q.trim().length < MIN_BUSQUEDA) return [];
+    const ids = await idsPorBusqueda(this.prisma, Prisma.sql`operadores_cda t`, [Prisma.raw('t.apellidos_nombres'), Prisma.raw('t.cedula')], q, Prisma.sql`t.activo`);
+    if (!ids) return [];
+    const filas = await this.prisma.operadorCda.findMany({
+      where: { activo: true, id: { in: ids } },
+      orderBy: { apellidosNombres: 'asc' },
+      take: 20,
+      ...PERSONA,
+    });
+    return filas.map(aPersona);
+  }
+
+  /** Cargos activos (para habilitarlos en una práctica) con su personal activo. */
+  async listarCargos(): Promise<CargoSimulador[]> {
+    const [cargos, conteos] = await Promise.all([
+      this.prisma.cargoCda.findMany({ where: { activo: true }, orderBy: [{ orden: 'asc' }, { clave: 'asc' }] }),
+      this.prisma.operadorCda.groupBy({ by: ['grupo'], where: { activo: true }, _count: { _all: true } }),
+    ]);
+    const personas = new Map(conteos.map((c) => [c.grupo, c._count._all]));
+    return cargos.map((c) => ({ clave: c.clave, nombre: c.nombre, centro: c.centro, personas: personas.get(c.clave) ?? 0 }));
+  }
+
+  /** Personas activas a las que aplica: de los cargos sin las quitadas, más las agregadas. */
+  private alcance(f: FilaPractica): Promise<number> {
+    const quitadas = f.personas.filter((p) => !p.incluida).map((p) => p.operador.id);
+    const agregadas = f.personas.filter((p) => p.incluida).map((p) => p.operador.id);
+    return this.prisma.operadorCda.count({
+      where: {
+        activo: true,
+        OR: [
+          { grupo: { in: f.cargos.map((c) => c.cargo) }, id: { notIn: quitadas } },
+          { id: { in: agregadas } },
+        ],
+      },
+    });
   }
 
   async crear(input: PracticaDigitacionInput): Promise<PracticaDigitacion> {

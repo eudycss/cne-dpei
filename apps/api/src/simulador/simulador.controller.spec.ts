@@ -26,6 +26,21 @@ describe('SimuladorController (administración)', () => {
   });
 });
 
+describe('SimuladorController.buscarPersonas', () => {
+  it('?q como arreglo se trata como vacío', async () => {
+    const practicas = { buscarPersonas: jest.fn().mockResolvedValue([]) };
+    const ctrl = new SimuladorController(practicas as never);
+    await ctrl.buscarPersonas(['a', 'b']);
+    expect(practicas.buscarPersonas).toHaveBeenCalledWith('');
+  });
+
+  it('tiene límite por IP', () => {
+    const fn = metodo(SimuladorController.prototype, 'buscarPersonas');
+    const clave = Reflect.getMetadataKeys(fn).find((k) => String(k).includes('LIMIT') && String(k).includes('default'));
+    expect(Reflect.getMetadata(clave, fn)).toBe(120);
+  });
+});
+
 describe('SimuladorPublicoController', () => {
   it('es público (sin sesión)', () => {
     expect(new Reflector().get(IS_PUBLIC_KEY, SimuladorPublicoController)).toBe(true);
