@@ -10,6 +10,7 @@ import {
   leerCallbackFichaCda,
   leerCallbackJornada,
   paginasDetalleJornada,
+  tecladoFichaCda,
   tecladoFijoJornada,
   tecladoJornada,
   telefonoTelegram,
@@ -56,6 +57,7 @@ function noCda(codigo: string, cda: string, extra: Partial<NoCdaJornada> = {}): 
     canton: IBARRA,
     personas: [{ nombre: `OP ${cda}`, telefono: null, rol: 'Op.' }],
     visita: null,
+    cdaConKit: true,
     ...extra,
   };
 }
@@ -369,6 +371,83 @@ describe('Jornada (Telegram)', () => {
       const filas = tecladoJornada(j, 'SALIDA_DPI').inline_keyboard;
       expect(filas[0]).toHaveLength(3);
       expect(filas[1]).toHaveLength(2);
+    });
+  });
+
+  describe('NO CDA por CDA', () => {
+    const visita = { en: A_LAS('10:15'), sinSenal: false };
+    const conNoCda = () =>
+      jornada({
+        noCdas: [
+          noCda('3000', '1290', { visita }),
+          noCda('542', '1133', { visita, nombreCda: 'UE Manuel J. Calle' }),
+          noCda('5968', '1133', { nombreCda: 'UE Manuel J. Calle' }),
+          noCda('7000', '800', { cdaConKit: false }),
+          noCda('7001', '800', { cdaConKit: false }),
+        ],
+      });
+
+    it('los NO CDA de un CDA sin kit no cuentan y se avisan aparte', () => {
+      const e = estadoVista(conNoCda(), 'NO_CDA');
+      expect(e.faltan.map((i) => i.codigoRecinto)).toEqual(['5968']);
+      expect(e.cumplidos).toHaveLength(2);
+      const texto = formatearResumenJornada(conNoCda(), 'NO_CDA', AHORA);
+      expect(texto).toContain('<b>2 de 3</b> · faltan 1');
+      expect(texto).toContain('🏫 1 de 2 CDA con todos sus NO CDA reportados');
+      expect(texto).toContain('⚪ 2 NO CDA de CDA sin kit (no cuentan)');
+    });
+
+    it('el resumen por CDA lista cada CDA con su avance, primero los incompletos', () => {
+      const texto = formatearResumenJornada(conNoCda(), 'NO_CDA', AHORA, 'cda');
+      expect(texto).toContain('🏫 Visitas a los NO CDA · por CDA');
+      expect(texto).toContain('⏳ <b>1133</b> · UE Manuel J. Calle — 1/2\n✅ <b>1290</b> · Recinto 1290 — 1/1');
+      expect(texto).not.toContain('800');
+      expect(texto).toContain('⚪ 2 NO CDA de CDA sin kit (no cuentan)');
+    });
+
+    it('por CDA cada botón abre la ficha del CDA, de 2 en 2, y se puede cambiar de agrupación', () => {
+      const filas = tecladoJornada(conNoCda(), 'NO_CDA', 'res', 0, 1, 'cda').inline_keyboard;
+      expect(filas[0]).toEqual([
+        { text: '1133 UE Manuel J. Call · 1', callback_data: 'jor:cda:1133' },
+        { text: '1290 Recinto 1290 · ✅', callback_data: 'jor:cda:1290' },
+      ]);
+      expect(filas.flat().map((b) => b.text)).toEqual(expect.arrayContaining(['↻ Actualizar', 'Ver todos los que faltan', '• 🏫 Por CDA •']));
+      expect(filas.flat().find((b) => b.text === '↻ Actualizar')?.callback_data).toBe('jor:nc:d:res:0');
+      // Las demás vistas no ofrecen "Por CDA".
+      expect(tecladoJornada(conNoCda(), 'SALIDA_DPI').inline_keyboard.flat().map((b) => b.text)).not.toContain('🏫 Por CDA');
+    });
+
+    it('el callback por CDA solo vale en NO CDA y sin grupos', () => {
+      expect(leerCallbackJornada('jor:nc:d:res:0')).toEqual({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'res', pagina: 0 });
+      expect(leerCallbackJornada('jor:nc:d:tod:1')).toEqual({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'tod', pagina: 1 });
+      expect(leerCallbackJornada('jor:nc:d:3:0')).toEqual({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'res', pagina: 0 });
+      expect(leerCallbackJornada('jor:nc:d:sin:0')).toEqual({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'res', pagina: 0 });
+      expect(leerCallbackJornada('jor:sd:d:3:0')).toEqual({ vista: 'SALIDA_DPI', agrupacion: 'tec', seleccion: 3, pagina: 0 });
+    });
+
+    it('por CDA escapa los nombres y no pasa de 90 botones de CDA', () => {
+      const j = jornada({ noCdas: [noCda('1', '9', { nombreCda: 'UE <A&B>' })] });
+      expect(formatearResumenJornada(j, 'NO_CDA', AHORA, 'cda')).toContain('<b>9</b> · UE &lt;A&amp;B&gt; — 0/1');
+      const muchos = jornada({ noCdas: Array.from({ length: 120 }, (_, i) => noCda(String(5000 + i), String(100 + i))) });
+      const botones = tecladoJornada(muchos, 'NO_CDA', 'res', 0, 1, 'cda').inline_keyboard.flat();
+      expect(botones.filter((b) => b.callback_data.startsWith('jor:cda:'))).toHaveLength(90);
+      expect(botones.length).toBeLessThanOrEqual(100);
+      expect(formatearResumenJornada(muchos, 'NO_CDA', AHORA, 'cda').length).toBeLessThanOrEqual(3800);
+    });
+
+    it('si ningún NO CDA cuenta lo dice, y sus técnicos no aparecen como grupo', () => {
+      const j = jornada({ noCdas: [noCda('7000', '800', { cdaConKit: false, tecnico: { numero: 9, nombre: 'Solo NC' } })] });
+      const texto = formatearResumenJornada(j, 'NO_CDA', AHORA, 'cda');
+      expect(texto).toContain('No hay recintos NO CDA de un CDA con kit en este evento.');
+      expect(texto).toContain('⚪ 1 NO CDA de CDA sin kit (no cuentan)');
+      expect(gruposDe(j, 'tec').map((g) => g.nombre)).not.toContain('Solo NC');
+    });
+
+    it('la ficha de un CDA con NO CDA ofrece volver al resumen por CDA', () => {
+      const j = conNoCda();
+      expect(tecladoFichaCda(j, '1133').inline_keyboard[0].map((b) => b.callback_data)).toEqual(['jor:cda:1133', 'jor:nc:d:res:0']);
+      expect(tecladoFichaCda(j, '971').inline_keyboard[0]).toHaveLength(1);
+      expect(tecladoFichaCda(j, '800').inline_keyboard[0]).toHaveLength(1);
     });
   });
 
