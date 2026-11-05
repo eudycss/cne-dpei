@@ -131,6 +131,17 @@ export class KitsController {
     return this.kits.desasignar(id, body);
   }
 
+  @Post(':id/codigo-nuevo')
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generar un QR nuevo para el kit (el impreso deja de valer)' })
+  regenerarCodigo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(desasignarKitSchema)) body: DesasignarKitRequest,
+  ) {
+    return this.kits.regenerarCodigo(id, body);
+  }
+
   @Post('pdf-qr')
   @Roles('ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)

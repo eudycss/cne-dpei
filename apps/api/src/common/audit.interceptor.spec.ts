@@ -160,6 +160,22 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('generar un QR nuevo para un kit queda en la bitácora con su justificación', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: `/kits/${OTRO}/codigo-nuevo`,
+      params: { id: OTRO },
+      body: { justificacion: 'Etiqueta dañada' },
+      user: ADMIN,
+    }, { id: OTRO, codigoUnico: 'NUEVO222', codigoAnterior: 'P2ZCERV4', otrosEventos: 1 });
+    expect(data).toMatchObject({
+      accion: 'KIT_CODIGO_NUEVO',
+      entidad: 'kit',
+      entidadId: OTRO,
+      datosDespues: { codigoAnterior: 'P2ZCERV4', codigoNuevo: 'NUEVO222', otrosEventos: 1, justificacion: 'Etiqueta dañada' },
+    });
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',

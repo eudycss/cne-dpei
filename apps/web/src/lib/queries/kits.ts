@@ -17,6 +17,8 @@ export const asignarKit = (id: string, body: AsignarKitRequest) =>
   api.patch<Kit>(`/kits/${id}/asignar`, body);
 export const desasignarKit = (id: string, body?: { justificacion?: string }) =>
   api.patch<Kit>(`/kits/${id}/desasignar`, body ?? {});
+export const regenerarCodigoKit = (id: string, justificacion?: string) =>
+  api.post<Kit>(`/kits/${id}/codigo-nuevo`, justificacion ? { justificacion } : {});
 export const bulkUploadKits = (eventoId: string, file: File) => {
   const fd = new FormData();
   fd.append('file', file);
