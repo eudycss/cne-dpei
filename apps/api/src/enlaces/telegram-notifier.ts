@@ -674,8 +674,39 @@ export class TelegramNotifier {
   }
 
   /** Quita el "cargando" del botón en el cliente de quien lo tocó. */
-  async responderBoton(callbackQueryId: string): Promise<void> {
-    await this.llamar('answerCallbackQuery', { callback_query_id: callbackQueryId }, 'la respuesta al botón', false);
+  async responderBoton(callbackQueryId: string, aviso?: string): Promise<void> {
+    await this.llamar(
+      'answerCallbackQuery',
+      { callback_query_id: callbackQueryId, ...(aviso ? { text: aviso, show_alert: true } : {}) },
+      'la respuesta al botón',
+      false,
+    );
+  }
+
+  /**
+   * true si la persona es creadora o administradora del chat de destino (el
+   * configurado o el de `responderEn`). Ante cualquier error, false: un cambio
+   * de configuración nunca se permite sin confirmar quién es.
+   */
+  async esAdministrador(userId: number | string): Promise<boolean> {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = this.destino.getStore() ?? process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return false;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getChatMember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, user_id: userId }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) return false;
+      const { result } = (await res.json()) as { result?: { status?: string } };
+      return result?.status === 'creator' || result?.status === 'administrator';
+    } catch (e) {
+      // Solo el nombre: el texto completo del error podría traer la URL, que lleva el token.
+      this.log.warn(`No se pudo consultar si es administrador del grupo: ${(e as Error)?.name ?? 'error'}`);
+      return false;
+    }
   }
 
   /** Mensaje de texto libre (prompt del flujo de "ingresar código" o el resultado

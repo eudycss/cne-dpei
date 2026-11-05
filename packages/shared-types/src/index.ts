@@ -956,6 +956,12 @@ export interface ConfigEnlacesResponse {
   minutosPrimerAviso: number;
   /** Minutos entre un aviso y el siguiente mientras siga caído. */
   minutosRepetirAviso: number;
+  /** Cada cuánto manda el bot el resumen automático del grupo Jornada. */
+  minutosResumenJornada: number;
+}
+
+export interface ResumenJornadaRequest {
+  minutosResumenJornada: number;
 }
 
 export interface AvisosEnlacesRequest {

@@ -277,6 +277,55 @@ describe('TelegramNotifier', () => {
     delete process.env.TELEGRAM_CHAT_ID;
   });
 
+  describe('esAdministrador y responderBoton', () => {
+    const conFetch = (respuesta: unknown) => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+      global.fetch = jest.fn().mockResolvedValue(respuesta);
+    };
+
+    it.each([
+      ['creator', true],
+      ['administrator', true],
+      ['member', false],
+      ['left', false],
+    ])('estado "%s" en el chat de responderEn → %s', async (status, esperado) => {
+      conFetch({ ok: true, json: () => Promise.resolve({ ok: true, result: { status } }) });
+      const notifier = new TelegramNotifier();
+
+      await expect(notifier.responderEn('-100777', () => notifier.esAdministrador(111))).resolves.toBe(esperado);
+
+      const [url, opts] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/getChatMember');
+      expect(JSON.parse(opts.body)).toEqual({ chat_id: '-100777', user_id: 111 });
+    });
+
+    it('si Telegram falla o no responde, no es administrador', async () => {
+      conFetch({ ok: false, status: 400 });
+      const notifier = new TelegramNotifier();
+      await expect(notifier.esAdministrador(111)).resolves.toBe(false);
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('timeout'));
+      await expect(notifier.esAdministrador(111)).resolves.toBe(false);
+    });
+
+    it('sin token no consulta y no es administrador', async () => {
+      global.fetch = jest.fn();
+      await expect(new TelegramNotifier().esAdministrador(111)).resolves.toBe(false);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('responderBoton con aviso lo muestra como alerta', async () => {
+      conFetch({ ok: true });
+      await new TelegramNotifier().responderBoton('cb1', 'Solo administradores');
+      expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
+        callback_query_id: 'cb1',
+        text: 'Solo administradores',
+        show_alert: true,
+      });
+    });
+  });
+
   describe('editarHtml', () => {
     it('edita ese mensaje con el texto en HTML y sus botones, en el chat de responderEn', async () => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';

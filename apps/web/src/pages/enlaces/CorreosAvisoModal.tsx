@@ -8,6 +8,7 @@ import {
   removeCorreoEnlace,
 } from '../../lib/queries/enlaces';
 import { FrecuenciaAvisosTelegram } from './FrecuenciaAvisosTelegram';
+import { FrecuenciaResumenJornada } from './FrecuenciaResumenJornada';
 
 interface Props {
   onClose: () => void;
@@ -88,6 +89,7 @@ export function CorreosAvisoModal({ onClose }: Props) {
       >
         <h1 id="correos-aviso-titulo">Avisos de enlaces caídos</h1>
         <FrecuenciaAvisosTelegram config={config} />
+        <FrecuenciaResumenJornada config={config} />
         <h2 style={{ fontSize: '1rem', margin: '0 0 0.5rem' }}>Correos que reciben el aviso de enlace caído</h2>
         <ul style={{ paddingLeft: '1.1rem' }}>
           {(config?.correos ?? []).map((correo) => (

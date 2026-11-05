@@ -6,7 +6,9 @@ import type {
   ConfigEnlacesResponse,
   EnlaceRecinto,
   PeriodoEstadisticasEnlaces,
+  ResumenJornadaRequest,
 } from '@cne/shared-types';
+import { MINUTOS_RESUMEN_JORNADA_POR_DEFECTO } from '@cne/shared-validation';
 import { PrismaService } from '../db/prisma.service';
 import { escapeHtml, resolveNotifier, type EnlaceCaido } from '../auth/notifier';
 import { SheetsEnlacesClient, type SheetEnlaceRow } from './sheets-enlaces.client';
@@ -63,6 +65,8 @@ export interface TelegramUpdate {
     id: string;
     data?: string;
     message?: { message_id: number; chat?: { id: number | string } };
+    /** Quien tocó el botón. */
+    from?: { id: number | string };
   };
 }
 
@@ -477,6 +481,12 @@ export class EnlacesService {
     return respuestaConfig(saved);
   }
 
+  /** Cada cuánto manda el bot el resumen automático del grupo Jornada; aplica en el siguiente minuto. */
+  async guardarResumenJornada({ minutosResumenJornada }: ResumenJornadaRequest): Promise<ConfigEnlacesResponse> {
+    await this.jornada.guardarMinutosResumen(minutosResumenJornada);
+    return this.getConfig();
+  }
+
   async addCorreo(correo: string): Promise<ConfigEnlacesResponse> {
     const normalizado = correo.trim().toLowerCase();
     const actual = await this.getConfig();
@@ -617,7 +627,7 @@ export class EnlacesService {
     if (update.callback_query) {
       const boton = update.callback_query;
       // Los botones del grupo Jornada los atiende JornadaService; el resto, el bot de enlaces.
-      if (await this.jornada.atenderBoton(boton.message?.chat?.id, boton.id, boton.data, boton.message?.message_id)) return;
+      if (await this.jornada.atenderBoton(boton.message?.chat?.id, boton.id, boton.data, boton.message?.message_id, boton.from?.id)) return;
       await this.procesarBotonTelegram(boton);
       return;
     }
@@ -994,11 +1004,12 @@ export class EnlacesService {
 }
 
 function respuestaConfig(
-  config: { correos: string[]; minutosPrimerAviso: number; minutosRepetirAviso: number } | null,
+  config: { correos: string[]; minutosPrimerAviso: number; minutosRepetirAviso: number; minutosResumenJornada: number } | null,
 ): ConfigEnlacesResponse {
   return {
     correos: config?.correos ?? [],
     minutosPrimerAviso: config?.minutosPrimerAviso ?? MINUTOS_AVISO_POR_DEFECTO,
     minutosRepetirAviso: config?.minutosRepetirAviso ?? MINUTOS_AVISO_POR_DEFECTO,
+    minutosResumenJornada: config?.minutosResumenJornada ?? MINUTOS_RESUMEN_JORNADA_POR_DEFECTO,
   };
 }

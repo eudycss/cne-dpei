@@ -4,6 +4,7 @@ import type {
   EnlaceRecinto,
   EstadisticasEnlacesResponse,
   PeriodoEstadisticasEnlaces,
+  ResumenJornadaRequest,
 } from '@cne/shared-types';
 import { api } from '../api';
 
@@ -29,6 +30,11 @@ export async function removeCorreoEnlace(correo: string): Promise<ConfigEnlacesR
 
 export async function guardarAvisosEnlaces(avisos: AvisosEnlacesRequest): Promise<ConfigEnlacesResponse> {
   const { data } = await api.put<ConfigEnlacesResponse>('/enlaces/config/avisos', avisos);
+  return data;
+}
+
+export async function guardarResumenJornada(resumen: ResumenJornadaRequest): Promise<ConfigEnlacesResponse> {
+  const { data } = await api.put<ConfigEnlacesResponse>('/enlaces/config/resumen-jornada', resumen);
   return data;
 }
 

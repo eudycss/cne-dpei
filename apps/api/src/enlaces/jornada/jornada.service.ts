@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MINUTOS_RESUMEN_JORNADA_POR_DEFECTO } from '@cne/shared-validation';
 import { PrismaService } from '../../db/prisma.service';
 import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distributivo-tecnicos.client';
 import { escapeHtml } from '../../auth/notifier';
@@ -13,9 +14,12 @@ import {
   formatearResumenJornada,
   gruposDe,
   leerCallbackFichaCda,
+  leerCallbackFrecuencia,
   leerCallbackJornada,
+  mensajeFrecuencia,
   paginasDetalleJornada,
   tecladoFichaCda,
+  tecladoFrecuencia,
   tecladoFijoJornada,
   tecladoJornada,
   vistaDeTexto,
@@ -80,6 +84,14 @@ export function diaDeJornada(ahora: Date): { desde: Date; fecha: string } {
 /** Cuánto se reutiliza una carga: varios toques seguidos no repiten las consultas. */
 const CACHE_CARGA_MS = 5_000;
 
+/** Fila única de config_enlaces (la misma de la frecuencia de avisos de enlaces). */
+const CONFIG_ID = 1;
+
+/** "/frecuencia" (con o sin @bot): muestra cada cuánto llega el resumen automático. */
+function esComandoFrecuencia(texto: string): boolean {
+  return /^\/frecuencia(@\w+)?$/i.test(texto.trim());
+}
+
 /** "/jornada", "/start" o "/menu" (con o sin @bot): manda el teclado de la Jornada. */
 function esComandoMenu(texto: string): boolean {
   return /^\/(jornada|start|menu)(@\w+)?$/i.test(texto.trim());
@@ -114,6 +126,10 @@ export class JornadaService {
     if (comando !== null) {
       if (claveEspera) this.esperandoConsulta.delete(claveEspera);
       await this.telegram.responderEn(chat, () => this.conAvisoError(() => this.consultarCda(comando)));
+      return true;
+    }
+    if (esComandoFrecuencia(texto)) {
+      await this.telegram.responderEn(chat, () => this.conAvisoError(() => this.enviarFrecuencia()));
       return true;
     }
     if (esComandoMenu(texto)) {
@@ -236,7 +252,14 @@ export class JornadaService {
     callbackId: string,
     data: string | undefined,
     messageId: number | undefined,
+    userId?: number | string,
   ): Promise<boolean> {
+    const frecuencia = leerCallbackFrecuencia(data);
+    if (frecuencia) {
+      if (!esChatJornada(chatId)) return false;
+      await this.telegram.responderEn(String(chatId), () => this.atenderFrecuencia(callbackId, frecuencia.minutos, messageId, userId));
+      return true;
+    }
     const boton = leerCallbackJornada(data);
     const fichaCda = boton ? null : leerCallbackFichaCda(data);
     if ((!boton && !fichaCda) || !esChatJornada(chatId)) return false;
@@ -248,6 +271,59 @@ export class JornadaService {
       await this.conAvisoError(() => (boton ? this.mostrar(messageId, boton) : this.mostrarFicha(messageId, fichaCda!)));
     });
     return true;
+  }
+
+  /** Cada cuánto manda el bot el resumen automático (guardado desde la web o el bot). */
+  async minutosResumen(): Promise<number> {
+    const config = await this.prisma.configEnlaces.findUnique({
+      where: { id: CONFIG_ID },
+      select: { minutosResumenJornada: true },
+    });
+    return config?.minutosResumenJornada ?? MINUTOS_RESUMEN_JORNADA_POR_DEFECTO;
+  }
+
+  /** Quien llama valida que sea una de MINUTOS_RESUMEN_JORNADA. */
+  async guardarMinutosResumen(minutos: number): Promise<void> {
+    await this.prisma.configEnlaces.upsert({
+      where: { id: CONFIG_ID },
+      create: { id: CONFIG_ID, minutosResumenJornada: minutos },
+      update: { minutosResumenJornada: minutos },
+    });
+  }
+
+  private async enviarFrecuencia(): Promise<void> {
+    const minutos = await this.minutosResumen();
+    await this.telegram.enviarHtml(mensajeFrecuencia(minutos), 'la frecuencia del resumen', tecladoFrecuencia(minutos));
+  }
+
+  /**
+   * "⏱ Frecuencia del resumen" (sin minutos) manda las opciones; una opción la
+   * cambia, solo si quien toca es administrador del grupo.
+   */
+  private async atenderFrecuencia(
+    callbackId: string,
+    minutos: number | null,
+    messageId: number | undefined,
+    userId: number | string | undefined,
+  ): Promise<void> {
+    if (minutos === null) {
+      await this.telegram.responderBoton(callbackId);
+      await this.conAvisoError(() => this.enviarFrecuencia());
+      return;
+    }
+    // Sin remitente (administrador anónimo) no se puede confirmar quién es.
+    if (userId === undefined || !(await this.telegram.esAdministrador(userId))) {
+      await this.telegram.responderBoton(callbackId, 'Solo los administradores del grupo pueden cambiar la frecuencia.');
+      return;
+    }
+    await this.telegram.responderBoton(callbackId);
+    await this.conAvisoError(async () => {
+      await this.guardarMinutosResumen(minutos);
+      this.log.log(`Frecuencia del resumen de la jornada cambiada a ${minutos} min por el usuario de Telegram ${userId}`);
+      if (typeof messageId === 'number') {
+        await this.telegram.editarHtml(messageId, mensajeFrecuencia(minutos, true), 'la frecuencia del resumen', tecladoFrecuencia(minutos));
+      }
+    });
   }
 
   private async enviarResumen(vista: VistaJornada): Promise<void> {

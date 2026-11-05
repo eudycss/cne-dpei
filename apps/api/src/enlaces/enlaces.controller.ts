@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Logger, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { AddCorreoEnlaceRequest, AvisosEnlacesRequest } from '@cne/shared-types';
-import { addCorreoEnlaceSchema, avisosEnlacesSchema } from '@cne/shared-validation';
+import type { AddCorreoEnlaceRequest, AvisosEnlacesRequest, ResumenJornadaRequest } from '@cne/shared-types';
+import { addCorreoEnlaceSchema, avisosEnlacesSchema, resumenJornadaSchema } from '@cne/shared-validation';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
@@ -64,6 +64,13 @@ export class EnlacesController {
   @ApiOperation({ summary: 'Cambiar cada cuánto avisa el bot de Telegram de los enlaces caídos' })
   guardarAvisos(@Body(new ZodValidationPipe(avisosEnlacesSchema)) body: AvisosEnlacesRequest) {
     return this.enlaces.guardarAvisos(body);
+  }
+
+  @Put('config/resumen-jornada')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Cambiar cada cuánto manda el bot el resumen automático del grupo Jornada' })
+  guardarResumenJornada(@Body(new ZodValidationPipe(resumenJornadaSchema)) body: ResumenJornadaRequest) {
+    return this.enlaces.guardarResumenJornada(body);
   }
 
   @Post('telegram/reenviar')

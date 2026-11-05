@@ -26,6 +26,7 @@ const jornada = (unidades: UnidadJornada[]): Jornada => ({ evento: 'Prueba', uni
 
 describe('JornadaResumenService', () => {
   const cargar = jest.fn();
+  const minutosResumen = jest.fn();
   const telegram = {
     enviarHtml: jest.fn().mockResolvedValue(true),
     responderEn: jest.fn((_chat: string, fn: () => Promise<unknown>) => fn()),
@@ -35,8 +36,9 @@ describe('JornadaResumenService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     telegram.enviarHtml.mockResolvedValue(true);
+    minutosResumen.mockResolvedValue(15);
     process.env.TELEGRAM_CHAT_ID_JORNADA = CHAT;
-    service = new JornadaResumenService({ cargar } as unknown as JornadaService, telegram as unknown as TelegramNotifier);
+    service = new JornadaResumenService({ cargar, minutosResumen } as unknown as JornadaService, telegram as unknown as TelegramNotifier);
   });
 
   afterEach(() => {
@@ -69,6 +71,41 @@ describe('JornadaResumenService', () => {
     await service.enviarSiCambio(minutos(30));
     expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
     expect(enviados()[1].texto).toContain('Desde las 10:00: 🚐 +1 salieron del DPEI');
+  });
+
+  it('respeta la frecuencia elegida: con 30 min, un cambio a los 15 espera hasta los 30', async () => {
+    minutosResumen.mockResolvedValue(30);
+    cargar.mockResolvedValue(jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA) } }), unidad('1290')]));
+    await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue(
+      jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA) } }), unidad('1290', { registros: { SALIDA_DPI: r(minutos(10)) } })]),
+    );
+    await service.enviarSiCambio(minutos(15));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+    await service.enviarSiCambio(minutos(30));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+  });
+
+  it('con 5 min manda en cuanto pasan 5 min y algo cambió', async () => {
+    minutosResumen.mockResolvedValue(5);
+    cargar.mockResolvedValue(jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA) } }), unidad('1290')]));
+    await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue(
+      jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA) } }), unidad('1290', { registros: { SALIDA_DPI: r(minutos(3)) } })]),
+    );
+    await service.enviarSiCambio(minutos(4));
+    await service.enviarSiCambio(minutos(5));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+  });
+
+  it('el cierre no espera la frecuencia: sale apenas todos llegan', async () => {
+    minutosResumen.mockResolvedValue(60);
+    cargar.mockResolvedValue(enCurso());
+    await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue(cerrada());
+    await service.enviarSiCambio(minutos(1));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+    expect(enviados()[1].texto).toContain('✅ Jornada cerrada');
   });
 
   it('sin evento activo o antes de la primera salida del DPEI no manda nada', async () => {
@@ -113,6 +150,28 @@ describe('JornadaResumenService', () => {
     expect(enviados()[2].opciones).toEqual({ silencioso: false });
   });
 
+  it('si Telegram falla, no reintenta al minuto siguiente sino pasados 2 min', async () => {
+    cargar.mockResolvedValue(enCurso());
+    telegram.enviarHtml.mockResolvedValueOnce(false);
+    await service.enviarSiCambio(AHORA);
+    await service.enviarSiCambio(minutos(1));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+    await service.enviarSiCambio(minutos(2));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+  });
+
+  it('una vuelta del cron que tarda no se pisa con la siguiente (no duplica el resumen)', async () => {
+    let terminar!: (v: boolean) => void;
+    cargar.mockResolvedValue(enCurso());
+    telegram.enviarHtml.mockReturnValueOnce(new Promise<boolean>((r) => (terminar = r)));
+    const primera = service.cadaMinuto();
+    await new Promise((r) => setImmediate(r));
+    await service.cadaMinuto();
+    terminar(true);
+    await primera;
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+  });
+
   it('si cambia el evento activo empieza de cero, aunque los números sean iguales', async () => {
     cargar.mockResolvedValue(enCurso());
     await service.enviarSiCambio(AHORA);
@@ -146,14 +205,14 @@ describe('JornadaResumenService', () => {
     await service.enviarSiCambio(AHORA);
     process.env.TELEGRAM_CHAT_ID_JORNADA = CHAT;
     process.env.ENLACES_CRON_ENABLED = 'false';
-    await service.cadaQuinceMinutos();
+    await service.cadaMinuto();
     expect(cargar).not.toHaveBeenCalled();
     expect(telegram.enviarHtml).not.toHaveBeenCalled();
   });
 
   it('si la base falla, el cron lo registra y no se cae', async () => {
     cargar.mockRejectedValue(new Error('base caída'));
-    await expect(service.cadaQuinceMinutos()).resolves.toBeUndefined();
+    await expect(service.cadaMinuto()).resolves.toBeUndefined();
     expect(telegram.enviarHtml).not.toHaveBeenCalled();
   });
 });

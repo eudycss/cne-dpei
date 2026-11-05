@@ -1,4 +1,5 @@
 import { escapeHtml } from '../../auth/notifier';
+import { MINUTOS_RESUMEN_JORNADA } from '@cne/shared-validation';
 
 /**
  * Grupo "Jornada" de Telegram: quién falta y quién ya cumplió cada momento del
@@ -134,6 +135,9 @@ export const PREFIJO_CALLBACK_JORNADA = 'jor:';
 const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):(?:(t|c|d):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
 /** Ficha de un CDA: "jor:cda:1133" (codigo_recinto es VarChar(20)). */
 const CALLBACK_FICHA_CDA = /^jor:cda:([\w-]{1,20})$/;
+/** Frecuencia del resumen automático: "jor:frec" abre las opciones, "jor:frec:30" la cambia. */
+const CALLBACK_FRECUENCIA = /^jor:frec(?::(\d{1,3}))?$/;
+export const CALLBACK_VER_FRECUENCIA = 'jor:frec';
 
 export type SeleccionJornada = number | 'sin' | 'res' | 'tod';
 
@@ -870,6 +874,38 @@ export function formatearResumenAutomatico(
   return lineas.join('\n');
 }
 
+/**
+ * null si no es un botón de frecuencia; `minutos: null` si solo pide ver las opciones.
+ * Un número que no es una de las opciones se toma como "ver opciones".
+ */
+export function leerCallbackFrecuencia(data: string | undefined): { minutos: number | null } | null {
+  const m = CALLBACK_FRECUENCIA.exec(data ?? '');
+  if (!m) return null;
+  const minutos = m[1] === undefined ? null : Number(m[1]);
+  return { minutos: minutos !== null && (MINUTOS_RESUMEN_JORNADA as readonly number[]).includes(minutos) ? minutos : null };
+}
+
+/** 15 → "15 min", 60 → "1 h". */
+export function textoFrecuencia(minutos: number): string {
+  return minutos < 60 ? `${minutos} min` : `${minutos / 60} h`;
+}
+
+export function mensajeFrecuencia(minutos: number, cambiadaAhora = false): string {
+  return (
+    `⏱ <b>Resumen automático</b>: ${cambiadaAhora ? 'ahora llega' : 'llega'} cada <b>${textoFrecuencia(minutos)}</b>, sin sonido y solo si algo cambió.\n` +
+    'Toque otra opción para cambiarla (solo los administradores del grupo).'
+  );
+}
+
+/** Las opciones de frecuencia; la actual va marcada. */
+export function tecladoFrecuencia(actual: number) {
+  const boton = (m: number): BotonInline => ({
+    text: `${m === actual ? '✅ ' : ''}${textoFrecuencia(m)}`,
+    callback_data: `${CALLBACK_VER_FRECUENCIA}:${m}`,
+  });
+  return { inline_keyboard: [MINUTOS_RESUMEN_JORNADA.slice(0, 3).map(boton), MINUTOS_RESUMEN_JORNADA.slice(3).map(boton)] };
+}
+
 /** Un botón por vista bajo el resumen automático: abre su resumen de siempre (NO CDA, por CDA). */
 export function tecladoResumenAutomatico() {
   const boton = (v: VistaJornada): BotonInline => ({
@@ -881,6 +917,7 @@ export function tecladoResumenAutomatico() {
       [boton('SALIDA_DPI'), boton('LLEGADA_RECINTO')],
       [boton('SALIDA_RECINTO'), boton('LLEGADA_DPI')],
       [boton('NO_CDA'), boton('KIT')],
+      [{ text: '⏱ Frecuencia del resumen', callback_data: CALLBACK_VER_FRECUENCIA }],
     ],
   };
 }
