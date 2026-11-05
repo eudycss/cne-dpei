@@ -1277,6 +1277,50 @@ export interface HistorialParejasCda {
   recintos: RecintoHistorialCda[];
 }
 
+/** Una vez que la persona estuvo en una pareja ("¿Quién fue a dónde?"). */
+export interface AsignacionPersonaCda {
+  fecha: string;
+  /** null = pareja de reserva (sin recinto). */
+  recinto: { codigo: string; nombre: string } | null;
+  como: 'OPERADOR' | 'ASISTENTE';
+  /** Con quién fue; null si fue sin pareja. */
+  pareja: string | null;
+}
+
+export interface PersonaAsignacionesCda {
+  id: string;
+  apellidosNombres: string;
+  cedula: string;
+  grupo: GrupoCda;
+  /** De la fecha más reciente a la más antigua; vacío = nunca estuvo en una pareja. */
+  asignaciones: AsignacionPersonaCda[];
+}
+
+export interface AsignacionRecintoCda {
+  fecha: string;
+  operador: string;
+  asistente: string | null;
+  kit: string | null;
+}
+
+export interface RecintoAsignacionesCda {
+  id: string;
+  codigo: string;
+  nombre: string;
+  /** Los NO CDA buscados que entregan en este CDA (por ellos salió en el resultado). */
+  noCdas: { codigo: string; nombre: string }[];
+  /** De la fecha más reciente a la más antigua; vacío = nadie fue. */
+  asignaciones: AsignacionRecintoCda[];
+}
+
+/** Resultado de "¿Quién fue a dónde?": personas y recintos que coinciden, con sus asignaciones. */
+export interface BusquedaAsignacionesCda {
+  personas: PersonaAsignacionesCda[];
+  recintos: RecintoAsignacionesCda[];
+  /** Había más personas, recintos o parejas de los que se devuelven: conviene afinar la búsqueda. */
+  truncado: boolean;
+}
+
 /** Persona en la propuesta de parejas para una nueva prueba. */
 export interface PersonaPropuestaCda {
   id: string;

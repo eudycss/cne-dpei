@@ -37,6 +37,20 @@ export class HistorialParejasCdaController {
     return this.historial.historial(parsearFechas(fechas));
   }
 
+  @Get('buscar')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @ApiOperation({
+    summary: '¿Quién fue a dónde? Personas (nombre o cédula) y recintos (código o nombre; un NO CDA da su CDA) con sus parejas de todas las fechas. ?q= mínimo 3 caracteres',
+  })
+  buscar(@Query('q') q: unknown) {
+    // Repetido (?q=a&q=b) llega como arreglo: se rechaza igual que uno corto.
+    const texto = typeof q === 'string' ? q.trim().slice(0, 100) : '';
+    if (texto.length < 3) throw new BadRequestException('Escriba al menos 3 caracteres del nombre, la cédula o el recinto');
+    return this.historial.buscar(texto);
+  }
+
   @Post('propuesta')
   @HttpCode(200)
   @RequiereModulo('operadores-cda')

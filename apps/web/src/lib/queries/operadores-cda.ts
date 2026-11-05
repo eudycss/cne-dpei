@@ -7,6 +7,7 @@ import type {
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
+  BusquedaAsignacionesCda,
   HistorialParejasCda,
   PropuestaParejasCda,
   PropuestaParejasCdaRequest,
@@ -470,6 +471,12 @@ export async function descargarPlantillaParejasCda(): Promise<void> {
 }
 
 const conFechas = (fechas: string[]) => new URLSearchParams(fechas.map((f) => ['fechas', f])).toString();
+
+/** "¿Quién fue a dónde?": personas y recintos que coinciden con `q`, con sus parejas de todas las fechas. */
+export async function buscarAsignacionesCda(q: string): Promise<BusquedaAsignacionesCda> {
+  const { data } = await api.get<BusquedaAsignacionesCda>(`/parejas-cda/historial/buscar?${new URLSearchParams({ q })}`);
+  return data;
+}
 
 /** Historial de parejas: quién fue y qué recintos se visitaron en las fechas elegidas. */
 export async function getHistorialParejasCda(fechas: string[]): Promise<HistorialParejasCda> {
