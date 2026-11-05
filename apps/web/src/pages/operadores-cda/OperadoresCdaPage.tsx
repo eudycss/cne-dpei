@@ -13,6 +13,7 @@ import { FILTROS_INGRESO } from './filtroIngreso';
 import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCargo } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
+import { QuienFuePanel } from './QuienFuePanel';
 import { GestionarCargosModal } from './GestionarCargosModal';
 import { getCargosCda } from '../../lib/queries/operadores-cda';
 import { useAuth } from '../../auth/AuthContext';
@@ -24,11 +25,13 @@ const SECCIONES = [
   { id: 'actas', etiqueta: 'Actas de entrega' },
   { id: 'parejas', etiqueta: 'Parejas' },
   { id: 'historial', etiqueta: 'Historial de parejas' },
+  { id: 'quien-fue', etiqueta: '¿Quién fue a dónde?' },
 ] as const;
 
-/** Las parejas (operador + asistente por recinto) y su historial solo son de los dos cargos CDA. */
+/** Las parejas (operador + asistente por recinto), su historial y la búsqueda solo son de los dos cargos CDA. */
+const DE_PAREJAS = new Set<string>(['parejas', 'historial', 'quien-fue']);
 const seccionesDe = (grupo: GrupoCda) =>
-  grupo === 'OPERADOR' || grupo === 'ASISTENTE' ? SECCIONES : SECCIONES.filter((s) => s.id !== 'parejas' && s.id !== 'historial');
+  grupo === 'OPERADOR' || grupo === 'ASISTENTE' ? SECCIONES : SECCIONES.filter((s) => !DE_PAREJAS.has(s.id));
 
 /**
  * Personal CDA y CPE, con el tema "CNE Futurista" de Figma. Dos niveles: el
@@ -108,6 +111,8 @@ export function OperadoresCdaPage() {
                 <ParejasPanel />
               ) : seccion === 'historial' ? (
                 <HistorialParejasPanel />
+              ) : seccion === 'quien-fue' ? (
+                <QuienFuePanel />
               ) : (
                 <AsistenciaPanel acciones={acciones} />
               )
