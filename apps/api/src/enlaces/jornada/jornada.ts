@@ -768,3 +768,119 @@ export function consultablesDe(j: Jornada): ConsultableJornada[] {
   }
   return [...vistos.values()];
 }
+
+// ─── Resumen automático ─────────────────────────────────────────────────────
+
+/** Avance de una vista: cuántos cumplieron de cuántos. */
+export interface AvanceVista {
+  hechos: number;
+  total: number;
+}
+
+/** Lo que cuenta el resumen automático; si no cambia, no se manda otro. */
+export interface ConteosJornada {
+  momentos: Record<MomentoJornada | 'NO_CDA', AvanceVista>;
+  cdasCompletos: number;
+  cdasConNoCda: number;
+  kitPendientes: number;
+}
+
+export function conteosJornada(j: Jornada): ConteosJornada {
+  const avance = (v: VistaJornada): AvanceVista => {
+    const e = estadoVista(j, v);
+    return { hechos: e.cumplidos.length, total: e.faltan.length + e.cumplidos.length };
+  };
+  const noCda = estadoVista(j, 'NO_CDA');
+  const porCda = avancePorCda([...noCda.faltan, ...noCda.cumplidos]);
+  return {
+    momentos: {
+      SALIDA_DPI: avance('SALIDA_DPI'),
+      LLEGADA_RECINTO: avance('LLEGADA_RECINTO'),
+      SALIDA_RECINTO: avance('SALIDA_RECINTO'),
+      LLEGADA_DPI: avance('LLEGADA_DPI'),
+      NO_CDA: avance('NO_CDA'),
+    },
+    cdasCompletos: porCda.filter((a) => a.reportados === a.total).length,
+    cdasConNoCda: porCda.length,
+    kitPendientes: estadoVista(j, 'KIT').faltan.length,
+  };
+}
+
+export function mismosConteos(a: ConteosJornada, b: ConteosJornada): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** La jornada del día empezó: al menos una pareja salió del DPEI. */
+export function jornadaEmpezada(j: Jornada): boolean {
+  return j.unidades.some((u) => u.registros.SALIDA_DPI);
+}
+
+/** Todos llegaron al DPEI y no queda ningún kit pendiente. */
+export function jornadaCerrada(j: Jornada): boolean {
+  return j.unidades.length > 0 && j.unidades.every((u) => u.registros.LLEGADA_DPI) && !j.unidades.some((u) => kitPendiente(u));
+}
+
+const ORDEN_RESUMEN: (MomentoJornada | 'NO_CDA')[] = [...MOMENTOS_JORNADA, 'NO_CDA'];
+
+const CAMBIO: Record<MomentoJornada | 'NO_CDA', string> = {
+  SALIDA_DPI: '🚐 +{n} salieron del DPEI',
+  LLEGADA_RECINTO: '📍 +{n} llegaron al recinto',
+  SALIDA_RECINTO: '🏁 +{n} salieron del recinto',
+  LLEGADA_DPI: '🏢 +{n} llegaron al DPEI',
+  NO_CDA: '🏫 +{n} NO CDA llegaron',
+};
+
+/**
+ * Resumen de todas las vistas en un mensaje: una línea por momento, NO CDA con
+ * los CDA completos, los kits pendientes y, si hay uno anterior, qué cambió desde entonces.
+ */
+export function formatearResumenAutomatico(
+  j: Jornada,
+  ahora: Date,
+  anterior?: { conteos: ConteosJornada; en: Date } | null,
+): string {
+  const c = conteosJornada(j);
+  const cerrada = jornadaCerrada(j);
+  const lineas = [
+    cerrada
+      ? `<b>✅ Jornada cerrada</b> · ${hora(ahora)}\nTodos llegaron al DPEI y se recibieron todos los kits.`
+      : `<b>📋 Jornada</b> · ${hora(ahora)} · resumen automático`,
+    `<i>${escapeHtml(j.evento)}</i>`,
+    '',
+  ];
+  for (const v of ORDEN_RESUMEN) {
+    const { hechos, total } = c.momentos[v];
+    if (total === 0) continue;
+    const faltan = total - hechos;
+    const extra = v === 'NO_CDA' ? ` · ${c.cdasCompletos} de ${c.cdasConNoCda} CDA completos` : '';
+    lineas.push(
+      `${BOTONES_JORNADA[v]}  <code>${barra(hechos, total, ANCHO_BARRA)}</code> ${hechos}/${total}` +
+        (faltan > 0 ? ` · faltan ${faltan}` : ' ✅') +
+        extra,
+    );
+  }
+  lineas.push(c.kitPendientes > 0 ? `${BOTONES_JORNADA.KIT}: ${c.kitPendientes}` : `${BOTONES_JORNADA.KIT}: ninguno`);
+
+  if (anterior) {
+    const cambios = ORDEN_RESUMEN.map((v) => ({ v, n: c.momentos[v].hechos - anterior.conteos.momentos[v].hechos }))
+      .filter(({ n }) => n > 0)
+      .map(({ v, n }) => CAMBIO[v].replace('{n}', String(n)));
+    if (cambios.length > 0) lineas.push('', `Desde las ${hora(anterior.en)}: ${cambios.join(' · ')}`);
+  }
+  return lineas.join('\n');
+}
+
+/** Un botón por vista bajo el resumen automático: abre su resumen de siempre (NO CDA, por CDA). */
+export function tecladoResumenAutomatico() {
+  const boton = (v: VistaJornada): BotonInline => ({
+    text: BOTONES_JORNADA[v],
+    callback_data: callbackJornada({ vista: v, agrupacion: v === 'NO_CDA' ? 'cda' : 'tec', seleccion: 'res', pagina: 0 }),
+  });
+  return {
+    inline_keyboard: [
+      [boton('SALIDA_DPI'), boton('LLEGADA_RECINTO')],
+      [boton('SALIDA_RECINTO'), boton('LLEGADA_DPI')],
+      [boton('NO_CDA'), boton('KIT')],
+    ],
+  };
+}

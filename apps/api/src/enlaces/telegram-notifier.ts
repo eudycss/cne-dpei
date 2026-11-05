@@ -686,9 +686,9 @@ export class TelegramNotifier {
   }
 
   /** Mensaje ya escapado por quien llama (respuestas del asistente), con botones
-   * propios opcionales; sin ellos lleva el teclado fijo. */
-  async enviarHtml(texto: string, descripcion: string, botones?: object): Promise<void> {
-    await this.enviarMensaje(texto, descripcion, 'HTML', botones);
+   * propios opcionales; sin ellos lleva el teclado fijo. `silencioso`: llega sin sonido. */
+  async enviarHtml(texto: string, descripcion: string, botones?: object, opciones?: { silencioso?: boolean }): Promise<void> {
+    await this.enviarMensaje(texto, descripcion, 'HTML', botones, opciones?.silencioso);
   }
 
   /** Reemplaza el texto (ya escapado por quien llama) y los botones de un mensaje del bot. */
@@ -712,12 +712,14 @@ export class TelegramNotifier {
     descripcion: string,
     parseMode?: 'HTML',
     replyMarkup: object = tecladoFijo(),
+    silencioso = false,
   ): Promise<void> {
     await this.llamar(
       'sendMessage',
       {
         text,
         ...(parseMode ? { parse_mode: parseMode } : {}),
+        ...(silencioso ? { disable_notification: true } : {}),
         // El teclado fijo se manda en cada mensaje (no solo en /start) para que el
         // botón nunca desaparezca del grupo, aunque el chat se reinicie o alguien lo
         // cierre en su cliente. Un mensaje con botones propios (la tarjeta de
