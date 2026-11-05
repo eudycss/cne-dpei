@@ -32,6 +32,9 @@ import { INotifier, NOTIFIER } from '../auth/notifier';
 import { Prisma } from '@prisma/client';
 import { idsPorBusqueda } from '../common/busqueda-sql';
 
+/** Claves que se restablecen a la vez en un restablecimiento masivo. */
+const RESET_EN_PARALELO = 4;
+
 @Injectable()
 export class UsersService {
   private readonly log = new Logger(UsersService.name);
@@ -178,16 +181,16 @@ export class UsersService {
 
     const omitidos: ResetPasswordBulkResult['omitidos'] = [];
     let restablecidos = 0;
-    for (const id of ids) {
+    const procesar = async (id: string) => {
       const u = porId.get(id);
       if (!u) {
         omitidos.push({ id, nombre: null, motivo: 'Usuario no encontrado' });
-        continue;
+        return;
       }
       const nombre = `${u.nombres} ${u.apellidos}`;
       if (id === solicitanteId) {
         omitidos.push({ id, nombre, motivo: 'Es su propia cuenta' });
-        continue;
+        return;
       }
       try {
         await this.restablecer(u);
@@ -196,6 +199,10 @@ export class UsersService {
         this.log.error(`No se pudo restablecer la clave de ${id}: ${(e as Error)?.message}`);
         omitidos.push({ id, nombre, motivo: 'No se pudo restablecer' });
       }
+    };
+    // Varios a la vez: mientras uno espera a la base, otro calcula su hash.
+    for (let i = 0; i < ids.length; i += RESET_EN_PARALELO) {
+      await Promise.all(ids.slice(i, i + RESET_EN_PARALELO).map(procesar));
     }
     return { restablecidos, omitidos };
   }

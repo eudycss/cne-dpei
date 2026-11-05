@@ -146,7 +146,8 @@ export const assignRolesSchema = z.object({
 
 // Restablecer claves en bloque: como mucho 500, el mismo tope que el listado.
 export const resetPasswordBulkSchema = z.object({
-  userIds: z.array(z.string().uuid()).min(1).max(500),
+  // Tope por petición: la web envía por lotes (cada uno = un hash argon2 por usuario).
+  userIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
 // Esquema usado para validar cada fila de Excel/CSV de carga masiva (HU7)
