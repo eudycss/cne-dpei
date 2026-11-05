@@ -34,6 +34,7 @@ import {
   getRecintosOcupados,
 } from '../../lib/queries/kits';
 import { PasoFlujo } from '../../components/PasoFlujo';
+import { QrNuevoModal, puedeQrNuevo } from './QrNuevoModal';
 import { crearKitConParejaCda, getDisponiblesKitCda } from '../../lib/queries/operadores-cda';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export function KitsPage() {
   const [importing, setImporting] = useState(false);
   const [assigning, setAssigning] = useState<Kit | null>(null);
   const [editing, setEditing] = useState<Kit | null>(null);
+  const [qrNuevo, setQrNuevo] = useState<Kit | null>(null);
   const [importResult, setImportResult] = useState<BulkUploadResult | null>(null);
   const [incluirPrueba, setIncluirPrueba] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -486,6 +488,17 @@ export function KitsPage() {
                         >
                           Editar
                         </button>
+                        {puedeQrNuevo(kit) && (
+                          <button
+                            className="btn secondary"
+                            style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                            aria-label={`Generar QR nuevo para ${kit.nombre}`}
+                            title="Solo si la etiqueta pegada se dañó o se perdió: el QR actual sirve en todos los eventos"
+                            onClick={() => setQrNuevo(kit)}
+                          >
+                            QR nuevo
+                          </button>
+                        )}
                         </div>
                       </td>
                       )}
@@ -580,6 +593,17 @@ export function KitsPage() {
           onClose={() => setAssigning(null)}
           onDone={() => {
             setAssigning(null);
+            invalidateKits();
+          }}
+        />
+      )}
+
+      {qrNuevo && (
+        <QrNuevoModal
+          kit={qrNuevo}
+          onClose={() => setQrNuevo(null)}
+          onDone={() => {
+            setQrNuevo(null);
             invalidateKits();
           }}
         />

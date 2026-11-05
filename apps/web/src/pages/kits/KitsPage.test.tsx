@@ -492,6 +492,52 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     expect(screen.queryByText('Recinto')).not.toBeInTheDocument();
   });
 
+  describe('QR nuevo', () => {
+    const abrir = async () => {
+      renderKitsPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Generar QR nuevo para 28 — Escuela Central' }));
+      return screen.getByRole('dialog', { name: 'Generar QR nuevo' });
+    };
+
+    it('avisa que el QR pegado deja de servir y llama a la API al confirmar', async () => {
+      postMock.mockResolvedValueOnce({ data: kit({ codigoUnico: 'NUEVO2345' }) });
+      const dialogo = await abrir();
+      expect(dialogo).toHaveTextContent('sirve en todos los eventos');
+      expect(dialogo).toHaveTextContent('deja de funcionar');
+
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, generar QR nuevo' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith(`/kits/${kitId}/codigo-nuevo`, {}));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Generar QR nuevo' })).not.toBeInTheDocument());
+    });
+
+    it('con la jornada iniciada pide justificación y la envía', async () => {
+      postMock
+        .mockRejectedValueOnce({ isAxiosError: true, response: { data: { frozen: true, message: 'Las asignaciones están congeladas' } } })
+        .mockResolvedValueOnce({ data: kit({ codigoUnico: 'NUEVO2345' }) });
+      const dialogo = await abrir();
+      const boton = within(dialogo).getByRole('button', { name: 'Sí, generar QR nuevo' });
+      await userEvent.click(boton);
+
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('Las asignaciones están congeladas');
+      const campo = within(dialogo).getByLabelText('Justificación (la jornada ya inició)');
+      expect(boton).toBeDisabled();
+      await userEvent.type(campo, 'Etiqueta dañada');
+      await userEvent.click(boton);
+
+      await waitFor(() =>
+        expect(postMock).toHaveBeenLastCalledWith(`/kits/${kitId}/codigo-nuevo`, { justificacion: 'Etiqueta dañada' }),
+      );
+    });
+
+    it('un kit que ya salió de la Delegación no ofrece QR nuevo', async () => {
+      kitsActuales = [kit({ estado: 'EN_RECINTO' })];
+      renderKitsPage();
+      await screen.findByText('ABCD2345');
+      expect(screen.queryByRole('button', { name: /Generar QR nuevo/ })).not.toBeInTheDocument();
+    });
+  });
+
   it('el buscador se ofrece por kit, código o recinto y manda lo escrito a la API', async () => {
     renderKitsPage();
     await screen.findByText('ABCD2345');

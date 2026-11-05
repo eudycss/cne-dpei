@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException, ForbiddenExc
 import { Test } from '@nestjs/testing';
 
 import { itemKitDetalleSchema } from '@cne/shared-validation';
-import { KitsService, normalizarDetalle } from './kits.service';
+import { KitsService, codigosDelRecinto, normalizarDetalle } from './kits.service';
 import { PrismaService } from '../db/prisma.service';
 
 function csvFile(csv: string) {
@@ -20,6 +20,7 @@ describe('KitsService', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     eventoElectoral: {
       findUnique: jest.fn(),
@@ -81,6 +82,7 @@ describe('KitsService', () => {
     prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
     prisma.itemKitCatalog.findMany.mockResolvedValue([]);
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
+    prisma.kitElectoral.findMany.mockResolvedValue([]);
     prisma.parejaCda.count.mockResolvedValue(0);
 
     const moduleRef = await Test.createTestingModule({
@@ -807,6 +809,205 @@ describe('KitsService', () => {
         service.editar(kitId, { recintoId } as any),
       ).rejects.toMatchObject({ response: { frozen: true } });
       expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('el QR del kit es del recinto (sirve en cualquier evento)', () => {
+    const otroEvento = '55555555-5555-5555-5555-555555555555';
+    const eventoViejo = '66666666-6666-6666-6666-666666666666';
+
+    it('codigosDelRecinto: primero el de la misma posición del evento más reciente, sin repetidos', () => {
+      const kits = [
+        { eventoId: eventoViejo, codigoUnico: 'VIEJO111' },
+        { eventoId: eventoViejo, codigoUnico: 'VIEJO222' },
+        { eventoId: otroEvento, codigoUnico: 'NUEVO111' },
+        { eventoId: otroEvento, codigoUnico: 'NUEVO222' },
+      ];
+      expect(codigosDelRecinto(kits, 0)).toEqual(['NUEVO111', 'VIEJO111', 'NUEVO222', 'VIEJO222']);
+      expect(codigosDelRecinto(kits, 1)).toEqual(['NUEVO222', 'VIEJO222', 'NUEVO111', 'VIEJO111']);
+      expect(codigosDelRecinto([], 0)).toEqual([]);
+    });
+
+    it('el kit de un recinto en un evento nuevo toma el código que el recinto ya tenía', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { eventoId: eventoViejo, codigoUnico: 'VIEJO111' },
+        { eventoId: otroEvento, codigoUnico: 'P2ZCERV4' },
+      ]);
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null); // libre en este evento
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta' } as any);
+
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith({
+        where: { recintoId, esPrueba: false, eventoId: { not: eventoId } },
+        select: { codigoUnico: true, eventoId: true },
+        orderBy: [{ creadoEn: 'asc' }, { id: 'asc' }],
+      });
+      const data = prisma.kitElectoral.create.mock.calls[0][0].data;
+      expect(data.codigoUnico).toBe('P2ZCERV4');
+      expect(data.qrPayload).toBe('P2ZCERV4');
+    });
+
+    it('el 2.º kit del recinto toma el código del 2.º kit anterior', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { eventoId: otroEvento, codigoUnico: 'PRIMERO1' },
+        { eventoId: otroEvento, codigoUnico: 'SEGUNDO2' },
+      ]);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta', otroDispositivo: true } as any);
+
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.codigoUnico).toBe('SEGUNDO2');
+    });
+
+    it('si el código del recinto ya está usado en este evento, genera uno nuevo', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ eventoId: otroEvento, codigoUnico: 'OCUPADO1' }]);
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique
+        .mockResolvedValueOnce(kitRow({ codigoUnico: 'OCUPADO1' })) // ya lo tiene otro kit del evento
+        .mockResolvedValueOnce(null); // el código nuevo generado está libre
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta' } as any);
+
+      const codigo = prisma.kitElectoral.create.mock.calls[0][0].data.codigoUnico;
+      expect(codigo).not.toBe('OCUPADO1');
+      expect(codigo).toHaveLength(8);
+    });
+
+    it('si otro kit tomó el mismo código a la vez (P2002), crea el kit con un código nuevo', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ eventoId: otroEvento, codigoUnico: 'P2ZCERV4' }]);
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      prisma.kitElectoral.create
+        .mockRejectedValueOnce(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
+        .mockResolvedValueOnce(kitRow({ recintoId }));
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta' } as any);
+
+      expect(prisma.kitElectoral.create).toHaveBeenCalledTimes(2);
+      const segundo = prisma.kitElectoral.create.mock.calls[1][0].data.codigoUnico;
+      expect(segundo).not.toBe('P2ZCERV4');
+      expect(segundo).toHaveLength(8);
+    });
+
+    it('otro error al crear no se reintenta', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockRejectedValueOnce(new Error('db caída'));
+
+      await expect(service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta' } as any)).rejects.toThrow('db caída');
+      expect(prisma.kitElectoral.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('la carga masiva también reutiliza el código del recinto', async () => {
+      const csv = 'nombre,contenidos,items,cedula_operador,codigo_recinto\nKit 28,Acta,,1710034065,28\n';
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, cedula: '1710034065' }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: recintoId, codigoRecinto: '28' }]);
+      prisma.itemKitCatalog.findMany.mockResolvedValueOnce([]);
+      prisma.kitElectoral.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ eventoId: otroEvento, codigoUnico: 'P2ZCERV4' }]);
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow());
+
+      const r = await service.bulkUpload(csvFile(csv), eventoId);
+
+      expect(r).toMatchObject({ creados: 1, errores: [] });
+      expect(prisma.kitElectoral.create.mock.calls[0][0].data.codigoUnico).toBe('P2ZCERV4');
+    });
+
+    it('un kit de prueba no toma el código del recinto', async () => {
+      prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+      prisma.recinto.findUnique.mockResolvedValueOnce({ id: recintoId });
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+      prisma.kitElectoral.create.mockResolvedValueOnce(kitRow({ recintoId, esPrueba: true }));
+
+      await service.create({ eventoId, nombre: 'Kit 1', recintoId, contenidos: 'Acta', esPrueba: true } as any);
+
+      expect(prisma.kitElectoral.findMany).not.toHaveBeenCalled();
+    });
+
+    describe('Generar QR nuevo', () => {
+      it('cambia el código y el QR del kit y de los kits del recinto en otros eventos que no salieron', async () => {
+        prisma.kitElectoral.findUnique
+          .mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', recintoId }))
+          .mockResolvedValueOnce(null) // código nuevo libre
+          .mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO', codigoUnico: 'NUEVO222' }));
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+        prisma.kitElectoral.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 2 });
+
+        const r = await service.regenerarCodigo(kitId, {});
+
+        const [propio, otros] = prisma.kitElectoral.updateMany.mock.calls.map((c: any[]) => c[0]);
+        expect(propio.where).toEqual({ id: kitId, estado: { in: ['EN_BODEGA', 'ASIGNADO'] } });
+        expect(propio.data.codigoUnico).toHaveLength(8);
+        expect(propio.data.qrPayload).toBe(propio.data.codigoUnico);
+        expect(otros).toEqual({
+          where: { recintoId, codigoUnico: 'ABCD2345', esPrueba: false, eventoId: { not: eventoId }, estado: { in: ['EN_BODEGA', 'ASIGNADO'] } },
+          data: propio.data,
+        });
+        expect(r).toMatchObject({ codigoUnico: 'NUEVO222', codigoAnterior: 'ABCD2345', otrosEventos: 2 });
+      });
+
+      it('un kit de prueba o sin recinto no toca kits de otros eventos', async () => {
+        prisma.kitElectoral.findUnique
+          .mockResolvedValueOnce(kitRow({ estado: 'EN_BODEGA', esPrueba: true, recintoId }))
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(kitRow());
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+        prisma.kitElectoral.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+        await service.regenerarCodigo(kitId, {});
+
+        expect(prisma.kitElectoral.updateMany.mock.calls[1][0].where).toEqual({ id: { in: [] } });
+      });
+
+      it('kit inexistente o evento cerrado: no cambia nada', async () => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(null);
+        await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(NotFoundException);
+
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO' }));
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'CERRADO' }));
+        await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(ConflictException);
+        expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('un kit que ya salió de la Delegación conserva su QR', async () => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'EN_RECINTO' }));
+        await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(ConflictException);
+        expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('si sale mientras tanto, no se cambia', async () => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO' })).mockResolvedValueOnce(null);
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
+        prisma.kitElectoral.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
+        await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(ConflictException);
+      });
+
+      it('con la jornada iniciada pide justificación', async () => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow({ estado: 'ASIGNADO' }));
+        prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO', fechaJornada: new Date('2020-01-01') }));
+        await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(BadRequestException);
+        expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
+      });
     });
   });
 

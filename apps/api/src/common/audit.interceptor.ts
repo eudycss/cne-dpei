@@ -383,6 +383,23 @@ const AUDIT_TABLE: Array<{
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/asignar$/, accion: 'KIT_ASIGNAR', entidad: 'kit', campos: ['operadorId', 'recintoId', 'justificacion'] },
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/desasignar$/, accion: 'KIT_DESASIGNAR', entidad: 'kit', campos: ['justificacion'] },
   { method: 'POST', pathRegex: /^\/kits\/bulk$/, accion: 'KIT_BULK_UPLOAD', entidad: 'kit' },
+  // Cadena de custodia: qué código se anuló, cuál lo reemplaza y en cuántos kits de otros eventos.
+  {
+    method: 'POST',
+    pathRegex: /^\/kits\/[^/]+\/codigo-nuevo$/,
+    accion: 'KIT_CODIGO_NUEVO',
+    entidad: 'kit',
+    resumen: (res, req) => {
+      const r = (res ?? {}) as { codigoAnterior?: unknown; codigoUnico?: unknown; otrosEventos?: unknown };
+      const justificacion = (req.body as { justificacion?: unknown } | undefined)?.justificacion;
+      return {
+        codigoAnterior: r.codigoAnterior,
+        codigoNuevo: r.codigoUnico,
+        otrosEventos: Number(r.otrosEventos) || 0,
+        ...(typeof justificacion === 'string' && { justificacion }),
+      };
+    },
+  },
   // Fase 4 — tracking del operador (HU2)
   { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
   // Fase 4 — llegada al recinto y recepción de kits (HU3)

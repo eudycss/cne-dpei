@@ -33,11 +33,28 @@ import type {
 import { PrismaService } from '../db/prisma.service';
 import { assertEventoNoReabierto } from '../common/evento-no-reabierto.guard';
 import { parseUploadRows } from '../common/parse-upload-rows';
-import { Prisma } from '@prisma/client';
+import { EstadoKit, Prisma } from '@prisma/client';
 import { idsPorBusqueda } from '../common/busqueda-sql';
 
 // Puntos por mm en PDFKit (72 dpi: 1 pt = 1/72 in, 1 in = 25.4 mm)
 const MM = 72 / 25.4;
+
+/**
+ * Códigos que un recinto usó en otros eventos, ordenados para el kit número
+ * `posicion` (0 = el primero): primero los que ocuparon esa posición, del evento
+ * más reciente al más antiguo; después el resto. Sin repetidos.
+ */
+export function codigosDelRecinto(kits: { codigoUnico: string; eventoId: string }[], posicion: number): string[] {
+  // kits viene en orden de creación: el último evento en aparecer es el más reciente.
+  const porEvento = new Map<string, string[]>();
+  for (const k of kits) porEvento.set(k.eventoId, [...(porEvento.get(k.eventoId) ?? []), k.codigoUnico]);
+  const ultimo = new Map<string, number>();
+  kits.forEach((k, i) => ultimo.set(k.eventoId, i));
+  const eventos = [...porEvento.keys()].sort((a, b) => ultimo.get(b)! - ultimo.get(a)!);
+  const conPosicion = eventos.flatMap((e) => porEvento.get(e)!.map((codigo, i) => ({ codigo, i })));
+  const orden = [...conPosicion.filter((c) => c.i === posicion), ...conPosicion.filter((c) => c.i !== posicion)];
+  return [...new Set(orden.map((c) => c.codigo))];
+}
 
 @Injectable()
 export class KitsService {
@@ -136,24 +153,29 @@ export class KitsService {
       if (detalles.length === 0) throw new BadRequestException(MENSAJE_KIT_SIN_ARTICULOS);
     }
 
-    // CA1 + CA5: generar codigoUnico único por evento (reintento ante colisión)
-    const codigoUnico = await this.generarCodigoUnico(parsed.eventoId);
-    // CA2: el QR codifica el codigoUnico, verificable contra la BD
-    const qrPayload = codigoUnico;
+    // CA1 + CA5: codigoUnico único por evento; el del recinto si ya tiene QR pegado
+    const codigoUnico = await this.codigoParaKit(parsed.eventoId, parsed.recintoId, parsed.esPrueba ?? false);
+    // CA2: el QR codifica el codigoUnico, verificable contra la BD (qrPayload = codigoUnico)
 
-    const kit = await this.prisma.kitElectoral.create({
-      data: {
-        eventoId: parsed.eventoId,
-        codigoUnico,
-        qrPayload,
-        nombre,
-        contenidos: parsed.contenidos ?? null,
-        recintoId: parsed.recintoId,
-        estado: 'ASIGNADO',
-        esPrueba: parsed.esPrueba ?? false,
-        itemsContenido: { create: detalles.map(filaItemContenido) },
-      },
-      include: { itemsContenido: { include: { item: true } } },
+    const crear = (codigo: string) =>
+      this.prisma.kitElectoral.create({
+        data: {
+          eventoId: parsed.eventoId,
+          codigoUnico: codigo,
+          qrPayload: codigo,
+          nombre,
+          contenidos: parsed.contenidos ?? null,
+          recintoId: parsed.recintoId,
+          estado: 'ASIGNADO',
+          esPrueba: parsed.esPrueba ?? false,
+          itemsContenido: { create: detalles.map(filaItemContenido) },
+        },
+        include: { itemsContenido: { include: { item: true } } },
+      });
+    const kit = await crear(codigoUnico).catch(async (e) => {
+      // Otro kit del recinto tomó el mismo código en paralelo: este lleva uno nuevo.
+      if (!esCodigoRepetido(e)) throw e;
+      return crear(await this.generarCodigoUnico(parsed.eventoId));
     });
     return toKitDto(kit);
   }
@@ -346,6 +368,53 @@ export class KitsService {
       },
     });
     return toKitDto(updated);
+  }
+
+  /**
+   * "Generar QR nuevo": solo a pedido del administrador (p. ej. una etiqueta
+   * dañada). El QR pegado deja de valer, por eso solo antes de que el kit salga
+   * de la Delegación. Los kits del mismo recinto con el código viejo en otros
+   * eventos que aún no salen toman el nuevo, y los eventos siguientes lo heredan.
+   */
+  async regenerarCodigo(
+    id: string,
+    input?: DesasignarKitRequest,
+  ): Promise<Kit & { codigoAnterior: string; otrosEventos: number }> {
+    const parsed = desasignarKitSchema.parse(input ?? {});
+
+    const kit = await this.prisma.kitElectoral.findUnique({ where: { id } });
+    if (!kit) throw new NotFoundException('Kit no encontrado');
+    if (kit.estado !== 'EN_BODEGA' && kit.estado !== 'ASIGNADO') {
+      throw new ConflictException('El kit ya salió de la Delegación: su QR no se puede cambiar (cadena de custodia)');
+    }
+
+    const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: kit.eventoId } });
+    if (!evento) throw new NotFoundException('Evento no encontrado');
+    assertEventoNoReabierto(evento);
+    if (evento.estado === 'CERRADO') throw new ConflictException('El evento está cerrado: su QR ya no se puede cambiar');
+    this.assertNoFrozen(evento, parsed.justificacion);
+
+    const codigoUnico = await this.generarCodigoUnico(kit.eventoId);
+    const sinSalir = { in: ['EN_BODEGA', 'ASIGNADO'] as EstadoKit[] };
+    const [propio, otros] = await this.prisma.$transaction([
+      // Condicional: si el kit salió mientras tanto, no se toca.
+      this.prisma.kitElectoral.updateMany({ where: { id, estado: sinSalir }, data: { codigoUnico, qrPayload: codigoUnico } }),
+      this.prisma.kitElectoral.updateMany({
+        where:
+          kit.recintoId && !kit.esPrueba
+            ? { recintoId: kit.recintoId, codigoUnico: kit.codigoUnico, esPrueba: false, eventoId: { not: kit.eventoId }, estado: sinSalir }
+            : { id: { in: [] } },
+        data: { codigoUnico, qrPayload: codigoUnico },
+      }),
+    ]);
+    if (propio.count !== 1) {
+      throw new ConflictException('El kit ya salió de la Delegación: su QR no se puede cambiar (cadena de custodia)');
+    }
+    const updated = await this.prisma.kitElectoral.findUnique({
+      where: { id },
+      include: { itemsContenido: { include: { item: true } } },
+    });
+    return { ...toKitDto(updated!), codigoAnterior: kit.codigoUnico, otrosEventos: otros.count };
   }
 
   /**
@@ -552,19 +621,23 @@ export class KitsService {
       }
 
       try {
-        const codigoUnico = await this.generarCodigoUnico(eventoId);
-        await this.prisma.kitElectoral.create({
-          data: {
-            eventoId,
-            codigoUnico,
-            qrPayload: codigoUnico,
-            nombre: d.nombre,
-            contenidos: d.contenidos?.trim() ? d.contenidos.trim() : null,
-            operadorId,
-            recintoId,
-            estado: operadorId ? 'ASIGNADO' : 'EN_BODEGA',
-            itemsContenido: { create: detallesFila.map(filaItemContenido) },
-          },
+        const crear = (codigoUnico: string) =>
+          this.prisma.kitElectoral.create({
+            data: {
+              eventoId,
+              codigoUnico,
+              qrPayload: codigoUnico,
+              nombre: d.nombre,
+              contenidos: d.contenidos?.trim() ? d.contenidos.trim() : null,
+              operadorId,
+              recintoId,
+              estado: operadorId ? 'ASIGNADO' : 'EN_BODEGA',
+              itemsContenido: { create: detallesFila.map(filaItemContenido) },
+            },
+          });
+        await crear(await this.codigoParaKit(eventoId, recintoId, false)).catch(async (e) => {
+          if (!esCodigoRepetido(e)) throw e;
+          return crear(await this.generarCodigoUnico(eventoId));
         });
         if (operadorId && recintoId) {
           recintoPorOperador.set(operadorId, recintoId);
@@ -642,6 +715,31 @@ export class KitsService {
         frozen: true,
       });
     }
+  }
+
+  /**
+   * El QR pegado en el kit físico es del recinto, no del evento ni de las personas
+   * (las parejas cambian): el kit de un recinto reutiliza el código que ese recinto
+   * tuvo en eventos anteriores, en el mismo orden (el 2.º kit toma el del 2.º).
+   * Sin historial, o para un kit de prueba, genera uno nuevo.
+   */
+  private async codigoParaKit(eventoId: string, recintoId: string | null | undefined, esPrueba: boolean): Promise<string> {
+    if (!recintoId || esPrueba) return this.generarCodigoUnico(eventoId);
+    const [anteriores, yaTiene] = await Promise.all([
+      this.prisma.kitElectoral.findMany({
+        where: { recintoId, esPrueba: false, eventoId: { not: eventoId } },
+        select: { codigoUnico: true, eventoId: true },
+        orderBy: [{ creadoEn: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.kitElectoral.count({ where: { eventoId, recintoId, esPrueba: false } }),
+    ]);
+    for (const codigo of codigosDelRecinto(anteriores, yaTiene)) {
+      const usado = await this.prisma.kitElectoral.findUnique({
+        where: { eventoId_codigoUnico: { eventoId, codigoUnico: codigo } },
+      });
+      if (!usado) return codigo;
+    }
+    return this.generarCodigoUnico(eventoId);
   }
 
   private async generarCodigoUnico(eventoId: string, intentos = 0): Promise<string> {
@@ -791,6 +889,9 @@ function toKitDto(k: any): Kit {
 
 /** Kits reales que puede llevar un recinto que "lleva otro dispositivo". */
 const MAX_KITS_POR_RECINTO = 5;
+
+/** Choque con la unique (eventoId, codigoUnico): otro kit tomó el código a la vez. */
+const esCodigoRepetido = (e: unknown) => (e as { code?: string } | null)?.code === 'P2002';
 
 export const MENSAJE_KIT_SIN_ARTICULOS =
   'El kit debe tener al menos un artículo (sin ellos no se puede verificar al retorno)';
