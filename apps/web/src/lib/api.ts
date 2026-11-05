@@ -27,6 +27,12 @@ export const api: AxiosInstance = axios.create({
   timeout: 45000,
 });
 
+/**
+ * Para páginas públicas (sin sesión): no manda el token del usuario ni, ante
+ * un 401, intenta refrescar o redirige al login.
+ */
+export const apiPublico: AxiosInstance = axios.create({ baseURL: BASE_URL, timeout: 45000 });
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = tokenStore.getAccess();
   if (token && !config.headers.Authorization) {

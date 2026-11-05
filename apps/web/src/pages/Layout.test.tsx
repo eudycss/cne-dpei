@@ -273,6 +273,29 @@ describe('Layout — módulos configurados por el administrador', () => {
     expect(screen.queryByRole('link', { name: 'Módulos por rol' })).not.toBeInTheDocument();
   });
 
+  it('"Simulador de digitación": de fábrica solo el administrador; otro rol lo ve si se lo activan', async () => {
+    responderModulos([]);
+    setSessionUser(['ADMINISTRADOR']);
+    const { unmount } = renderLayout();
+    expect(
+      within(screen.getByRole('group', { name: 'Personal' })).getByRole('link', { name: 'Simulador de digitación' }),
+    ).toHaveAttribute('href', '/simulador-digitacion');
+    unmount();
+
+    setSessionUser(['TECNICO_SUPERVISOR']);
+    const otro = renderLayout();
+    expect(screen.queryByRole('link', { name: 'Simulador de digitación' })).not.toBeInTheDocument();
+    otro.unmount();
+
+    // Solo el simulador (sin CDA y CPE): el grupo Personal aparece igual.
+    responderModulos(['simulador-digitacion']);
+    renderLayout();
+    const personal = await screen.findByRole('group', { name: 'Personal' });
+    await waitFor(() =>
+      expect(within(personal).getAllByRole('link').map((l) => l.textContent)).toEqual(['Simulador de digitación']),
+    );
+  });
+
   it('si el administrador le activa Cadena de custodia y Power BI al técnico supervisor, los ve en Informes', async () => {
     setSessionUser(['TECNICO_SUPERVISOR']);
     responderModulos(['cadena-custodia', 'powerbi-cdas']);

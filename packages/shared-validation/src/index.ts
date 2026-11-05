@@ -1106,3 +1106,90 @@ export const filaParejaCdaSchema = z
     path: ['cedula_asistente'],
   });
 export type FilaParejaCdaInput = z.infer<typeof filaParejaCdaSchema>;
+
+// --- Simulador de digitación de actas (práctica tipo SIER) ---
+
+/** Cada cuántas actas se le dice a la persona "digitó 18 de 20". */
+export const AVISO_CADA_ACTAS = 20;
+export const MAX_FILAS_ACTA_SIMULADOR = 40;
+export const MAX_VOTO_SIMULADOR = 999;
+
+const enteroEntre = (min: number, max: number, campo: string) =>
+  z
+    .number({ invalid_type_error: `${campo} debe ser un número` })
+    .int(`${campo} debe ser un número entero`)
+    .min(min, `${campo}: mínimo ${min}`)
+    .max(max, `${campo}: máximo ${max}`);
+
+const fechaHoraSimuladorSchema = z
+  .string({ invalid_type_error: 'Fecha y hora inválidas' })
+  .datetime({ offset: true, message: 'Fecha y hora inválidas' });
+
+const idsUnicos = (max: number) =>
+  z
+    .array(z.string().uuid('Persona inválida'))
+    .max(max, `Máximo ${max} personas`)
+    .transform((ids) => Array.from(new Set(ids)));
+
+export const practicaDigitacionSchema = z
+  .object({
+    nombre: z.string().trim().min(3, 'Nombre requerido (mínimo 3 letras)').max(120, 'Máximo 120 caracteres'),
+    filasPorActa: enteroEntre(1, MAX_FILAS_ACTA_SIMULADOR, 'Filas por acta'),
+    votoMin: enteroEntre(0, MAX_VOTO_SIMULADOR, 'Voto mínimo'),
+    votoMax: enteroEntre(0, MAX_VOTO_SIMULADOR, 'Voto máximo'),
+    metaActas: enteroEntre(1, 5000, 'Meta de actas'),
+    plazoMinutos: enteroEntre(1, 1440, 'Plazo en minutos'),
+    inicio: fechaHoraSimuladorSchema,
+    fin: fechaHoraSimuladorSchema,
+    /** Probabilidad (0-100) de que los dígitos de una fila no coincidan con las letras. */
+    pctDigitosDistintos: enteroEntre(0, 100, 'Porcentaje de filas con dígitos distintos'),
+    intentosMax: enteroEntre(1, 20, 'Intentos por persona'),
+    cargos: z
+      .array(grupoCdaSchema)
+      .max(40, 'Máximo 40 cargos')
+      .transform((c) => Array.from(new Set(c))),
+    incluir: idsUnicos(3000),
+    excluir: idsUnicos(3000),
+  })
+  .refine((p) => p.votoMin <= p.votoMax, { message: 'El voto mínimo no puede ser mayor que el máximo', path: ['votoMax'] })
+  .refine((p) => Date.parse(p.fin) > Date.parse(p.inicio), { message: 'El fin debe ser posterior al inicio', path: ['fin'] })
+  .refine((p) => p.cargos.length > 0 || p.incluir.length > 0, {
+    message: 'Elija al menos un cargo o una persona',
+    path: ['cargos'],
+  })
+  .refine((p) => !p.incluir.some((id) => p.excluir.includes(id)), {
+    message: 'Una persona no puede estar agregada y quitada a la vez',
+    path: ['excluir'],
+  });
+export type PracticaDigitacionInput = z.infer<typeof practicaDigitacionSchema>;
+
+export const activarPracticaDigitacionSchema = z.object({ activa: z.boolean() });
+
+export const ingresoSimuladorSchema = z.object({ cedula: cedulaSchema });
+
+export const iniciarSimuladorSchema = z.object({ cedula: cedulaSchema, practicaId: z.string().uuid('Práctica inválida') });
+
+/** Token del intento: 32 bytes en base64url (lo entrega "iniciar"). */
+export const tokenSimuladorSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'Sesión de práctica inválida'),
+});
+
+export const guardarActaSimuladorSchema = tokenSimuladorSchema.extend({
+  actaId: z.string().uuid('Acta inválida'),
+  valores: z
+    .array(z.number().int('Solo números enteros').min(0, 'Solo números de 0 a 999').max(MAX_VOTO_SIMULADOR, 'Solo números de 0 a 999').nullable())
+    .min(1, 'El acta no tiene filas')
+    .max(MAX_FILAS_ACTA_SIMULADOR, `Máximo ${MAX_FILAS_ACTA_SIMULADOR} filas`),
+});
+export type GuardarActaSimuladorInput = z.infer<typeof guardarActaSimuladorSchema>;
+
+/** Lo escrito sin guardar (mismo formato que guardar). */
+export const borradorActaSimuladorSchema = guardarActaSimuladorSchema;
+
+/** Tras el fin del tiempo, se acepta el último borrador durante este margen (llega tarde por la red). */
+export const MARGEN_BORRADOR_MS = 30_000;
+
+export const nombreNovedadDigitacionSchema = z.object({
+  nombre: z.string().trim().min(3, 'Nombre requerido (mínimo 3 letras)').max(120, 'Máximo 120 caracteres'),
+});
+export const activarNovedadDigitacionSchema = z.object({ activa: z.boolean() });

@@ -22,6 +22,18 @@ function claveCargo(v: unknown): string | undefined {
   return grupoCdaSchema.safeParse(v).success ? (v as string) : undefined;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Un uuid (ruta, cuerpo o respuesta) o nada si no tiene esa forma. */
+function idUuid(v: unknown): string | undefined {
+  return typeof v === 'string' && UUID.test(v) ? v : undefined;
+}
+
+/** Configuración de una práctica del simulador: sin datos personales. */
+const CAMPOS_PRACTICA_DIGITACION = [
+  'nombre', 'filasPorActa', 'votoMin', 'votoMax', 'metaActas', 'plazoMinutos',
+  'inicio', 'fin', 'pctDigitosDistintos', 'intentosMax', 'cargos',
+] as const;
+
 /** Descargas de reportes de operadores CDA: grupo, rango, modo y formato pedidos (nada personal). */
 function resumenDescargaReporte(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
@@ -128,7 +140,86 @@ const AUDIT_TABLE: Array<{
     entidadId: (req) => claveCargo(req.params?.clave),
     campos: ['activo'],
   },
-  { method: 'POST',  pathRegex: /^\/operadores-cda$/,          accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda' },
+  // Simulador de digitación: la configuración de cada práctica (sin personas:
+  // de incluir/excluir solo queda el nombre del campo). Las actas digitadas no
+  // se auditan (son miles); sí quién empieza cada intento.
+  {
+    method: 'POST',
+    pathRegex: /^\/simulador-digitacion\/practicas$/,
+    accion: 'PRACTICA_DIGITACION_CREAR',
+    entidad: 'practica_digitacion',
+    entidadId: (_req, res) => idUuid((res as { id?: unknown } | null)?.id),
+    campos: CAMPOS_PRACTICA_DIGITACION,
+  },
+  {
+    method: 'PUT',
+    pathRegex: /^\/simulador-digitacion\/practicas\/[^/]+$/,
+    accion: 'PRACTICA_DIGITACION_EDITAR',
+    entidad: 'practica_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    campos: CAMPOS_PRACTICA_DIGITACION,
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/simulador-digitacion\/practicas\/[^/]+\/activa$/,
+    accion: 'PRACTICA_DIGITACION_ACTIVA',
+    entidad: 'practica_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    campos: ['activa'],
+  },
+  // Descarga del reporte (lleva cédulas y celulares): formato y, si es individual, de quién.
+  {
+    method: 'GET',
+    pathRegex: /^\/simulador-digitacion\/practicas\/[^/]+\/reporte\.(xlsx|pdf)$/,
+    accion: 'PRACTICA_DIGITACION_REPORTE',
+    entidad: 'practica_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    resumen: (_res, req) => ({
+      formato: (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx',
+      operadorId: idUuid((req.query as Record<string, unknown> | undefined)?.operadorId) ?? null,
+    }),
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/simulador-digitacion\/novedades$/,
+    accion: 'NOVEDAD_DIGITACION_CREAR',
+    entidad: 'novedad_digitacion',
+    entidadId: (_req, res) => idUuid((res as { id?: unknown } | null)?.id),
+    campos: ['nombre'],
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/simulador-digitacion\/novedades\/[^/]+$/,
+    accion: 'NOVEDAD_DIGITACION_RENOMBRAR',
+    entidad: 'novedad_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    campos: ['nombre'],
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/simulador-digitacion\/novedades\/[^/]+\/activa$/,
+    accion: 'NOVEDAD_DIGITACION_ACTIVA',
+    entidad: 'novedad_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    campos: ['activa'],
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/simulador\/iniciar$/,
+    accion: 'PRACTICA_DIGITACION_INICIAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    // retomado: true = se abrió en otro equipo un intento ya empezado (sirve para
+    // revisar un reclamo de "alguien entró con mi cédula").
+    resumen: (_res, req) => ({
+      practicaId: idUuid((req.body as { practicaId?: unknown } | undefined)?.practicaId) ?? null,
+      retomado: (req as Request & { simuladorRetomado?: unknown }).simuladorRetomado === true,
+    }),
+  },
+  { method: 'POST',  pathRegex: /^\/operadores-cda$/,         accion: 'OPERADOR_CDA_CREATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+$/,   accion: 'OPERADOR_CDA_UPDATE', entidad: 'operador_cda' },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/activo$/, accion: 'OPERADOR_CDA_ACTIVO', entidad: 'operador_cda', campos: ['activo'] },
   // Cambio de cargo: de qué cargo a cuál (sin datos personales).
