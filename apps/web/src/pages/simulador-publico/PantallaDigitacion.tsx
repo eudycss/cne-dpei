@@ -191,7 +191,7 @@ export function PantallaDigitacion({ token, estadoInicial, onTerminada, onSesion
         setValores(r.acta.filas.map(() => ''));
         setIncorrectas([]);
         setAviso(null);
-        setMensaje(`Acta ${r.acta.numero}: digite el número que dicen las letras en cada fila (Tab pasa de fila; Alt+W envía).`);
+        setMensaje(`Acta ${r.acta.numero}: digite el número que dicen las letras en cada fila (Enter o Tab pasa de fila; Alt+W envía).`);
         setEnfocar('caja');
       } catch (e) {
         await manejarError(e, 'No se pudo traer el acta. Intente de nuevo.');
@@ -365,6 +365,12 @@ export function PantallaDigitacion({ token, estadoInicial, onTerminada, onSesion
                     onChange={(e) => {
                       const v = limpiar(e.target.value);
                       setValores((xs) => xs.map((x, k) => (k === i ? v : x)));
+                    }}
+                    onKeyDown={(e) => {
+                      // Enter pasa a la fila siguiente (en la última no hace nada: enviar es Alt+W).
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      cajas.current[i + 1]?.focus();
                     }}
                   />
                   {mal && (

@@ -253,7 +253,7 @@ function Practicas({
               </p>
               {!p.enCurso && !agotada && (
                 <p className="sier-suave">
-                  El cronómetro empieza al pulsar el botón. Alt+Q pide una nueva acta y Alt+W la envía.
+                  El cronómetro empieza al pulsar el botón. Alt+Q pide una nueva acta, Enter pasa de fila y Alt+W la envía.
                 </p>
               )}
               <button

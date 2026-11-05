@@ -88,18 +88,20 @@ describe('PantallaDigitacion', () => {
     expect(postMock).toHaveBeenCalledWith('/publico/simulador/nueva-acta', { token: TOKEN });
   });
 
-  it('solo acepta dígitos; Tab pasa de fila, Enter no hace nada y Alt+W envía (vacía = null)', async () => {
+  it('solo acepta dígitos; Enter o Tab pasan de fila, Enter en la última no envía y Alt+W sí (vacía = null)', async () => {
     const user = userEvent.setup();
     renderPantalla();
     await user.click(screen.getByRole('button', { name: 'Nueva acta' }));
     const primera = await screen.findByLabelText(/Fila 1:/);
     await user.type(primera, '6a2{Enter}');
     expect(primera).toHaveValue('62');
-    expect(primera).toHaveFocus();
+    expect(screen.getByLabelText(/Fila 2:/)).toHaveFocus();
     expect(llamadas('/guardar')).toHaveLength(0);
-    await user.keyboard('{Tab}{Tab}');
-    expect(screen.getByLabelText(/Fila 3:/)).toHaveFocus();
+    await user.keyboard('{Tab}');
+    const ultima = screen.getByLabelText(/Fila 3:/);
+    expect(ultima).toHaveFocus();
     await user.keyboard('50{Enter}');
+    expect(ultima).toHaveFocus();
     expect(llamadas('/guardar')).toHaveLength(0);
     await user.keyboard('{Alt>}w{/Alt}');
     await waitFor(() =>
