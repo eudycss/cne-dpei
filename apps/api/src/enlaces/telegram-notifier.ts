@@ -686,9 +686,10 @@ export class TelegramNotifier {
   }
 
   /** Mensaje ya escapado por quien llama (respuestas del asistente), con botones
-   * propios opcionales; sin ellos lleva el teclado fijo. */
-  async enviarHtml(texto: string, descripcion: string, botones?: object): Promise<void> {
-    await this.enviarMensaje(texto, descripcion, 'HTML', botones);
+   * propios opcionales; sin ellos lleva el teclado fijo. `silencioso`: llega sin sonido.
+   * Devuelve si Telegram lo recibió. */
+  async enviarHtml(texto: string, descripcion: string, botones?: object, opciones?: { silencioso?: boolean }): Promise<boolean> {
+    return this.enviarMensaje(texto, descripcion, 'HTML', botones, opciones?.silencioso);
   }
 
   /** Reemplaza el texto (ya escapado por quien llama) y los botones de un mensaje del bot. */
@@ -712,12 +713,14 @@ export class TelegramNotifier {
     descripcion: string,
     parseMode?: 'HTML',
     replyMarkup: object = tecladoFijo(),
-  ): Promise<void> {
-    await this.llamar(
+    silencioso = false,
+  ): Promise<boolean> {
+    return this.llamar(
       'sendMessage',
       {
         text,
         ...(parseMode ? { parse_mode: parseMode } : {}),
+        ...(silencioso ? { disable_notification: true } : {}),
         // El teclado fijo se manda en cada mensaje (no solo en /start) para que el
         // botón nunca desaparezca del grupo, aunque el chat se reinicie o alguien lo
         // cierre en su cliente. Un mensaje con botones propios (la tarjeta de
@@ -729,20 +732,20 @@ export class TelegramNotifier {
   }
 
   /** Llama a un método de la Bot API; con `conChat`, al chat configurado (o al de
-   * `responderEn`, si se está respondiendo a un grupo de consulta). Nunca lanza. */
+   * `responderEn`, si se está respondiendo a un grupo de consulta). Nunca lanza; devuelve si se entregó. */
   private async llamar(
     metodo: string,
     payload: Record<string, unknown>,
     descripcion: string,
     conChat = true,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = this.destino.getStore() ?? process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) {
       this.log.warn(
         `TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID no configurados — se omite el envío de ${descripcion}`,
       );
-      return;
+      return false;
     }
     const body = JSON.stringify(conChat ? { chat_id: chatId, ...payload } : payload);
 
@@ -752,7 +755,7 @@ export class TelegramNotifier {
     // puede duplicar el mensaje: preferible a que el grupo no reciba nada.
     for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
       const resultado = await this.intentarEnvio(token, metodo, body);
-      if (resultado.ok) return;
+      if (resultado.ok) return true;
       const ultimo = intento === MAX_INTENTOS || resultado.esperaMs === null;
       const siguiente = ultimo
         ? resultado.esperaMs === null
@@ -762,9 +765,10 @@ export class TelegramNotifier {
       this.log.error(
         `No se pudo enviar ${descripcion} a Telegram (intento ${intento}/${MAX_INTENTOS}): ${resultado.causa}${siguiente}`,
       );
-      if (ultimo) return;
+      if (ultimo) return false;
       await this.esperar(resultado.esperaMs!);
     }
+    return false;
   }
 
   /** Un intento de llamada a la Bot API con límite de tiempo. `esperaMs` es cuánto esperar

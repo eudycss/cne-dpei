@@ -2,17 +2,22 @@ import {
   BOTONES_JORNADA,
   callbackFichaCda,
   callbackJornada,
+  conteosJornada,
   consultablesDe,
   estadoVista,
   formatearFichaCda,
+  formatearResumenAutomatico,
   formatearResumenJornada,
   gruposDe,
+  jornadaCerrada,
+  jornadaEmpezada,
   leerCallbackFichaCda,
   leerCallbackJornada,
   paginasDetalleJornada,
   tecladoFichaCda,
   tecladoFijoJornada,
   tecladoJornada,
+  tecladoResumenAutomatico,
   telefonoTelegram,
   vistaDeTexto,
   type CantonJornada,
@@ -451,6 +456,63 @@ describe('Jornada (Telegram)', () => {
       expect(tecladoFichaCda(j, '1133').inline_keyboard[0].map((b) => b.callback_data)).toEqual(['jor:cda:1133', 'jor:nc:d:res:0']);
       expect(tecladoFichaCda(j, '971').inline_keyboard[0]).toHaveLength(1);
       expect(tecladoFichaCda(j, '800').inline_keyboard[0]).toHaveLength(1);
+    });
+  });
+
+  describe('resumen automático', () => {
+    const r = (h: string) => ({ en: A_LAS(h), sinSenal: false });
+    const enCurso = () =>
+      jornada({
+        unidades: [
+          unidad('971', JAIRO, { registros: { SALIDA_DPI: r('07:00'), LLEGADA_RECINTO: r('08:00'), SALIDA_RECINTO: r('17:00') } }),
+          unidad('1290', JAIRO, { registros: { SALIDA_DPI: r('07:05'), LLEGADA_RECINTO: r('08:10') } }),
+        ],
+        noCdas: [noCda('3000', '1290', { visita: r('10:15') }), noCda('3001', '1290'), noCda('4000', '971', { visita: r('10:20') })],
+      });
+
+    it('una línea por momento con su avance, NO CDA con CDA completos y los kits pendientes', () => {
+      const texto = formatearResumenAutomatico(enCurso(), AHORA);
+      expect(texto).toContain('<b>📋 Jornada</b> · 09:00 · resumen automático');
+      expect(texto).toContain(`${BOTONES_JORNADA.SALIDA_DPI}  <code>▓▓▓▓▓▓▓▓▓▓</code> 2/2 ✅`);
+      expect(texto).toContain(`${BOTONES_JORNADA.SALIDA_RECINTO}  <code>▓▓▓▓▓░░░░░</code> 1/2 · faltan 1`);
+      expect(texto).toContain(`${BOTONES_JORNADA.NO_CDA}  <code>▓▓▓▓▓▓▓░░░</code> 2/3 · faltan 1 · 1 de 2 CDA completos`);
+      expect(texto).toContain(`${BOTONES_JORNADA.KIT}: ninguno`);
+      expect(texto).not.toContain('Desde las');
+    });
+
+    it('con un resumen anterior dice qué cambió desde esa hora', () => {
+      const antes = conteosJornada(
+        jornada({
+          unidades: [unidad('971', JAIRO, { registros: { SALIDA_DPI: r('07:00') } }), unidad('1290', JAIRO)],
+          noCdas: [noCda('3000', '1290'), noCda('3001', '1290'), noCda('4000', '971')],
+        }),
+      );
+      const texto = formatearResumenAutomatico(enCurso(), AHORA, { conteos: antes, en: A_LAS('08:45') });
+      expect(texto).toContain(
+        'Desde las 08:45: 🚐 +1 salieron del DPEI · 📍 +2 llegaron al recinto · 🏁 +1 salieron del recinto · 🏫 +2 NO CDA llegaron',
+      );
+    });
+
+    it('empezada con la primera salida del DPEI; cerrada con todos en el DPEI y sin kits pendientes', () => {
+      expect(jornadaEmpezada(jornada({ unidades: [unidad('1', JAIRO)] }))).toBe(false);
+      expect(jornadaEmpezada(enCurso())).toBe(true);
+      expect(jornadaCerrada(enCurso())).toBe(false);
+      expect(jornadaCerrada(jornada({ unidades: [] }))).toBe(false);
+
+      const todos = { SALIDA_DPI: r('07:00'), LLEGADA_DPI: r('19:00') };
+      const sinKit = jornada({ unidades: [unidad('1', JAIRO, { registros: todos })] });
+      expect(jornadaCerrada(sinKit)).toBe(false);
+      const lista = jornada({ unidades: [unidad('1', JAIRO, { registros: todos, kitRecibido: A_LAS('19:05') })] });
+      expect(jornadaCerrada(lista)).toBe(true);
+      expect(formatearResumenAutomatico(lista, AHORA)).toContain('<b>✅ Jornada cerrada</b>');
+    });
+
+    it('un botón por vista; NO CDA abre por CDA', () => {
+      const botones = tecladoResumenAutomatico().inline_keyboard.flat();
+      expect(botones).toHaveLength(6);
+      expect(botones.find((b) => b.text === BOTONES_JORNADA.NO_CDA)?.callback_data).toBe('jor:nc:d:res:0');
+      expect(botones.find((b) => b.text === BOTONES_JORNADA.SALIDA_DPI)?.callback_data).toBe('jor:sd:t:res:0');
+      for (const b of botones) expect(leerCallbackJornada(b.callback_data)).not.toBeNull();
     });
   });
 

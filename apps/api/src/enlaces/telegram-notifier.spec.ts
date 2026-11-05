@@ -529,6 +529,14 @@ describe('TelegramNotifier', () => {
 
       const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
       expect(body).toMatchObject({ chat_id: '-100200300', text: '<b>hola</b>', parse_mode: 'HTML', reply_markup: botones });
+      expect(body).not.toHaveProperty('disable_notification');
+    });
+
+    it('enviarHtml silencioso llega sin sonido', async () => {
+      await new TelegramNotifier().enviarHtml('<b>hola</b>', 'prueba', undefined, { silencioso: true });
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body).toMatchObject({ text: '<b>hola</b>', disable_notification: true });
     });
 
     it('indicarEscribiendo manda la acción "typing" al chat', async () => {
