@@ -41,6 +41,65 @@ describe('SimuladorController.buscarPersonas', () => {
   });
 });
 
+describe('SimuladorController: descargas del reporte', () => {
+  const OP = '22222222-2222-4222-8222-222222222222';
+  const PR = '11111111-1111-4111-8111-111111111111';
+  const fila = { operadorId: OP, cedula: '1710034065', apellidosNombres: 'ANA', telefono: null, cargo: 'D', estado: 'NO_SE_PRESENTO', asignada: true, intentos: [], mejor: null, cumplio: false };
+  const rep = {
+    practica: { id: PR, nombre: 'P', metaActas: 1, plazoMinutos: 1, filasPorActa: 1, inicio: '2026-11-10T13:00:00Z', fin: '2026-11-10T18:00:00Z' },
+    generadoEn: '2026-11-10T13:00:00Z',
+    totales: { personas: 1, presentaron: 0, cumplieron: 0, enCurso: 0, noSePresentaron: 1 },
+    filas: [fila],
+  };
+  const res = () => ({ setHeader: jest.fn(), send: jest.fn() });
+
+  it('Excel general y PDF individual, sin caché', async () => {
+    const practicas = { reporte: jest.fn().mockResolvedValue(rep) };
+    const ctrl = new SimuladorController(practicas as never);
+    const r1 = res();
+    await ctrl.exportarExcel(r1 as never, PR);
+    expect(r1.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="simulador_digitacion_2026-11-10_2026-11-10.xlsx"');
+    expect(r1.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    const r2 = res();
+    await ctrl.exportarPdf(r2 as never, PR, OP);
+    expect(r2.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="simulador_digitacion_1710034065_2026-11-10_2026-11-10.pdf"');
+  });
+
+  it.each([['no-uuid'], [[OP, OP]]])('operadorId inválido (%p): 400 sin consultar', async (op) => {
+    const practicas = { reporte: jest.fn() };
+    const ctrl = new SimuladorController(practicas as never);
+    await expect(ctrl.exportarExcel(res() as never, PR, op)).rejects.toMatchObject({ status: 400 });
+    expect(practicas.reporte).not.toHaveBeenCalled();
+  });
+
+  it('operadorId vacío = reporte general', async () => {
+    const practicas = { reporte: jest.fn().mockResolvedValue(rep) };
+    const r = res();
+    await new SimuladorController(practicas as never).exportarExcel(r as never, PR, '');
+    expect(r.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="simulador_digitacion_2026-11-10_2026-11-10.xlsx"');
+  });
+
+  it('el reporte en pantalla: sin caché y con límite por IP', () => {
+    const fn = metodo(SimuladorController.prototype, 'reporte');
+    expect(Reflect.getMetadata('__headers__', fn)).toEqual([{ name: 'Cache-Control', value: 'no-store' }]);
+    const clave = Reflect.getMetadataKeys(fn).find((k) => String(k).includes('LIMIT') && String(k).includes('default'));
+    expect(Reflect.getMetadata(clave, fn)).toBe(120);
+  });
+
+  it('persona que no está en la práctica: 404', async () => {
+    const ctrl = new SimuladorController({ reporte: jest.fn().mockResolvedValue(rep) } as never);
+    await expect(ctrl.exportarPdf(res() as never, PR, '33333333-3333-4333-8333-333333333333')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('las descargas tienen límite por IP', () => {
+    for (const m of ['exportarExcel', 'exportarPdf']) {
+      const fn = metodo(SimuladorController.prototype, m);
+      const clave = Reflect.getMetadataKeys(fn).find((k) => String(k).includes('LIMIT') && String(k).includes('default'));
+      expect(Reflect.getMetadata(clave, fn)).toBe(30);
+    }
+  });
+});
+
 describe('SimuladorPublicoController', () => {
   it('es público (sin sesión)', () => {
     expect(new Reflector().get(IS_PUBLIC_KEY, SimuladorPublicoController)).toBe(true);

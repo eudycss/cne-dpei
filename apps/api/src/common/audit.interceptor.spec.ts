@@ -566,6 +566,29 @@ describe('AuditInterceptor', () => {
 
     const guardar = await auditar({ method: 'POST', originalUrl: '/publico/simulador/guardar', body: { token: 'x', valores: [1] } });
     expect(guardar.create).not.toHaveBeenCalled();
+
+    // Descargas del reporte (llevan cédulas y celulares): general o de una persona.
+    const general = await auditar({
+      method: 'GET', originalUrl: `/simulador-digitacion/practicas/${PRACTICA}/reporte.xlsx`, params: { id: PRACTICA }, query: {}, user: ADMIN,
+    });
+    expect(general.data).toMatchObject({
+      accion: 'PRACTICA_DIGITACION_REPORTE',
+      entidad: 'practica_digitacion',
+      entidadId: PRACTICA,
+      datosDespues: { formato: 'xlsx', operadorId: null },
+    });
+    const individual = await auditar({
+      method: 'GET',
+      originalUrl: `/simulador-digitacion/practicas/${PRACTICA}/reporte.pdf?operadorId=${OTRO}`,
+      params: { id: PRACTICA },
+      query: { operadorId: OTRO },
+      user: ADMIN,
+    });
+    expect(individual.data).toMatchObject({ datosDespues: { formato: 'pdf', operadorId: OTRO } });
+
+    // Ver el reporte en pantalla no se audita.
+    const ver = await auditar({ method: 'GET', originalUrl: `/simulador-digitacion/practicas/${PRACTICA}/reporte`, params: { id: PRACTICA }, user: ADMIN });
+    expect(ver.create).not.toHaveBeenCalled();
   });
 
   it('gestión de cargos CDA: queda la clave, el nombre, el centro y si se desactivó', async () => {

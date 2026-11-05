@@ -60,6 +60,8 @@ describe('PracticasDigitacionService', () => {
     practicaDigitacionPersona: { createMany: jest.fn(), deleteMany: jest.fn() },
     operadorCda: { count: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
     cargoCda: { findMany: jest.fn() },
+    intentoDigitacion: { findMany: jest.fn() },
+    actaDigitacion: { findMany: jest.fn() },
     novedadDigitacion: { findMany: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
@@ -109,6 +111,72 @@ describe('PracticasDigitacionService', () => {
       { clave: 'X', nombre: 'X', centro: 'CDA', personas: 0 },
     ]);
     expect(prisma.cargoCda.findMany.mock.calls[0][0].where).toEqual({ activo: true });
+  });
+
+  describe('reporte', () => {
+    const AHORA = new Date('2026-11-10T16:00:00Z');
+    const intentoBd = (o: Record<string, unknown>) => ({
+      id: 'i1',
+      operadorId: P1,
+      numero: 1,
+      cargo: 'Digitadores',
+      iniciadoEn: new Date('2026-11-10T14:00:00Z'),
+      venceEn: new Date('2026-11-10T15:00:00Z'),
+      terminadoEn: null,
+      actasCompletadas: 5,
+      actasPerfectas: 4,
+      filasDigitadas: 60,
+      filasCorrectas: 58,
+      ...o,
+    });
+    const datos = (id: string, apellidosNombres: string, telefono: string | null) => ({
+      id,
+      cedula: '1710034065',
+      apellidosNombres,
+      telefono,
+      cargoCda: { nombre: 'Digitadores' },
+    });
+
+    beforeEach(() => {
+      // 1.ª llamada: asignadas hoy; 2.ª: los datos de todas.
+      prisma.operadorCda.findMany
+        .mockResolvedValueOnce([{ id: P1 }, { id: P2 }])
+        .mockResolvedValueOnce([datos(P1, 'ANA PÉREZ', '0991234567'), datos(P2, 'LUIS MORA', null), datos(ID, 'YA NO ASIGNADA', null)]);
+      prisma.intentoDigitacion.findMany.mockResolvedValue([
+        intentoBd({}),
+        intentoBd({ id: 'i2', numero: 2, filasDigitadas: 70, filasCorrectas: 69 }),
+        intentoBd({ id: 'i3', operadorId: ID }),
+      ]);
+      prisma.actaDigitacion.findMany.mockResolvedValue([{ intentoId: 'i2', valores: [1, 2, 3], borrador: [1, 2, 9] }]);
+    });
+
+    it('asignadas (aunque no se presenten) + quien tiene intentos; suma el acta a medias; ordena', async () => {
+      const r = await service.reporte(ID, AHORA);
+      expect(prisma.operadorCda.findMany).toHaveBeenNthCalledWith(1, {
+        where: { activo: true, OR: [{ grupo: { in: ['DIGITADOR'] }, id: { notIn: [P2] } }, { id: { in: [P1] } }] },
+        select: { id: true },
+      });
+      expect(prisma.operadorCda.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({ where: { id: { in: [P1, P2, ID] } } }));
+      expect(prisma.actaDigitacion.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { intento: { practicaId: ID }, guardados: 0, completadaEn: null } }),
+      );
+      expect(r.filas.map((f) => [f.apellidosNombres, f.estado, f.asignada, f.mejor])).toEqual([
+        ['ANA PÉREZ', 'TERMINADO', true, 2],
+        ['YA NO ASIGNADA', 'TERMINADO', false, 1],
+        ['LUIS MORA', 'NO_SE_PRESENTO', true, null],
+      ]);
+      // Intento 2: 70 + 3 del acta a medias, 69 + 2 correctos.
+      expect(r.filas[0].intentos[1]).toMatchObject({ filasDigitadas: 73, filasCorrectas: 71, motivo: 'TIEMPO' });
+      expect(r.filas[0].telefono).toBe('0991234567');
+      expect(r.totales).toEqual({ personas: 3, presentaron: 2, cumplieron: 0, enCurso: 0, noSePresentaron: 1 });
+      expect(r.practica).toMatchObject({ id: ID, metaActas: 200, inicio: INPUT.inicio });
+      expect(r.generadoEn).toBe(AHORA.toISOString());
+    });
+
+    it('práctica inexistente: 404', async () => {
+      prisma.practicaDigitacion.findUnique.mockResolvedValue(null);
+      await expect(service.reporte(ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 
   it('obtener inexistente: 404', async () => {

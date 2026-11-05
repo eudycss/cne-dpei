@@ -242,7 +242,8 @@ export function nombreDeDescarga(cabecera: unknown, respaldo: string): string {
   return m?.[1] ?? respaldo;
 }
 
-function guardar(blob: Blob, nombre: string): void {
+/** Descarga un blob con ese nombre (lo usan también otros módulos). */
+export function guardar(blob: Blob, nombre: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

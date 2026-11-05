@@ -1,12 +1,28 @@
-import type { CargoSimulador, NovedadDigitacion, PersonaSimulador, PracticaDigitacion } from '@cne/shared-types';
+import type { CargoSimulador, NovedadDigitacion, PersonaSimulador, PracticaDigitacion, ReporteSimulador } from '@cne/shared-types';
 import type { PracticaDigitacionInput } from '@cne/shared-validation';
 import { api } from '../api';
+import { guardar, nombreDeDescarga } from './operadores-cda';
 
 const BASE = '/simulador-digitacion';
 
 export const CLAVE_PRACTICAS = ['simulador', 'practicas'] as const;
 export const CLAVE_NOVEDADES = ['simulador', 'novedades'] as const;
 export const CLAVE_CARGOS = ['simulador', 'cargos'] as const;
+export const claveReporte = (practicaId: string) => ['simulador', 'reporte', practicaId] as const;
+
+export async function getReporteSimulador(practicaId: string): Promise<ReporteSimulador> {
+  const { data } = await api.get<ReporteSimulador>(`${BASE}/practicas/${practicaId}/reporte`);
+  return data;
+}
+
+/** Excel o PDF del reporte: general o, con `operadorId`, el de una persona. */
+export async function descargarReporteSimulador(practicaId: string, formato: 'xlsx' | 'pdf', operadorId?: string): Promise<void> {
+  const res = await api.get<Blob>(`${BASE}/practicas/${practicaId}/reporte.${formato}`, {
+    params: operadorId ? { operadorId } : undefined,
+    responseType: 'blob',
+  });
+  guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `simulador_digitacion.${formato}`));
+}
 
 export async function getPracticasDigitacion(): Promise<PracticaDigitacion[]> {
   const { data } = await api.get<PracticaDigitacion[]>(`${BASE}/practicas`);

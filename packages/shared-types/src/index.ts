@@ -1879,3 +1879,61 @@ export interface GuardarActaSimuladorResponse {
   /** Cada AVISO_CADA_ACTAS actas: cuántas de las últimas salieron perfectas. */
   aviso: { perfectas: number; de: number } | null;
 }
+
+// ---- Simulador de digitación: reportes ----
+
+/** Un intento, como sale en el reporte (incluye el acta a medias si se acabó el tiempo). */
+export interface IntentoReporteSimulador {
+  numero: number;
+  /** Cargo al empezar. */
+  cargo: string;
+  iniciadoEn: string;
+  terminadoEn: string | null;
+  /** META = cumplió la meta de actas; TIEMPO = se acabó el tiempo; null = en curso. */
+  motivo: 'META' | 'TIEMPO' | null;
+  /** Minutos usados (hasta cumplir la meta, el fin del tiempo o ahora si sigue en curso). */
+  minutos: number;
+  filasDigitadas: number;
+  filasCorrectas: number;
+  filasConError: number;
+  /** Registros digitados por minuto. */
+  registrosPorMinuto: number;
+  actasCompletadas: number;
+  actasPerfectas: number;
+  actasConError: number;
+  cumplio: boolean;
+}
+
+export type EstadoPersonaReporteSimulador = 'NO_SE_PRESENTO' | 'EN_CURSO' | 'TERMINADO';
+
+export interface FilaReporteSimulador {
+  operadorId: string;
+  cedula: string;
+  apellidosNombres: string;
+  telefono: string | null;
+  cargo: string;
+  estado: EstadoPersonaReporteSimulador;
+  /** Sigue asignada a la práctica (si no, aparece solo porque ya tenía intentos). */
+  asignada: boolean;
+  /** Todos sus intentos, del primero al último. */
+  intentos: IntentoReporteSimulador[];
+  /** Número del mejor intento (null si no se presentó). */
+  mejor: number | null;
+  cumplio: boolean;
+}
+
+export interface ReporteSimulador {
+  practica: {
+    id: string;
+    nombre: string;
+    metaActas: number;
+    plazoMinutos: number;
+    filasPorActa: number;
+    inicio: string;
+    fin: string;
+  };
+  generadoEn: string;
+  totales: { personas: number; presentaron: number; cumplieron: number; enCurso: number; noSePresentaron: number };
+  /** Ordenadas: primero quien cumplió y más registros correctos; al final quien no se presentó. */
+  filas: FilaReporteSimulador[];
+}

@@ -1080,3 +1080,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .sier-registros span:first-child { font-size: 0.75rem; color: #c9d4e5; }
 .sier-registros strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
 .sier-btn kbd { margin-left: 0.35rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: rgb(255 255 255 / 0.2); font: inherit; font-size: 0.7rem; text-transform: none; }
+.sim-totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin: 0 0 1rem; }
+.sim-totales > div { padding: 0.75rem 1rem; border: 1px solid var(--f-border-subtle); border-radius: 10px; background: var(--f-bg-surface); }
+.sim-totales dt { font-size: 0.75rem; color: var(--f-text-muted); }
+.sim-totales dd { margin: 0.15rem 0 0; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -167,6 +167,18 @@ const AUDIT_TABLE: Array<{
     entidadId: (req) => idUuid(req.params?.id),
     campos: ['activa'],
   },
+  // Descarga del reporte (lleva cédulas y celulares): formato y, si es individual, de quién.
+  {
+    method: 'GET',
+    pathRegex: /^\/simulador-digitacion\/practicas\/[^/]+\/reporte\.(xlsx|pdf)$/,
+    accion: 'PRACTICA_DIGITACION_REPORTE',
+    entidad: 'practica_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    resumen: (_res, req) => ({
+      formato: (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx',
+      operadorId: idUuid((req.query as Record<string, unknown> | undefined)?.operadorId) ?? null,
+    }),
+  },
   {
     method: 'POST',
     pathRegex: /^\/simulador-digitacion\/novedades$/,

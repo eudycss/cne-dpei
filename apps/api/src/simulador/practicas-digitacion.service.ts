@@ -1,10 +1,18 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { CargoSimulador, NovedadDigitacion, PersonaSimulador, PracticaDigitacion } from '@cne/shared-types';
+import type {
+  CargoSimulador,
+  NovedadDigitacion,
+  PersonaSimulador,
+  PracticaDigitacion,
+  ReporteSimulador,
+} from '@cne/shared-types';
 import type { PracticaDigitacionInput } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
 import { idsPorBusqueda } from '../common/busqueda-sql';
+import { conteoFilas } from './acta-digitacion';
+import { filaPersona, ordenarFilas, resumirIntento, totales } from './reporte-simulador';
 
 /** Igual que la web: con 1 letra saldría medio personal (nombre y cédula). */
 export const MIN_BUSQUEDA = 2;
@@ -25,6 +33,24 @@ const INCLUIR = {
 };
 
 type FilaPractica = Prisma.PracticaDigitacionGetPayload<{ include: typeof INCLUIR }>;
+
+const DATOS_REPORTE = {
+  id: true,
+  cedula: true,
+  apellidosNombres: true,
+  telefono: true,
+  cargoCda: { select: { nombre: true } },
+} satisfies Prisma.OperadorCdaSelect;
+
+/** Personal activo al que aplica la práctica: su cargo (menos las quitadas) + las agregadas. */
+function dondeAlcance(f: Pick<FilaPractica, 'cargos' | 'personas'>): Prisma.OperadorCdaWhereInput {
+  const quitadas = f.personas.filter((p) => !p.incluida).map((p) => p.operador.id);
+  const agregadas = f.personas.filter((p) => p.incluida).map((p) => p.operador.id);
+  return {
+    activo: true,
+    OR: [{ grupo: { in: f.cargos.map((c) => c.cargo) }, id: { notIn: quitadas } }, { id: { in: agregadas } }],
+  };
+}
 
 /** Campos que definen cómo se califica: con intentos ya hechos no se tocan. */
 const CAMPOS_FIJOS_CON_INTENTOS = ['filasPorActa', 'votoMin', 'votoMax', 'metaActas', 'plazoMinutos', 'pctDigitosDistintos'] as const;
@@ -127,17 +153,55 @@ export class PracticasDigitacionService {
 
   /** Personas activas a las que aplica: de los cargos sin las quitadas, más las agregadas. */
   private alcance(f: FilaPractica): Promise<number> {
-    const quitadas = f.personas.filter((p) => !p.incluida).map((p) => p.operador.id);
-    const agregadas = f.personas.filter((p) => p.incluida).map((p) => p.operador.id);
-    return this.prisma.operadorCda.count({
-      where: {
-        activo: true,
-        OR: [
-          { grupo: { in: f.cargos.map((c) => c.cargo) }, id: { notIn: quitadas } },
-          { id: { in: agregadas } },
-        ],
+    return this.prisma.operadorCda.count({ where: dondeAlcance(f) });
+  }
+
+  /**
+   * Reporte de la práctica: toda persona asignada hoy (aunque no se haya
+   * presentado) y toda la que tenga intentos (aunque ya no esté asignada).
+   */
+  async reporte(id: string, ahora = new Date()): Promise<ReporteSimulador> {
+    const practica = await this.prisma.practicaDigitacion.findUnique({ where: { id }, include: INCLUIR });
+    if (!practica) throw new NotFoundException('Práctica no encontrada');
+    const [asignadas, intentos, abiertas] = await Promise.all([
+      this.prisma.operadorCda.findMany({ where: dondeAlcance(practica), select: { id: true } }),
+      this.prisma.intentoDigitacion.findMany({ where: { practicaId: id }, orderBy: { numero: 'asc' } }),
+      // Acta a medias de cada intento (cuenta si se acabó el tiempo).
+      this.prisma.actaDigitacion.findMany({
+        where: { intento: { practicaId: id }, guardados: 0, completadaEn: null },
+        orderBy: { numero: 'asc' },
+        select: { intentoId: true, valores: true, borrador: true },
+      }),
+    ]);
+    const parciales = new Map(abiertas.map((a) => [a.intentoId, conteoFilas(a.valores, a.borrador)]));
+    const asignadaIds = new Set(asignadas.map((a) => a.id));
+    const ids = [...new Set([...asignadaIds, ...intentos.map((i) => i.operadorId)])];
+    const personas = await this.prisma.operadorCda.findMany({ where: { id: { in: ids } }, select: DATOS_REPORTE });
+
+    const porPersona = new Map<string, typeof intentos>();
+    for (const i of intentos) porPersona.set(i.operadorId, [...(porPersona.get(i.operadorId) ?? []), i]);
+    const filas = ordenarFilas(
+      personas.map((p) =>
+        filaPersona(
+          { operadorId: p.id, cedula: p.cedula, apellidosNombres: p.apellidosNombres, telefono: p.telefono, cargo: p.cargoCda.nombre, asignada: asignadaIds.has(p.id) },
+          (porPersona.get(p.id) ?? []).map((i) => resumirIntento(i, practica.metaActas, ahora, parciales.get(i.id))),
+        ),
+      ),
+    );
+    return {
+      practica: {
+        id: practica.id,
+        nombre: practica.nombre,
+        metaActas: practica.metaActas,
+        plazoMinutos: practica.plazoMinutos,
+        filasPorActa: practica.filasPorActa,
+        inicio: practica.inicio.toISOString(),
+        fin: practica.fin.toISOString(),
       },
-    });
+      generadoEn: ahora.toISOString(),
+      totales: totales(filas),
+      filas,
+    };
   }
 
   async crear(input: PracticaDigitacionInput): Promise<PracticaDigitacion> {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { PracticaDigitacion } from '@cne/shared-types';
@@ -12,6 +12,7 @@ import {
 } from '../../lib/queries/simulador';
 import { PracticaModal } from './PracticaModal';
 import { NovedadesPanel } from './NovedadesPanel';
+import { ReportePractica } from './ReportePractica';
 
 const SECCIONES = [
   { id: 'practicas', etiqueta: 'Prácticas' },
@@ -69,6 +70,15 @@ function PracticasPanel() {
   const qc = useQueryClient();
   const { data: practicas, isLoading, error } = useQuery({ queryKey: CLAVE_PRACTICAS, queryFn: getPracticasDigitacion });
   const [edicion, setEdicion] = useState<Edicion>(null);
+  const [reporte, setReporte] = useState<PracticaDigitacion | null>(null);
+  // Al volver del reporte, el foco regresa a su botón "Reporte".
+  const volverA = useRef<string | null>(null);
+  const botonesReporte = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (reporte || !volverA.current) return;
+    botonesReporte.current.get(volverA.current)?.focus();
+    volverA.current = null;
+  }, [reporte, practicas]);
   const actualizar = () => qc.invalidateQueries({ queryKey: CLAVE_PRACTICAS });
 
   const cambiarActiva = useMutation({
@@ -79,6 +89,17 @@ function PracticasPanel() {
     },
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo cambiar el estado') }),
   });
+
+  if (reporte)
+    return (
+      <ReportePractica
+        practica={reporte}
+        onVolver={() => {
+          volverA.current = reporte.id;
+          setReporte(null);
+        }}
+      />
+    );
 
   return (
     <section aria-labelledby="sim-practicas-titulo">
@@ -150,6 +171,18 @@ function PracticasPanel() {
                   </td>
                   <td>
                     <div className="ocda-cargos-acciones">
+                      <button
+                        type="button"
+                        className="ocda-btn-texto"
+                        aria-label={`Reporte de ${p.nombre}`}
+                        ref={(el) => {
+                          if (el) botonesReporte.current.set(p.id, el);
+                          else botonesReporte.current.delete(p.id);
+                        }}
+                        onClick={() => setReporte(p)}
+                      >
+                        Reporte
+                      </button>
                       <button
                         type="button"
                         className="ocda-btn-texto"

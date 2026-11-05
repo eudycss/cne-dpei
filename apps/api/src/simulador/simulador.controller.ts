@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import type { FormatoReporteCda } from '@cne/shared-types';
 import {
   borradorActaSimuladorSchema,
   activarNovedadDigitacionSchema,
@@ -23,6 +24,18 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { PracticasDigitacionService } from './practicas-digitacion.service';
 import { SimuladorPublicoService } from './simulador-publico.service';
+import { archivoReporteSimulador } from './archivo-reporte-simulador';
+import { filaDe } from './reporte-simulador';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from '../operadores-cda/reporte-cda';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** ?operadorId= opcional: un solo valor y con forma de UUID. */
+function operadorDe(v: unknown): string | undefined {
+  if (v === undefined || v === '') return undefined;
+  if (typeof v !== 'string' || !UUID.test(v)) throw new BadRequestException('operadorId inválido');
+  return v;
+}
 
 /**
  * Administración del simulador. @Roles es el techo; de fábrica solo el
@@ -71,6 +84,36 @@ export class SimuladorController {
   @ApiOperation({ summary: 'Reemplaza la práctica. Con intentos hechos no cambia cómo se califica' })
   editar(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(practicaDigitacionSchema)) body: PracticaDigitacionInput) {
     return this.practicas.editar(id, body);
+  }
+
+  // Lleva cédulas y celulares: sin caché. La vista en pantalla no se audita (se refresca
+  // sola mientras hay intentos en curso); sí las descargas.
+  @Get('practicas/:id/reporte')
+  @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Reporte: cada persona asignada (o con intentos), su mejor intento y todos sus intentos' })
+  reporte(@Param('id', ParseUUIDPipe) id: string) {
+    return this.practicas.reporte(id);
+  }
+
+  @Get('practicas/:id/reporte.xlsx')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel del reporte (general, o de una persona con ?operadorId=)' })
+  exportarExcel(@Res() res: Response, @Param('id', ParseUUIDPipe) id: string, @Query('operadorId') operadorId?: unknown) {
+    return this.exportar(res, id, operadorId, 'xlsx');
+  }
+
+  @Get('practicas/:id/reporte.pdf')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF del reporte (general, o de una persona con ?operadorId=)' })
+  exportarPdf(@Res() res: Response, @Param('id', ParseUUIDPipe) id: string, @Query('operadorId') operadorId?: unknown) {
+    return this.exportar(res, id, operadorId, 'pdf');
+  }
+
+  private async exportar(res: Response, id: string, operadorIdParam: unknown, formato: FormatoReporteCda): Promise<void> {
+    const operadorId = operadorDe(operadorIdParam);
+    const rep = await this.practicas.reporte(id);
+    enviarReporte(res, await archivoReporteSimulador(rep, formato, operadorId ? filaDe(rep, operadorId) : undefined));
   }
 
   @Patch('practicas/:id/activa')

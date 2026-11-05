@@ -89,6 +89,23 @@ describe('SimuladorPage', () => {
     );
   });
 
+  it('Reporte abre el de esa práctica y Volver regresa a la lista', async () => {
+    const user = userEvent.setup();
+    getMock.mockImplementation((url: string) => {
+      if (url.endsWith('/practicas')) return Promise.resolve({ data: [PRACTICA] });
+      if (url.endsWith('/reporte')) return Promise.reject({ response: { data: { message: 'sin datos' } } });
+      return Promise.resolve({ data: [] });
+    });
+    renderPagina();
+    await user.click(await screen.findByRole('button', { name: 'Reporte de Simulacro 1' }));
+    expect(screen.getByRole('heading', { name: 'Reporte: Simulacro 1' })).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith(`/simulador-digitacion/practicas/${PRACTICA.id}/reporte`);
+    await user.click(screen.getByRole('button', { name: 'Volver a prácticas' }));
+    expect(await screen.findByRole('table', { name: 'Prácticas de digitación' })).toBeInTheDocument();
+    // El foco regresa al botón que abrió el reporte.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reporte de Simulacro 1' })).toHaveFocus());
+  });
+
   it('abre el formulario para crear y para editar', async () => {
     const user = userEvent.setup();
     renderPagina();
