@@ -18,12 +18,14 @@ describe('JornadaService', () => {
     parejaCda: { findMany: jest.fn() },
     eventoTracking: { findMany: jest.fn() },
     recepcionDpiKit: { findMany: jest.fn() },
+    configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
   };
   const distributivo = { asignaciones: jest.fn() };
   const telegram = {
     enviarHtml: jest.fn().mockResolvedValue(undefined),
     editarHtml: jest.fn().mockResolvedValue(undefined),
     responderBoton: jest.fn().mockResolvedValue(undefined),
+    esAdministrador: jest.fn().mockResolvedValue(false),
     responderEn: jest.fn((_chat: string, fn: () => Promise<unknown>) => fn()),
   };
 
@@ -340,6 +342,72 @@ describe('JornadaService', () => {
         expect.any(String),
         expect.anything(),
       );
+    });
+  });
+
+  describe('frecuencia del resumen automático', () => {
+    beforeEach(() => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ minutosResumenJornada: 15 });
+      telegram.esAdministrador.mockResolvedValue(false);
+    });
+
+    it('"/frecuencia" muestra la actual marcada y las opciones', async () => {
+      expect(await service.atenderMensaje(CHAT, '/frecuencia')).toBe(true);
+      const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toContain('cada <b>15 min</b>');
+      expect(JSON.stringify(botones)).toContain('✅ 15 min');
+      expect(JSON.stringify(botones)).toContain('jor:frec:30');
+    });
+
+    it('sin fila de configuración usa 15 min', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue(null);
+      expect(await service.minutosResumen()).toBe(15);
+    });
+
+    it('el botón "⏱ Frecuencia" del resumen manda las opciones', async () => {
+      expect(await service.atenderBoton(CHAT, 'cb', 'jor:frec', 55, 111)).toBe(true);
+      expect(telegram.responderBoton).toHaveBeenCalledWith('cb');
+      expect(telegram.enviarHtml.mock.calls[0][0]).toContain('Resumen automático');
+    });
+
+    it('quien no es administrador del grupo no la cambia y recibe el aviso', async () => {
+      await service.atenderBoton(CHAT, 'cb', 'jor:frec:30', 55, 111);
+      expect(telegram.esAdministrador).toHaveBeenCalledWith(111);
+      expect(telegram.responderBoton).toHaveBeenCalledWith('cb', expect.stringContaining('Solo los administradores'));
+      expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
+      expect(telegram.editarHtml).not.toHaveBeenCalled();
+    });
+
+    it('sin remitente identificable (administrador anónimo) tampoco la cambia', async () => {
+      await service.atenderBoton(CHAT, 'cb', 'jor:frec:30', 55, undefined);
+      expect(telegram.esAdministrador).not.toHaveBeenCalled();
+      expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
+    });
+
+    it('un administrador la cambia y el mensaje muestra la nueva marcada', async () => {
+      telegram.esAdministrador.mockResolvedValue(true);
+      await service.atenderBoton(CHAT, 'cb', 'jor:frec:30', 55, 111);
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith({
+        where: { id: 1 },
+        create: { id: 1, minutosResumenJornada: 30 },
+        update: { minutosResumenJornada: 30 },
+      });
+      const [messageId, texto, , botones] = telegram.editarHtml.mock.calls[0];
+      expect(messageId).toBe(55);
+      expect(texto).toContain('ahora llega cada <b>30 min</b>');
+      expect(JSON.stringify(botones)).toContain('✅ 30 min');
+    });
+
+    it('un valor que no está entre las opciones solo muestra las opciones (no guarda)', async () => {
+      telegram.esAdministrador.mockResolvedValue(true);
+      await service.atenderBoton(CHAT, 'cb', 'jor:frec:7', 55, 111);
+      expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
+      expect(telegram.enviarHtml.mock.calls[0][0]).toContain('Resumen automático');
+    });
+
+    it('un botón de frecuencia de otro chat no es de la Jornada', async () => {
+      expect(await service.atenderBoton('-100200', 'cb', 'jor:frec:30', 55, 111)).toBe(false);
+      expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
     });
   });
 

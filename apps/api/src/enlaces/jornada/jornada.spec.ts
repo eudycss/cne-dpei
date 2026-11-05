@@ -508,8 +508,10 @@ describe('Jornada (Telegram)', () => {
     });
 
     it('un botón por vista; NO CDA abre por CDA', () => {
-      const botones = tecladoResumenAutomatico().inline_keyboard.flat();
+      const [frecuencia, ...vistas] = tecladoResumenAutomatico().inline_keyboard.flat().reverse();
+      const botones = vistas.reverse();
       expect(botones).toHaveLength(6);
+      expect(frecuencia).toEqual({ text: '⏱ Frecuencia del resumen', callback_data: 'jor:frec' });
       expect(botones.find((b) => b.text === BOTONES_JORNADA.NO_CDA)?.callback_data).toBe('jor:nc:d:res:0');
       expect(botones.find((b) => b.text === BOTONES_JORNADA.SALIDA_DPI)?.callback_data).toBe('jor:sd:t:res:0');
       for (const b of botones) expect(leerCallbackJornada(b.callback_data)).not.toBeNull();

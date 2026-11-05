@@ -681,6 +681,8 @@ model ConfigEnlaces {
   /// luego cada M min mientras siga caído. Se cambian desde la web.
   minutosPrimerAviso  Int @default(120) @map("minutos_primer_aviso")
   minutosRepetirAviso Int @default(120) @map("minutos_repetir_aviso")
+  /// Resumen automático del grupo Jornada: a lo más uno cada N min (web o bot).
+  minutosResumenJornada Int @default(15) @map("minutos_resumen_jornada")
 
   @@map("config_enlaces")
 }

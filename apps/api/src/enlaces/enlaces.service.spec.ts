@@ -67,6 +67,7 @@ describe('EnlacesService', () => {
   const jornada = {
     atenderMensaje: jest.fn().mockResolvedValue(false),
     atenderBoton: jest.fn().mockResolvedValue(false),
+    guardarMinutosResumen: jest.fn().mockResolvedValue(undefined),
   };
   const notifications = { encolarEnlaceCaido: jest.fn().mockResolvedValue(undefined) };
   const asistente = {
@@ -836,13 +837,32 @@ describe('EnlacesService', () => {
     it('getConfig devuelve la frecuencia guardada', async () => {
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], minutosPrimerAviso: 10, minutosRepetirAviso: 30 });
 
-      await expect(service.getConfig()).resolves.toEqual({ correos: [], minutosPrimerAviso: 10, minutosRepetirAviso: 30 });
+      await expect(service.getConfig()).resolves.toEqual({
+        correos: [],
+        minutosPrimerAviso: 10,
+        minutosRepetirAviso: 30,
+        minutosResumenJornada: 15,
+      });
+    });
+
+    it('guardarResumenJornada guarda la frecuencia del resumen y devuelve la config completa', async () => {
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], minutosPrimerAviso: 120, minutosRepetirAviso: 120, minutosResumenJornada: 30 });
+
+      const result = await service.guardarResumenJornada({ minutosResumenJornada: 30 });
+
+      expect(jornada.guardarMinutosResumen).toHaveBeenCalledWith(30);
+      expect(result.minutosResumenJornada).toBe(30);
     });
 
     it('sin configuración guardada, getConfig devuelve 2 h y 2 h', async () => {
       prisma.configEnlaces.findUnique.mockResolvedValue(null);
 
-      await expect(service.getConfig()).resolves.toEqual({ correos: [], minutosPrimerAviso: 120, minutosRepetirAviso: 120 });
+      await expect(service.getConfig()).resolves.toEqual({
+        correos: [],
+        minutosPrimerAviso: 120,
+        minutosRepetirAviso: 120,
+        minutosResumenJornada: 15,
+      });
     });
 
     it('guardarAvisos guarda solo la frecuencia (no toca los correos) y devuelve la config completa', async () => {
@@ -855,7 +875,7 @@ describe('EnlacesService', () => {
         create: { id: 1, minutosPrimerAviso: 10, minutosRepetirAviso: 10 },
         update: { minutosPrimerAviso: 10, minutosRepetirAviso: 10 },
       });
-      expect(result).toEqual({ correos: ['a@b.com'], minutosPrimerAviso: 10, minutosRepetirAviso: 10 });
+      expect(result).toEqual({ correos: ['a@b.com'], minutosPrimerAviso: 10, minutosRepetirAviso: 10, minutosResumenJornada: 15 });
     });
   });
 
@@ -1086,12 +1106,12 @@ describe('EnlacesService', () => {
         expect(telegram.enviarListaActual).toHaveBeenCalled();
       });
 
-      it('un botón de la Jornada se le pasa con chat, id, data y mensaje', async () => {
+      it('un botón de la Jornada se le pasa con chat, id, data, mensaje y quién lo tocó', async () => {
         jornada.atenderBoton.mockResolvedValueOnce(true);
         await service.procesarComandoTelegram('secreto123', {
-          callback_query: { id: 'cb1', data: 'jor:sd:2:0', message: { message_id: 7, chat: { id: '-100999' } } },
+          callback_query: { id: 'cb1', data: 'jor:sd:2:0', message: { message_id: 7, chat: { id: '-100999' } }, from: { id: 111 } },
         });
-        expect(jornada.atenderBoton).toHaveBeenCalledWith('-100999', 'cb1', 'jor:sd:2:0', 7);
+        expect(jornada.atenderBoton).toHaveBeenCalledWith('-100999', 'cb1', 'jor:sd:2:0', 7, 111);
         expect(telegram.responderBoton).not.toHaveBeenCalled();
       });
 

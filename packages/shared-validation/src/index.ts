@@ -611,6 +611,19 @@ export const avisosEnlacesSchema = z.object({
   minutosRepetirAviso: minutosAvisoSchema,
 });
 
+/** Cada cuánto puede mandar el bot el resumen automático del grupo Jornada (web y botones del bot). */
+export const MINUTOS_RESUMEN_JORNADA = [5, 10, 15, 30, 60, 120] as const;
+export const MINUTOS_RESUMEN_JORNADA_POR_DEFECTO = 15;
+export function esMinutosResumenJornada(m: unknown): m is number {
+  return typeof m === 'number' && (MINUTOS_RESUMEN_JORNADA as readonly number[]).includes(m);
+}
+export const resumenJornadaSchema = z.object({
+  minutosResumenJornada: z
+    .number()
+    .int()
+    .refine(esMinutosResumenJornada, { message: `Elija uno de: ${MINUTOS_RESUMEN_JORNADA.join(', ')} minutos` }),
+});
+
 // --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---
 const motivoCorreccionSchema = z
   .string()
