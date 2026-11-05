@@ -290,7 +290,7 @@ describe('JornadaService', () => {
       expect(JSON.stringify(botones)).toContain('jor:sd:t:1:0');
     });
 
-    it('"Visitas NO CDA" abre por CDA, sin contar los NO CDA de un CDA sin kit, y cada CDA abre su ficha', async () => {
+    it('"Llegada NO CDA" abre por CDA, sin contar los NO CDA de un CDA sin kit, y cada CDA abre su ficha', async () => {
       await service.atenderMensaje(CHAT, BOTONES_JORNADA.NO_CDA);
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
       expect(texto).toContain('· por CDA');
@@ -310,7 +310,7 @@ describe('JornadaService', () => {
 
       await service.atenderBoton(CHAT, 'cb2', 'jor:cda:971', 70);
       const [, ficha, , tecladoFicha] = telegram.editarHtml.mock.calls[1];
-      expect(ficha).toContain('NO CDA: 1 de 1 reportado');
+      expect(ficha).toContain('NO CDA: 1 de 1 llegó');
       expect(JSON.stringify(tecladoFicha)).toContain('jor:nc:d:res:0');
     });
 
@@ -412,7 +412,7 @@ describe('JornadaService', () => {
       expect(ficha).toContain('<b>🔎 971 · UE Chaltura</b>');
       expect(ficha).toContain('ANTONIO ANTE · Técnico: Jairo');
       expect(ficha).toContain('🚐 Salió del DPEI 08:12 📴');
-      expect(ficha).toContain('🏫 <b>NO CDA: 1 de 1 reportado</b>');
+      expect(ficha).toContain('🏫 <b>NO CDA: 1 de 1 llegó</b>');
       expect(JSON.stringify(botones)).toContain('jor:cda:971');
 
       // La espera se consumió: otro texto ya no es de la Jornada.

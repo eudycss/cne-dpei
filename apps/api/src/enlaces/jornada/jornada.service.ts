@@ -257,7 +257,7 @@ export class JornadaService {
       return;
     }
     const ahora = new Date();
-    // Visitas NO CDA abre por CDA: lo que se busca es qué CDA tienen todos sus NO CDA.
+    // Llegada NO CDA abre por CDA: lo que se busca es qué CDA tienen todos sus NO CDA.
     const agrupacion: AgrupacionJornada = vista === 'NO_CDA' ? 'cda' : 'tec';
     await this.telegram.enviarHtml(
       formatearResumenJornada(jornada, vista, ahora, agrupacion),

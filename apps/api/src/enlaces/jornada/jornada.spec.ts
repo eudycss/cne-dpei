@@ -83,6 +83,9 @@ describe('Jornada (Telegram)', () => {
       expect(vistaDeTexto(BOTONES_JORNADA.SALIDA_DPI)).toBe('SALIDA_DPI');
       expect(vistaDeTexto(BOTONES_JORNADA.KIT.toUpperCase())).toBe('KIT');
       expect(vistaDeTexto(`  ${BOTONES_JORNADA.NO_CDA} `)).toBe('NO_CDA');
+      // El botón de antes (teclado viejo en el celular) sigue funcionando.
+      expect(vistaDeTexto('🏫 Visitas NO CDA')).toBe('NO_CDA');
+      expect(BOTONES_JORNADA.NO_CDA).toBe('🏫 Llegada NO CDA');
       expect(vistaDeTexto('/caidos')).toBeNull();
       expect(JSON.stringify(tecladoFijoJornada())).toContain('🔎 Consultar CDA');
     });
@@ -223,12 +226,12 @@ describe('Jornada (Telegram)', () => {
       expect(formatearResumenJornada(jornada(), 'KIT', AHORA)).toContain('✅ Nadie tiene el kit pendiente.');
     });
 
-    it('NO CDA: cuántos CDA tienen todos sus NO CDA reportados', () => {
+    it('NO CDA: cuántos CDA están completos (llegaron todos sus NO CDA)', () => {
       const visita = { en: A_LAS('10:00'), sinSenal: false };
       const j = jornada({ noCdas: [noCda('2000', '971', { visita }), noCda('2001', '971'), noCda('3000', '1290', { visita })] });
       const texto = formatearResumenJornada(j, 'NO_CDA', AHORA);
       expect(texto).toContain('<b>2 de 3</b> · faltan 1');
-      expect(texto).toContain('🏫 1 de 2 CDA con todos sus NO CDA reportados');
+      expect(texto).toContain('🏫 1 de 2 CDA completos (llegaron todos sus NO CDA)');
     });
 
     it('escapa los nombres que vienen de las hojas', () => {
@@ -288,9 +291,9 @@ describe('Jornada (Telegram)', () => {
       });
       const [pagina] = paginasDetalleJornada(j, 'NO_CDA', 1, AHORA);
       expect(pagina).toContain(
-        '<b>1133 · UE Manuel J. Calle</b> — 1 de 2 reportados\n   <i>su CDA no tiene kit</i>\n   ⏳ 5968 · NC 5968\n   ✅ 542 · NC 542 · 10:15',
+        '<b>1133 · UE Manuel J. Calle</b> — 1 de 2 llegaron\n   <i>su CDA no tiene kit</i>\n   ⏳ 5968 · NC 5968\n   ✅ 542 · NC 542 · 10:15',
       );
-      expect(pagina).toContain('<b>1290 · Recinto 1290</b> — 1 de 1 reportado\n   OP 1290 (Op.)\n   ✅ 3000 · NC 3000 · 10:15');
+      expect(pagina).toContain('<b>1290 · Recinto 1290</b> — 1 de 1 llegó\n   OP 1290 (Op.)\n   ✅ 3000 · NC 3000 · 10:15');
       expect(pagina.indexOf('1133 ·')).toBeLessThan(pagina.indexOf('1290 ·'));
     });
 
@@ -298,7 +301,7 @@ describe('Jornada (Telegram)', () => {
       const visita = { en: A_LAS('10:15'), sinSenal: false };
       const j = jornada({ noCdas: [noCda('3000', '1290', { visita }), noCda('542', '1133', { visita }), noCda('5968', '1133')] });
       const [pagina] = paginasDetalleJornada(j, 'NO_CDA', 'tod', AHORA);
-      expect(pagina).toContain('<b>1133 · Recinto 1133</b> — 1 de 2 reportados');
+      expect(pagina).toContain('<b>1133 · Recinto 1133</b> — 1 de 2 llegaron');
       expect(pagina).toContain('⏳ 5968');
       expect(pagina).not.toContain('✅ 542');
       expect(pagina).not.toContain('1290 ·');
@@ -393,13 +396,13 @@ describe('Jornada (Telegram)', () => {
       expect(e.cumplidos).toHaveLength(2);
       const texto = formatearResumenJornada(conNoCda(), 'NO_CDA', AHORA);
       expect(texto).toContain('<b>2 de 3</b> · faltan 1');
-      expect(texto).toContain('🏫 1 de 2 CDA con todos sus NO CDA reportados');
+      expect(texto).toContain('🏫 1 de 2 CDA completos (llegaron todos sus NO CDA)');
       expect(texto).toContain('⚪ 2 NO CDA de CDA sin kit (no cuentan)');
     });
 
     it('el resumen por CDA lista cada CDA con su avance, primero los incompletos', () => {
       const texto = formatearResumenJornada(conNoCda(), 'NO_CDA', AHORA, 'cda');
-      expect(texto).toContain('🏫 Visitas a los NO CDA · por CDA');
+      expect(texto).toContain('🏫 Llegada de los NO CDA a su CDA · por CDA');
       expect(texto).toContain('⏳ <b>1133</b> · UE Manuel J. Calle — 1/2\n✅ <b>1290</b> · Recinto 1290 — 1/1');
       expect(texto).not.toContain('800');
       expect(texto).toContain('⚪ 2 NO CDA de CDA sin kit (no cuentan)');
@@ -475,7 +478,7 @@ describe('Jornada (Telegram)', () => {
       expect(ficha).toContain('🏢 Falta llegar al DPEI');
       expect(ficha).toContain('📦 Kit: aún no se recibe en el DPEI');
       expect(ficha).toContain('OP 1133 (Op.) +593991234567 · AS 1133 (Asis.)');
-      expect(ficha).toContain('🏫 <b>NO CDA: 1 de 2 reportados</b>\n   ⏳ 5968 · NC 5968\n   ✅ 542 · NC 542 · 10:15');
+      expect(ficha).toContain('🏫 <b>NO CDA: 1 de 2 llegaron</b>\n   ⏳ 5968 · NC 5968\n   ✅ 542 · NC 542 · 10:15');
     });
 
     it('una ficha que no cabe quita líneas completas del final (el HTML queda válido) y lo dice', () => {

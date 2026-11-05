@@ -88,17 +88,19 @@ export const BOTONES_JORNADA: Record<VistaJornada, string> = {
   LLEGADA_RECINTO: '📍 Llegada recinto',
   SALIDA_RECINTO: '🏁 Salida recinto',
   LLEGADA_DPI: '🏢 Llegada DPEI',
-  NO_CDA: '🏫 Visitas NO CDA',
+  NO_CDA: '🏫 Llegada NO CDA',
   KIT: '📦 Kit pendiente',
 };
 export const BOTON_CONSULTAR_CDA = '🔎 Consultar CDA';
+/** Textos de botones que ya cambiaron: un teclado viejo en el celular sigue funcionando. */
+const BOTONES_ANTERIORES: [VistaJornada, string][] = [['NO_CDA', '🏫 Visitas NO CDA']];
 
 const TITULOS: Record<VistaJornada, string> = {
   SALIDA_DPI: '🚐 Salida del DPEI',
   LLEGADA_RECINTO: '📍 Llegada al recinto',
   SALIDA_RECINTO: '🏁 Salida del recinto',
   LLEGADA_DPI: '🏢 Llegada al DPEI',
-  NO_CDA: '🏫 Visitas a los NO CDA',
+  NO_CDA: '🏫 Llegada de los NO CDA a su CDA',
   KIT: '📦 Kit pendiente',
 };
 
@@ -157,7 +159,7 @@ export function leerCallbackJornada(data: string | undefined): BotonJornada | nu
   const vista = VISTA_POR_CLAVE.get(m[1])!;
   let agrupacion: AgrupacionJornada = m[2] === 'c' ? 'can' : m[2] === 'd' ? 'cda' : 'tec';
   let seleccion: SeleccionJornada = m[3] === 'sin' || m[3] === 'res' || m[3] === 'tod' ? m[3] : Number(m[3]);
-  // "Por CDA" solo existe en Visitas NO CDA y no tiene grupos: lo demás vuelve al resumen.
+  // "Por CDA" solo existe en Llegada NO CDA y no tiene grupos: lo demás vuelve al resumen.
   if (agrupacion === 'cda' && vista !== 'NO_CDA') agrupacion = 'tec';
   else if (agrupacion === 'cda' && seleccion !== 'tod') seleccion = 'res';
   return { vista, agrupacion, seleccion, pagina: Number(m[4]) };
@@ -171,7 +173,7 @@ export function leerCallbackFichaCda(data: string | undefined): string | null {
 /** La vista que pide un botón fijo, o null si el texto no es de la Jornada. */
 export function vistaDeTexto(texto: string): VistaJornada | null {
   const limpio = texto.trim().toLowerCase();
-  for (const [vista, boton] of Object.entries(BOTONES_JORNADA) as [VistaJornada, string][]) {
+  for (const [vista, boton] of [...Object.entries(BOTONES_JORNADA), ...BOTONES_ANTERIORES] as [VistaJornada, string][]) {
     if (limpio === boton.toLowerCase()) return vista;
   }
   return null;
@@ -364,7 +366,7 @@ function bloqueItem(i: ItemJornada, conHora: boolean): string {
 }
 
 /**
- * NO CDA agrupados debajo de su CDA ("1133 · … — 1 de 2 reportados"), primero
+ * NO CDA agrupados debajo de su CDA ("1133 · … — 1 de 2 llegaron"), primero
  * los CDA a los que les falta alguno. Con `soloFaltan`, cada CDA lista solo sus pendientes.
  */
 function bloquesNoCdaPorCda(items: ItemJornada[], soloFaltan: boolean): string[] {
@@ -389,7 +391,7 @@ function bloquesNoCdaPorCda(items: ItemJornada[], soloFaltan: boolean): string[]
     );
     return [
       [
-        `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} reportado${ncs.length === 1 ? '' : 's'}`,
+        `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}`,
         ncs[0].personas.length > 0 ? lineaPersonas(ncs[0].personas) : '   <i>su CDA no tiene kit</i>',
         ...lineas,
       ].join('\n'),
@@ -477,7 +479,7 @@ export function formatearResumenJornada(
   if (vista === 'NO_CDA') {
     const avance = avancePorCda([...estado.faltan, ...estado.cumplidos]);
     const completos = avance.filter((a) => a.reportados === a.total).length;
-    lineas.push(`🏫 ${completos} de ${avance.length} CDA con todos sus NO CDA reportados`);
+    lineas.push(`🏫 ${completos} de ${avance.length} CDA completos (llegaron todos sus NO CDA)`);
     // Por CDA no hay técnicos: no hace falta el aviso del distributivo.
     if (agrupacion === 'cda') {
       // Va antes de la lista: si el mensaje se recorta, se pierde el final.
@@ -647,7 +649,7 @@ export function tecladoJornada(
   return { inline_keyboard: filas };
 }
 
-/** El resumen de Visitas NO CDA por CDA (botón para volver desde una ficha). */
+/** El resumen de Llegada NO CDA por CDA (botón para volver desde una ficha). */
 export const CALLBACK_NO_CDA_POR_CDA = callbackJornada({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'res', pagina: 0 });
 
 // ─── Consultar CDA ──────────────────────────────────────────────────────────
@@ -661,7 +663,7 @@ const ETIQUETA_MOMENTO: Record<MomentoJornada, [hecho: string, falta: string]> =
 
 /**
  * Ficha de un CDA: técnico y cantón, cada pareja con sus 4 momentos, el kit y
- * las personas, y sus NO CDA reportados o pendientes. null si el código no es
+ * las personas, y sus NO CDA que llegaron o faltan. null si el código no es
  * un CDA de la jornada.
  */
 export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): string | null {
@@ -696,7 +698,7 @@ export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): stri
   const ncs = j.noCdas.filter((n) => n.codigoCda === codigo).sort(porCodigo);
   if (ncs.length > 0) {
     const reportados = ncs.filter((n) => n.visita).length;
-    lineas.push('', `🏫 <b>NO CDA: ${reportados} de ${ncs.length} reportado${ncs.length === 1 ? '' : 's'}</b>`);
+    lineas.push('', `🏫 <b>NO CDA: ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}</b>`);
     for (const n of [...ncs].sort((a, b) => (a.visita ? 1 : 0) - (b.visita ? 1 : 0))) {
       lineas.push(
         `   ${n.visita ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
