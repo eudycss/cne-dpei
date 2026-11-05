@@ -52,6 +52,7 @@ describe('SimuladorPublicoController', () => {
     ['estado', 600],
     ['nuevaActa', 400],
     ['guardar', 400],
+    ['borrador', 900],
   ])('%s: límite por IP de %i por minuto', (nombre, limite) => {
     expect(limiteDe(nombre)).toBe(limite);
   });

@@ -36,7 +36,13 @@ export interface IntentoParaEstado {
   terminadoEn: Date | null;
   actasCompletadas: number;
   actasPerfectas: number;
+  filasDigitadas: number;
+  filasCorrectas: number;
 }
+
+/** Registros del acta que quedó a medias al acabarse el tiempo. */
+export type Parcial = { digitadas: number; correctas: number };
+const SIN_PARCIAL: Parcial = { digitadas: 0, correctas: 0 };
 
 /** Terminó por meta cumplida o porque se acabó el tiempo (aunque nadie lo haya cerrado aún). */
 export function motivoCierre(intento: IntentoParaEstado, metaActas: number, ahora: Date): 'META' | 'TIEMPO' | null {
@@ -50,6 +56,7 @@ export function estadoIntento(
   practica: { nombre: string; metaActas: number },
   persona: { nombre: string; cargo: string },
   ahora: Date,
+  parcial: Parcial = SIN_PARCIAL,
 ): EstadoIntentoSimulador {
   const motivo = motivoCierre(intento, practica.metaActas, ahora);
   return {
@@ -60,6 +67,8 @@ export function estadoIntento(
     metaActas: practica.metaActas,
     completadas: intento.actasCompletadas,
     perfectas: intento.actasPerfectas,
+    filasDigitadas: intento.filasDigitadas + parcial.digitadas,
+    filasCorrectas: intento.filasCorrectas + parcial.correctas,
     iniciadoEn: intento.iniciadoEn.toISOString(),
     venceEn: intento.venceEn.toISOString(),
     terminado: motivo !== null,

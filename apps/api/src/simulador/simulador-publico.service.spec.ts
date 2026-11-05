@@ -49,6 +49,8 @@ const intento = (o: Record<string, unknown> = {}) => ({
   actasCompletadas: 0,
   actasPerfectas: 0,
   filasFallidas: 0,
+  filasDigitadas: 0,
+  filasCorrectas: 0,
   practica: practica(),
   operador: { apellidosNombres: PERSONA.apellidosNombres },
   ...o,
@@ -61,6 +63,7 @@ const acta = (o: Record<string, unknown> = {}) => ({
   valores: [62, 0, 50],
   digitos: [62, 0, 50],
   primerGuardado: [] as number[],
+  borrador: [] as number[],
   filasFallidas: null as number | null,
   guardados: 0,
   entregadaEn: AHORA,
@@ -218,9 +221,12 @@ describe('SimuladorPublicoService', () => {
     });
 
     it('si el plazo pasó, el estado sale terminado y queda cerrado a la hora de vencimiento', async () => {
-      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ venceEn: minutos(-1) }));
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ venceEn: minutos(-1), filasDigitadas: 16, filasCorrectas: 15 }));
+      // Acta a medias: su borrador suma 2 registros (1 correcto).
+      prisma.actaDigitacion.findFirst.mockResolvedValue({ valores: [62, 0, 50], borrador: [62, 9, -1] });
       const e = await service.estado(TOKEN);
-      expect(e).toMatchObject({ terminado: true, motivo: 'TIEMPO' });
+      expect(e).toMatchObject({ terminado: true, motivo: 'TIEMPO', filasDigitadas: 18, filasCorrectas: 16 });
+      expect(prisma.actaDigitacion.findFirst.mock.calls[0][0].where).toEqual({ intentoId: 'int-1', guardados: 0, completadaEn: null });
       expect(prisma.intentoDigitacion.updateMany).toHaveBeenCalledWith({ where: { id: 'int-1', terminadoEn: null }, data: { terminadoEn: minutos(-1) } });
     });
   });
@@ -288,6 +294,8 @@ describe('SimuladorPublicoService', () => {
       expect(prisma.intentoDigitacion.update.mock.calls[0][0].data).toEqual({
         ultimaActividadEn: AHORA,
         filasFallidas: { increment: 0 },
+        filasDigitadas: { increment: 3 },
+        filasCorrectas: { increment: 3 },
         actasCompletadas: { increment: 1 },
         actasPerfectas: { increment: 1 },
       });
@@ -302,7 +310,13 @@ describe('SimuladorPublicoService', () => {
         primerGuardado: [62, -1, 51],
         filasFallidas: 2,
       });
-      expect(prisma.intentoDigitacion.update.mock.calls[0][0].data).toEqual({ ultimaActividadEn: AHORA, filasFallidas: { increment: 2 } });
+      // Registros: 2 digitadas (la vacía no cuenta), 1 correcta.
+      expect(prisma.intentoDigitacion.update.mock.calls[0][0].data).toEqual({
+        ultimaActividadEn: AHORA,
+        filasFallidas: { increment: 2 },
+        filasDigitadas: { increment: 2 },
+        filasCorrectas: { increment: 1 },
+      });
     });
 
     it('al corregir se cierra, pero ya no cuenta como perfecta ni suma fallos otra vez', async () => {
@@ -362,6 +376,48 @@ describe('SimuladorPublicoService', () => {
       prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ venceEn: minutos(-1) }));
       await expect(service.guardar(TOKEN, ACTA_ID, [62, 0, 50])).rejects.toThrow('La práctica ya terminó');
       expect(prisma.actaDigitacion.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('borrador', () => {
+    const ACTA_ID = acta().id;
+    beforeEach(() => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento());
+      prisma.actaDigitacion.findFirst.mockResolvedValue({ valores: [62, 0, 50] });
+      prisma.actaDigitacion.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('guarda lo escrito (vacías como -1) solo si el acta no se guardó aún', async () => {
+      await expect(service.borrador(TOKEN, ACTA_ID, [62, null, 5])).resolves.toEqual({ guardado: true });
+      expect(prisma.actaDigitacion.updateMany).toHaveBeenCalledWith({
+        where: { id: ACTA_ID, guardados: 0, completadaEn: null },
+        data: { borrador: [62, -1, 5], borradorEn: AHORA },
+      });
+    });
+
+    it('un acta ya guardada no cambia (cuenta su primer guardado)', async () => {
+      prisma.actaDigitacion.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.borrador(TOKEN, ACTA_ID, [62, 0, 50])).resolves.toEqual({ guardado: false });
+    });
+
+    it('se acepta hasta 30 s después del fin del tiempo, no más', async () => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ venceEn: new Date(AHORA.getTime() - 20_000) }));
+      await expect(service.borrador(TOKEN, ACTA_ID, [62, 0, 50])).resolves.toEqual({ guardado: true });
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ venceEn: new Date(AHORA.getTime() - 31_000) }));
+      prisma.actaDigitacion.updateMany.mockClear();
+      await expect(service.borrador(TOKEN, ACTA_ID, [62, 0, 50])).resolves.toEqual({ guardado: false });
+      expect(prisma.actaDigitacion.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('terminada por meta: no se acepta', async () => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ actasCompletadas: 200 }));
+      await expect(service.borrador(TOKEN, ACTA_ID, [62, 0, 50])).resolves.toEqual({ guardado: false });
+    });
+
+    it('acta de otro intento: 404; filas distintas: 400', async () => {
+      prisma.actaDigitacion.findFirst.mockResolvedValueOnce(null);
+      await expect(service.borrador(TOKEN, ACTA_ID, [1, 2, 3])).rejects.toThrow(NotFoundException);
+      await expect(service.borrador(TOKEN, ACTA_ID, [1])).rejects.toThrow(BadRequestException);
     });
   });
 });

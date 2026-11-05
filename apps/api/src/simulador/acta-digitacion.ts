@@ -41,6 +41,22 @@ export function filasIncorrectas(correctos: readonly number[], digitado: readonl
   return correctos.flatMap((v, i) => (digitado[i] === v ? [] : [i]));
 }
 
+/** Registros de un acta: filas no vacías, y de esas las que coinciden con las letras. */
+export function conteoFilas(
+  correctos: readonly number[],
+  digitado: readonly (number | null)[],
+): { digitadas: number; correctas: number } {
+  let digitadas = 0;
+  let correctas = 0;
+  correctos.forEach((v, i) => {
+    const d = digitado[i];
+    if (d === null || d === undefined || d < 0) return;
+    digitadas++;
+    if (d === v) correctas++;
+  });
+  return { digitadas, correctas };
+}
+
 /** Para guardar en Int[]: una casilla vacía o faltante queda como -1. */
 export const comoGuardado = (filas: number, digitado: readonly (number | null)[]) =>
   Array.from({ length: filas }, (_, i) => digitado[i] ?? -1);

@@ -10,12 +10,12 @@ import type {
   NuevaActaSimuladorResponse,
   PracticaDisponibleSimulador,
 } from '@cne/shared-types';
-import { AVISO_CADA_ACTAS } from '@cne/shared-validation';
+import { AVISO_CADA_ACTAS, MARGEN_BORRADOR_MS } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
-import { azarSeguro, comoGuardado, filasIncorrectas, generarActa, type Azar } from './acta-digitacion';
+import { azarSeguro, comoGuardado, conteoFilas, filasIncorrectas, generarActa, type Azar } from './acta-digitacion';
 import { enCasilleros, numeroEnLetras } from './numero-en-letras';
-import { aplicaA, enmascararNombre, estadoIntento, motivoCierre } from './reglas-simulador';
+import { aplicaA, enmascararNombre, estadoIntento, motivoCierre, type Parcial } from './reglas-simulador';
 import { LimitePorClave } from './limite-por-clave';
 
 export const hashTokenSimulador = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
@@ -201,6 +201,7 @@ export class SimuladorPublicoService {
 
     const incorrectas = filasIncorrectas(acta.valores, valores);
     const primera = acta.guardados === 0;
+    const registros = conteoFilas(acta.valores, valores);
     const completa = incorrectas.length === 0;
     // Si ya hubo un guardado, ese primero tuvo errores: el acta no puede salir perfecta.
     const perfecta = completa && primera;
@@ -220,7 +221,13 @@ export class SimuladorPublicoService {
         where: { id: intento.id },
         data: {
           ultimaActividadEn: ahora,
-          ...(primera ? { filasFallidas: { increment: incorrectas.length } } : {}),
+          ...(primera
+            ? {
+                filasFallidas: { increment: incorrectas.length },
+                filasDigitadas: { increment: registros.digitadas },
+                filasCorrectas: { increment: registros.correctas },
+              }
+            : {}),
           ...(completa ? { actasCompletadas: { increment: 1 } } : {}),
           ...(perfecta ? { actasPerfectas: { increment: 1 } } : {}),
         },
@@ -244,7 +251,40 @@ export class SimuladorPublicoService {
     };
   }
 
+  /**
+   * Lo escrito en el acta abierta, sin calificar: si el tiempo se acaba con el
+   * acta a medias, esas filas cuentan como registros. Se acepta hasta
+   * MARGEN_BORRADOR_MS después del fin (el último envío puede llegar tarde).
+   * Un acta ya guardada no cambia: cuenta su primer guardado.
+   */
+  async borrador(token: string, actaId: string, valores: (number | null)[]): Promise<{ guardado: boolean }> {
+    const intento = await this.intentoPorToken(token);
+    const ahora = this.ahora();
+    const motivo = motivoCierre(intento, intento.practica.metaActas, ahora);
+    const enMargen = motivo === 'TIEMPO' && ahora.getTime() <= intento.venceEn.getTime() + MARGEN_BORRADOR_MS;
+    if (motivo && !enMargen) return { guardado: false };
+    const acta = await this.prisma.actaDigitacion.findFirst({ where: { id: actaId, intentoId: intento.id }, select: { valores: true } });
+    if (!acta) throw new NotFoundException('Acta no encontrada');
+    if (valores.length !== acta.valores.length) throw new BadRequestException('El acta no tiene esa cantidad de filas');
+    const { count } = await this.prisma.actaDigitacion.updateMany({
+      where: { id: actaId, guardados: 0, completadaEn: null },
+      data: { borrador: comoGuardado(acta.valores.length, valores), borradorEn: ahora },
+    });
+    if (!motivo) await this.tocar(intento.id, ahora);
+    return { guardado: count > 0 };
+  }
+
   // ---- internos ----
+
+  /** Registros del acta abierta sin guardar (su borrador), para sumarlos al terminar por tiempo. */
+  private async parcial(intentoId: string): Promise<Parcial> {
+    const abierta = await this.prisma.actaDigitacion.findFirst({
+      where: { intentoId, guardados: 0, completadaEn: null },
+      orderBy: { numero: 'desc' },
+      select: { valores: true, borrador: true },
+    });
+    return abierta ? conteoFilas(abierta.valores, abierta.borrador) : { digitadas: 0, correctas: 0 };
+  }
 
   /** Persona activa por cédula; si no, el mismo mensaje que "sin prácticas". */
   private async persona(cedula: string) {
@@ -318,11 +358,19 @@ export class SimuladorPublicoService {
       await this.prisma.intentoDigitacion.updateMany({ where: { id: intento.id, terminadoEn: null }, data: { terminadoEn } });
       intento = { ...intento, terminadoEn };
     }
-    return this.estadoSinCerrar(intento, ahora);
+    // Terminado por tiempo: el acta que quedó a medias también cuenta.
+    const parcial = motivo === 'TIEMPO' ? await this.parcial(intento.id) : undefined;
+    return this.estadoSinCerrar(intento, ahora, parcial);
   }
 
-  private estadoSinCerrar(intento: IntentoConPractica, ahora: Date): EstadoIntentoSimulador {
-    return estadoIntento(intento, intento.practica, this.datosPersona(intento.operador.apellidosNombres, intento.cargo), ahora);
+  private estadoSinCerrar(intento: IntentoConPractica, ahora: Date, parcial?: Parcial): EstadoIntentoSimulador {
+    return estadoIntento(
+      intento,
+      intento.practica,
+      this.datosPersona(intento.operador.apellidosNombres, intento.cargo),
+      ahora,
+      parcial,
+    );
   }
 
   private datosPersona(apellidosNombres: string, cargo: string) {

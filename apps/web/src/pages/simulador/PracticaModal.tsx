@@ -28,7 +28,7 @@ const ETIQUETAS: Record<CampoNumero, string> = {
   votoMin: 'Voto mínimo',
   votoMax: 'Voto máximo',
   metaActas: 'Meta de actas',
-  plazoMinutos: 'Plazo (minutos)',
+  plazoMinutos: 'Tiempo de la práctica (minutos)',
   pctDigitosDistintos: '% de filas con dígitos distintos a las letras',
   intentosMax: 'Intentos por persona',
 };
@@ -36,7 +36,7 @@ const ETIQUETAS: Record<CampoNumero, string> = {
 const AYUDAS: Partial<Record<CampoNumero, string>> = {
   filasPorActa: 'Candidatos y campos de cada acta (1 a 40).',
   votoMax: 'Hasta 999.',
-  plazoMinutos: 'Corre desde que la persona empieza.',
+  plazoMinutos: 'Lo que tiene cada persona para digitar: se cuentan los registros que alcance. Corre desde que empieza.',
   pctDigitosDistintos: 'En esas filas los casilleros muestran otro número: lo correcto es digitar lo de las letras.',
 };
 

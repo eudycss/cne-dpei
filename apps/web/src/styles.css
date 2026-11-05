@@ -1076,3 +1076,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .sier-fila.mal .sier-caja { border-color: var(--sier-rojo); border-width: 2px; }
 .sim-enlace { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0 0; padding: 0.6rem 1rem; }
 .sier-reloj-aviso { font-style: normal; font-size: 0.8rem; font-weight: 700; color: #ff8a80; }
+.sier-registros { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.75rem; border-radius: 10px; background: rgb(255 255 255 / 0.08); }
+.sier-registros span:first-child { font-size: 0.75rem; color: #c9d4e5; }
+.sier-registros strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.sier-btn kbd { margin-left: 0.35rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: rgb(255 255 255 / 0.2); font: inherit; font-size: 0.7rem; text-transform: none; }

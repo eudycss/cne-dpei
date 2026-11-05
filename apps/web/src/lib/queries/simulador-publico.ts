@@ -40,6 +40,11 @@ export async function guardarActaSimulador(
   return data;
 }
 
+export async function borradorActaSimulador(token: string, actaId: string, valores: (number | null)[]): Promise<{ guardado: boolean }> {
+  const { data } = await apiPublico.post<{ guardado: boolean }>(`${BASE}/borrador`, { token, actaId, valores });
+  return data;
+}
+
 /**
  * El token de la práctica vive solo en esta pestaña (sessionStorage): sobrevive
  * a recargar la página, pero no queda en el equipo al cerrarla.

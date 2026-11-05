@@ -31,6 +31,8 @@ const estado = (o: Partial<EstadoIntentoSimulador> = {}): EstadoIntentoSimulador
   metaActas: 200,
   completadas: 0,
   perfectas: 0,
+  filasDigitadas: 0,
+  filasCorrectas: 0,
   iniciadoEn: new Date().toISOString(),
   venceEn: new Date(Date.now() + 3600_000).toISOString(),
   terminado: false,
@@ -165,12 +167,18 @@ describe('SimuladorPublicoPage', () => {
 
   it('práctica terminada al recargar: muestra el resumen', async () => {
     sessionStorage.setItem('cne.simulador.token', TOKEN);
-    postMock.mockResolvedValue({ data: estado({ terminado: true, motivo: 'TIEMPO', completadas: 120, perfectas: 100 }) });
+    postMock.mockResolvedValue({
+      data: estado({ terminado: true, motivo: 'TIEMPO', completadas: 120, perfectas: 100, filasDigitadas: 965, filasCorrectas: 940 }),
+    });
     renderPagina();
     const titulo = await screen.findByRole('heading', { name: 'Se acabó el tiempo' });
     await waitFor(() => expect(titulo).toHaveFocus());
-    expect(screen.getByText('120 de 200')).toBeInTheDocument();
-    expect(screen.getByText('20')).toBeInTheDocument();
+    const cifra = (dt: string) => screen.getByText(dt).nextElementSibling?.textContent;
+    expect(cifra('Registros digitados')).toBe('965');
+    expect(cifra('Registros correctos')).toBe('940');
+    expect(cifra('Registros con error')).toBe('25');
+    expect(cifra('Actas digitadas')).toBe('120 de 200');
+    expect(cifra('Con algún error')).toBe('20');
     expect(sessionStorage.getItem('cne.simulador.token')).toBeNull();
   });
 

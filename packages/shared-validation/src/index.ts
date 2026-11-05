@@ -1169,6 +1169,12 @@ export const guardarActaSimuladorSchema = tokenSimuladorSchema.extend({
 });
 export type GuardarActaSimuladorInput = z.infer<typeof guardarActaSimuladorSchema>;
 
+/** Lo escrito sin guardar (mismo formato que guardar). */
+export const borradorActaSimuladorSchema = guardarActaSimuladorSchema;
+
+/** Tras el fin del tiempo, se acepta el último borrador durante este margen (llega tarde por la red). */
+export const MARGEN_BORRADOR_MS = 30_000;
+
 export const nombreNovedadDigitacionSchema = z.object({
   nombre: z.string().trim().min(3, 'Nombre requerido (mínimo 3 letras)').max(120, 'Máximo 120 caracteres'),
 });

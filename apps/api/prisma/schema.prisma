@@ -1056,6 +1056,10 @@ model IntentoDigitacion {
   actasCompletadas Int                @default(0) @map("actas_completadas")
   actasPerfectas   Int                @default(0) @map("actas_perfectas")
   filasFallidas    Int                @default(0) @map("filas_fallidas")
+  /// Registros (filas no vacías) del primer guardado de cada acta.
+  filasDigitadas   Int                @default(0) @map("filas_digitadas")
+  /// De esos, los que coincidieron con las letras.
+  filasCorrectas   Int                @default(0) @map("filas_correctas")
 
   actas ActaDigitacion[]
 
@@ -1077,6 +1081,9 @@ model ActaDigitacion {
   primerGuardado Int[]             @map("primer_guardado")
   filasFallidas  Int?              @map("filas_fallidas")
   guardados      Int               @default(0)
+  /// Lo escrito sin guardar (-1 = vacía): cuenta si el tiempo se acaba con el acta a medias.
+  borrador       Int[]             @default([])
+  borradorEn     DateTime?         @map("borrador_en") @db.Timestamptz(6)
   entregadaEn    DateTime          @default(now()) @map("entregada_en") @db.Timestamptz(6)
   completadaEn   DateTime?         @map("completada_en") @db.Timestamptz(6)
 

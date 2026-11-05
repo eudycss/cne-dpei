@@ -1,4 +1,4 @@
-import { comoGuardado, digitoCambiado, filasIncorrectas, generarActa, type Azar } from './acta-digitacion';
+import { comoGuardado, conteoFilas, digitoCambiado, filasIncorrectas, generarActa, type Azar } from './acta-digitacion';
 
 /** Azar determinista: devuelve los valores en orden, limitados a [min, max]. */
 const secuencia = (...vals: number[]): Azar => {
@@ -65,5 +65,19 @@ describe('filasIncorrectas', () => {
   it('comoGuardado: vacías y faltantes como -1, sobrantes fuera', () => {
     expect(comoGuardado(3, [5, null])).toEqual([5, -1, -1]);
     expect(comoGuardado(1, [5, 6])).toEqual([5]);
+  });
+});
+
+describe('conteoFilas (registros)', () => {
+  it('cuenta las filas no vacías y, de esas, las correctas', () => {
+    expect(conteoFilas([62, 0, 50, 34], [62, null, 51, 34])).toEqual({ digitadas: 3, correctas: 2 });
+  });
+
+  it('-1 (vacía guardada) y faltantes no cuentan', () => {
+    expect(conteoFilas([1, 2, 3], [-1, 2])).toEqual({ digitadas: 1, correctas: 1 });
+  });
+
+  it('un cero digitado cuenta (no es vacío)', () => {
+    expect(conteoFilas([0], [0])).toEqual({ digitadas: 1, correctas: 1 });
   });
 });

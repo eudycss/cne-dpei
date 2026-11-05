@@ -252,7 +252,9 @@ function Practicas({
                 Intentos: {p.intentosUsados} de {p.intentosMax} · Puede empezar hasta {fechaHoraEcuador(p.fin)}
               </p>
               {!p.enCurso && !agotada && (
-                <p className="sier-suave">El cronómetro empieza al pulsar el botón.</p>
+                <p className="sier-suave">
+                  El cronómetro empieza al pulsar el botón. Alt+Q pide una nueva acta y Alt+W la envía.
+                </p>
               )}
               <button
                 type="button"
@@ -285,6 +287,18 @@ function Resumen({ estado, onSalir }: { estado: EstadoIntentoSimulador; onSalir:
         {estado.nombre} · {estado.cargo} · {estado.practica} (intento {estado.numeroIntento})
       </p>
       <dl className="sier-cifras">
+        <div>
+          <dt>Registros digitados</dt>
+          <dd>{estado.filasDigitadas}</dd>
+        </div>
+        <div>
+          <dt>Registros correctos</dt>
+          <dd>{estado.filasCorrectas}</dd>
+        </div>
+        <div>
+          <dt>Registros con error</dt>
+          <dd>{estado.filasDigitadas - estado.filasCorrectas}</dd>
+        </div>
         <div>
           <dt>Actas digitadas</dt>
           <dd>

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import {
+  borradorActaSimuladorSchema,
   activarNovedadDigitacionSchema,
   activarPracticaDigitacionSchema,
   guardarActaSimuladorSchema,
@@ -141,6 +142,13 @@ export class SimuladorPublicoController {
   @ApiOperation({ summary: 'Acta pendiente o una nueva' })
   nuevaActa(@Body(new ZodValidationPipe(tokenSimuladorSchema)) body: { token: string }) {
     return this.simulador.nuevaActa(body.token);
+  }
+
+  @Post('borrador')
+  @Throttle({ default: { limit: 900, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Guarda lo escrito sin calificar (cuenta si el tiempo se acaba con el acta a medias)' })
+  borrador(@Body(new ZodValidationPipe(borradorActaSimuladorSchema)) body: GuardarActaSimuladorInput) {
+    return this.simulador.borrador(body.token, body.actaId, body.valores);
   }
 
   @Post('guardar')

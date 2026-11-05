@@ -45,6 +45,8 @@ describe('estado del intento', () => {
     terminadoEn: null,
     actasCompletadas: 0,
     actasPerfectas: 0,
+    filasDigitadas: 0,
+    filasCorrectas: 0,
     ...o,
   });
   const antes = new Date(T0.getTime() + 10 * 60_000);
@@ -57,8 +59,21 @@ describe('estado del intento', () => {
   it('la meta gana al tiempo', () =>
     expect(motivoCierre(intento({ actasCompletadas: 200, terminadoEn: despues }), 200, despues)).toBe('META'));
 
+  it('suma los registros del acta que quedó a medias', () => {
+    const e = estadoIntento(intento({ filasDigitadas: 10, filasCorrectas: 9 }), { nombre: 'P1', metaActas: 200 }, { nombre: 'A.', cargo: 'X' }, despues, {
+      digitadas: 3,
+      correctas: 2,
+    });
+    expect(e).toMatchObject({ filasDigitadas: 13, filasCorrectas: 11 });
+  });
+
   it('arma el estado público', () => {
-    const e = estadoIntento(intento({ actasCompletadas: 3, actasPerfectas: 2 }), { nombre: 'P1', metaActas: 200 }, { nombre: 'ANA P.', cargo: 'Digitadores' }, antes);
+    const e = estadoIntento(
+      intento({ actasCompletadas: 3, actasPerfectas: 2, filasDigitadas: 24, filasCorrectas: 21 }),
+      { nombre: 'P1', metaActas: 200 },
+      { nombre: 'ANA P.', cargo: 'Digitadores' },
+      antes,
+    );
     expect(e).toEqual({
       practica: 'P1',
       nombre: 'ANA P.',
@@ -67,6 +82,8 @@ describe('estado del intento', () => {
       metaActas: 200,
       completadas: 3,
       perfectas: 2,
+      filasDigitadas: 24,
+      filasCorrectas: 21,
       iniciadoEn: T0.toISOString(),
       venceEn: '2026-11-10T15:00:00.000Z',
       terminado: false,

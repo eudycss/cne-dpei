@@ -1834,6 +1834,10 @@ export interface EstadoIntentoSimulador {
   completadas: number;
   /** Actas sin ningún error en el primer guardado. */
   perfectas: number;
+  /** Registros (filas no vacías) digitados; al terminar incluye el acta que quedó a medias. */
+  filasDigitadas: number;
+  /** De esos, los que coincidieron con las letras al primer guardado. */
+  filasCorrectas: number;
   iniciadoEn: string;
   venceEn: string;
   terminado: boolean;

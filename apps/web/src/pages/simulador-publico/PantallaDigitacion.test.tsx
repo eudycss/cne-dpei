@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ActaSimulador, EstadoIntentoSimulador } from '@cne/shared-types';
 
-import { LATIDO_MS, PantallaDigitacion } from './PantallaDigitacion';
+import { atajo, BORRADOR_MS, LATIDO_MS, PantallaDigitacion } from './PantallaDigitacion';
 import { apiPublico } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({ apiPublico: { post: vi.fn() } }));
@@ -18,6 +18,8 @@ const estado = (o: Partial<EstadoIntentoSimulador> = {}): EstadoIntentoSimulador
   metaActas: 200,
   completadas: 0,
   perfectas: 0,
+  filasDigitadas: 0,
+  filasCorrectas: 0,
   iniciadoEn: new Date(Date.now() - 60_000).toISOString(),
   venceEn: new Date(Date.now() + 59 * 60_000).toISOString(),
   terminado: false,
@@ -41,9 +43,12 @@ function responder() {
     if (url.endsWith('/nueva-acta')) return Promise.resolve({ data: { estado: estado(), acta: ACTA } });
     if (url.endsWith('/guardar')) return respuestaGuardar instanceof Error || (respuestaGuardar as { response?: unknown })?.response ? Promise.reject(respuestaGuardar) : Promise.resolve({ data: respuestaGuardar });
     if (url.endsWith('/estado')) return Promise.resolve({ data: estado() });
+    if (url.endsWith('/borrador')) return Promise.resolve({ data: { guardado: true } });
     return Promise.reject(new Error(url));
   });
 }
+
+const llamadas = (ruta: string) => postMock.mock.calls.filter(([u]) => String(u).endsWith(ruta));
 
 function renderPantalla(inicial = estado()) {
   const onTerminada = vi.fn();
@@ -83,19 +88,45 @@ describe('PantallaDigitacion', () => {
     expect(postMock).toHaveBeenCalledWith('/publico/simulador/nueva-acta', { token: TOKEN });
   });
 
-  it('solo acepta dígitos; Enter pasa a la fila siguiente y en la última guarda (vacía = null)', async () => {
+  it('solo acepta dígitos; Tab pasa de fila, Enter no hace nada y Alt+W envía (vacía = null)', async () => {
     const user = userEvent.setup();
     renderPantalla();
     await user.click(screen.getByRole('button', { name: 'Nueva acta' }));
     const primera = await screen.findByLabelText(/Fila 1:/);
     await user.type(primera, '6a2{Enter}');
     expect(primera).toHaveValue('62');
-    expect(screen.getByLabelText(/Fila 2:/)).toHaveFocus();
-    await user.keyboard('{Enter}');
-    await user.type(screen.getByLabelText(/Fila 3:/), '50{Enter}');
+    expect(primera).toHaveFocus();
+    expect(llamadas('/guardar')).toHaveLength(0);
+    await user.keyboard('{Tab}{Tab}');
+    expect(screen.getByLabelText(/Fila 3:/)).toHaveFocus();
+    await user.keyboard('50{Enter}');
+    expect(llamadas('/guardar')).toHaveLength(0);
+    await user.keyboard('{Alt>}w{/Alt}');
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith('/publico/simulador/guardar', { token: TOKEN, actaId: ACTA.id, valores: [62, null, 50] }),
     );
+  });
+
+  it('Alt+Q pide la nueva acta; con un acta abierta no pide otra', async () => {
+    const user = userEvent.setup();
+    renderPantalla();
+    await user.keyboard('{Alt>}q{/Alt}');
+    expect(await screen.findByRole('list', { name: 'Acta 1' })).toBeInTheDocument();
+    await user.keyboard('{Alt>}q{/Alt}');
+    expect(llamadas('/nueva-acta')).toHaveLength(1);
+  });
+
+  it('los botones anuncian sus atajos', () => {
+    renderPantalla();
+    expect(screen.getByRole('button', { name: 'Nueva acta' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Q');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toHaveAttribute('aria-keyshortcuts', 'Alt+W');
+  });
+
+  it('muestra los registros digitados y correctos', () => {
+    renderPantalla(estado({ filasDigitadas: 96, filasCorrectas: 90 }));
+    const lateral = screen.getByRole('complementary', { name: 'Su práctica' });
+    expect(lateral).toHaveTextContent('Registros digitados96');
+    expect(lateral).toHaveTextContent('Correctos: 90');
   });
 
   it('con errores marca las filas, lo dice y enfoca la primera para corregir', async () => {
@@ -143,7 +174,7 @@ describe('PantallaDigitacion', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Nueva acta' })).toHaveFocus());
   });
 
-  it('dos Enter seguidos en la última fila mandan un solo guardado', async () => {
+  it('dos Alt+W seguidos mandan un solo guardado', async () => {
     const user = userEvent.setup();
     let soltar: (v: unknown) => void = () => {};
     postMock.mockImplementation((url: string) => {
@@ -153,9 +184,8 @@ describe('PantallaDigitacion', () => {
     });
     renderPantalla();
     await user.click(screen.getByRole('button', { name: 'Nueva acta' }));
-    const ultima = await screen.findByLabelText(/Fila 3:/);
-    ultima.focus();
-    await user.keyboard('{Enter}{Enter}');
+    await screen.findByLabelText(/Fila 3:/);
+    await user.keyboard('{Alt>}ww{/Alt}');
     expect(postMock.mock.calls.filter(([u]) => String(u).endsWith('/guardar'))).toHaveLength(1);
     await act(async () => soltar({ data: { guardada: false, filasIncorrectas: [0], estado: estado(), aviso: null } }));
   });
@@ -266,6 +296,48 @@ describe('PantallaDigitacion', () => {
       expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
     });
 
+    it('tras una pausa al digitar manda el borrador del acta abierta', async () => {
+      responder();
+      renderPantalla();
+      await act(async () => {
+        screen.getByRole('button', { name: 'Nueva acta' }).click();
+      });
+      const primera = screen.getByLabelText(/Fila 1:/);
+      fireEvent.change(primera, { target: { value: '62' } });
+      expect(llamadas('/borrador')).toHaveLength(0);
+      await act(async () => {
+        vi.advanceTimersByTime(BORRADOR_MS);
+      });
+      expect(postMock).toHaveBeenCalledWith('/publico/simulador/borrador', { token: TOKEN, actaId: ACTA.id, valores: [62, null, null] });
+      // Sin cambios no se repite.
+      await act(async () => {
+        vi.advanceTimersByTime(BORRADOR_MS * 3);
+      });
+      expect(llamadas('/borrador')).toHaveLength(1);
+    });
+
+    it('al llegar a 0 manda primero el borrador y luego cierra (el acta a medias cuenta)', async () => {
+      const fin = estado({ terminado: true, motivo: 'TIEMPO', filasDigitadas: 2 });
+      const enCurso = estado({ venceEn: new Date(Date.now() + 2000).toISOString() });
+      postMock.mockImplementation((url: string) => {
+        if (url.endsWith('/nueva-acta')) return Promise.resolve({ data: { estado: enCurso, acta: ACTA } });
+        if (url.endsWith('/borrador')) return Promise.resolve({ data: { guardado: true } });
+        return Promise.resolve({ data: fin });
+      });
+      const { onTerminada } = renderPantalla(enCurso);
+      await act(async () => {
+        screen.getByRole('button', { name: 'Nueva acta' }).click();
+      });
+      fireEvent.change(screen.getByLabelText(/Fila 1:/), { target: { value: '62' } });
+      await act(async () => {
+        vi.advanceTimersByTime(2500);
+      });
+      const rutas = postMock.mock.calls.map(([u]) => String(u).split('/').pop());
+      expect(rutas.indexOf('borrador')).toBeGreaterThan(-1);
+      expect(rutas.lastIndexOf('estado')).toBeGreaterThan(rutas.indexOf('borrador'));
+      expect(onTerminada).toHaveBeenCalledWith(fin);
+    });
+
     it('al llegar a 0 confirma con la API y termina', async () => {
       const fin = estado({ terminado: true, motivo: 'TIEMPO' });
       postMock.mockResolvedValue({ data: fin });
@@ -275,5 +347,25 @@ describe('PantallaDigitacion', () => {
       });
       expect(onTerminada).toHaveBeenCalledWith(fin);
     });
+  });
+});
+
+describe('atajo', () => {
+  const tecla = (code: string, o: Partial<Record<'altKey' | 'ctrlKey' | 'metaKey', boolean>> = {}) => ({
+    altKey: true,
+    ctrlKey: false,
+    metaKey: false,
+    code,
+    ...o,
+  });
+  it('Alt+Q y Alt+W, por código de tecla (sirve con cualquier idioma de teclado)', () => {
+    expect(atajo(tecla('KeyQ'))).toBe('nueva');
+    expect(atajo(tecla('KeyW'))).toBe('guardar');
+  });
+  it('sin Alt, con Ctrl (AltGr en Windows) o con otra tecla: nada', () => {
+    expect(atajo(tecla('KeyQ', { altKey: false }))).toBeNull();
+    expect(atajo(tecla('KeyQ', { ctrlKey: true }))).toBeNull();
+    expect(atajo(tecla('KeyW', { metaKey: true }))).toBeNull();
+    expect(atajo(tecla('KeyE'))).toBeNull();
   });
 });
