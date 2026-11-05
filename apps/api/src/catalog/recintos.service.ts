@@ -20,6 +20,9 @@ import { PrismaService } from '../db/prisma.service';
 import { Prisma } from '@prisma/client';
 import { idsPorBusqueda } from '../common/busqueda-sql';
 
+/** Columnas en las que busca el buscador de recintos. */
+const CAMPOS_BUSQUEDA = [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_recinto'), Prisma.raw('t.parroquia')];
+
 @Injectable()
 export class RecintosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -40,13 +43,10 @@ export class RecintosService {
     // Los recintos que salieron del Google Sheet no se listan (siguen en la base por el historial).
     const where: any = { activo: true };
     // Sin tildes y por palabras en cualquier orden.
-    const ids = await idsPorBusqueda(
-      this.prisma,
-      Prisma.sql`recintos t`,
-      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_recinto'), Prisma.raw('t.parroquia')],
-      opts.search,
-    );
-    if (ids) where.id = { in: ids };
+    const ids = await idsPorBusqueda(this.prisma, Prisma.sql`recintos t`, CAMPOS_BUSQUEDA, opts.search);
+    // En la lista de CDA los NO-CDA van dentro de su CDA: buscar uno trae su CDA.
+    const coincidentes = ids && opts.tipo === 'CDA' ? await this.noCdasQueCoinciden(opts.search) : undefined;
+    if (ids) where.id = { in: [...ids, ...Array.from(coincidentes?.keys() ?? [])] };
     if (opts.cantonId) where.cantonId = opts.cantonId;
     if (opts.tipo) where.tipo = opts.tipo;
     if (opts.cdaDestinoId) where.cdaDestinoId = opts.cdaDestinoId;
@@ -69,11 +69,38 @@ export class RecintosService {
     ]);
     const coords = await this.getCoords(items.map((i) => i.id));
     return {
-      items: items.map((i) => toRecintoDto(i, coords.get(i.id))),
+      items: items.map((i) => {
+        const dto = toRecintoDto(i, coords.get(i.id));
+        const noCdas = coincidentes?.get(i.id);
+        return noCdas ? { ...dto, noCdasCoincidentes: noCdas } : dto;
+      }),
       total,
       page,
       pageSize,
     };
+  }
+
+  /** NO-CDA activos con CDA destino que coinciden con la búsqueda, agrupados por CDA. */
+  private async noCdasQueCoinciden(search: unknown) {
+    const ids = await idsPorBusqueda(
+      this.prisma,
+      Prisma.sql`recintos t`,
+      CAMPOS_BUSQUEDA,
+      search,
+      Prisma.sql`t.tipo = 'NO_CDA' AND t.activo AND t.cda_destino_id IS NOT NULL`,
+    );
+    const porCda = new Map<string, { id: string; codigoRecinto: string; nombre: string }[]>();
+    if (!ids?.length) return porCda;
+    const noCdas = await this.prisma.recinto.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, codigoRecinto: true, nombre: true, cdaDestinoId: true },
+      orderBy: { nombre: 'asc' },
+    });
+    for (const { cdaDestinoId, ...nc } of noCdas) {
+      if (!cdaDestinoId) continue;
+      porCda.set(cdaDestinoId, [...(porCda.get(cdaDestinoId) ?? []), nc]);
+    }
+    return porCda;
   }
 
   async getRecinto(id: string): Promise<Recinto> {

@@ -183,3 +183,38 @@ describe('RecintosPage — NO-CDA sin CDA asignado', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(mensaje);
   });
 });
+
+describe('RecintosPage — buscar un NO-CDA', () => {
+  const noCda = recinto({ id: 'nc1', codigoRecinto: '1234', nombre: 'Escuela Sin Kit', tipo: 'NO_CDA' });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/cantones') return Promise.resolve({ data: [] });
+      if (url.startsWith('/recintos?cdaDestinoId=')) {
+        return Promise.resolve({ data: { items: [noCda], total: 1, page: 1, pageSize: 100 } });
+      }
+      if (url.startsWith('/recintos?')) {
+        const conBusqueda = url.includes('search=1234');
+        const item = conBusqueda
+          ? recinto({ noCdasCount: 1, noCdasCoincidentes: [{ id: 'nc1', codigoRecinto: '1234', nombre: 'Escuela Sin Kit' }] })
+          : recinto({ noCdasCount: 1 });
+        return Promise.resolve({ data: { items: [item], total: 1, page: 1, pageSize: 20 } });
+      }
+      return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 20 } });
+    });
+  });
+
+  it('muestra el CDA del NO-CDA buscado, ya desplegado y con el NO-CDA marcado', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('UE García Moreno');
+    expect(screen.queryByText('Escuela Sin Kit')).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/Buscar por nombre/), '1234');
+
+    expect(await screen.findByText(/Coincide con el NO CDA/)).toHaveTextContent('1234 · Escuela Sin Kit');
+    const fila = (await screen.findByText('Coincide')).closest('tr')!;
+    expect(within(fila).getByText('1234')).toBeInTheDocument();
+  });
+});

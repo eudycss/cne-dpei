@@ -65,6 +65,18 @@ export function RecintosPage() {
     },
   });
 
+  // Si lo buscado es un NO-CDA, se abre la ficha del CDA al que entrega (una
+  // vez por búsqueda: si se cierra a mano, un refetch no la vuelve a abrir).
+  const busquedaAbierta = useRef('');
+  useEffect(() => {
+    if (!debounced || busquedaAbierta.current === debounced) return;
+    const conCoincidencia = data?.items.find((r) => r.noCdasCoincidentes?.length);
+    if (conCoincidencia) {
+      setExpandedId(conCoincidencia.id);
+      busquedaAbierta.current = debounced;
+    }
+  }, [data, debounced]);
+
   const totalPages = useMemo(() => {
     if (!data) return 1;
     return Math.max(1, Math.ceil(data.total / data.pageSize));
@@ -282,7 +294,15 @@ export function RecintosPage() {
                             )}
                           </td>
                           <td>{r.codigoRecinto}</td>
-                          <td>{r.nombre}</td>
+                          <td>
+                            {r.nombre}
+                            {r.noCdasCoincidentes && r.noCdasCoincidentes.length > 0 && (
+                              <div className="muted" style={{ fontSize: '0.78rem' }}>
+                                Coincide con el NO CDA{' '}
+                                {r.noCdasCoincidentes.map((nc) => `${nc.codigoRecinto} · ${nc.nombre}`).join(', ')}
+                              </div>
+                            )}
+                          </td>
                           <td>{r.cantonNombre ?? '—'}</td>
                           <td>
                             {r.parroquia ?? '—'}
@@ -323,7 +343,11 @@ export function RecintosPage() {
                         {isExpandable && isExpanded && (
                           <tr>
                             <td colSpan={colSpan} style={{ padding: '0 0.75rem 1rem 0.75rem', background: 'var(--bg)' }}>
-                              <FichaSubtable cda={r} onEdit={isAdmin ? setEditing : undefined} />
+                              <FichaSubtable
+                                cda={r}
+                                onEdit={isAdmin ? setEditing : undefined}
+                                resaltarIds={r.noCdasCoincidentes?.map((nc) => nc.id)}
+                              />
                             </td>
                           </tr>
                         )}
@@ -421,7 +445,16 @@ function jt(r: Recinto) {
     : null;
 }
 
-function FichaSubtable({ cda, onEdit }: { cda: Recinto; onEdit?: (r: Recinto) => void }) {
+function FichaSubtable({
+  cda,
+  onEdit,
+  resaltarIds,
+}: {
+  cda: Recinto;
+  onEdit?: (r: Recinto) => void;
+  /** NO-CDAs que coinciden con la búsqueda. */
+  resaltarIds?: string[];
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ['recintos-origenes', cda.id],
     queryFn: async () => {
@@ -489,12 +522,18 @@ function FichaSubtable({ cda, onEdit }: { cda: Recinto; onEdit?: (r: Recinto) =>
             <tbody>
               {data.map((nc) => {
                 const ncJt = jt(nc);
+                const coincide = resaltarIds?.includes(nc.id) ?? false;
                 return (
-                  <tr key={nc.id}>
+                  <tr key={nc.id} style={coincide ? { background: 'rgba(34,197,94,0.22)' } : undefined}>
                     <td style={tdStyle}>{nc.cantonNombre ?? '—'}</td>
                     <td style={tdStyle}>{nc.parroquia ?? '—'}</td>
                     <td style={tdStyle}>{nc.codigoRecinto}</td>
-                    <td style={tdStyle}>{nc.nombre}</td>
+                    <td style={tdStyle}>
+                      {nc.nombre}
+                      {coincide && (
+                        <span className="badge" style={{ marginLeft: '0.4rem', fontSize: '0.7rem' }}>Coincide</span>
+                      )}
+                    </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>{nc.juntasFemeninas ?? '—'}</td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>{nc.juntasMasculinas ?? '—'}</td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>{ncJt != null ? <strong>{ncJt}</strong> : '—'}</td>

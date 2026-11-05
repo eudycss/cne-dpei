@@ -161,6 +161,8 @@ export interface Recinto {
   contingenciaNombre?: string | null;
   contingenciaDireccion?: string | null;
   noCdasCount?: number;
+  /** CDA en una búsqueda: sus NO-CDA que coinciden con lo buscado. */
+  noCdasCoincidentes?: { id: string; codigoRecinto: string; nombre: string }[];
 }
 
 export interface CreateRecintoRequest {
