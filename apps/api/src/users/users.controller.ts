@@ -83,8 +83,9 @@ export class UsersController {
 
   @Post('reset-password-bulk')
   @Roles('ADMINISTRADOR')
-  // Cada llamada calcula hasta 500 hashes argon2: pocas por minuto.
-  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  // Cada llamada calcula hasta 50 hashes argon2 y la web envía por lotes:
+  // 30 por minuto = mismo tope de antes (~1500 hashes/min).
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: 'Restablecer la contraseña de varios usuarios a su cédula' })
   resetPasswordBulk(
     @Body(new ZodValidationPipe(resetPasswordBulkSchema)) body: ResetPasswordBulkRequest,

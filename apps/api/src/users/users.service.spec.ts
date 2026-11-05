@@ -354,17 +354,31 @@ describe('UsersService', () => {
         userRow({ id: a, nombres: 'Ana', apellidos: 'Uno', email: null }),
         userRow({ id: b, email: null }),
       ]);
-      prisma.$transaction.mockRejectedValueOnce(new Error('se cayó la conexión'));
+      // En paralelo el orden no es fijo: falla siempre el de Ana.
+      prisma.usuario.update.mockImplementation(({ where }: { where: { id: string } }) =>
+        where.id === a ? Promise.reject(new Error('se cayó la conexión')) : Promise.resolve({}),
+      );
 
       const res = await service.resetPasswordBulk({ userIds: [a, b] }, yo);
 
       expect(res.restablecidos).toBe(1);
       expect(res.omitidos).toEqual([{ id: a, nombre: 'Ana Uno', motivo: 'No se pudo restablecer' }]);
+      prisma.usuario.update.mockReset();
     });
 
-    it('rechaza una lista vacía o con más de 500 usuarios', async () => {
+    it('con muchos usuarios los restablece a todos (de a varios a la vez)', async () => {
+      const ids = Array.from({ length: 10 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      prisma.usuario.findMany.mockResolvedValueOnce(ids.map((id, i) => userRow({ id, cedula: `10000000${String(i).padStart(2, '0')}`, email: null })));
+
+      const res = await service.resetPasswordBulk({ userIds: ids }, yo);
+
+      expect(res).toEqual({ restablecidos: 10, omitidos: [] });
+      expect(prisma.usuario.update).toHaveBeenCalledTimes(10);
+    });
+
+    it('rechaza una lista vacía o con más de 50 usuarios', async () => {
       await expect(service.resetPasswordBulk({ userIds: [] }, yo)).rejects.toThrow(ZodError);
-      const muchos = Array.from({ length: 501 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      const muchos = Array.from({ length: 51 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
       await expect(service.resetPasswordBulk({ userIds: muchos }, yo)).rejects.toThrow(ZodError);
       expect(prisma.usuario.findMany).not.toHaveBeenCalled();
     });
