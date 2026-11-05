@@ -52,7 +52,11 @@ describe('JornadaService', () => {
               { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela', canton: { codigo: '30', nombre: 'IBARRA' } },
               { id: 'r3', codigoRecinto: '1500', nombre: 'Sin kit', canton: null },
             ]
-          : [{ id: 'n1', codigoRecinto: '2001', nombre: 'Escuelita', cdaDestinoId: 'r1', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } }],
+          : [
+              { id: 'n1', codigoRecinto: '2001', nombre: 'Escuelita', cdaDestinoId: 'r1', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
+              // Su CDA (1500) no tiene kit: no cuenta.
+              { id: 'n2', codigoRecinto: '2002', nombre: 'Lejana', cdaDestinoId: 'r3', canton: null },
+            ],
       ),
     );
     prisma.parejaCda.findMany.mockResolvedValue([
@@ -176,6 +180,18 @@ describe('JornadaService', () => {
           tecnico: { numero: 1, nombre: 'Jairo' },
           personas: j.unidades[0].personas,
           visita: { en: T('2026-11-29T15:00:00Z'), sinSenal: false },
+          cdaConKit: true,
+        },
+        {
+          codigoRecinto: '2002',
+          nombreRecinto: 'Lejana',
+          codigoCda: '1500',
+          nombreCda: 'Sin kit',
+          canton: { codigo: null, nombre: 'Sin cantón' },
+          tecnico: { numero: null, nombre: '' },
+          personas: [],
+          visita: null,
+          cdaConKit: false,
         },
       ]);
       expect(j.sinDistributivo).toBe(false);
@@ -272,6 +288,30 @@ describe('JornadaService', () => {
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
       expect(texto).toContain('<b>1 de 2</b> · faltan 1');
       expect(JSON.stringify(botones)).toContain('jor:sd:t:1:0');
+    });
+
+    it('"Visitas NO CDA" abre por CDA, sin contar los NO CDA de un CDA sin kit, y cada CDA abre su ficha', async () => {
+      await service.atenderMensaje(CHAT, BOTONES_JORNADA.NO_CDA);
+      const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
+      expect(texto).toContain('· por CDA');
+      expect(texto).toContain('<b>1 de 1</b> ✅');
+      expect(texto).toContain('✅ <b>971</b> · UE Chaltura — 1/1');
+      expect(texto).toContain('⚪ 1 NO CDA de CDA sin kit (no cuentan)');
+      expect(JSON.stringify(botones)).toContain('jor:cda:971');
+      expect(JSON.stringify(botones)).toContain('• 🏫 Por CDA •');
+    });
+
+    it('el botón "por CDA" edita el mismo mensaje; desde la ficha se vuelve con "NO CDA por CDA"', async () => {
+      expect(await service.atenderBoton(CHAT, 'cb', 'jor:nc:d:res:0', 70)).toBe(true);
+      const [id, texto, , teclado] = telegram.editarHtml.mock.calls[0];
+      expect(id).toBe(70);
+      expect(texto).toContain('✅ <b>971</b> · UE Chaltura — 1/1');
+      expect(JSON.stringify(teclado)).toContain('jor:cda:971');
+
+      await service.atenderBoton(CHAT, 'cb2', 'jor:cda:971', 70);
+      const [, ficha, , tecladoFicha] = telegram.editarHtml.mock.calls[1];
+      expect(ficha).toContain('NO CDA: 1 de 1 reportado');
+      expect(JSON.stringify(tecladoFicha)).toContain('jor:nc:d:res:0');
     });
 
     it.each(['/jornada', '/jornada@CNE_Enlaces_bot', '/start', '/menu@CNE_Enlaces_bot'])('"%s" manda el teclado de la Jornada', async (texto) => {

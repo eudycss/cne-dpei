@@ -19,6 +19,7 @@ import {
   tecladoFijoJornada,
   tecladoJornada,
   vistaDeTexto,
+  type AgrupacionJornada,
   type BotonJornada,
   type CantonJornada,
   type Jornada,
@@ -226,7 +227,7 @@ export class JornadaService {
       await this.telegram.enviarHtml(`El CDA ${escapeHtml(codigo)} no está en este evento.`, 'el aviso de CDA fuera del evento', tecladoFijoJornada());
       return;
     }
-    await this.telegram.enviarHtml(`${prefijo}${ficha}`, 'la ficha del CDA', tecladoFichaCda(codigo));
+    await this.telegram.enviarHtml(`${prefijo}${ficha}`, 'la ficha del CDA', tecladoFichaCda(jornada, codigo));
   }
 
   /** Un botón bajo un mensaje de la Jornada. Devuelve false si el botón no es de la Jornada. */
@@ -256,10 +257,12 @@ export class JornadaService {
       return;
     }
     const ahora = new Date();
+    // Visitas NO CDA abre por CDA: lo que se busca es qué CDA tienen todos sus NO CDA.
+    const agrupacion: AgrupacionJornada = vista === 'NO_CDA' ? 'cda' : 'tec';
     await this.telegram.enviarHtml(
-      formatearResumenJornada(jornada, vista, ahora),
+      formatearResumenJornada(jornada, vista, ahora, agrupacion),
       'el resumen de la jornada',
-      tecladoJornada(jornada, vista),
+      tecladoJornada(jornada, vista, 'res', 0, 1, agrupacion),
     );
   }
 
@@ -271,7 +274,7 @@ export class JornadaService {
       messageId,
       ficha ?? (jornada ? `El CDA ${escapeHtml(codigo)} no está en este evento.` : 'No hay un evento electoral activo.'),
       'la ficha del CDA',
-      ficha ? tecladoFichaCda(codigo) : { inline_keyboard: [] },
+      ficha && jornada ? tecladoFichaCda(jornada, codigo) : { inline_keyboard: [] },
     );
   }
 
@@ -479,6 +482,7 @@ export class JornadaService {
     }
 
     const cdaPorId = new Map<string, (typeof cdas)[number]>(cdas.map((c) => [c.id, c]));
+    const conKit = new Set(kits.map((k) => k.recinto!.id));
     const visitaPorRecinto = new Map<string, RegistroJornada>();
     for (const v of visitas) {
       if (v.recintoId && !visitaPorRecinto.has(v.recintoId)) {
@@ -499,10 +503,10 @@ export class JornadaService {
           tecnico: tecnicoPorCodigo.get(n.codigoRecinto) ?? tecnicoDe(cda.codigoRecinto),
           personas: personasPorRecinto.get(cda.id) ?? [],
           visita: visitaPorRecinto.get(n.id) ?? null,
+          cdaConKit: conKit.has(cda.id),
         };
       });
 
-    const conKit = new Set(kits.map((k) => k.recinto!.id));
     const sinKit = cdas
       .filter((c) => !conKit.has(c.id))
       .map((c) => ({

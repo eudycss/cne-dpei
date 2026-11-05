@@ -10,8 +10,8 @@ import { escapeHtml } from '../../auth/notifier';
 
 export type MomentoJornada = 'SALIDA_DPI' | 'LLEGADA_RECINTO' | 'SALIDA_RECINTO' | 'LLEGADA_DPI';
 export type VistaJornada = MomentoJornada | 'NO_CDA' | 'KIT';
-/** Cómo se agrupan los resúmenes: por técnico del distributivo o por cantón. */
-export type AgrupacionJornada = 'tec' | 'can';
+/** Cómo se agrupan los resúmenes: por técnico del distributivo, por cantón o (solo NO CDA) por CDA. */
+export type AgrupacionJornada = 'tec' | 'can' | 'cda';
 
 export const MOMENTOS_JORNADA: MomentoJornada[] = ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'];
 
@@ -61,6 +61,8 @@ export interface NoCdaJornada {
   /** Quienes llevan el kit de su CDA (vacío si el CDA no tiene kit). */
   personas: PersonaJornada[];
   visita: RegistroJornada | null;
+  /** Su CDA tiene kit en el evento; si no, nadie irá hoy y el NO CDA no cuenta. */
+  cdaConKit: boolean;
 }
 
 export interface SinKitJornada {
@@ -119,15 +121,15 @@ const CLAVE_VISTA: Record<VistaJornada, string> = {
 const VISTA_POR_CLAVE = new Map<string, VistaJornada>(
   (Object.entries(CLAVE_VISTA) as [VistaJornada, string][]).map(([v, c]) => [c, v]),
 );
-const CLAVE_AGRUPACION: Record<AgrupacionJornada, string> = { tec: 't', can: 'c' };
+const CLAVE_AGRUPACION: Record<AgrupacionJornada, string> = { tec: 't', can: 'c', cda: 'd' };
 
 export const PREFIJO_CALLBACK_JORNADA = 'jor:';
 /**
- * "jor:<vista>:<t|c>:<grupo>:<página>". Grupo: número de técnico o código de cantón,
- * "sin", "res" (resumen) o "tod" (todos los que faltan). Sin "t|c" (botones de antes)
- * se toma por técnico.
+ * "jor:<vista>:<t|c|d>:<grupo>:<página>". Grupo: número de técnico o código de cantón,
+ * "sin", "res" (resumen) o "tod" (todos los que faltan). Sin "t|c|d" (botones de antes)
+ * se toma por técnico. "d" (por CDA) solo tiene resumen y "tod": cada CDA abre su ficha.
  */
-const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):(?:(t|c):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
+const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):(?:(t|c|d):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
 /** Ficha de un CDA: "jor:cda:1133" (codigo_recinto es VarChar(20)). */
 const CALLBACK_FICHA_CDA = /^jor:cda:([\w-]{1,20})$/;
 
@@ -153,8 +155,11 @@ export function leerCallbackJornada(data: string | undefined): BotonJornada | nu
   const m = CALLBACK_JORNADA.exec(data ?? '');
   if (!m) return null;
   const vista = VISTA_POR_CLAVE.get(m[1])!;
-  const agrupacion: AgrupacionJornada = m[2] === 'c' ? 'can' : 'tec';
-  const seleccion: SeleccionJornada = m[3] === 'sin' || m[3] === 'res' || m[3] === 'tod' ? m[3] : Number(m[3]);
+  let agrupacion: AgrupacionJornada = m[2] === 'c' ? 'can' : m[2] === 'd' ? 'cda' : 'tec';
+  let seleccion: SeleccionJornada = m[3] === 'sin' || m[3] === 'res' || m[3] === 'tod' ? m[3] : Number(m[3]);
+  // "Por CDA" solo existe en Visitas NO CDA y no tiene grupos: lo demás vuelve al resumen.
+  if (agrupacion === 'cda' && vista !== 'NO_CDA') agrupacion = 'tec';
+  else if (agrupacion === 'cda' && seleccion !== 'tod') seleccion = 'res';
   return { vista, agrupacion, seleccion, pagina: Number(m[4]) };
 }
 
@@ -204,7 +209,7 @@ export function grupoDe(x: ConGrupo, agrupacion: AgrupacionJornada): GrupoJornad
 /** Técnicos en el orden del distributivo, o cantones por nombre; "Sin …" al final. */
 export function gruposDe(j: Jornada, agrupacion: AgrupacionJornada): GrupoJornada[] {
   const vistos = new Map<number | 'sin', GrupoJornada>();
-  for (const x of [...j.unidades, ...j.noCdas, ...j.sinKit]) {
+  for (const x of [...j.unidades, ...noCdasQueCuentan(j), ...j.sinKit]) {
     const g = grupoDe(x, agrupacion);
     if (!vistos.has(g.clave)) vistos.set(g.clave, g);
   }
@@ -246,7 +251,7 @@ const porCodigo = (a: { codigoRecinto: string; nombreRecinto: string }, b: { cod
  * quien llegó al DPEI sin que se reciba el kit, o al revés. */
 export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
   if (vista === 'NO_CDA') {
-    const items = j.noCdas.map(
+    const items = noCdasQueCuentan(j).map(
       (n): ItemJornada => ({
         tecnico: n.tecnico,
         canton: n.canton,
@@ -285,6 +290,11 @@ function kitPendiente(u: UnidadJornada): { registro: RegistroJornada; nota: stri
     return { registro: { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
   }
   return null;
+}
+
+/** Los NO CDA de un CDA sin kit no cuentan: nadie va a ir a ellos en este evento. */
+function noCdasQueCuentan(j: Jornada): NoCdaJornada[] {
+  return j.noCdas.filter((n) => n.cdaConKit);
 }
 
 function base(u: UnidadJornada): Omit<ItemJornada, 'registro'> {
@@ -397,12 +407,36 @@ function avisoDistributivo(j: Jornada, agrupacion: AgrupacionJornada): string {
     : '';
 }
 
-/** CDA con todos sus NO CDA reportados, de los CDA que tienen NO CDA. */
-function cdasCompletos(items: ItemJornada[]): { completos: number; total: number } {
-  const pendientes = new Map<string, number>();
-  for (const i of items) pendientes.set(i.cda!.codigo, (pendientes.get(i.cda!.codigo) ?? 0) + (i.registro ? 0 : 1));
-  return { completos: [...pendientes.values()].filter((p) => p === 0).length, total: pendientes.size };
+/** Avance de NO CDA de un CDA. */
+export interface AvanceCda {
+  codigo: string;
+  nombre: string;
+  reportados: number;
+  total: number;
 }
+
+/** Un avance por CDA con NO CDA: primero los incompletos, luego por código. */
+export function avancePorCda(items: ItemJornada[]): AvanceCda[] {
+  const porCda = new Map<string, AvanceCda>();
+  for (const i of items) {
+    const a = porCda.get(i.cda!.codigo) ?? { codigo: i.cda!.codigo, nombre: i.cda!.nombre, reportados: 0, total: 0 };
+    a.total++;
+    if (i.registro) a.reportados++;
+    porCda.set(a.codigo, a);
+  }
+  const completo = (a: AvanceCda) => (a.reportados === a.total ? 1 : 0);
+  return [...porCda.values()].sort(
+    (a, b) => completo(a) - completo(b) || porCodigo({ codigoRecinto: a.codigo, nombreRecinto: a.nombre }, { codigoRecinto: b.codigo, nombreRecinto: b.nombre }),
+  );
+}
+
+/** "⚪ N NO CDA de CDA sin kit (no cuentan)", o nada. */
+function lineaNoCdaSinKit(j: Jornada): string[] {
+  const fuera = j.noCdas.length - noCdasQueCuentan(j).length;
+  return fuera > 0 ? ['', `⚪ ${fuera} NO CDA de CDA sin kit (no cuentan)`] : [];
+}
+
+const SUFIJO_AGRUPACION: Record<AgrupacionJornada, string> = { tec: '', can: 'por cantón', cda: 'por CDA' };
 
 /** Resumen de una vista: el avance total y una línea por técnico o cantón. */
 export function formatearResumenJornada(
@@ -412,7 +446,7 @@ export function formatearResumenJornada(
   agrupacion: AgrupacionJornada = 'tec',
 ): string {
   const estado = estadoVista(j, vista);
-  const lineas = [encabezado(j, vista, ahora, agrupacion === 'can' ? 'por cantón' : ''), ''];
+  const lineas = [encabezado(j, vista, ahora, SUFIJO_AGRUPACION[agrupacion]), ''];
 
   if (vista === 'KIT') {
     lineas.push(
@@ -429,7 +463,10 @@ export function formatearResumenJornada(
 
   const total = estado.faltan.length + estado.cumplidos.length;
   if (total === 0) {
-    lineas.push(vista === 'NO_CDA' ? 'No hay recintos NO CDA para este evento.' : 'Todavía no hay kits asignados en este evento.');
+    lineas.push(
+      vista === 'NO_CDA' ? 'No hay recintos NO CDA de un CDA con kit en este evento.' : 'Todavía no hay kits asignados en este evento.',
+    );
+    if (vista === 'NO_CDA') lineas.push(...lineaNoCdaSinKit(j));
     return lineas.join('\n') + avisoDistributivo(j, agrupacion);
   }
   const hechos = estado.cumplidos.length;
@@ -438,8 +475,20 @@ export function formatearResumenJornada(
       (estado.faltan.length > 0 ? ` · faltan ${estado.faltan.length}` : ' ✅'),
   );
   if (vista === 'NO_CDA') {
-    const { completos, total: cdas } = cdasCompletos([...estado.faltan, ...estado.cumplidos]);
-    lineas.push(`🏫 ${completos} de ${cdas} CDA con todos sus NO CDA reportados`);
+    const avance = avancePorCda([...estado.faltan, ...estado.cumplidos]);
+    const completos = avance.filter((a) => a.reportados === a.total).length;
+    lineas.push(`🏫 ${completos} de ${avance.length} CDA con todos sus NO CDA reportados`);
+    // Por CDA no hay técnicos: no hace falta el aviso del distributivo.
+    if (agrupacion === 'cda') {
+      // Va antes de la lista: si el mensaje se recorta, se pierde el final.
+      lineas.push(...lineaNoCdaSinKit(j), '');
+      for (const a of avance) {
+        lineas.push(
+          `${a.reportados === a.total ? '✅' : '⏳'} <b>${escapeHtml(a.codigo)}</b> · ${escapeHtml(a.nombre)} — ${a.reportados}/${a.total}`,
+        );
+      }
+      return recortarPorLineas(lineas);
+    }
   }
   lineas.push('');
   for (const g of gruposDe(j, agrupacion)) {
@@ -451,7 +500,9 @@ export function formatearResumenJornada(
         (f > 0 ? `  faltan ${f}` : '  ✅'),
     );
   }
-  if (vista !== 'NO_CDA' && j.sinKit.length > 0) {
+  if (vista === 'NO_CDA') {
+    lineas.push(...lineaNoCdaSinKit(j));
+  } else if (j.sinKit.length > 0) {
     lineas.push('', `⚪ ${j.sinKit.length} recinto${j.sinKit.length === 1 ? '' : 's'} CDA sin kit asignado (no cuentan)`);
   }
   return lineas.join('\n') + avisoDistributivo(j, agrupacion);
@@ -534,6 +585,9 @@ function paginar(cabeza: string, bloques: string[]): string[] {
 
 type BotonInline = { text: string; callback_data: string };
 
+/** Telegram no acepta más de 100 botones por teclado; quedan lugares para la navegación. */
+const MAX_BOTONES_CDA = 90;
+
 /** Botones de técnicos o cantones (con cuántos faltan) bajo el resumen o el detalle. */
 export function tecladoJornada(
   j: Jornada,
@@ -546,18 +600,26 @@ export function tecladoJornada(
   const estado = estadoVista(j, vista);
   const boton = (b: Omit<BotonJornada, 'vista' | 'agrupacion'> & Partial<BotonJornada>) =>
     callbackJornada({ vista, agrupacion, ...b });
-  const botones = gruposDe(j, agrupacion)
-    .map((g) => {
-      const f = delGrupo(estado.faltan, g, agrupacion).length;
-      const c = vista === 'KIT' ? 0 : delGrupo(estado.cumplidos, g, agrupacion).length;
-      if (f + c === 0) return null;
-      const texto = `${g.nombre} · ${f > 0 ? f : '✅'}`;
-      return { text: g.clave === seleccion ? `• ${texto} •` : texto, callback_data: boton({ seleccion: g.clave, pagina: 0 }) };
-    })
-    .filter((b): b is BotonInline => b !== null);
+  const porCda = agrupacion === 'cda';
+  // Por CDA: cada CDA abre su ficha (sus NO CDA, quién lleva el kit y sus teléfonos).
+  const botones = porCda
+    ? avancePorCda([...estado.faltan, ...estado.cumplidos]).slice(0, MAX_BOTONES_CDA).map((a) => ({
+        text: `${a.codigo} ${a.nombre}`.slice(0, 22) + ` · ${a.reportados === a.total ? '✅' : a.total - a.reportados}`,
+        callback_data: callbackFichaCda(a.codigo),
+      }))
+    : gruposDe(j, agrupacion)
+        .map((g) => {
+          const f = delGrupo(estado.faltan, g, agrupacion).length;
+          const c = vista === 'KIT' ? 0 : delGrupo(estado.cumplidos, g, agrupacion).length;
+          if (f + c === 0) return null;
+          const texto = `${g.nombre} · ${f > 0 ? f : '✅'}`;
+          return { text: g.clave === seleccion ? `• ${texto} •` : texto, callback_data: boton({ seleccion: g.clave, pagina: 0 }) };
+        })
+        .filter((b): b is BotonInline => b !== null);
 
+  const porFila = porCda ? 2 : 3;
   const filas: BotonInline[][] = [];
-  for (let i = 0; i < botones.length; i += 3) filas.push(botones.slice(i, i + 3));
+  for (let i = 0; i < botones.length; i += porFila) filas.push(botones.slice(i, i + porFila));
 
   const navegacion: BotonInline[] = [];
   if (seleccion !== 'res') navegacion.push({ text: '◀ Resumen', callback_data: boton({ seleccion: 'res', pagina: 0 }) });
@@ -570,19 +632,23 @@ export function tecladoJornada(
     if (estado.faltan.length > 0) {
       filas.push([{ text: 'Ver todos los que faltan', callback_data: boton({ seleccion: 'tod', pagina: 0 }) }]);
     }
-    filas.push([
-      {
-        text: agrupacion === 'tec' ? '• 👷 Por técnico •' : '👷 Por técnico',
-        callback_data: boton({ agrupacion: 'tec', seleccion: 'res', pagina: 0 }),
-      },
-      {
-        text: agrupacion === 'can' ? '• 🗺️ Por cantón •' : '🗺️ Por cantón',
-        callback_data: boton({ agrupacion: 'can', seleccion: 'res', pagina: 0 }),
-      },
-    ]);
+    const opciones: [AgrupacionJornada, string][] = [
+      ['tec', '👷 Por técnico'],
+      ['can', '🗺️ Por cantón'],
+      ...(vista === 'NO_CDA' ? [['cda', '🏫 Por CDA'] as [AgrupacionJornada, string]] : []),
+    ];
+    filas.push(
+      opciones.map(([a, texto]) => ({
+        text: agrupacion === a ? `• ${texto} •` : texto,
+        callback_data: boton({ agrupacion: a, seleccion: 'res', pagina: 0 }),
+      })),
+    );
   }
   return { inline_keyboard: filas };
 }
+
+/** El resumen de Visitas NO CDA por CDA (botón para volver desde una ficha). */
+export const CALLBACK_NO_CDA_POR_CDA = callbackJornada({ vista: 'NO_CDA', agrupacion: 'cda', seleccion: 'res', pagina: 0 });
 
 // ─── Consultar CDA ──────────────────────────────────────────────────────────
 
@@ -654,9 +720,13 @@ function recortarPorLineas(lineas: string[]): string {
   return [...quedan, aviso(quitadas)].join('\n');
 }
 
-/** Botón ↻ bajo la ficha de un CDA. */
-export function tecladoFichaCda(codigo: string) {
-  return { inline_keyboard: [[{ text: '↻ Actualizar', callback_data: callbackFichaCda(codigo) }]] };
+/** Botón ↻ bajo la ficha de un CDA; si el CDA tiene NO CDA que cuentan, también el resumen por CDA. */
+export function tecladoFichaCda(j: Jornada, codigo: string) {
+  const fila: BotonInline[] = [{ text: '↻ Actualizar', callback_data: callbackFichaCda(codigo) }];
+  if (noCdasQueCuentan(j).some((n) => n.codigoCda === codigo)) {
+    fila.push({ text: '🏫 NO CDA por CDA', callback_data: CALLBACK_NO_CDA_POR_CDA });
+  }
+  return { inline_keyboard: [fila] };
 }
 
 /** Recinto que se puede consultar: un CDA de la jornada o un NO CDA (que lleva a su CDA). */
