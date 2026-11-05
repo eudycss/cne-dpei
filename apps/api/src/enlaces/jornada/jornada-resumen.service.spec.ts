@@ -27,13 +27,14 @@ const jornada = (unidades: UnidadJornada[]): Jornada => ({ evento: 'Prueba', uni
 describe('JornadaResumenService', () => {
   const cargar = jest.fn();
   const telegram = {
-    enviarHtml: jest.fn().mockResolvedValue(undefined),
+    enviarHtml: jest.fn().mockResolvedValue(true),
     responderEn: jest.fn((_chat: string, fn: () => Promise<unknown>) => fn()),
   };
   let service: JornadaResumenService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    telegram.enviarHtml.mockResolvedValue(true);
     process.env.TELEGRAM_CHAT_ID_JORNADA = CHAT;
     service = new JornadaResumenService({ cargar } as unknown as JornadaService, telegram as unknown as TelegramNotifier);
   });
@@ -78,16 +79,57 @@ describe('JornadaResumenService', () => {
     expect(telegram.enviarHtml).not.toHaveBeenCalled();
   });
 
+  const enCurso = () => jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA) } })]);
+  const cerrada = () =>
+    jornada([unidad('971', { registros: { SALIDA_DPI: r(AHORA), LLEGADA_DPI: r(minutos(5)) }, kitRecibido: minutos(6) })]);
+
   it('el cierre se manda una sola vez, con sonido, y ese día no se manda más', async () => {
-    const cerrada = jornada([
-      unidad('971', { registros: { SALIDA_DPI: r(AHORA), LLEGADA_DPI: r(minutos(5)) }, kitRecibido: minutos(6) }),
-    ]);
-    cargar.mockResolvedValue(cerrada);
+    cargar.mockResolvedValue(enCurso());
     await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue(cerrada());
     await service.enviarSiCambio(minutos(15));
-    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+    await service.enviarSiCambio(minutos(30));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+    expect(enviados()[1].texto).toContain('✅ Jornada cerrada');
+    expect(enviados()[1].opciones).toEqual({ silencioso: false });
+  });
+
+  it('tras un reinicio con la jornada ya cerrada, el cierre se repite sin sonido', async () => {
+    cargar.mockResolvedValue(cerrada());
+    await service.enviarSiCambio(AHORA);
     expect(enviados()[0].texto).toContain('✅ Jornada cerrada');
-    expect(enviados()[0].opciones).toEqual({ silencioso: false });
+    expect(enviados()[0].opciones).toEqual({ silencioso: true });
+  });
+
+  it('si Telegram no lo recibió, el siguiente ciclo lo reintenta (también el cierre)', async () => {
+    cargar.mockResolvedValue(enCurso());
+    await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue(cerrada());
+    telegram.enviarHtml.mockResolvedValueOnce(false);
+    await service.enviarSiCambio(minutos(15));
+    await service.enviarSiCambio(minutos(30));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(3);
+    expect(enviados()[2].texto).toContain('✅ Jornada cerrada');
+    expect(enviados()[2].opciones).toEqual({ silencioso: false });
+  });
+
+  it('si cambia el evento activo empieza de cero, aunque los números sean iguales', async () => {
+    cargar.mockResolvedValue(enCurso());
+    await service.enviarSiCambio(AHORA);
+    cargar.mockResolvedValue({ ...enCurso(), evento: 'Otra prueba' });
+    await service.enviarSiCambio(minutos(15));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+    expect(enviados()[1].texto).not.toContain('Desde las');
+  });
+
+  it('el día de jornada cambia a las 04:00 de Ecuador, no a medianoche', async () => {
+    cargar.mockResolvedValue(enCurso());
+    // 03:45 y 04:00 de Ecuador del día siguiente.
+    await service.enviarSiCambio(new Date('2026-11-30T08:45:00Z'));
+    await service.enviarSiCambio(new Date('2026-11-30T08:50:00Z'));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
+    await service.enviarSiCambio(new Date('2026-11-30T09:00:00Z'));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
   });
 
   it('otro día de jornada empieza de cero (vuelve a mandar aunque los números sean iguales)', async () => {

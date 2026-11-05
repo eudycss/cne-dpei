@@ -12,9 +12,14 @@ import {
 } from './jornada';
 import { diaDeJornada, esChatJornada, JornadaService } from './jornada.service';
 
-/** Lo último que se mandó en el día de jornada (en memoria: tras un reinicio se repite un resumen, sin más). */
+/**
+ * Lo último que se mandó en el día de jornada y evento. En memoria: tras un
+ * reinicio (deploy) se repite un resumen; si la jornada ya estaba cerrada, el
+ * cierre se repite sin sonido.
+ */
 interface UltimoResumen {
   dia: string;
+  evento: string;
   conteos: ConteosJornada | null;
   en: Date | null;
   cerrada: boolean;
@@ -53,7 +58,10 @@ export class JornadaResumenService {
     if (!jornada || !jornadaEmpezada(jornada)) return;
 
     const dia = diaDeJornada(ahora).fecha;
-    if (this.ultimo?.dia !== dia) this.ultimo = { dia, conteos: null, en: null, cerrada: false };
+    // Otro día u otro evento activo: se empieza de cero (los "+N" no comparan eventos distintos).
+    if (this.ultimo?.dia !== dia || this.ultimo.evento !== jornada.evento) {
+      this.ultimo = { dia, evento: jornada.evento, conteos: null, en: null, cerrada: false };
+    }
     if (this.ultimo.cerrada) return;
 
     const conteos = conteosJornada(jornada);
@@ -61,15 +69,18 @@ export class JornadaResumenService {
     if (!cerrada && this.ultimo.conteos && mismosConteos(conteos, this.ultimo.conteos)) return;
 
     const anterior = this.ultimo.conteos && this.ultimo.en ? { conteos: this.ultimo.conteos, en: this.ultimo.en } : null;
-    await this.telegram.responderEn(chat, () =>
+    // El cierre suena solo si se vio la jornada en curso; al arrancar ya cerrada (reinicio) puede haberse mandado antes.
+    const conSonido = cerrada && anterior !== null;
+    const enviado = await this.telegram.responderEn(chat, () =>
       this.telegram.enviarHtml(
         formatearResumenAutomatico(jornada, ahora, anterior),
         cerrada ? 'el cierre de la jornada' : 'el resumen automático de la jornada',
         tecladoResumenAutomatico(),
         // Los resúmenes no suenan; el cierre sí.
-        { silencioso: !cerrada },
+        { silencioso: !conSonido },
       ),
     );
-    this.ultimo = { dia, conteos, en: ahora, cerrada };
+    // Si Telegram no lo recibió, el próximo ciclo lo vuelve a intentar (también el cierre).
+    if (enviado) this.ultimo = { ...this.ultimo, conteos, en: ahora, cerrada };
   }
 }
