@@ -32,9 +32,33 @@ export function SimuladorPage() {
           </p>
         </div>
       </div>
+      <EnlacePublico />
       <Pestanas pestanas={SECCIONES} porDefecto="practicas" etiqueta="Secciones del simulador">
         {(seccion) => (seccion === 'practicas' ? <PracticasPanel /> : <NovedadesPanel />)}
       </Pestanas>
+    </div>
+  );
+}
+
+/** Dirección que se comparte con el personal (proyector, WhatsApp). */
+export function EnlacePublico({ origen = window.location.origin }: { origen?: string }) {
+  const url = `${origen}/simulador`;
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(url);
+      sileo.success({ title: 'Enlace copiado' });
+    } catch {
+      sileo.error({ title: 'No se pudo copiar; selecciónelo y cópielo a mano' });
+    }
+  }
+  return (
+    <div className="banner info sim-enlace">
+      <span>
+        Enlace para el personal: <strong className="mono">{url}</strong> (entran solo con su cédula)
+      </span>
+      <button type="button" className="btn secondary ocda-btn-chico" onClick={() => void copiar()}>
+        Copiar enlace
+      </button>
     </div>
   );
 }

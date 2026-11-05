@@ -74,6 +74,12 @@ describe('SimuladorPage', () => {
     expect(fila).toHaveTextContent('Activa');
   });
 
+  it('muestra el enlace público que se comparte con el personal', () => {
+    renderPagina();
+    expect(screen.getByText(`${window.location.origin}/simulador`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copiar enlace' })).toBeInTheDocument();
+  });
+
   it('desactivar una práctica', async () => {
     const user = userEvent.setup();
     renderPagina();

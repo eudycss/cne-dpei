@@ -25,6 +25,7 @@ import { Inicio } from './pages/Inicio';
 import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
 import { PermisosModulosPage } from './pages/permisos-modulos/PermisosModulosPage';
 import { SimuladorPage } from './pages/simulador/SimuladorPage';
+import { SimuladorPublicoPage } from './pages/simulador-publico/SimuladorPublicoPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -36,6 +37,8 @@ export default function App() {
       <Route path="/reset-password" element={<ResetPassword />} />
       {/* Pública: el operador CDA sube su foto con su enlace personal (token en el #). */}
       <Route path="/foto-cda" element={<FotoCdaPage />} />
+      {/* Pública: práctica de digitación; se entra con la cédula. */}
+      <Route path="/simulador" element={<SimuladorPublicoPage />} />
       <Route
         path="/change-password"
         element={
