@@ -48,6 +48,7 @@ const fila = (o: OperadorCda, over: Partial<AsistenciaCdaFila> = {}): Asistencia
   entradaPor: null,
   salidaEn: null,
   salidaPor: null,
+  convocado: true,
   ...over,
 });
 
@@ -65,6 +66,7 @@ function dia(over: Partial<AsistenciaCdaDia> = {}): AsistenciaCdaDia {
         salidaPor: 'Técnico Dos',
       }),
     ],
+    convocados: 3,
     ...over,
   };
 }
@@ -354,5 +356,63 @@ describe('AsistenciaPanel', () => {
     await screen.findByRole('group', { name: 'Resumen del día' });
     expect(screen.queryByRole('button', { name: 'Escanear carnet' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
+  });
+});
+
+describe('AsistenciaPanel: solo los convocados', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
+  });
+
+  it('con convocatoria muestra solo a los convocados; los demás se ven a pedido, marcados como no convocados', async () => {
+    getMock.mockResolvedValue({
+      data: dia({ convocados: 2, filas: [fila(ANA, { convocado: true }), fila(LUIS, { convocado: true }), fila(MARIA, { convocado: false })] }),
+    });
+    renderPanel();
+    await screen.findByRole('rowheader', { name: /ANDRADE/ });
+    expect(screen.queryByRole('rowheader', { name: /CHÁVEZ/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/2 convocados este día · 1 no convocado \(sin falta\)/)).toBeInTheDocument();
+    // Los KPI son de los convocados.
+    expect(within(screen.getByRole('group', { name: 'Resumen del día' })).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver no convocados (1)' }));
+    expect(within(filaDe('CHÁVEZ')).getByText(/No convocado/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ocultar no convocados' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('quien vino sin estar convocado se ve siempre; al ver a los demás, los resúmenes y los masivos siguen siendo de los convocados', async () => {
+    const PEDRO = operador('p', 'PAZ PONCE PEDRO', '0909090909');
+    getMock.mockResolvedValue({
+      data: dia({
+        convocados: 2,
+        filas: [
+          fila(ANA, { convocado: true }),
+          fila(LUIS, { convocado: true }),
+          fila(MARIA, { convocado: false, entradaEn: '2026-10-22T13:00:00.000Z', entradaPor: 'Técnico Uno' }),
+          fila(PEDRO, { convocado: false }),
+        ],
+      }),
+    });
+    renderPanel();
+    expect(await screen.findByRole('rowheader', { name: /CHÁVEZ/ })).toBeInTheDocument();
+    expect(screen.queryByRole('rowheader', { name: /PAZ/ })).not.toBeInTheDocument();
+    const resumen = screen.getByRole('group', { name: 'Resumen del día' });
+    expect(within(resumen).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
+    expect(screen.getByRole('button', { name: 'Marcar entrada a pendientes (2)' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver no convocados (1)' }));
+    expect(screen.getByRole('rowheader', { name: /PAZ/ })).toBeInTheDocument();
+    expect(within(resumen).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
+    expect(screen.getByRole('button', { name: 'Marcar entrada a pendientes (2)' })).toBeInTheDocument();
+  });
+
+  it('un día sin convocatoria avisa que nadie tiene falta y muestra a todos para poder marcarlos', async () => {
+    getMock.mockResolvedValue({ data: dia({ convocados: 0, filas: [fila(ANA, { convocado: false }), fila(LUIS, { convocado: false })] }) });
+    renderPanel();
+    expect(await screen.findByText(/No hay convocatoria ni parejas para este día: nadie tiene falta/)).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /ANDRADE/ })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /VEGA/ })).toBeInTheDocument();
+    expect(screen.queryByText(/No convocado/)).not.toBeInTheDocument();
   });
 });

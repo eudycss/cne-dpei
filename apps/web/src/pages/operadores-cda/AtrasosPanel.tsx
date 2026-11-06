@@ -316,6 +316,7 @@ function FilaDetalle({ fila: f }: { fila: FilaAtrasoCda }) {
       <td>{f.estado === 'ATRASO' ? f.minutosAtraso : '—'}</td>
       <td>
         <span className={`ocda-estado ${e.clase}`}>{e.etiqueta}</span>
+        {!f.convocado && <span className="muted" style={{ fontSize: '0.78rem', marginLeft: '0.4rem' }}>no convocado</span>}
       </td>
     </tr>
   );

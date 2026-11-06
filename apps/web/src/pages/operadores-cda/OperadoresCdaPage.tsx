@@ -14,6 +14,7 @@ import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCa
 import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
 import { QuienFuePanel } from './QuienFuePanel';
+import { ConvocatoriaPanel } from './ConvocatoriaPanel';
 import { GestionarCargosModal } from './GestionarCargosModal';
 import { getCargosCda } from '../../lib/queries/operadores-cda';
 import { useAuth } from '../../auth/AuthContext';
@@ -22,6 +23,7 @@ const SECCIONES = [
   { id: 'listado', etiqueta: 'Listado' },
   { id: 'asistencia', etiqueta: 'Asistencia' },
   { id: 'atrasos', etiqueta: 'Atrasos' },
+  { id: 'convocatoria', etiqueta: 'Convocatoria' },
   { id: 'actas', etiqueta: 'Actas de entrega' },
   { id: 'parejas', etiqueta: 'Parejas' },
   { id: 'historial', etiqueta: 'Historial de parejas' },
@@ -105,6 +107,8 @@ export function OperadoresCdaPage() {
                 <ListadoOperadores acciones={acciones} />
               ) : seccion === 'atrasos' ? (
                 <AtrasosPanel acciones={acciones} />
+              ) : seccion === 'convocatoria' ? (
+                <ConvocatoriaPanel />
               ) : seccion === 'actas' ? (
                 <ActasPanel acciones={acciones} />
               ) : seccion === 'parejas' ? (
