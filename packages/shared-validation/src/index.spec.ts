@@ -4,6 +4,8 @@ import {
   resumenJornadaSchema,
   leerNumeroMochila,
   leerCodigoQrKit,
+  leerCedulaCelda,
+  leerFechaCelda,
   numeroMochilaRequestSchema,
   textoFrecuenciaResumenJornada,
   RESUMEN_JORNADA_DETENIDO,
@@ -662,5 +664,30 @@ describe('N.º de mochila', () => {
     expect(numeroMochilaRequestSchema.safeParse({ numero: 0 }).success).toBe(false);
     expect(numeroMochilaRequestSchema.safeParse({ numero: 4.5 }).success).toBe(false);
     expect(numeroMochilaRequestSchema.safeParse({ numero: '45' }).success).toBe(false);
+  });
+});
+
+describe('celdas del Excel de convocatoria', () => {
+  it('cédula: 10 dígitos; si Excel quitó el 0 inicial, lo devuelve', () => {
+    expect(leerCedulaCelda('1001234567')).toBe('1001234567');
+    expect(leerCedulaCelda(401234567)).toBe('0401234567');
+    expect(leerCedulaCelda('100-123456-7')).toBe('1001234567');
+    expect(leerCedulaCelda('12345')).toBeNull();
+    // Con letras puede ser otro dato pegado: no se rescatan dígitos sueltos.
+    expect(leerCedulaCelda('abc1001234567')).toBeNull();
+    expect(leerCedulaCelda('[object Object]')).toBeNull();
+    expect(leerCedulaCelda('')).toBeNull();
+  });
+
+  it('fecha: AAAA-MM-DD, DD/MM/AAAA o la de Excel; inexistente da null', () => {
+    expect(leerFechaCelda('2026-11-05')).toBe('2026-11-05');
+    expect(leerFechaCelda('5/11/2026')).toBe('2026-11-05');
+    expect(leerFechaCelda('05-11-2026')).toBe('2026-11-05');
+    expect(leerFechaCelda(String(new Date('2026-11-05T00:00:00Z')))).toBe('2026-11-05');
+    expect(leerFechaCelda('31/02/2026')).toBeNull();
+    expect(leerFechaCelda('05/11/2019')).toBeNull();
+    expect(leerFechaCelda('5/11/26')).toBeNull();
+    expect(leerFechaCelda('mañana')).toBeNull();
+    expect(leerFechaCelda('')).toBeNull();
   });
 });

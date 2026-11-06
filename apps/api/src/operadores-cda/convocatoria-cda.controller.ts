@@ -1,5 +1,21 @@
-import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import type { GuardarConvocatoriaCdaRequest } from '@cne/shared-types';
 import { guardarConvocatoriaCdaSchema } from '@cne/shared-validation';
 
@@ -31,6 +47,32 @@ export class ConvocatoriaCdaController {
   @ApiOperation({ summary: 'Convocatoria de un día (?fecha=AAAA-MM-DD): todo el personal y quién está convocado' })
   dia(@Query('fecha') fecha?: unknown) {
     return this.convocatoria.dia(texto(fecha));
+  }
+
+  @Get('convocatoria/plantilla.xlsx')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @ApiOperation({ summary: 'Plantilla Excel de la convocatoria (Fecha y Cédula)' })
+  async plantilla(@Res() res: Response) {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=plantilla_convocatoria.xlsx');
+    res.send(await this.convocatoria.plantilla());
+  }
+
+  @Post('convocatoria/carga')
+  @RequierePermiso('cda.convocatoria.gestionar')
+  @UseGuards(PermisoGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Agregar convocados desde Excel/CSV (Fecha + Cédula; aplicar=false: vista previa)' })
+  cargar(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('fecha') fecha: unknown,
+    @Query('aplicar') aplicar: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.convocatoria.cargar(file, texto(fecha), aplicar === 'true', user?.sub);
   }
 
   @Put('convocatoria/:fecha')

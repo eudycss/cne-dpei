@@ -21,6 +21,7 @@ import type {
   CambiarCargoOperadorCdaResult,
   ConfigAsistenciaCda,
   ConvocatoriaCdaDia,
+  CargaConvocatoriaCdaResult,
   CorregirAsistenciaCdaRequest,
   CorregirAsistenciaCdaResult,
   ConsultaQrCda,
@@ -571,5 +572,21 @@ export async function getConvocatoriaCda(fecha: string): Promise<ConvocatoriaCda
 /** Deja como convocados a mano de ese día exactamente `operadorIds` (los de Parejas cuentan solos). */
 export async function guardarConvocatoriaCda(fecha: string, operadorIds: string[]): Promise<ConvocatoriaCdaDia> {
   const { data } = await api.put<ConvocatoriaCdaDia>(`/operadores-cda/convocatoria/${encodeURIComponent(fecha)}`, { operadorIds });
+  return data;
+}
+
+/** Excel de convocatoria (Fecha + Cédula); `fecha` es el día para las filas sin Fecha. Sin `aplicar`, vista previa. */
+export async function cargarConvocatoriaCda(file: File, fecha: string, aplicar: boolean): Promise<CargaConvocatoriaCdaResult> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const { data } = await api.post<CargaConvocatoriaCdaResult>(
+    `/operadores-cda/convocatoria/carga?fecha=${encodeURIComponent(fecha)}&aplicar=${aplicar}`,
+    fd,
+  );
+  return data;
+}
+
+export async function descargarPlantillaConvocatoriaCda(): Promise<Blob> {
+  const { data } = await api.get<Blob>('/operadores-cda/convocatoria/plantilla.xlsx', { responseType: 'blob' });
   return data;
 }

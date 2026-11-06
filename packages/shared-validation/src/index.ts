@@ -904,6 +904,40 @@ export const guardarConvocatoriaCdaSchema = z
   })
   .strict();
 export type GuardarConvocatoriaCdaInput = z.infer<typeof guardarConvocatoriaCdaSchema>;
+/** Filas y fechas distintas como máximo en un Excel de convocatoria. */
+export const MAX_FILAS_CARGA_CONVOCATORIA = 5000;
+export const MAX_FECHAS_CARGA_CONVOCATORIA = 120;
+
+/**
+ * Cédula escrita en una celda: solo dígitos; si Excel le quitó el 0 inicial
+ * (9 dígitos), se lo devuelve. null si no son 10 dígitos.
+ */
+export function leerCedulaCelda(valor: unknown): string | null {
+  const texto = String(valor ?? '').trim();
+  // Solo dígitos, puntos, guiones y espacios: con letras puede ser otro dato pegado.
+  if (!/^[\d.\-\s]+$/.test(texto)) return null;
+  const digitos = texto.replace(/\D/g, '');
+  const cedula = digitos.length === 9 ? `0${digitos}` : digitos;
+  return /^\d{10}$/.test(cedula) ? cedula : null;
+}
+
+/**
+ * Fecha de una celda: "2026-11-05", "05/11/2026" (día/mes/año) o la fecha que
+ * entrega Excel. Devuelve AAAA-MM-DD o null si no es una fecha real.
+ */
+export function leerFechaCelda(valor: unknown): string | null {
+  const texto = String(valor ?? '').trim();
+  let dia: string | null = null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(texto);
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(texto);
+  if (iso) dia = `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  else if (dmy) dia = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  else if (/[a-z]{3} [a-z]{3} \d{1,2} \d{4}/i.test(texto) && !Number.isNaN(Date.parse(texto))) {
+    // Una celda de fecha de Excel llega como Date (medianoche UTC) convertida a texto.
+    dia = new Date(texto).toISOString().slice(0, 10);
+  }
+  return dia && diaAsistenciaSchema.safeParse(dia).success ? dia : null;
+}
 
 /**
  * El PDF cuesta mucha más CPU que el Excel (Render: 0.1 vCPU) y más de un mes

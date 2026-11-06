@@ -18,6 +18,16 @@ export class Convocados {
     return this.esPorPareja(dia, operadorId) || !!this.aMano.get(dia)?.has(operadorId);
   }
 
+  /** Todos los convocados de ese día (Parejas y a mano). */
+  delDia(dia: string): Set<string> {
+    return new Set([...(this.porPareja.get(dia) ?? []), ...(this.aMano.get(dia) ?? [])]);
+  }
+
+  /** Convocado a mano (en la Convocatoria) ese día. */
+  esAMano(dia: string, operadorId: string): boolean {
+    return !!this.aMano.get(dia)?.has(operadorId);
+  }
+
   /** Convocado por estar en Parejas ese día (no se quita desde la Convocatoria). */
   esPorPareja(dia: string, operadorId: string): boolean {
     return !!this.porPareja.get(dia)?.has(operadorId);
