@@ -11,10 +11,15 @@ export function CamaraQr({
   onLeido,
   onError,
   pausado = false,
+  queLee = 'el carnet',
+  indicacion = 'Centre el código QR del carnet en el recuadro',
 }: {
   onLeido: (codigo: string) => void;
   onError: (mensaje: string) => void;
   pausado?: boolean;
+  /** Qué se escanea, para el lector de pantalla ("el carnet", "el QR del kit"). */
+  queLee?: string;
+  indicacion?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lectorRef = useRef<QrScanner | null>(null);
@@ -72,9 +77,9 @@ export function CamaraQr({
 
   return (
     <div className="ocda-qr-camara">
-      <video ref={videoRef} muted playsInline aria-label="Vista de la cámara para leer el carnet" />
+      <video ref={videoRef} muted playsInline aria-label={`Vista de la cámara para leer ${queLee}`} />
       {!lista && <p className="muted">Encendiendo la cámara…</p>}
-      {lista && !pausado && <p>Centre el código QR del carnet en el recuadro</p>}
+      {lista && !pausado && <p>{indicacion}</p>}
     </div>
   );
 }

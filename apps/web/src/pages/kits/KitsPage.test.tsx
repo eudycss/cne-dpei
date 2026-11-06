@@ -549,6 +549,17 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
       expect(screen.queryByRole('button', { name: /Mochila N.º 54/ })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reporte mochilas' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Cargar mochilas' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Escanear mochilas' })).not.toBeInTheDocument();
+    });
+
+    it('un TECNICO_SUPERVISOR escanea y edita el número, pero no carga Excel', async () => {
+      setSessionUser(['TECNICO_SUPERVISOR']);
+      kitsActuales = [kit({ numeroMochila: 54 })];
+      renderKitsPage();
+      await screen.findByText('ABCD2345');
+      expect(screen.getByRole('button', { name: 'Mochila N.º 54 de 28 — Escuela Central: cambiar' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Escanear mochilas' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cargar mochilas' })).not.toBeInTheDocument();
     });
 
     it('cargar mochilas: primero la vista previa (errores arriba) y solo al confirmar se guarda', async () => {

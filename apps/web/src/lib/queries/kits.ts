@@ -2,6 +2,7 @@ import type {
   AsignarKitRequest,
   BulkUploadResult,
   CargaMochilasResult,
+  MochilaPorQr,
   CreateKitRequest,
   EditKitRequest,
   Kit,
@@ -46,3 +47,5 @@ export const cargarMochilas = (eventoId: string, file: File, aplicar: boolean) =
 export const downloadMochilasPlantilla = () => api.get<Blob>('/kits/mochilas/plantilla.xlsx', { responseType: 'blob' });
 export const downloadMochilasReporte = (eventoId: string) =>
   api.get<Blob>(`/kits/mochilas/reporte.xlsx?eventoId=${encodeURIComponent(eventoId)}`, { responseType: 'blob' });
+export const buscarMochilaPorQr = (codigo: string) =>
+  api.get<MochilaPorQr>(`/kits/mochilas/qr/${encodeURIComponent(codigo)}`);

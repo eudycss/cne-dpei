@@ -37,6 +37,7 @@ import { PasoFlujo } from '../../components/PasoFlujo';
 import { QrNuevoModal, puedeQrNuevo } from './QrNuevoModal';
 import { NumeroMochilaModal } from './NumeroMochilaModal';
 import { MochilasKitPanel } from './MochilasKitPanel';
+import { EscanearMochilasModal } from './EscanearMochilasModal';
 import { crearKitConParejaCda, getDisponiblesKitCda } from '../../lib/queries/operadores-cda';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,6 +82,8 @@ function EstadoBadge({ estado }: { estado: string }) {
 export function KitsPage() {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  // El N.º de mochila lo registran también los supervisores (escaneando); pasarlo de un QR a otro, solo el admin.
+  const puedeMochila = isAdmin || (user?.roles.includes('TECNICO_SUPERVISOR') ?? false);
   const [tab, setTab] = useState<'kits' | 'items'>('kits');
   const [eventoId, setEventoId] = useState('');
   const [page, setPage] = useState(1);
@@ -94,6 +97,7 @@ export function KitsPage() {
   const [editing, setEditing] = useState<Kit | null>(null);
   const [qrNuevo, setQrNuevo] = useState<Kit | null>(null);
   const [mochila, setMochila] = useState<Kit | null>(null);
+  const [escaneando, setEscaneando] = useState(false);
   const [importResult, setImportResult] = useState<BulkUploadResult | null>(null);
   const [incluirPrueba, setIncluirPrueba] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -366,6 +370,11 @@ export function KitsPage() {
                 </button>
               </>
             )}
+            {puedeMochila && (
+              <button className="btn secondary" onClick={() => setEscaneando(true)}>
+                <span aria-hidden="true">📷 </span>Escanear mochilas
+              </button>
+            )}
             <MochilasKitPanel eventoId={eventoId} isAdmin={isAdmin} onCargado={invalidateKits} />
           </div>
 
@@ -413,7 +422,7 @@ export function KitsPage() {
                         </code>
                       </td>
                       <td>
-                        {isAdmin ? (
+                        {puedeMochila ? (
                           <button
                             type="button"
                             className="btn secondary"
@@ -625,12 +634,17 @@ export function KitsPage() {
       {mochila && (
         <NumeroMochilaModal
           kit={mochila}
+          puedeReemplazar={isAdmin}
           onClose={() => setMochila(null)}
           onDone={() => {
             setMochila(null);
             invalidateKits();
           }}
         />
+      )}
+
+      {escaneando && (
+        <EscanearMochilasModal puedeReemplazar={isAdmin} onClose={() => setEscaneando(false)} onGuardado={invalidateKits} />
       )}
 
       {qrNuevo && (
