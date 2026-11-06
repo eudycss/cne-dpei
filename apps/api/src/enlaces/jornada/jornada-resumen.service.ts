@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { RESUMEN_JORNADA_DETENIDO } from '@cne/shared-validation';
 import { TelegramNotifier } from '../telegram-notifier';
 import {
   conteosJornada,
@@ -32,7 +33,8 @@ interface UltimoResumen {
  * Resumen automático del grupo Jornada: a lo más uno cada N minutos (15 por
  * defecto; se cambia desde la web o con "⏱ Frecuencia" en el bot), sin sonido y
  * solo si algo cambió; al cerrar la jornada (todos en el DPEI, sin kits pendientes)
- * manda el cierre una vez, con sonido, y deja de mandar ese día.
+ * manda el cierre una vez, con sonido, y deja de mandar ese día. Con la
+ * frecuencia en "Detener" no manda nada (ni el cierre) hasta que se elija otra.
  */
 @Injectable()
 export class JornadaResumenService {
@@ -68,6 +70,8 @@ export class JornadaResumenService {
     const chat = process.env.TELEGRAM_CHAT_ID_JORNADA?.trim();
     if (!chat || !esChatJornada(chat)) return;
     if (ahora.getTime() < this.reintentarDesde) return;
+    const minutos = await this.jornada.minutosResumen();
+    if (minutos === RESUMEN_JORNADA_DETENIDO) return;
     const jornada = await this.jornada.cargar(ahora.getTime());
     if (!jornada || !jornadaEmpezada(jornada)) return;
 
@@ -82,7 +86,7 @@ export class JornadaResumenService {
     const cerrada = jornadaCerrada(jornada);
     if (!cerrada && this.ultimo.conteos && mismosConteos(conteos, this.ultimo.conteos)) return;
     // El cierre sale apenas ocurre; los resúmenes, cuando pasó la frecuencia elegida desde el último.
-    if (!cerrada && this.ultimo.en && ahora.getTime() - this.ultimo.en.getTime() < (await this.jornada.minutosResumen()) * 60_000) {
+    if (!cerrada && this.ultimo.en && ahora.getTime() - this.ultimo.en.getTime() < minutos * 60_000) {
       return;
     }
 

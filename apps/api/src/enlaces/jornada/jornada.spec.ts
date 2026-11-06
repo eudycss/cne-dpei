@@ -12,7 +12,11 @@ import {
   jornadaCerrada,
   jornadaEmpezada,
   leerCallbackFichaCda,
+  leerCallbackFrecuencia,
   leerCallbackJornada,
+  marcasCumplimiento,
+  mensajeFrecuencia,
+  tecladoFrecuencia,
   paginasDetalleJornada,
   tecladoFichaCda,
   tecladoFijoJornada,
@@ -48,6 +52,8 @@ function unidad(codigo: string, tecnico: TecnicoJornada, extra: Partial<UnidadJo
     ],
     registros: {},
     kitRecibido: null,
+    kitEscaneado: null,
+    actas: null,
     ...extra,
   };
 }
@@ -93,6 +99,8 @@ describe('Jornada (Telegram)', () => {
       expect(BOTONES_JORNADA.NO_CDA).toBe('🏫 Llegada NO CDA');
       expect(vistaDeTexto('/caidos')).toBeNull();
       expect(JSON.stringify(tecladoFijoJornada())).toContain('🔎 Consultar CDA');
+      expect(JSON.stringify(tecladoFijoJornada())).toContain('✅ Cumplimiento');
+      expect(vistaDeTexto('✅ cumplimiento')).toBe('CUMPLIMIENTO');
     });
 
     it('el callback_data va y vuelve con la agrupación, acepta los botones de antes y rechaza lo mal formado', () => {
@@ -510,7 +518,8 @@ describe('Jornada (Telegram)', () => {
     it('un botón por vista; NO CDA abre por CDA', () => {
       const [frecuencia, ...vistas] = tecladoResumenAutomatico().inline_keyboard.flat().reverse();
       const botones = vistas.reverse();
-      expect(botones).toHaveLength(6);
+      expect(botones).toHaveLength(7);
+      expect(botones.find((b) => b.text === BOTONES_JORNADA.CUMPLIMIENTO)?.callback_data).toBe('jor:cu:t:res:0');
       expect(frecuencia).toEqual({ text: '⏱ Frecuencia del resumen', callback_data: 'jor:frec' });
       expect(botones.find((b) => b.text === BOTONES_JORNADA.NO_CDA)?.callback_data).toBe('jor:nc:d:res:0');
       expect(botones.find((b) => b.text === BOTONES_JORNADA.SALIDA_DPI)?.callback_data).toBe('jor:sd:t:res:0');
@@ -579,6 +588,134 @@ describe('Jornada (Telegram)', () => {
         ['5', '5', false],
         ['542', '971', true],
       ]);
+    });
+  });
+
+  describe('cumplimiento (kit + militar, reportes)', () => {
+    const r = (h: string) => ({ en: A_LAS(h), sinSenal: false });
+    const escaneado = (h: string, conFoto = true) => ({ ...r(h), conFoto });
+    const todo = { instalacion: true, escrutinio: true };
+    const conCumplimiento = () =>
+      jornada({
+        unidades: [
+          // Cumplió todo.
+          unidad('971', JAIRO, { registros: { LLEGADA_RECINTO: r('08:00'), SALIDA_RECINTO: r('17:00') }, kitEscaneado: escaneado('08:05'), actas: todo }),
+          // Llegó y escaneó; aún no sale del recinto.
+          unidad('1290', JAIRO, { registros: { LLEGADA_RECINTO: r('08:10') }, kitEscaneado: escaneado('08:12') }),
+          // Aún no llega al recinto.
+          unidad('1487', CARLOS),
+        ],
+      });
+
+    it('cada parte dice ✅ con la hora, ⏳ si aún no le toca y ❌ si ya pasó el momento sin hacerlo', () => {
+      const [cumplio, enRecinto, sinLlegar] = conCumplimiento().unidades;
+      expect(marcasCumplimiento(cumplio)).toBe('📷 Kit y militar ✅ 08:05 · 📄 Instalación ✅ · 📄 Escrutinio ✅');
+      expect(marcasCumplimiento(enRecinto)).toBe('📷 Kit y militar ✅ 08:12 · 📄 Instalación ⏳ · 📄 Escrutinio ⏳');
+      expect(marcasCumplimiento(sinLlegar)).toBe('📷 Kit y militar ⏳ · 📄 Instalación ⏳ · 📄 Escrutinio ⏳');
+      // Llegó al recinto sin escanear; escaneó sin foto (APK vieja); salió sin un reporte (dato viejo).
+      expect(marcasCumplimiento(unidad('1', JAIRO, { registros: { LLEGADA_RECINTO: r('08:00') } }))).toContain('📷 Kit y militar ❌');
+      expect(marcasCumplimiento(unidad('2', JAIRO, { kitEscaneado: escaneado('08:00', false) }))).toContain('📷 Kit ✅ 08:00 · militar ❌ sin foto');
+      expect(
+        marcasCumplimiento(
+          unidad('3', JAIRO, { registros: { SALIDA_RECINTO: r('17:00') }, actas: { instalacion: true, escrutinio: false } }),
+        ),
+      ).toContain('📄 Escrutinio ❌');
+    });
+
+    it('si ya volvió al DPEI sin marcar la salida del recinto (ni la llegada), lo que no hizo pasa a ❌', () => {
+      const volvio = unidad('4', JAIRO, { registros: { LLEGADA_DPI: r('19:00') } });
+      expect(marcasCumplimiento(volvio)).toBe('📷 Kit y militar ❌ · 📄 Instalación ❌ · 📄 Escrutinio ❌');
+    });
+
+    it('faltan quienes no hicieron todo; cumplen quienes escanearon con foto y subieron los dos reportes', () => {
+      const e = estadoVista(conCumplimiento(), 'CUMPLIMIENTO');
+      expect(e.faltan.map((i) => i.codigoRecinto)).toEqual(['1290', '1487']);
+      expect(e.cumplidos.map((i) => i.codigoRecinto)).toEqual(['971']);
+      const sinFoto = jornada({ unidades: [unidad('5', JAIRO, { kitEscaneado: escaneado('08:00', false), actas: todo })] });
+      expect(estadoVista(sinFoto, 'CUMPLIMIENTO').cumplidos).toEqual([]);
+    });
+
+    it('el resumen trae el avance total, cada parte y la leyenda', () => {
+      const texto = formatearResumenJornada(conCumplimiento(), 'CUMPLIMIENTO', AHORA);
+      expect(texto).toContain('<b>✅ Cumplimiento (kit, militar y reportes)</b>');
+      expect(texto).toContain('<b>1 de 3</b> · faltan 2');
+      expect(texto).toContain('📷 Kit y militar 2/3 · 📄 Reportes 1/3');
+      expect(texto).toContain('⏳ aún no le toca');
+    });
+
+    it('el detalle lista lo que le falta a cada uno con sus personas, y a los que cumplieron solo por código', () => {
+      const [pagina] = paginasDetalleJornada(conCumplimiento(), 'CUMPLIMIENTO', 1, AHORA);
+      expect(pagina).toContain(
+        '<b>1290 · Recinto 1290</b>\n   📷 Kit y militar ✅ 08:12 · 📄 Instalación ⏳ · 📄 Escrutinio ⏳\n   OP 1290 (Op.) +593991234567 · AS 1290 (Asis.)',
+      );
+      expect(pagina).toContain('<b>✅ CUMPLIERON TODO (1)</b>\n971');
+      expect(pagina).not.toContain('1487');
+    });
+
+    it('el callback va y vuelve, y el teclado ofrece técnico y cantón', () => {
+      const data = callbackJornada({ vista: 'CUMPLIMIENTO', agrupacion: 'can', seleccion: 30, pagina: 0 });
+      expect(data).toBe('jor:cu:c:30:0');
+      expect(leerCallbackJornada(data)).toEqual({ vista: 'CUMPLIMIENTO', agrupacion: 'can', seleccion: 30, pagina: 0 });
+      const textos = tecladoJornada(conCumplimiento(), 'CUMPLIMIENTO').inline_keyboard.flat().map((b) => b.text);
+      expect(textos).toEqual(expect.arrayContaining(['Jairo · 1', 'Carlos · 1', 'Ver todos los que faltan', '• 👷 Por técnico •', '🗺️ Por cantón']));
+    });
+
+    it('la ficha del CDA trae el cumplimiento de cada pareja', () => {
+      expect(formatearFichaCda(conCumplimiento(), '1290', AHORA)).toContain('📷 Kit y militar ✅ 08:12 · 📄 Instalación ⏳');
+    });
+
+    it('el resumen automático trae una línea de cumplimiento y cuenta quiénes completaron desde el anterior', () => {
+      const antes = conteosJornada(jornada({ unidades: [unidad('971', JAIRO), unidad('1290', JAIRO), unidad('1487', CARLOS)] }));
+      const texto = formatearResumenAutomatico(conCumplimiento(), AHORA, { conteos: antes, en: A_LAS('08:00') });
+      expect(texto).toContain(`${BOTONES_JORNADA.CUMPLIMIENTO}  <code>▓▓▓░░░░░░░</code> 1/3 · faltan 2`);
+      expect(texto).toContain('📷 Kit y militar 2/3 · 📄 Reportes 1/3');
+      expect(texto).toContain('✅ +1 cumplieron todo');
+    });
+
+    it('si solo avanzó una parte (sin completar todo), el resumen dice cuál', () => {
+      const antes = conteosJornada(conCumplimiento());
+      const despues = conCumplimiento();
+      despues.unidades[2] = { ...despues.unidades[2], kitEscaneado: escaneado('09:00') };
+      const texto = formatearResumenAutomatico(despues, AHORA, { conteos: antes, en: A_LAS('08:30') });
+      expect(texto).toContain('📷 +1 kit y militar');
+      expect(texto).not.toContain('cumplieron todo');
+      expect(texto).not.toContain('con reportes');
+    });
+
+    it('un resumen anterior sin cumplimiento (de antes del deploy) no inventa cambios', () => {
+      const { cumplimiento, ...viejo } = conteosJornada(conCumplimiento());
+      expect(cumplimiento.todo).toBe(1);
+      const texto = formatearResumenAutomatico(conCumplimiento(), AHORA, {
+        conteos: viejo as unknown as ReturnType<typeof conteosJornada>,
+        en: A_LAS('08:00'),
+      });
+      expect(texto).not.toContain('cumplieron todo');
+      expect(texto).not.toContain('kit y militar ·');
+      expect(texto).not.toContain('+');
+    });
+  });
+
+  describe('frecuencia del resumen', () => {
+    it('acepta 4 h, 8 h y Detener (0); rechaza lo que no es una opción', () => {
+      expect(leerCallbackFrecuencia('jor:frec:240')).toEqual({ minutos: 240 });
+      expect(leerCallbackFrecuencia('jor:frec:480')).toEqual({ minutos: 480 });
+      expect(leerCallbackFrecuencia('jor:frec:0')).toEqual({ minutos: 0 });
+      expect(leerCallbackFrecuencia('jor:frec:360')).toEqual({ minutos: null });
+    });
+
+    it('3 opciones por fila y la actual marcada', () => {
+      const filas = tecladoFrecuencia(480).inline_keyboard.map((f) => f.map((b) => b.text));
+      expect(filas).toEqual([
+        ['5 min', '10 min', '15 min'],
+        ['30 min', '1 h', '2 h'],
+        ['4 h', '✅ 8 h', '⏸ Detener'],
+      ]);
+    });
+
+    it('detenido lo dice y explica cómo volver a activarlo', () => {
+      expect(mensajeFrecuencia(0)).toContain('Resumen automático detenido');
+      expect(mensajeFrecuencia(0)).toContain('Toque una frecuencia para volver a activarlo');
+      expect(mensajeFrecuencia(240)).toContain('cada <b>4 h</b>');
     });
   });
 });

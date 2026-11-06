@@ -18,6 +18,8 @@ function unidad(codigo: string, extra: Partial<UnidadJornada> = {}): UnidadJorna
     personas: [],
     registros: {},
     kitRecibido: null,
+    kitEscaneado: null,
+    actas: null,
     ...extra,
   };
 }
@@ -96,6 +98,19 @@ describe('JornadaResumenService', () => {
     await service.enviarSiCambio(minutos(4));
     await service.enviarSiCambio(minutos(5));
     expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
+  });
+
+  it('con la frecuencia en Detener (0) no manda nada, ni el cierre, y ni siquiera consulta la jornada', async () => {
+    minutosResumen.mockResolvedValue(0);
+    cargar.mockResolvedValue(cerrada());
+    await service.enviarSiCambio(AHORA);
+    expect(cargar).not.toHaveBeenCalled();
+    expect(telegram.enviarHtml).not.toHaveBeenCalled();
+
+    // Al volver a activarlo, manda lo que corresponda.
+    minutosResumen.mockResolvedValue(15);
+    await service.enviarSiCambio(minutos(1));
+    expect(telegram.enviarHtml).toHaveBeenCalledTimes(1);
   });
 
   it('el cierre no espera la frecuencia: sale apenas todos llegan', async () => {

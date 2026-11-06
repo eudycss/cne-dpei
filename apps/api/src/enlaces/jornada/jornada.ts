@@ -1,5 +1,5 @@
 import { escapeHtml } from '../../auth/notifier';
-import { MINUTOS_RESUMEN_JORNADA } from '@cne/shared-validation';
+import { MINUTOS_RESUMEN_JORNADA, RESUMEN_JORNADA_DETENIDO, textoFrecuenciaResumenJornada } from '@cne/shared-validation';
 
 /**
  * Grupo "Jornada" de Telegram: quién falta y quién ya cumplió cada momento del
@@ -10,7 +10,7 @@ import { MINUTOS_RESUMEN_JORNADA } from '@cne/shared-validation';
  */
 
 export type MomentoJornada = 'SALIDA_DPI' | 'LLEGADA_RECINTO' | 'SALIDA_RECINTO' | 'LLEGADA_DPI';
-export type VistaJornada = MomentoJornada | 'NO_CDA' | 'KIT';
+export type VistaJornada = MomentoJornada | 'NO_CDA' | 'KIT' | 'CUMPLIMIENTO';
 /** Cómo se agrupan los resúmenes: por técnico del distributivo, por cantón o (solo NO CDA) por CDA. */
 export type AgrupacionJornada = 'tec' | 'can' | 'cda';
 
@@ -40,6 +40,18 @@ export interface RegistroJornada {
   sinSenal: boolean;
 }
 
+/** El operador escaneó su kit en la llegada al recinto (con la foto del militar que se lo entregó). */
+export interface KitEscaneadoJornada extends RegistroJornada {
+  /** Hay foto del militar en todas sus recepciones (la app la exige; las APK viejas podían no mandarla). */
+  conFoto: boolean;
+}
+
+/** Reportes que el operador subió al marcar la salida del recinto. */
+export interface ActasJornada {
+  instalacion: boolean;
+  escrutinio: boolean;
+}
+
 /** Un kit del evento con su recinto CDA y las personas que lo llevan. */
 export interface UnidadJornada {
   codigoRecinto: string;
@@ -50,6 +62,10 @@ export interface UnidadJornada {
   registros: Partial<Record<MomentoJornada, RegistroJornada>>;
   /** El Asistente Transversal registró la recepción del kit en la Delegación. */
   kitRecibido: Date | null;
+  /** null = todavía no escanea su kit. */
+  kitEscaneado: KitEscaneadoJornada | null;
+  /** null = todavía no marca la salida del recinto (los reportes recién ahí quedan ligados a él). */
+  actas: ActasJornada | null;
 }
 
 export interface NoCdaJornada {
@@ -91,6 +107,7 @@ export const BOTONES_JORNADA: Record<VistaJornada, string> = {
   LLEGADA_DPI: '🏢 Llegada DPEI',
   NO_CDA: '🏫 Llegada NO CDA',
   KIT: '📦 Kit pendiente',
+  CUMPLIMIENTO: '✅ Cumplimiento',
 };
 export const BOTON_CONSULTAR_CDA = '🔎 Consultar CDA';
 /** Textos de botones que ya cambiaron: un teclado viejo en el celular sigue funcionando. */
@@ -103,6 +120,7 @@ const TITULOS: Record<VistaJornada, string> = {
   LLEGADA_DPI: '🏢 Llegada al DPEI',
   NO_CDA: '🏫 Llegada de los NO CDA a su CDA',
   KIT: '📦 Kit pendiente',
+  CUMPLIMIENTO: '✅ Cumplimiento (kit, militar y reportes)',
 };
 
 const YA_CUMPLIERON: Record<Exclude<VistaJornada, 'KIT' | 'NO_CDA'>, string> = {
@@ -110,6 +128,7 @@ const YA_CUMPLIERON: Record<Exclude<VistaJornada, 'KIT' | 'NO_CDA'>, string> = {
   LLEGADA_RECINTO: 'YA LLEGARON',
   SALIDA_RECINTO: 'YA SALIERON DEL RECINTO',
   LLEGADA_DPI: 'YA LLEGARON AL DPEI',
+  CUMPLIMIENTO: 'CUMPLIERON TODO',
 };
 
 /** Código corto de cada vista en el callback_data ("jor:sd:t:3:0"). */
@@ -120,6 +139,7 @@ const CLAVE_VISTA: Record<VistaJornada, string> = {
   LLEGADA_DPI: 'ld',
   NO_CDA: 'nc',
   KIT: 'kp',
+  CUMPLIMIENTO: 'cu',
 };
 const VISTA_POR_CLAVE = new Map<string, VistaJornada>(
   (Object.entries(CLAVE_VISTA) as [VistaJornada, string][]).map(([v, c]) => [c, v]),
@@ -132,10 +152,10 @@ export const PREFIJO_CALLBACK_JORNADA = 'jor:';
  * "sin", "res" (resumen) o "tod" (todos los que faltan). Sin "t|c|d" (botones de antes)
  * se toma por técnico. "d" (por CDA) solo tiene resumen y "tod": cada CDA abre su ficha.
  */
-const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp):(?:(t|c|d):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
+const CALLBACK_JORNADA = /^jor:(sd|lr|sr|ld|nc|kp|cu):(?:(t|c|d):)?([1-9]\d{0,2}|sin|res|tod):(\d{1,2})$/;
 /** Ficha de un CDA: "jor:cda:1133" (codigo_recinto es VarChar(20)). */
 const CALLBACK_FICHA_CDA = /^jor:cda:([\w-]{1,20})$/;
-/** Frecuencia del resumen automático: "jor:frec" abre las opciones, "jor:frec:30" la cambia. */
+/** Frecuencia del resumen automático: "jor:frec" abre las opciones, "jor:frec:30" la cambia ("jor:frec:0" lo detiene). */
 const CALLBACK_FRECUENCIA = /^jor:frec(?::(\d{1,3}))?$/;
 export const CALLBACK_VER_FRECUENCIA = 'jor:frec';
 
@@ -189,7 +209,7 @@ export function tecladoFijoJornada() {
       [{ text: BOTONES_JORNADA.SALIDA_DPI }, { text: BOTONES_JORNADA.LLEGADA_RECINTO }],
       [{ text: BOTONES_JORNADA.SALIDA_RECINTO }, { text: BOTONES_JORNADA.LLEGADA_DPI }],
       [{ text: BOTONES_JORNADA.NO_CDA }, { text: BOTONES_JORNADA.KIT }],
-      [{ text: BOTON_CONSULTAR_CDA }],
+      [{ text: BOTONES_JORNADA.CUMPLIMIENTO }, { text: BOTON_CONSULTAR_CDA }],
     ],
     resize_keyboard: true,
   };
@@ -240,6 +260,8 @@ export interface ItemJornada extends ConGrupo {
   registro: RegistroJornada | null;
   /** Texto corto al lado del recinto (kit: qué falta). */
   nota?: string;
+  /** Cumplimiento: una línea con lo hecho y lo que falta (📷 kit y militar, 📄 reportes). */
+  marcas?: string;
   /** Solo NO CDA: su CDA, para agruparlos debajo de él. */
   cda?: { codigo: string; nombre: string };
 }
@@ -273,6 +295,14 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
       cumplidos: items.filter((i) => i.registro).sort(porCodigo),
     };
   }
+  if (vista === 'CUMPLIMIENTO') {
+    const faltan: ItemJornada[] = [];
+    const cumplidos: ItemJornada[] = [];
+    for (const u of j.unidades) {
+      (cumplioTodo(u) ? cumplidos : faltan).push({ ...base(u), registro: null, marcas: marcasCumplimiento(u) });
+    }
+    return { faltan: faltan.sort(porCodigo), cumplidos: cumplidos.sort(porCodigo) };
+  }
   if (vista === 'KIT') {
     const faltan: ItemJornada[] = [];
     for (const u of j.unidades) {
@@ -296,6 +326,41 @@ function kitPendiente(u: UnidadJornada): { registro: RegistroJornada; nota: stri
     return { registro: { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
   }
   return null;
+}
+
+// ─── Cumplimiento (kit + militar, reportes) ─────────────────────────────────
+
+/** Escaneó su kit con la foto del militar. */
+export function kitConMilitar(u: UnidadJornada): boolean {
+  return u.kitEscaneado?.conFoto === true;
+}
+
+/** Subió los dos reportes (instalación y escrutinio). */
+export function conReportes(u: UnidadJornada): boolean {
+  return u.actas?.instalacion === true && u.actas.escrutinio === true;
+}
+
+export function cumplioTodo(u: UnidadJornada): boolean {
+  return kitConMilitar(u) && conReportes(u);
+}
+
+/**
+ * "📷 Kit y militar ✅ 09:12 · 📄 Instalación ⏳ · 📄 Escrutinio ⏳". ⏳ = aún no le
+ * toca (el kit se escanea en la llegada al recinto; los reportes se ligan al
+ * marcar la salida); ❌ = ya pasó ese momento (o ya volvió al DPEI) y no lo hizo.
+ */
+export function marcasCumplimiento(u: UnidadJornada): string {
+  const { LLEGADA_RECINTO, SALIDA_RECINTO, LLEGADA_DPI } = u.registros;
+  // Pasó el momento de escanear (llegó al recinto o ya va más adelante) / de subir los reportes (ya volvió al DPEI).
+  const pasoEscaneo = !!(LLEGADA_RECINTO || SALIDA_RECINTO || LLEGADA_DPI);
+  const pasoReportes = !!(SALIDA_RECINTO || LLEGADA_DPI);
+  const kit = u.kitEscaneado
+    ? u.kitEscaneado.conFoto
+      ? `📷 Kit y militar ✅ ${horaDe(u.kitEscaneado)}`
+      : `📷 Kit ✅ ${horaDe(u.kitEscaneado)} · militar ❌ sin foto`
+    : `📷 Kit y militar ${pasoEscaneo ? '❌' : '⏳'}`;
+  const reporte = (nombre: string, hecho: boolean | undefined) => `📄 ${nombre} ${hecho ? '✅' : pasoReportes ? '❌' : '⏳'}`;
+  return [kit, reporte('Instalación', u.actas?.instalacion), reporte('Escrutinio', u.actas?.escrutinio)].join(' · ');
 }
 
 /** Los NO CDA de un CDA sin kit no cuentan: nadie va a ir a ellos en este evento. */
@@ -366,7 +431,8 @@ function horaDe(r: RegistroJornada): string {
 function bloqueItem(i: ItemJornada, conHora: boolean): string {
   const horaTxt = conHora && i.registro ? ` · ${horaDe(i.registro)}` : '';
   const nota = i.nota ? ` · <i>${escapeHtml(i.nota)}</i>` : '';
-  return `<b>${escapeHtml(i.codigoRecinto)} · ${escapeHtml(i.nombreRecinto)}</b>${horaTxt}${nota}\n${lineaPersonas(i.personas)}`;
+  const marcas = i.marcas ? `\n   ${i.marcas}` : '';
+  return `<b>${escapeHtml(i.codigoRecinto)} · ${escapeHtml(i.nombreRecinto)}</b>${horaTxt}${nota}${marcas}\n${lineaPersonas(i.personas)}`;
 }
 
 /**
@@ -480,6 +546,7 @@ export function formatearResumenJornada(
     `<code>${barra(hechos, total, ANCHO_BARRA)}</code>  <b>${hechos} de ${total}</b>` +
       (estado.faltan.length > 0 ? ` · faltan ${estado.faltan.length}` : ' ✅'),
   );
+  if (vista === 'CUMPLIMIENTO') lineas.push(lineaPartesCumplimiento(conteosCumplimiento(j)), LEYENDA_CUMPLIMIENTO);
   if (vista === 'NO_CDA') {
     const avance = avancePorCda([...estado.faltan, ...estado.cumplidos]);
     const completos = avance.filter((a) => a.reportados === a.total).length;
@@ -557,7 +624,12 @@ export function paginasDetalleJornada(
   } else {
     bloques.push(vista === 'KIT' ? '✅ Nadie tiene el kit pendiente.' : '✅ No falta nadie.');
   }
-  if (cumplidos.length > 0 && vista !== 'KIT') {
+  if (cumplidos.length > 0 && vista === 'CUMPLIMIENTO') {
+    // Solo los códigos: lo que importa es a quién le falta algo.
+    bloques.push(
+      `<b>✅ ${YA_CUMPLIERON[vista]} (${cumplidos.length})</b>\n${cumplidos.map((i) => escapeHtml(i.codigoRecinto)).join(', ')}`,
+    );
+  } else if (cumplidos.length > 0 && vista !== 'KIT') {
     bloques.push(`<b>✅ ${YA_CUMPLIERON[vista]} (${cumplidos.length})</b>`, ...cumplidos.map((i) => bloqueItem(i, true)));
   }
   if (grupo && vista !== 'KIT') {
@@ -696,6 +768,7 @@ export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): stri
         ? `📦 Kit recibido en el DPEI ${hora(u.kitRecibido)}${pendiente ? ' · falta marcar la llegada al DPEI' : ''}`
         : `📦 Kit: aún no se recibe en el DPEI${pendiente ? ' · ⚠️ ya llegó al DPEI' : ''}`,
     );
+    lineas.push(marcasCumplimiento(u));
     lineas.push(lineaPersonas(u.personas, ''));
   });
 
@@ -787,6 +860,31 @@ export interface ConteosJornada {
   cdasCompletos: number;
   cdasConNoCda: number;
   kitPendientes: number;
+  cumplimiento: ConteosCumplimiento;
+}
+
+/** De `total` parejas: cuántas escanearon kit con militar, subieron reportes y cumplieron todo. */
+export interface ConteosCumplimiento {
+  kitMilitar: number;
+  reportes: number;
+  todo: number;
+  total: number;
+}
+
+export function conteosCumplimiento(j: Jornada): ConteosCumplimiento {
+  return {
+    kitMilitar: j.unidades.filter(kitConMilitar).length,
+    reportes: j.unidades.filter(conReportes).length,
+    todo: j.unidades.filter(cumplioTodo).length,
+    total: j.unidades.length,
+  };
+}
+
+const LEYENDA_CUMPLIMIENTO =
+  '<i>❌ no lo hizo · ⏳ aún no le toca (kit: en la llegada al recinto; reportes: al salir del recinto)</i>';
+
+function lineaPartesCumplimiento(c: ConteosCumplimiento): string {
+  return `📷 Kit y militar ${c.kitMilitar}/${c.total} · 📄 Reportes ${c.reportes}/${c.total}`;
 }
 
 export function conteosJornada(j: Jornada): ConteosJornada {
@@ -807,6 +905,7 @@ export function conteosJornada(j: Jornada): ConteosJornada {
     cdasCompletos: porCda.filter((a) => a.reportados === a.total).length,
     cdasConNoCda: porCda.length,
     kitPendientes: estadoVista(j, 'KIT').faltan.length,
+    cumplimiento: conteosCumplimiento(j),
   };
 }
 
@@ -863,12 +962,27 @@ export function formatearResumenAutomatico(
         extra,
     );
   }
+  const cu = c.cumplimiento;
+  if (cu.total > 0) {
+    lineas.push(
+      `${BOTONES_JORNADA.CUMPLIMIENTO}  <code>${barra(cu.todo, cu.total, ANCHO_BARRA)}</code> ${cu.todo}/${cu.total}` +
+        (cu.todo < cu.total ? ` · faltan ${cu.total - cu.todo}` : ' ✅'),
+      `   ${lineaPartesCumplimiento(cu)}`,
+    );
+  }
   lineas.push(c.kitPendientes > 0 ? `${BOTONES_JORNADA.KIT}: ${c.kitPendientes}` : `${BOTONES_JORNADA.KIT}: ninguno`);
 
   if (anterior) {
     const cambios = ORDEN_RESUMEN.map((v) => ({ v, n: c.momentos[v].hechos - anterior.conteos.momentos[v].hechos }))
       .filter(({ n }) => n > 0)
       .map(({ v, n }) => CAMBIO[v].replace('{n}', String(n)));
+    // Un resumen guardado antes de este cambio (en memoria tras un deploy) no trae cumplimiento.
+    const completaron = cu.todo - (anterior.conteos.cumplimiento?.todo ?? cu.todo);
+    const antes = anterior.conteos.cumplimiento;
+    if (completaron > 0) cambios.push(`✅ +${completaron} cumplieron todo`);
+    // Si solo avanzó una parte, también se dice (si no, el resumen llegaría sin explicar el cambio).
+    if (antes && cu.kitMilitar > antes.kitMilitar) cambios.push(`📷 +${cu.kitMilitar - antes.kitMilitar} kit y militar`);
+    if (antes && cu.reportes > antes.reportes) cambios.push(`📄 +${cu.reportes - antes.reportes} con reportes`);
     if (cambios.length > 0) lineas.push('', `Desde las ${hora(anterior.en)}: ${cambios.join(' · ')}`);
   }
   return lineas.join('\n');
@@ -885,12 +999,16 @@ export function leerCallbackFrecuencia(data: string | undefined): { minutos: num
   return { minutos: minutos !== null && (MINUTOS_RESUMEN_JORNADA as readonly number[]).includes(minutos) ? minutos : null };
 }
 
-/** 15 → "15 min", 60 → "1 h". */
-export function textoFrecuencia(minutos: number): string {
-  return minutos < 60 ? `${minutos} min` : `${minutos / 60} h`;
-}
+/** 15 → "15 min", 60 → "1 h", 0 → "Detenido". */
+export const textoFrecuencia = textoFrecuenciaResumenJornada;
 
 export function mensajeFrecuencia(minutos: number, cambiadaAhora = false): string {
+  if (minutos === RESUMEN_JORNADA_DETENIDO) {
+    return (
+      `⏸ <b>Resumen automático ${cambiadaAhora ? 'detenido ahora' : 'detenido'}</b>: el bot no manda resúmenes ni el cierre de la jornada.\n` +
+      'Toque una frecuencia para volver a activarlo (solo los administradores del grupo).'
+    );
+  }
   return (
     `⏱ <b>Resumen automático</b>: ${cambiadaAhora ? 'ahora llega' : 'llega'} cada <b>${textoFrecuencia(minutos)}</b>, sin sonido y solo si algo cambió.\n` +
     'Toque otra opción para cambiarla (solo los administradores del grupo).'
@@ -900,10 +1018,12 @@ export function mensajeFrecuencia(minutos: number, cambiadaAhora = false): strin
 /** Las opciones de frecuencia; la actual va marcada. */
 export function tecladoFrecuencia(actual: number) {
   const boton = (m: number): BotonInline => ({
-    text: `${m === actual ? '✅ ' : ''}${textoFrecuencia(m)}`,
+    text: `${m === actual ? '✅ ' : ''}${m === RESUMEN_JORNADA_DETENIDO ? '⏸ Detener' : textoFrecuencia(m)}`,
     callback_data: `${CALLBACK_VER_FRECUENCIA}:${m}`,
   });
-  return { inline_keyboard: [MINUTOS_RESUMEN_JORNADA.slice(0, 3).map(boton), MINUTOS_RESUMEN_JORNADA.slice(3).map(boton)] };
+  const filas: BotonInline[][] = [];
+  for (let i = 0; i < MINUTOS_RESUMEN_JORNADA.length; i += 3) filas.push(MINUTOS_RESUMEN_JORNADA.slice(i, i + 3).map(boton));
+  return { inline_keyboard: filas };
 }
 
 /** Un botón por vista bajo el resumen automático: abre su resumen de siempre (NO CDA, por CDA). */
@@ -917,6 +1037,7 @@ export function tecladoResumenAutomatico() {
       [boton('SALIDA_DPI'), boton('LLEGADA_RECINTO')],
       [boton('SALIDA_RECINTO'), boton('LLEGADA_DPI')],
       [boton('NO_CDA'), boton('KIT')],
+      [boton('CUMPLIMIENTO')],
       [{ text: '⏱ Frecuencia del resumen', callback_data: CALLBACK_VER_FRECUENCIA }],
     ],
   };

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   strongPasswordSchema,
+  resumenJornadaSchema,
+  textoFrecuenciaResumenJornada,
+  RESUMEN_JORNADA_DETENIDO,
   MARGEN_LLEGADA_MAX_METROS,
   verificarKitRetornoSchema as verificarKitRetornoSchemaRetorno,
   bulkRecintoRowSchema,
@@ -601,5 +604,22 @@ describe('strongPasswordSchema (contraseña nueva: 6 a 12 caracteres)', () => {
     const r = strongPasswordSchema.safeParse('Ab1!xyzwvutsr');
     expect(r.success).toBe(false);
     expect(!r.success && r.error.issues[0].message).toBe('La contraseña no puede exceder 12 caracteres');
+  });
+});
+
+describe('resumenJornadaSchema', () => {
+  it.each([5, 15, 120, 240, 480, RESUMEN_JORNADA_DETENIDO])('acepta %s', (m) => {
+    expect(resumenJornadaSchema.safeParse({ minutosResumenJornada: m }).success).toBe(true);
+  });
+
+  it.each([7, -1, 360, 2.5])('rechaza %s', (m) => {
+    expect(resumenJornadaSchema.safeParse({ minutosResumenJornada: m }).success).toBe(false);
+  });
+
+  it('dice la frecuencia en palabras: minutos, horas o detenido', () => {
+    expect(textoFrecuenciaResumenJornada(15)).toBe('15 min');
+    expect(textoFrecuenciaResumenJornada(240)).toBe('4 h');
+    expect(textoFrecuenciaResumenJornada(480)).toBe('8 h');
+    expect(textoFrecuenciaResumenJornada(RESUMEN_JORNADA_DETENIDO)).toBe('Detenido');
   });
 });
