@@ -18,6 +18,7 @@ describe('JornadaService', () => {
     parejaCda: { findMany: jest.fn() },
     eventoTracking: { findMany: jest.fn() },
     recepcionDpiKit: { findMany: jest.fn() },
+    recepcionKit: { findMany: jest.fn() },
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
   };
   const distributivo = { asignaciones: jest.fn() };
@@ -83,6 +84,7 @@ describe('JornadaService', () => {
       ),
     );
     prisma.recepcionDpiKit.findMany.mockResolvedValue([]);
+    prisma.recepcionKit.findMany.mockResolvedValue([]);
     distributivo.asignaciones.mockResolvedValue([
       { codigoRecinto: '971', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo' },
       { codigoRecinto: '1487', localidad: '', parroquia: '', numeroTecnico: 2, tecnico: 'Carlos' },
@@ -152,6 +154,8 @@ describe('JornadaService', () => {
           ],
           registros: { SALIDA_DPI: { en: T('2026-11-29T13:12:00Z'), sinSenal: true } },
           kitRecibido: null,
+          kitEscaneado: null,
+          actas: null,
         },
         {
           codigoRecinto: '1487',
@@ -162,6 +166,8 @@ describe('JornadaService', () => {
           personas: [{ nombre: 'Mora Luis', telefono: null, rol: 'Op.' }],
           registros: {},
           kitRecibido: null,
+          kitEscaneado: null,
+          actas: null,
         },
       ]);
       expect(j.sinKit).toEqual([
@@ -215,6 +221,81 @@ describe('JornadaService', () => {
       const filtros = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where.ocurridoEn);
       expect(filtros).toEqual([{ gte: desde }, { gte: desde }]);
       expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desde });
+      expect(prisma.recepcionKit.findMany.mock.calls[0][0].where).toEqual({
+        kitId: { in: ['k1', 'k2'] },
+        operadorId: { in: ['u1', 'u2'] },
+        confirmadoEn: { gte: desde },
+      });
+    });
+
+    it('cumplimiento: el escaneo del kit con la foto del militar y los reportes de la salida del recinto', async () => {
+      prisma.recepcionKit.findMany.mockResolvedValue([
+        { kitId: 'k1', operadorId: 'u1', confirmadoEn: T('2026-11-29T14:10:00Z'), desdeOffline: true, fotoMilitarUrl: 'militares/a.bin' },
+        // APK vieja: escaneó sin foto.
+        { kitId: 'k2', operadorId: 'u2', confirmadoEn: T('2026-11-29T14:20:00Z'), desdeOffline: false, fotoMilitarUrl: null },
+      ]);
+      prisma.eventoTracking.findMany.mockImplementation(({ where }: { where: { tipo: unknown } }) =>
+        Promise.resolve(
+          where.tipo === 'LLEGADA_NO_CDA'
+            ? []
+            : [
+                {
+                  operadorId: 'u1',
+                  tipo: 'SALIDA_RECINTO',
+                  ocurridoEn: T('2026-11-29T22:00:00Z'),
+                  desdeOffline: false,
+                  actaInstalacionUrl: 'actas/i.bin',
+                  actaEscrutinioUrl: 'actas/e.bin',
+                },
+                // Una salida repetida no cambia los reportes de la primera.
+                { operadorId: 'u1', tipo: 'SALIDA_RECINTO', ocurridoEn: T('2026-11-29T22:30:00Z'), desdeOffline: false, actaInstalacionUrl: null, actaEscrutinioUrl: null },
+              ],
+        ),
+      );
+      const [u1, u2] = (await service.cargar())!.unidades;
+      expect(u1.kitEscaneado).toEqual({ en: T('2026-11-29T14:10:00Z'), sinSenal: true, conFoto: true });
+      expect(u1.actas).toEqual({ instalacion: true, escrutinio: true });
+      expect(u2.kitEscaneado).toEqual({ en: T('2026-11-29T14:20:00Z'), sinSenal: false, conFoto: false });
+      // No marcó la salida del recinto: los reportes aún no se saben.
+      expect(u2.actas).toBeNull();
+    });
+
+    it('un kit reasignado: cuenta el escaneo de su operador actual, no el de uno anterior', async () => {
+      prisma.recepcionKit.findMany.mockResolvedValue([
+        { kitId: 'k1', operadorId: 'u-anterior', confirmadoEn: T('2026-11-29T13:00:00Z'), desdeOffline: false, fotoMilitarUrl: 'militares/x.bin' },
+        { kitId: 'k1', operadorId: 'u1', confirmadoEn: T('2026-11-29T14:00:00Z'), desdeOffline: false, fotoMilitarUrl: 'militares/a.bin' },
+      ]);
+      expect((await service.cargar())!.unidades[0].kitEscaneado?.en).toEqual(T('2026-11-29T14:00:00Z'));
+    });
+
+    it('los reportes valen si vienen en cualquiera de sus salidas del recinto del día', async () => {
+      prisma.eventoTracking.findMany.mockImplementation(({ where }: { where: { tipo: unknown } }) =>
+        Promise.resolve(
+          where.tipo === 'LLEGADA_NO_CDA'
+            ? []
+            : [
+                { operadorId: 'u1', tipo: 'SALIDA_RECINTO', ocurridoEn: T('2026-11-29T22:00:00Z'), desdeOffline: false, actaInstalacionUrl: 'actas/i.bin', actaEscrutinioUrl: null },
+                { operadorId: 'u1', tipo: 'SALIDA_RECINTO', ocurridoEn: T('2026-11-29T22:30:00Z'), desdeOffline: false, actaInstalacionUrl: null, actaEscrutinioUrl: 'actas/e.bin' },
+              ],
+        ),
+      );
+      expect((await service.cargar())!.unidades[0].actas).toEqual({ instalacion: true, escrutinio: true });
+    });
+
+    it('con dos kits, escaneó solo cuando escaneó los dos (hora del último)', async () => {
+      const [k1] = await prisma.kitElectoral.findMany();
+      prisma.kitElectoral.findMany.mockResolvedValue([k1, { ...k1, id: 'k9' }]);
+      const escaneo = (kitId: string, hhmm: string) => ({
+        kitId,
+        operadorId: 'u1',
+        confirmadoEn: T(`2026-11-29T${hhmm}:00Z`),
+        desdeOffline: false,
+        fotoMilitarUrl: 'militares/a.bin',
+      });
+      prisma.recepcionKit.findMany.mockResolvedValue([escaneo('k1', '14:00')]);
+      expect((await service.cargar(1))!.unidades[0].kitEscaneado).toBeNull();
+      prisma.recepcionKit.findMany.mockResolvedValue([escaneo('k1', '14:00'), escaneo('k9', '14:05')]);
+      expect((await service.cargar(10_000_000))!.unidades[0].kitEscaneado?.en).toEqual(T('2026-11-29T14:05:00Z'));
     });
 
     it('usa la pareja de hoy o la anterior más reciente, no la de una prueba futura', async () => {
@@ -396,6 +477,21 @@ describe('JornadaService', () => {
       expect(messageId).toBe(55);
       expect(texto).toContain('ahora llega cada <b>30 min</b>');
       expect(JSON.stringify(botones)).toContain('✅ 30 min');
+    });
+
+    it('ofrece 4 h, 8 h y Detener; "Detener" guarda 0 y lo dice', async () => {
+      telegram.esAdministrador.mockResolvedValue(true);
+      await service.atenderMensaje(CHAT, '/frecuencia');
+      const botones = JSON.stringify(telegram.enviarHtml.mock.calls[0][2]);
+      expect(botones).toContain('"4 h"');
+      expect(botones).toContain('jor:frec:480');
+      expect(botones).toContain('⏸ Detener');
+
+      await service.atenderBoton(CHAT, 'cb', 'jor:frec:0', 55, 111);
+      expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { minutosResumenJornada: 0 } }));
+      const [, texto, , teclado] = telegram.editarHtml.mock.calls[0];
+      expect(texto).toContain('Resumen automático detenido ahora');
+      expect(JSON.stringify(teclado)).toContain('✅ ⏸ Detener');
     });
 
     it('un valor que no está entre las opciones solo muestra las opciones (no guarda)', async () => {

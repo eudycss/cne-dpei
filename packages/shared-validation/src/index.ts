@@ -612,17 +612,29 @@ export const avisosEnlacesSchema = z.object({
   minutosRepetirAviso: minutosAvisoSchema,
 });
 
-/** Cada cuánto puede mandar el bot el resumen automático del grupo Jornada (web y botones del bot). */
-export const MINUTOS_RESUMEN_JORNADA = [5, 10, 15, 30, 60, 120] as const;
+/** 0 = detenido: el bot no manda resúmenes automáticos (ni el cierre) hasta que se elija otra frecuencia. */
+export const RESUMEN_JORNADA_DETENIDO = 0;
+/**
+ * Cada cuánto puede mandar el bot el resumen automático del grupo Jornada (web y botones del bot).
+ * El último es RESUMEN_JORNADA_DETENIDO: quien recorra la lista debe tratarlo aparte.
+ */
+export const MINUTOS_RESUMEN_JORNADA = [5, 10, 15, 30, 60, 120, 240, 480, RESUMEN_JORNADA_DETENIDO] as const;
 export const MINUTOS_RESUMEN_JORNADA_POR_DEFECTO = 15;
 export function esMinutosResumenJornada(m: unknown): m is number {
   return typeof m === 'number' && (MINUTOS_RESUMEN_JORNADA as readonly number[]).includes(m);
+}
+/** "15 min", "4 h" o "Detenido" (web y bot dicen lo mismo). */
+export function textoFrecuenciaResumenJornada(minutos: number): string {
+  if (minutos === RESUMEN_JORNADA_DETENIDO) return 'Detenido';
+  return minutos < 60 ? `${minutos} min` : `${minutos / 60} h`;
 }
 export const resumenJornadaSchema = z.object({
   minutosResumenJornada: z
     .number()
     .int()
-    .refine(esMinutosResumenJornada, { message: `Elija uno de: ${MINUTOS_RESUMEN_JORNADA.join(', ')} minutos` }),
+    .refine(esMinutosResumenJornada, {
+      message: `Elija uno de: ${MINUTOS_RESUMEN_JORNADA.filter((m) => m !== RESUMEN_JORNADA_DETENIDO).join(', ')} minutos, o detener`,
+    }),
 });
 
 // --- Cadena de custodia del kit (rol ASISTENTE_TRANSVERSAL) ---

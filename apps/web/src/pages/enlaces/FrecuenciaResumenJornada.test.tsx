@@ -65,4 +65,29 @@ describe('FrecuenciaResumenJornada', () => {
 
     await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'Elija uno de: 5, 10 minutos' }));
   });
+
+  it('ofrece 4 h y 8 h, y guarda 8 h', async () => {
+    apiPutMock.mockResolvedValue({ data: { ...config, minutosResumenJornada: 480 } });
+    renderResumen(config);
+    const user = userEvent.setup();
+
+    expect(screen.getByRole('option', { name: '4 h' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Enviar el resumen cada'), '480');
+    await user.click(screen.getByRole('button', { name: 'Guardar frecuencia del resumen' }));
+
+    expect(apiPutMock).toHaveBeenCalledWith('/enlaces/config/resumen-jornada', { minutosResumenJornada: 480 });
+    await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: 'Resumen de la Jornada: cada 8 h' }));
+  });
+
+  it('permite detener el resumen (0) y lo confirma con otras palabras', async () => {
+    apiPutMock.mockResolvedValue({ data: { ...config, minutosResumenJornada: 0 } });
+    renderResumen(config);
+    const user = userEvent.setup();
+
+    await user.selectOptions(screen.getByLabelText('Enviar el resumen cada'), 'Detener (no enviar resúmenes)');
+    await user.click(screen.getByRole('button', { name: 'Guardar frecuencia del resumen' }));
+
+    expect(apiPutMock).toHaveBeenCalledWith('/enlaces/config/resumen-jornada', { minutosResumenJornada: 0 });
+    await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: 'Resumen de la Jornada detenido' }));
+  });
 });

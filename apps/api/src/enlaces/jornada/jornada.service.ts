@@ -25,8 +25,10 @@ import {
   vistaDeTexto,
   type AgrupacionJornada,
   type BotonJornada,
+  type ActasJornada,
   type CantonJornada,
   type Jornada,
+  type KitEscaneadoJornada,
   type MomentoJornada,
   type PersonaJornada,
   type RegistroJornada,
@@ -447,7 +449,7 @@ export class JornadaService {
     const kitIds = kits.map((k) => k.id);
     const operadorIds = [...new Set(kits.map((k) => k.operadorId!))];
 
-    const [parejas, tracking, recepciones, noCdas] = await Promise.all([
+    const [parejas, tracking, recepciones, escaneos, noCdas] = await Promise.all([
       // La pareja más reciente que lleva cada kit (un kit puede repetirse en varios días).
       this.prisma.parejaCda.findMany({
         where: { kitId: { in: kitIds } },
@@ -467,11 +469,24 @@ export class JornadaService {
           ocurridoEn: { gte: dia.desde },
         },
         orderBy: { ocurridoEn: 'asc' },
-        select: { operadorId: true, tipo: true, ocurridoEn: true, desdeOffline: true },
+        select: {
+          operadorId: true,
+          tipo: true,
+          ocurridoEn: true,
+          desdeOffline: true,
+          // Solo vienen llenos en la SALIDA_RECINTO (Cumplimiento).
+          actaInstalacionUrl: true,
+          actaEscrutinioUrl: true,
+        },
       }),
       this.prisma.recepcionDpiKit.findMany({
         where: { kitId: { in: kitIds }, confirmadoEn: { gte: dia.desde } },
         select: { kitId: true, confirmadoEn: true },
+      }),
+      // El operador escanea su kit (con la foto del militar) en la llegada al recinto.
+      this.prisma.recepcionKit.findMany({
+        where: { kitId: { in: kitIds }, operadorId: { in: operadorIds }, confirmadoEn: { gte: dia.desde } },
+        select: { kitId: true, operadorId: true, confirmadoEn: true, desdeOffline: true, fotoMilitarUrl: true },
       }),
       this.prisma.recinto.findMany({
         where: { tipo: 'NO_CDA', activo: true, cdaDestinoId: { not: null } },
@@ -516,11 +531,20 @@ export class JornadaService {
 
     // El primer registro de cada momento (por operador): repetir una marca no cambia la hora.
     const registrosPorOperador = new Map<string, Partial<Record<MomentoJornada, RegistroJornada>>>();
+    const actasPorOperador = new Map<string, ActasJornada>();
     for (const t of tracking) {
       const registros = registrosPorOperador.get(t.operadorId) ?? {};
       const momento = t.tipo as MomentoJornada;
       registros[momento] ??= { en: t.ocurridoEn, sinSenal: t.desdeOffline };
       registrosPorOperador.set(t.operadorId, registros);
+      // Reportes de sus salidas del recinto del día: vale cualquiera que los traiga.
+      if (momento === 'SALIDA_RECINTO') {
+        const previas = actasPorOperador.get(t.operadorId);
+        actasPorOperador.set(t.operadorId, {
+          instalacion: !!previas?.instalacion || !!t.actaInstalacionUrl,
+          escrutinio: !!previas?.escrutinio || !!t.actaEscrutinioUrl,
+        });
+      }
     }
     const recibidoPorKit = new Map<string, Date>();
     for (const r of recepciones) {
@@ -535,6 +559,26 @@ export class JornadaService {
       const fechas = kitsPorOperador.get(operadorId)!.map((id) => recibidoPorKit.get(id));
       if (fechas.some((f) => !f)) return null;
       return new Date(Math.max(...fechas.map((f) => f!.getTime())));
+    };
+
+    // Escaneo de cada kit por su operador actual (uno de un operador anterior, si se reasignó el kit, no cuenta); vale el primero.
+    const operadorDelKit = new Map<string, string>(kits.map((k) => [k.id, k.operadorId!]));
+    const escaneoPorKit = new Map<string, (typeof escaneos)[number]>();
+    for (const e of escaneos) {
+      if (operadorDelKit.get(e.kitId) !== e.operadorId) continue;
+      const previo = escaneoPorKit.get(e.kitId);
+      if (!previo || e.confirmadoEn < previo.confirmadoEn) escaneoPorKit.set(e.kitId, e);
+    }
+    // Con dos kits, escaneó cuando escaneó todos (la hora es la del último).
+    const escaneoDelOperador = (operadorId: string): KitEscaneadoJornada | null => {
+      const suyos = kitsPorOperador.get(operadorId)!.map((id) => escaneoPorKit.get(id));
+      if (suyos.some((e) => !e)) return null;
+      const hechos = suyos as (typeof escaneos)[number][];
+      return {
+        en: new Date(Math.max(...hechos.map((e) => e.confirmadoEn.getTime()))),
+        sinSenal: hechos.some((e) => e.desdeOffline),
+        conFoto: hechos.every((e) => !!e.fotoMilitarUrl),
+      };
     };
 
     const personasPorRecinto = new Map<string, PersonaJornada[]>();
@@ -554,6 +598,8 @@ export class JornadaService {
         personas,
         registros: registrosPorOperador.get(k.operadorId!) ?? {},
         kitRecibido: recibidoDelOperador(k.operadorId!),
+        kitEscaneado: escaneoDelOperador(k.operadorId!),
+        actas: actasPorOperador.get(k.operadorId!) ?? null,
       });
     }
 

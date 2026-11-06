@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { ConfigEnlacesResponse } from '@cne/shared-types';
-import { MINUTOS_RESUMEN_JORNADA } from '@cne/shared-validation';
+import { MINUTOS_RESUMEN_JORNADA, RESUMEN_JORNADA_DETENIDO, textoFrecuenciaResumenJornada } from '@cne/shared-validation';
 import { guardarResumenJornada } from '../../lib/queries/enlaces';
-import { textoMinutos } from './FrecuenciaAvisosTelegram';
 
 interface Props {
   config: ConfigEnlacesResponse | undefined;
@@ -26,7 +25,13 @@ export function FrecuenciaResumenJornada({ config }: Props) {
     mutationFn: guardarResumenJornada,
     onSuccess: (guardado) => {
       qc.setQueryData(['enlaces-config'], guardado);
-      sileo.success({ title: `Resumen de la Jornada: cada ${textoMinutos(guardado.minutosResumenJornada)}` });
+      const m = guardado.minutosResumenJornada;
+      sileo.success({
+        title:
+          m === RESUMEN_JORNADA_DETENIDO
+            ? 'Resumen de la Jornada detenido'
+            : `Resumen de la Jornada: cada ${textoFrecuenciaResumenJornada(m)}`,
+      });
     },
     onError: (e: any) => {
       sileo.error({ title: e?.response?.data?.message ?? 'No se pudo guardar la frecuencia del resumen' });
@@ -45,6 +50,7 @@ export function FrecuenciaResumenJornada({ config }: Props) {
       </label>
       <select
         id="minutos-resumen-jornada"
+        aria-describedby="minutos-resumen-jornada-ayuda"
         value={minutos ?? ''}
         disabled={minutos === null || guardar.isPending}
         onChange={(e) => setMinutos(Number(e.target.value))}
@@ -58,13 +64,13 @@ export function FrecuenciaResumenJornada({ config }: Props) {
       >
         {MINUTOS_RESUMEN_JORNADA.map((m) => (
           <option key={m} value={m}>
-            {textoMinutos(m)}
+            {m === RESUMEN_JORNADA_DETENIDO ? 'Detener (no enviar resúmenes)' : textoFrecuenciaResumenJornada(m)}
           </option>
         ))}
       </select>
-      <p className="muted" style={{ fontSize: '0.8rem', margin: '0.35rem 0 0.5rem' }}>
-        Sin sonido y solo si algo cambió; el cierre de la jornada llega apenas todos vuelven. Aplica en el siguiente
-        minuto.
+      <p id="minutos-resumen-jornada-ayuda" className="muted" style={{ fontSize: '0.8rem', margin: '0.35rem 0 0.5rem' }}>
+        Sin sonido y solo si algo cambió; el cierre de la jornada llega apenas todos vuelven. Con «Detener» no llega
+        nada (ni el cierre) hasta elegir otra frecuencia. Aplica en el siguiente minuto.
       </p>
       <button
         type="button"
