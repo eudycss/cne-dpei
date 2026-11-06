@@ -148,6 +148,16 @@ function secretosCoinciden(recibido: string | undefined, esperado: string): bool
   return timingSafeEqual(bufferRecibido, bufferEsperado);
 }
 
+/** Solo el tipo de error (p. ej. "Error:403", "FetchError:ETIMEDOUT"), nunca el mensaje:
+ * los errores de Google pueden traer URLs, el id de la hoja o el correo de la cuenta de servicio. */
+export function tipoDeError(e: unknown): string {
+  const err = e as { name?: unknown; code?: unknown; status?: unknown; response?: { status?: unknown } } | null;
+  const nombre = typeof err?.name === 'string' ? err.name : typeof e;
+  const codigo = err?.code ?? err?.response?.status ?? err?.status;
+  const limpio = (v: string) => v.replace(/[^\w.-]/g, '').slice(0, 40);
+  return codigo === undefined || codigo === null ? limpio(nombre) : `${limpio(nombre)}:${limpio(String(codigo))}`;
+}
+
 @Injectable()
 export class EnlacesService {
   private readonly log = new Logger('EnlacesService');
@@ -166,6 +176,8 @@ export class EnlacesService {
   /** Último toque de Hoy/Semana/Mes por mensaje ("chatId:message_id" → ms): los
    * message_id se repiten entre chats distintos. */
   private readonly ultimoToque = new Map<string, number>();
+  /** Hay un ciclo de revisión en curso (ver revisarEnlaces). */
+  private revisando = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -187,11 +199,28 @@ export class EnlacesService {
     // para no apagar producción por olvido; en desarrollo se desactiva explícitamente.
     this.limpiarEsperasCodigoVencidas();
     if (process.env.ENLACES_CRON_ENABLED?.trim().toLowerCase() === 'false') return;
+    // Si un ciclo tarda más de 5 min (Drive, correo o Telegram lentos), el siguiente no
+    // se solapa: los dos verían el mismo estado anterior y avisarían dos veces.
+    if (this.revisando) {
+      this.log.warn('El ciclo anterior de enlaces sigue en curso; se salta este.');
+      return;
+    }
+    this.revisando = true;
+    try {
+      await this.cicloEnlaces();
+    } finally {
+      this.revisando = false;
+    }
+  }
+
+  private async cicloEnlaces(): Promise<void> {
+    const t0 = Date.now();
     let filas: Awaited<ReturnType<SheetsEnlacesClient['leerEnlacesImbabura']>>;
     try {
       filas = await this.sheetsClient.leerEnlacesImbabura();
     } catch (e) {
       this.log.error(`No se pudo leer la hoja de enlaces — se mantiene el último estado conocido: ${e}`);
+      await this.registrarRevision({ hojaOk: false, historialOk: null, duracionMs: Date.now() - t0, error: tipoDeError(e) });
       return;
     }
 
@@ -243,6 +272,14 @@ export class EnlacesService {
     }
 
     const historial = await this.reconciliarCaidas(filas);
+    await this.registrarRevision({
+      hojaOk: true,
+      historialOk: historial.ok,
+      enlaces: filas.length,
+      activos: filas.filter((f) => f.estado === 'ACTIVO').length,
+      caidos: filas.filter((f) => f.estado === 'FALLO').length,
+      duracionMs: Date.now() - t0,
+    });
     await this.eliminarRecintosFueraDeLaHoja(filas);
     // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
     if (historial.ok) await this.escalamiento.escalar();
@@ -283,6 +320,23 @@ export class EnlacesService {
       await this.cerrarCaidas(where);
     } catch (e) {
       this.log.error(`Error eliminando recintos que ya no están en la hoja de enlaces: ${e}`);
+    }
+  }
+
+  /** Bitácora de ciclos para análisis de datos: nunca frena el ciclo ni los avisos. */
+  private async registrarRevision(r: {
+    hojaOk: boolean;
+    historialOk: boolean | null;
+    enlaces?: number;
+    activos?: number;
+    caidos?: number;
+    duracionMs: number;
+    error?: string;
+  }): Promise<void> {
+    try {
+      await this.prisma.enlaceRevision.create({ data: r });
+    } catch (e) {
+      this.log.error(`No se pudo registrar la revisión de enlaces: ${(e as Error)?.message ?? e}`);
     }
   }
 

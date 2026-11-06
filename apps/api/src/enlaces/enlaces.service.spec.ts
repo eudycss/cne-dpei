@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { EnlacesService, tipoChatTelegram } from './enlaces.service';
+import { EnlacesService, tipoChatTelegram, tipoDeError } from './enlaces.service';
 import { PrismaService } from '../db/prisma.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
 import {
@@ -50,6 +50,7 @@ describe('EnlacesService', () => {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    enlaceRevision: { create: jest.fn().mockResolvedValue({}) },
   };
   const estadisticas = {
     enviarEstadisticasTelegram: jest.fn().mockResolvedValue(undefined),
@@ -417,6 +418,133 @@ describe('EnlacesService', () => {
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
       expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
       expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+    });
+
+    describe('bitácora de revisiones (análisis de datos)', () => {
+      it('registra cada ciclo con los conteos de la hoja', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
+          { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide', estado: 'FALLO' },
+          { codigoRecinto: '990', nombreRecinto: 'UE Otavalo', estado: 'ACTIVO' },
+        ]);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceRevision.create).toHaveBeenCalledTimes(1);
+        expect(prisma.enlaceRevision.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ hojaOk: true, historialOk: true, enlaces: 3, activos: 2, caidos: 1, duracionMs: expect.any(Number) }),
+        });
+      });
+
+      it('si la hoja falla, igual registra el ciclo (sin datos de enlaces) y no toca nada más', async () => {
+        sheetsClient.leerEnlacesImbabura.mockRejectedValue(new Error('cuota excedida'));
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceRevision.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ hojaOk: false, historialOk: null, error: 'Error' }),
+        });
+        expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
+      });
+
+      it('si el historial de caídas falla, lo deja anotado', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' }]);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+        prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceRevision.create).toHaveBeenCalledWith({ data: expect.objectContaining({ hojaOk: true, historialOk: false }) });
+      });
+
+      it('guarda solo el tipo de error, nunca el mensaje (URLs, id de la hoja, correos)', async () => {
+        const e = Object.assign(new Error('403 https://sheets.googleapis.com/v4/spreadsheets/1AbC sa@proyecto.iam.gserviceaccount.com'), {
+          code: 403,
+        });
+        sheetsClient.leerEnlacesImbabura.mockRejectedValue(e);
+
+        await service.revisarEnlaces();
+
+        const guardado = prisma.enlaceRevision.create.mock.calls[0][0].data.error;
+        expect(guardado).toBe('Error:403');
+        expect(guardado).not.toMatch(/https?:|@|1AbC/);
+      });
+
+      it.each([
+        [Object.assign(new Error('x'), { code: 'ETIMEDOUT' }), 'Error:ETIMEDOUT'],
+        [Object.assign(new Error('x'), { response: { status: 500 } }), 'Error:500'],
+        [Object.assign(new TypeError('x'), {}), 'TypeError'],
+        ['texto suelto', 'string'],
+        [null, 'object'],
+        [Object.assign(new Error('x'), { code: 'a b/c?d=1' }), 'Error:abcd1'],
+      ])('tipoDeError(%p) → %s', (e, esperado) => {
+        expect(tipoDeError(e)).toBe(esperado);
+      });
+
+      it('hoja vacía (se leyó, sin filas) se distingue de hoja ilegible', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([]);
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceRevision.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ hojaOk: true, enlaces: 0, activos: 0, caidos: 0 }),
+        });
+      });
+
+      it('si no se puede registrar, el ciclo sigue: escala y avisa igual', async () => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' }]);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+        prisma.enlaceRevision.create.mockRejectedValueOnce(new Error('tabla no existe'));
+
+        await service.revisarEnlaces();
+
+        expect(escalamiento.escalar).toHaveBeenCalled();
+        expect(telegram.enviarListaActual).toHaveBeenCalled();
+      });
+
+      it('con ENLACES_CRON_ENABLED=false no registra nada (no hubo revisión)', async () => {
+        process.env.ENLACES_CRON_ENABLED = 'false';
+        await service.revisarEnlaces();
+        expect(prisma.enlaceRevision.create).not.toHaveBeenCalled();
+      });
+    });
+
+    it('si el ciclo anterior sigue en curso, el siguiente se salta (no avisa dos veces)', async () => {
+      let soltar: (v: unknown) => void = () => {};
+      sheetsClient.leerEnlacesImbabura.mockImplementationOnce(() => new Promise((r) => (soltar = r)));
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      const primero = service.revisarEnlaces();
+      await Promise.resolve();
+      await service.revisarEnlaces();
+      expect(sheetsClient.leerEnlacesImbabura).toHaveBeenCalledTimes(1);
+      // El ciclo saltado no escribe nada.
+      expect(prisma.enlaceRevision.create).not.toHaveBeenCalled();
+      expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
+
+      soltar([]);
+      await primero;
+      // Terminado el primero, el candado se suelta y el siguiente ciclo corre.
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([]);
+      await service.revisarEnlaces();
+      expect(sheetsClient.leerEnlacesImbabura).toHaveBeenCalledTimes(2);
+    });
+
+    it('si un ciclo revienta, el candado se suelta igual', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([]);
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+      escalamiento.escalar.mockRejectedValueOnce(new Error('Telegram caído'));
+
+      await expect(service.revisarEnlaces()).rejects.toThrow('Telegram caído');
+      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([]);
+      await service.revisarEnlaces();
+
+      expect(sheetsClient.leerEnlacesImbabura).toHaveBeenCalledTimes(2);
     });
 
     it('elimina de la tabla los recintos que ya no están en la hoja (ej. borraron el 1207)', async () => {

@@ -709,6 +709,28 @@ model EnlaceCaida {
   @@map("enlaces_caidas")
 }
 
+/// Una fila por ciclo del cron de enlaces (cada 5 min), aunque la hoja no se haya
+/// podido leer. Junto con enlaces_caidas permite reconstruir el estado de cada enlace
+/// en el tiempo y distinguir "estuvo arriba" de "no hubo revisión" (análisis de datos).
+model EnlaceRevision {
+  id          BigInt   @id @default(autoincrement())
+  revisadoEn  DateTime @default(now()) @map("revisado_en") @db.Timestamptz(6)
+  /// false = no se pudo leer la hoja: no hay dato de ningún enlace en este ciclo.
+  hojaOk      Boolean  @map("hoja_ok")
+  /// null si no se leyó la hoja; false si el historial de caídas no se pudo actualizar.
+  historialOk Boolean? @map("historial_ok")
+  enlaces     Int      @default(0)
+  activos     Int      @default(0)
+  caidos      Int      @default(0)
+  /// Lectura de la hoja + actualización de estados e historial (sin avisos ni correos).
+  duracionMs  Int      @map("duracion_ms")
+  /// Solo el tipo de error (p. ej. "Error:403"), nunca el mensaje.
+  error       String?  @db.VarChar(300)
+
+  @@index([revisadoEn], map: "idx_enlaces_revisiones_revisado_en")
+  @@map("enlaces_revisiones")
+}
+
 // =====================================================================
 // OPERADORES CDA — personal de servicio de los Centros de Digitalización
 // de Actas. No son usuarios del sistema (no inician sesión): se importan
