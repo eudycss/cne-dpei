@@ -1178,22 +1178,34 @@ export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justif
 const textoOpcional = (max: number) =>
   z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().trim().max(max).optional());
 
-/** Una fila de la plantilla de parejas (encabezados en snake_case). */
+/** Lo que falta en una fila sin operador que no es una reserva con asistente. */
+export const MENSAJE_FILA_SIN_OPERADOR_CDA = 'Falta el operador: solo una pareja de RESERVA puede ir sin operador, y entonces lleva asistente';
+
+const cedulaOpcional = z.preprocess((v) => (v === '' || v == null ? undefined : v), cedulaSchema.optional());
+
+/**
+ * Una fila de la plantilla de parejas (encabezados en snake_case). Una
+ * reserva puede ir incompleta: solo el operador o solo el asistente.
+ */
 export const filaParejaCdaSchema = z
   .object({
-    cedula_operador: cedulaSchema,
+    cedula_operador: cedulaOpcional,
     nombre_operador: textoOpcional(200),
     telefono_operador: telefonoSchema,
-    cedula_asistente: z.preprocess((v) => (v === '' || v == null ? undefined : v), cedulaSchema.optional()),
+    cedula_asistente: cedulaOpcional,
     nombre_asistente: textoOpcional(200),
     telefono_asistente: telefonoSchema,
     codigo_recinto: z.string().trim().min(1, 'Código de recinto requerido').max(20, 'Código de recinto muy largo'),
     articulos: textoOpcional(1000),
   })
-  .refine((d) => d.cedula_asistente !== d.cedula_operador, {
+  .refine((d) => !d.cedula_asistente || d.cedula_asistente !== d.cedula_operador, {
     message: 'El asistente no puede ser el mismo operador',
     path: ['cedula_asistente'],
-  });
+  })
+  .refine(
+    (d) => !!d.cedula_operador || (d.codigo_recinto.toUpperCase() === CODIGO_RESERVA_PAREJAS_CDA && !!d.cedula_asistente),
+    { message: MENSAJE_FILA_SIN_OPERADOR_CDA, path: ['cedula_operador'] },
+  );
 export type FilaParejaCdaInput = z.infer<typeof filaParejaCdaSchema>;
 
 // --- Simulador de digitación de actas (práctica tipo SIER) ---

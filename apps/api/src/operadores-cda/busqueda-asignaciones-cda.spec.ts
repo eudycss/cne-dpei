@@ -34,6 +34,13 @@ describe('armarBusquedaAsignaciones', () => {
     ]);
   });
 
+  it('una reserva sin operador sale para su asistente, sin pareja', () => {
+    const reserva: ParejaBuscada = { fecha: '2026-11-05', recinto: null, operador: null, asistente: LUIS, kit: null };
+    const { personas } = armarBusquedaAsignaciones([ANA, LUIS], [], new Map(), [reserva]);
+    expect(personas[0].asignaciones).toEqual([]);
+    expect(personas[1].asignaciones).toEqual([{ fecha: '2026-11-05', recinto: null, como: 'ASISTENTE', pareja: null }]);
+  });
+
   it('una persona que nunca estuvo en una pareja sale con la lista vacía', () => {
     const otra = { ...LUIS, id: 'p-otra', apellidosNombres: 'NUEVA' };
     expect(armarBusquedaAsignaciones([otra], [], new Map(), parejas).personas[0].asignaciones).toEqual([]);

@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { AplicarParejasCdaResult, ParejaCdaFila, ParejaReservaCda, PersonaParejaCda, RecintoParejaCda } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
-import { asignarRecintoParejaCda, getDisponiblesParejasCda, pasarAReservaParejaCda, quitarParejaCda } from '../../lib/queries/operadores-cda';
+import {
+  asignarRecintoParejaCda,
+  editarParejaCda,
+  getDisponiblesParejasCda,
+  pasarAReservaParejaCda,
+  quitarParejaCda,
+} from '../../lib/queries/operadores-cda';
 import { ComboFiltrable, textoRecinto } from './ParejaFormModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { mensajeError } from './utils';
@@ -17,6 +23,63 @@ function titularesPorRecinto(parejas: ParejaCdaFila[]): Map<string, ParejaCdaFil
 }
 
 const nombre = (p: PersonaParejaCda | null) => p?.apellidosNombres ?? 'Sin asistente';
+
+/** Quién nombra una pareja de reserva: su operador o, si está incompleta, su asistente. */
+const quienReserva = (p: ParejaReservaCda) => p.operador?.apellidosNombres ?? p.asistente?.apellidosNombres ?? '';
+
+/** Los dos integrantes para un texto: "A y B", o solo el que hay. */
+const integrantesReserva = (p: ParejaReservaCda) =>
+  p.operador && p.asistente ? `${p.operador.apellidosNombres} y ${p.asistente.apellidosNombres}` : quienReserva(p);
+
+type Espacio = 'OPERADOR' | 'ASISTENTE';
+const ROL: Record<Espacio, string> = { OPERADOR: 'Operador CDA', ASISTENTE: 'Asistente CDA' };
+
+/** Un integrante de la tarjeta, o el espacio vacío con "Completar". */
+function Integrante({
+  espacio,
+  persona,
+  pareja,
+  isAdmin,
+  onCompletar,
+}: {
+  espacio: Espacio;
+  persona: PersonaParejaCda | null;
+  pareja: ParejaReservaCda;
+  isAdmin: boolean;
+  onCompletar: (p: ParejaReservaCda, espacio: Espacio) => void;
+}) {
+  return (
+    <div>
+      <dt>{ROL[espacio]}</dt>
+      <dd>
+        {persona ? (
+          <>
+            {persona.apellidosNombres}
+            <br />
+            <span className="muted mono">{persona.cedula}</span>
+          </>
+        ) : (
+          <>
+            <span className="muted">{espacio === 'OPERADOR' ? 'Sin operador' : 'Sin asistente'}</span>
+            {isAdmin && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="ocda-btn-texto"
+                  aria-label={`Completar el ${espacio === 'OPERADOR' ? 'operador' : 'asistente'} de la reserva de ${quienReserva(pareja)}`}
+                  onClick={() => onCompletar(pareja, espacio)}
+                >
+                  Completar
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </dd>
+    </div>
+  );
+}
 
 /**
  * La tarjeta o fila que abrió el modal desaparece al terminar (la pareja cambia
@@ -88,12 +151,13 @@ export function ReservaParejas({
   const qc = useQueryClient();
   const [asignando, setAsignando] = useState<ParejaReservaCda | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaReservaCda | null>(null);
+  const [completando, setCompletando] = useState<{ pareja: ParejaReservaCda; espacio: Espacio } | null>(null);
   const quitar = useMutation({
     mutationFn: (p: ParejaReservaCda) => quitarParejaCda(p.id),
     onSuccess: (_, p) => {
       setQuitarA(null);
       qc.invalidateQueries({ queryKey: ['parejas-cda'] });
-      sileo.success({ title: 'Pareja de reserva quitada', description: p.operador.apellidosNombres });
+      sileo.success({ title: 'Pareja de reserva quitada', description: quienReserva(p) });
       enfocarPestana('reserva');
     },
   });
@@ -116,6 +180,7 @@ export function ReservaParejas({
     <>
       <p className="muted" style={{ marginTop: 0 }}>
         Quedan registradas sin recinto ni kit, y salen en la hoja <strong>Reserva</strong> del reporte. Asígneles un recinto cuando haga falta.
+        Una reserva puede quedar incompleta (solo el operador o solo el asistente): con <strong>Completar</strong> se llena el espacio vacío.
       </p>
       <ul className="ocda-grid" aria-label={`Parejas de reserva del ${dia}`}>
         {reserva.map((p, i) => (
@@ -124,47 +189,38 @@ export function ReservaParejas({
               <span className="ocda-estado vacio">Reserva {i + 1}</span>
             </div>
             <dl className="ocda-datos" style={{ borderTop: 0, paddingTop: 0 }}>
-              <div>
-                <dt>Operador CDA</dt>
-                <dd>
-                  {p.operador.apellidosNombres}
-                  <br />
-                  <span className="muted mono">{p.operador.cedula}</span>
-                </dd>
-              </div>
-              <div>
-                <dt>Asistente CDA</dt>
-                <dd>
-                  {p.asistente ? (
-                    <>
-                      {p.asistente.apellidosNombres}
-                      <br />
-                      <span className="muted mono">{p.asistente.cedula}</span>
-                    </>
-                  ) : (
-                    <span className="muted">Sin asistente</span>
-                  )}
-                </dd>
-              </div>
+              {(['OPERADOR', 'ASISTENTE'] as const).map((espacio) => (
+                <Integrante
+                  key={espacio}
+                  espacio={espacio}
+                  persona={espacio === 'OPERADOR' ? p.operador : p.asistente}
+                  pareja={p}
+                  isAdmin={isAdmin}
+                  onCompletar={(pareja, e) => setCompletando({ pareja, espacio: e })}
+                />
+              ))}
             </dl>
             <div>
               <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
               <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
             </div>
             {isAdmin && (
-              <div className="ocda-tarjeta-admin">
+              <div className="ocda-tarjeta-admin" style={{ flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="ocda-btn-texto"
-                  aria-label={`Asignar a recinto la pareja de reserva de ${p.operador.apellidosNombres}`}
-                  onClick={() => setAsignando(p)}
+                  aria-label={`Asignar a recinto la pareja de reserva de ${quienReserva(p)}`}
+                  aria-describedby={p.operador ? undefined : `reserva-sin-operador-${p.id}`}
+                  // aria-disabled (no disabled): sigue enfocable y el lector de pantalla lee por qué no se puede.
+                  aria-disabled={!p.operador || undefined}
+                  onClick={() => p.operador && setAsignando(p)}
                 >
                   Asignar a recinto
                 </button>
                 <button
                   type="button"
                   className="ocda-btn-texto peligro"
-                  aria-label={`Quitar la pareja de reserva de ${p.operador.apellidosNombres}`}
+                  aria-label={`Quitar la pareja de reserva de ${quienReserva(p)}`}
                   onClick={() => {
                     quitar.reset();
                     setQuitarA(p);
@@ -172,6 +228,11 @@ export function ReservaParejas({
                 >
                   Quitar
                 </button>
+                {!p.operador && (
+                  <p id={`reserva-sin-operador-${p.id}`} className="muted" style={{ margin: '0.25rem 0 0', flexBasis: '100%' }}>
+                    Complete el operador antes de asignarle un recinto: el kit va a su nombre.
+                  </p>
+                )}
               </div>
             )}
           </li>
@@ -189,13 +250,20 @@ export function ReservaParejas({
           onClose={() => setAsignando(null)}
         />
       )}
+      {completando && (
+        <CompletarReservaModal
+          dia={dia}
+          pareja={completando.pareja}
+          espacio={completando.espacio}
+          onClose={() => setCompletando(null)}
+        />
+      )}
       {quitarA && (
         <Modal labelledBy="quitar-reserva-titulo" onClose={() => setQuitarA(null)} maxWidth={480}>
           <div className="login-card" style={{ width: '100%', maxWidth: 'none' }}>
             <h1 id="quitar-reserva-titulo">Quitar pareja de reserva</h1>
             <p>
-              ¿Quitar la pareja de reserva de {quitarA.operador.apellidosNombres} y {nombre(quitarA.asistente)}? Ya no saldrá en el reporte de
-              este día.
+              ¿Quitar la pareja de reserva de {integrantesReserva(quitarA)}? Ya no saldrá en el reporte de este día.
             </p>
             {quitar.isError && (
               <p className="banner error" role="alert">
@@ -214,6 +282,102 @@ export function ReservaParejas({
         </Modal>
       )}
     </>
+  );
+}
+
+/**
+ * Llena el espacio vacío de una reserva incompleta con alguien del mismo
+ * cargo que no tenga pareja ese día.
+ */
+function CompletarReservaModal({
+  dia,
+  pareja,
+  espacio,
+  onClose,
+}: {
+  dia: string;
+  pareja: ParejaReservaCda;
+  espacio: Espacio;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [personaId, setPersonaId] = useState('');
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['parejas-cda', 'disponibles', dia, 'todos'],
+    queryFn: () => getDisponiblesParejasCda(dia, true),
+  });
+  const opciones = (espacio === 'OPERADOR' ? data?.operadores : data?.asistentes) ?? [];
+  const completar = useMutation({
+    mutationFn: () => editarParejaCda(pareja.id, espacio === 'OPERADOR' ? { operadorCdaId: personaId } : { asistenteCdaId: personaId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['parejas-cda'] });
+      sileo.success({ title: 'Reserva completada', description: quienReserva(pareja) });
+      onClose();
+    },
+  });
+  const rol = espacio === 'OPERADOR' ? 'operador' : 'asistente';
+  const puede = !!personaId && !completar.isPending;
+
+  return (
+    <Modal labelledBy="completar-reserva-titulo" onClose={onClose} maxWidth={520}>
+      <form
+        className="login-card"
+        style={{ width: '100%', maxWidth: 'none' }}
+        aria-busy={completar.isPending}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (puede) completar.mutate();
+        }}
+      >
+        <h1 id="completar-reserva-titulo">Completar el {rol}</h1>
+        <p>
+          Reserva de <strong>{quienReserva(pareja)}</strong>. Elija a un {ROL[espacio]} sin pareja este día.
+        </p>
+        {isLoading && (
+          <p className="muted" role="status">
+            Cargando personas…
+          </p>
+        )}
+        {error && (
+          <p className="banner error" role="alert">
+            {mensajeError(error, 'No se pudieron cargar las personas')}
+          </p>
+        )}
+        {data && opciones.length === 0 && (
+          <p className="banner info" role="status">
+            No hay ningún {ROL[espacio]} libre este día.
+          </p>
+        )}
+        {data && opciones.length > 0 && (
+          <ComboFiltrable
+            id="completar-reserva-persona"
+            etiqueta={ROL[espacio]}
+            opciones={opciones}
+            valor={personaId}
+            onChange={(id) => {
+              completar.reset();
+              setPersonaId(id);
+            }}
+            texto={(x: PersonaParejaCda) => `${x.apellidosNombres} · ${x.cedula}`}
+            vacio={`Elija un ${rol}`}
+            requerido
+          />
+        )}
+        {completar.isError && (
+          <p className="banner error" role="alert">
+            {mensajeError(completar.error, 'No se pudo completar la reserva')}
+          </p>
+        )}
+        <div className="row" style={{ justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
+          <button type="button" className="btn secondary" onClick={onClose} disabled={completar.isPending}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn" disabled={!puede}>
+            {completar.isPending ? 'Guardando…' : 'Completar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -284,7 +448,7 @@ function AsignarRecintoModal({
       >
         <h1 id="asignar-recinto-titulo">Asignar a recinto</h1>
         <p>
-          Pareja de reserva: <strong>{pareja.operador.apellidosNombres}</strong> y <strong>{nombre(pareja.asistente)}</strong>.
+          Pareja de reserva: <strong>{integrantesReserva(pareja)}</strong>.
         </p>
         {isLoading && (
           <p className="muted" role="status">

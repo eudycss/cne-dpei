@@ -1022,7 +1022,8 @@ model ParejaCda {
   fecha          DateTime @db.Date
   /// null = pareja de reserva: sin recinto, no recibe kit ni sale en la app.
   recintoId      String?  @map("recinto_id") @db.Uuid
-  operadorCdaId  String   @map("operador_cda_id") @db.Uuid
+  /// null solo en una reserva incompleta (un asistente sin operador): en un recinto el kit va al operador.
+  operadorCdaId  String?  @map("operador_cda_id") @db.Uuid
   asistenteCdaId String?  @map("asistente_cda_id") @db.Uuid
   kitId          String?  @map("kit_id") @db.Uuid
   /// Artículos para crear el kit si el recinto no lo tiene ("CODIGO[:SERIE]", separados por coma).
@@ -1031,7 +1032,7 @@ model ParejaCda {
   creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
   recinto   Recinto?      @relation(fields: [recintoId], references: [id], onDelete: Restrict)
-  operador  OperadorCda   @relation("ParejaCdaOperador", fields: [operadorCdaId], references: [id], onDelete: Restrict)
+  operador  OperadorCda?  @relation("ParejaCdaOperador", fields: [operadorCdaId], references: [id], onDelete: Restrict)
   asistente OperadorCda?  @relation("ParejaCdaAsistente", fields: [asistenteCdaId], references: [id], onDelete: Restrict)
   kit       KitElectoral? @relation(fields: [kitId], references: [id], onDelete: SetNull)
   creadoPor Usuario?      @relation("ParejaCdaCreadaPor", fields: [creadoPorId], references: [id])

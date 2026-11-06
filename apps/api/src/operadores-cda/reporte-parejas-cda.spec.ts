@@ -208,6 +208,22 @@ describe('reporteParejas', () => {
     expect(r.tablas[0].anexo?.filas).toContainEqual(['Parejas de reserva', 2]);
   });
 
+  it('una reserva con solo el asistente sale con el operador vacío, ordenada por el asistente', () => {
+    const r = reporteParejas(
+      dia(
+        [fila('28')],
+        [
+          reservada('r1', { ...persona('TORRES OP'), cedula: '1003003003' }, null),
+          { id: 'r2', fecha: '2026-11-01', operador: null, asistente: { ...persona('BRAVO ASIS'), cedula: '1004004004' } },
+        ],
+      ),
+    );
+    expect(r.tablas[1].filas).toEqual([
+      [1, '— (sin operador)', '', '', 'BRAVO ASIS', '1004004004', 'Android'],
+      [2, 'TORRES OP', '1003003003', 'Android', '— (sin asistente)', '', ''],
+    ]);
+  });
+
   it('sin parejas de reserva, la segunda hoja lo dice en vez de quedar vacía', () => {
     const t = reporteParejas(dia([fila('28')])).tablas[1];
     expect(t.filas).toEqual([['', 'Este día no tiene parejas de reserva', '', '', '', '', '']]);

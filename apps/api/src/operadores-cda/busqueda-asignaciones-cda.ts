@@ -20,7 +20,8 @@ export interface RecintoBuscado {
 export interface ParejaBuscada {
   fecha: string;
   recinto: RecintoBuscado | null;
-  operador: { id: string; apellidosNombres: string };
+  /** null en una reserva incompleta (solo el asistente). */
+  operador: { id: string; apellidosNombres: string } | null;
   asistente: { id: string; apellidosNombres: string } | null;
   kit: { codigoUnico: string } | null;
 }
@@ -46,11 +47,11 @@ export function armarBusquedaAsignaciones(
     personas: personas.slice(0, MAX_RESULTADOS_ASIGNACIONES).map((persona) => ({
       ...persona,
       asignaciones: ordenadas.flatMap((p): AsignacionPersonaCda[] => {
-        if (p.operador.id === persona.id) {
+        if (p.operador?.id === persona.id) {
           return [{ fecha: p.fecha, recinto: recintoDe(p), como: 'OPERADOR', pareja: p.asistente?.apellidosNombres ?? null }];
         }
         if (p.asistente?.id === persona.id) {
-          return [{ fecha: p.fecha, recinto: recintoDe(p), como: 'ASISTENTE', pareja: p.operador.apellidosNombres }];
+          return [{ fecha: p.fecha, recinto: recintoDe(p), como: 'ASISTENTE', pareja: p.operador?.apellidosNombres ?? null }];
         }
         return [];
       }),
@@ -64,7 +65,7 @@ export function armarBusquedaAsignaciones(
         .filter((p) => p.recinto?.id === cda.id)
         .map((p) => ({
           fecha: p.fecha,
-          operador: p.operador.apellidosNombres,
+          operador: p.operador?.apellidosNombres ?? '—',
           asistente: p.asistente?.apellidosNombres ?? null,
           kit: p.kit?.codigoUnico ?? null,
         })),

@@ -58,7 +58,13 @@ const CON_RELACIONES = {
 
 type ParejaPrisma = Prisma.ParejaCdaGetPayload<{ include: typeof CON_RELACIONES }>;
 /** Pareja con recinto: las de reserva (sin recinto) no van a la app ni reciben kit. */
-type ParejaConRelaciones = ParejaPrisma & { recintoId: string; recinto: NonNullable<ParejaPrisma['recinto']> };
+/** Pareja con recinto: siempre tiene operador (lo exige la base, ck_parejas_cda_operador_o_reserva). */
+type ParejaConRelaciones = ParejaPrisma & {
+  recintoId: string;
+  recinto: NonNullable<ParejaPrisma['recinto']>;
+  operadorCdaId: string;
+  operador: NonNullable<ParejaPrisma['operador']>;
+};
 type PersonaDePareja = ParejaConRelaciones['operador'];
 type Evento = { id: string; nombre: string };
 /**
@@ -79,6 +85,8 @@ const EN_DELEGACION = new Set(['EN_BODEGA', 'ASIGNADO']);
 
 const MENSAJE_RESERVA_SIN_KIT = 'Esta pareja es de reserva: asígnele un recinto para darle kit';
 const MENSAJE_RESERVA_RECINTO = 'Esta pareja es de reserva: use "Asignar a recinto"';
+const MENSAJE_RESERVA_SIN_OPERADOR = 'Esta reserva no tiene operador: complétela con un Operador CDA antes de asignarle un recinto';
+const MENSAJE_RESERVA_VACIA = 'La pareja de reserva no puede quedar sin nadie';
 
 /** Recintos de una lista sin los null (parejas de reserva). */
 const conRecinto = (ids: (string | null)[]): string[] => ids.filter((id): id is string => !!id);
@@ -213,7 +221,9 @@ export class ParejasCdaService {
     const asistenteCdaId = datos.asistenteCdaId === undefined ? actual.asistenteCdaId : datos.asistenteCdaId;
     // Solo se valida a quien entra: una pareja anterior a la regla (historial)
     // puede cambiar de recinto o del integrante que no cumple, sin bloquearse.
-    if (operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
+    if (operadorCdaId && operadorCdaId === asistenteCdaId) throw new BadRequestException('Elija dos personas distintas para la pareja');
+    // Una reserva puede ir incompleta, pero no vacía.
+    if (!operadorCdaId && !asistenteCdaId) throw new BadRequestException(MENSAJE_RESERVA_VACIA);
     await this.validarIntegrantes(
       operadorCdaId !== actual.operadorCdaId ? operadorCdaId : null,
       asistenteCdaId !== actual.asistenteCdaId ? asistenteCdaId : null,
@@ -222,6 +232,7 @@ export class ParejasCdaService {
     await this.libresEseDia(actual.fecha, diaDeFechaDb(actual.fecha), operadorCdaId, asistenteCdaId, id);
     // Una pareja de reserva recibe recinto solo con "Asignar a recinto" (puede intercambiarse con la titular).
     if (!actual.recintoId && datos.recintoId) throw new BadRequestException(MENSAJE_RESERVA_RECINTO);
+    if (!operadorCdaId && datos.recintoId) throw new BadRequestException(MENSAJE_RESERVA_SIN_OPERADOR);
     const cambiaRecinto = !!datos.recintoId && datos.recintoId !== actual.recintoId;
     if (cambiaRecinto) await this.validarRecinto(datos.recintoId as string);
     await this.quienLlevaKitSalidoSeQueda(actual, operadorCdaId, asistenteCdaId, cambiaRecinto);
@@ -275,7 +286,11 @@ export class ParejasCdaService {
     if (desde === hacia) throw new BadRequestException('Elija un día distinto');
     const origen = await this.prisma.parejaCda.findMany({
       where: { fecha: fechaDb(desde) },
-      include: { recinto: { select: { codigoRecinto: true } }, operador: { select: { apellidosNombres: true } } },
+      include: {
+        recinto: { select: { codigoRecinto: true } },
+        operador: { select: { apellidosNombres: true } },
+        asistente: { select: { apellidosNombres: true } },
+      },
       orderBy: { creadoEn: 'asc' },
     });
     if (!origen.length) throw new BadRequestException(`El ${desde} no tiene parejas para copiar`);
@@ -308,9 +323,9 @@ export class ParejasCdaService {
     for (const p of origen) {
       const motivo = p.recintoId && !recintosActivos.has(p.recintoId)
         ? 'El recinto ya no está activo'
-        : activas.get(p.operadorCdaId) !== 'OPERADOR'
+        : p.operadorCdaId && activas.get(p.operadorCdaId) !== 'OPERADOR'
           ? 'El operador ya no está disponible (oculto o no es Operador CDA)'
-          : ocupadas.has(p.operadorCdaId)
+          : p.operadorCdaId && ocupadas.has(p.operadorCdaId)
             ? 'El operador ya tiene pareja ese día'
             : p.asistenteCdaId && activas.get(p.asistenteCdaId) !== 'ASISTENTE'
               ? 'El asistente ya no está disponible (oculto o no es Asistente CDA)'
@@ -318,10 +333,11 @@ export class ParejasCdaService {
                 ? 'El asistente ya tiene pareja ese día'
                 : null;
       if (motivo) {
-        omitidas.push({ pareja: `${p.operador.apellidosNombres} · ${p.recinto?.codigoRecinto ?? 'Reserva'}`, motivo });
+        const quien = p.operador?.apellidosNombres ?? p.asistente?.apellidosNombres ?? '';
+        omitidas.push({ pareja: `${quien} · ${p.recinto?.codigoRecinto ?? 'Reserva'}`, motivo });
         continue;
       }
-      ocupadas.add(p.operadorCdaId);
+      if (p.operadorCdaId) ocupadas.add(p.operadorCdaId);
       if (p.asistenteCdaId) ocupadas.add(p.asistenteCdaId);
       data.push({
         fecha: fechaDb(hacia),
@@ -352,6 +368,15 @@ export class ParejasCdaService {
     if (campo === 'ASISTENTE' && a.asistenteCdaId === b.asistenteCdaId) throw new BadRequestException('Las dos parejas ya tienen ese asistente');
     if (campo === 'RECINTO' && !a.recintoId && !b.recintoId) throw new BadRequestException('Las dos parejas son de reserva');
     if (campo === 'RECINTO' && a.recintoId === b.recintoId) throw new BadRequestException('Las dos parejas ya tienen ese recinto');
+    // Una reserva sin operador solo cambia de asistente, y sin quedar vacía.
+    if (campo !== 'ASISTENTE' && (!a.operadorCdaId || !b.operadorCdaId)) throw new BadRequestException(MENSAJE_RESERVA_SIN_OPERADOR);
+    if (campo === 'ASISTENTE' && ((!a.operadorCdaId && !b.asistenteCdaId) || (!b.operadorCdaId && !a.asistenteCdaId))) {
+      throw new BadRequestException(MENSAJE_RESERVA_VACIA);
+    }
+    // El intercambio libera un asistente por un instante: dos reservas sin operador quedarían vacías.
+    if (campo === 'ASISTENTE' && !a.operadorCdaId && !b.operadorCdaId) {
+      throw new BadRequestException('Las dos reservas no tienen operador: complete una antes de intercambiar sus asistentes');
+    }
     // Una pareja anterior a la regla (dos operadores o dos asistentes) no pasa a nadie fuera de su cargo.
     if (campo !== 'RECINTO') {
       const grupo: GrupoPareja = campo;
@@ -369,7 +394,7 @@ export class ParejasCdaService {
       campo === 'ASISTENTE'
         ? [a.asistente?.usuarioId, b.asistente?.usuarioId]
         : campo === 'OPERADOR'
-          ? [a.operador.usuarioId, b.operador.usuarioId]
+          ? [a.operador?.usuarioId, b.operador?.usuarioId]
           : undefined;
     const kits = evento ? await this.kitsASoltar(evento.id, [a.kitId, b.kitId], seMueven) : [];
     for (const k of kits) await this.kits.quitarOperador(k, justificacion, true);
@@ -377,7 +402,9 @@ export class ParejasCdaService {
     // nuevo recinto (así, en un recinto con dos parejas, no se va a la otra).
     // Cambiar asistentes también se reaplica: puede cambiar quién tiene Android (y lleva el kit).
     if (campo === 'ASISTENTE') {
-      await this.intercambiarAsistentes(fecha, a, b);
+      // Se libera primero el asistente de la que tiene operador: así nunca queda una sin nadie (CHECK de la base).
+      const [primera, segunda] = a.operadorCdaId ? [a, b] : [b, a];
+      await this.intercambiarAsistentes(fecha, primera, segunda);
     } else if (campo === 'RECINTO') {
       await this.guardar(fecha, () =>
         this.prisma.$transaction(async (tx) => {
@@ -438,7 +465,7 @@ export class ParejasCdaService {
    */
   private async quienLlevaKitSalidoSeQueda(
     actual: Awaited<ReturnType<ParejasCdaService['leerPareja']>>,
-    operadorCdaId: string,
+    operadorCdaId: string | null,
     asistenteCdaId: string | null,
     cambiaRecinto: boolean,
   ): Promise<void> {
@@ -451,7 +478,7 @@ export class ParejasCdaService {
     }
     if (!kit.operadorId) return;
     const sale =
-      (kit.operadorId === actual.operador.usuarioId && operadorCdaId !== actual.operadorCdaId && actual.operador) ||
+      (actual.operador && kit.operadorId === actual.operador.usuarioId && operadorCdaId !== actual.operadorCdaId && actual.operador) ||
       (kit.operadorId === actual.asistente?.usuarioId && asistenteCdaId !== actual.asistenteCdaId && actual.asistente);
     if (sale) {
       throw new ConflictException(
@@ -506,7 +533,7 @@ export class ParejasCdaService {
       throw e;
     }
     if (r.enApp === 0 && !(await this.deshacerKitPropio(id, nuevo.id))) {
-      r.errores.push({ pareja: `${p.operador.apellidosNombres}`, error: 'El kit nuevo quedó en Kits sin pareja: bórrelo o asígnelo allí' });
+      r.errores.push({ pareja: p.operador?.apellidosNombres ?? '', error: 'El kit nuevo quedó en Kits sin pareja: bórrelo o asígnelo allí' });
     }
     return r;
   }
@@ -569,6 +596,8 @@ export class ParejasCdaService {
   async asignarRecinto(id: string, recintoId: string, justificacion?: string): Promise<AplicarParejasCdaResult> {
     const p = await this.leerPareja(id);
     if (p.recintoId) throw new BadRequestException('Esta pareja ya tiene recinto: use "Cambiar" o "Pasar a reserva"');
+    // En un recinto el kit va al operador.
+    if (!p.operadorCdaId) throw new BadRequestException(MENSAJE_RESERVA_SIN_OPERADOR);
     await this.validarRecinto(recintoId);
     const fecha = diaDeFechaDb(p.fecha);
     const delRecinto = (await this.parejasDelDia(fecha)).filter((x) => x.recintoId === recintoId);
@@ -850,14 +879,11 @@ export class ParejasCdaService {
         if (otro) avisos.push(`${p.apellidosNombres} ya fue el ${otro}`);
         return { cedula, nombre: p.apellidosNombres, nuevo: false };
       };
-      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'OPERADOR', 'nombre_operador') ?? {
-        cedula: datos.cedula_operador,
-        nombre: null,
-        nuevo: false,
-      };
+      const operador = integrante(datos.cedula_operador, datos.nombre_operador, 'OPERADOR', 'nombre_operador');
       const asistente = integrante(datos.cedula_asistente, datos.nombre_asistente, 'ASISTENTE', 'nombre_asistente');
 
       const reserva = datos.codigo_recinto.toUpperCase() === CODIGO_RESERVA_PAREJAS_CDA;
+      if (reserva && !operador && asistente) avisos.push('Reserva sin operador: complétela antes de asignarle un recinto');
       const r = datos.codigo_recinto && !reserva ? recintoPorCodigo.get(datos.codigo_recinto.toLowerCase()) : undefined;
       if (datos.codigo_recinto && !reserva && !r) errores.push(`Recinto no encontrado: ${datos.codigo_recinto}`);
       if (reserva && datos.articulos) avisos.push('Pareja de reserva: los artículos se usan cuando se le asigne un recinto');
@@ -897,7 +923,9 @@ export class ParejasCdaService {
     const ids: string[] = [];
     for (const { fila, datos, recintoId } of validas) {
       try {
-        const operadorCdaId = await this.personaDe(fila.operador, datos.telefono_operador, 'OPERADOR', personaPorCedula);
+        const operadorCdaId = fila.operador
+          ? await this.personaDe(fila.operador, datos.telefono_operador, 'OPERADOR', personaPorCedula)
+          : null;
         const asistenteCdaId = fila.asistente
           ? await this.personaDe(fila.asistente, datos.telefono_asistente, 'ASISTENTE', personaPorCedula)
           : null;
@@ -1065,12 +1093,12 @@ export class ParejasCdaService {
 
   /** Id del kit de la pareja si lo tiene su operador o su asistente en un evento ACTIVO (el que hay que soltar). */
   private async kitDelOperador(p: {
-    operador: { usuarioId: string | null };
+    operador: { usuarioId: string | null } | null;
     asistente?: { usuarioId: string | null } | null;
     kit: { id: string; operadorId: string | null; eventoId: string } | null;
   }): Promise<string | null> {
     const kit = p.kit;
-    if (!kit?.operadorId || ![p.operador.usuarioId, p.asistente?.usuarioId].includes(kit.operadorId)) return null;
+    if (!kit?.operadorId || ![p.operador?.usuarioId, p.asistente?.usuarioId].includes(kit.operadorId)) return null;
     const activo = await this.prisma.eventoElectoral.findFirst({ where: { id: kit.eventoId, estado: 'ACTIVO' }, select: { id: true } });
     return activo ? kit.id : null;
   }
@@ -1103,7 +1131,7 @@ export class ParejasCdaService {
     return parejas.map((p) => ({
       id: p.id,
       fecha: diaDeFechaDb(p.fecha),
-      operador: aPersona(p.operador),
+      operador: p.operador && aPersona(p.operador),
       asistente: p.asistente && aPersona(p.asistente),
     }));
   }
@@ -1160,8 +1188,8 @@ export class ParejasCdaService {
    * cualquier columna). Los únicos de la base solo cubren cada columna: dos
    * administradores guardando a la vez podrían cruzarse; se acepta (uso interno).
    */
-  private async libresEseDia(fecha: Date, dia: string, operadorCdaId: string, asistenteCdaId: string | null, excepto?: string) {
-    const personas = [operadorCdaId, ...(asistenteCdaId ? [asistenteCdaId] : [])];
+  private async libresEseDia(fecha: Date, dia: string, operadorCdaId: string | null, asistenteCdaId: string | null, excepto?: string) {
+    const personas = [operadorCdaId, asistenteCdaId].filter((x): x is string => !!x);
     const ocupada = await this.prisma.parejaCda.findFirst({
       where: {
         fecha,
@@ -1171,7 +1199,7 @@ export class ParejasCdaService {
       select: { operadorCdaId: true, asistenteCdaId: true },
     });
     if (!ocupada) return;
-    const quien = [ocupada.operadorCdaId, ocupada.asistenteCdaId].includes(operadorCdaId) ? 'operador' : 'asistente';
+    const quien = operadorCdaId && [ocupada.operadorCdaId, ocupada.asistenteCdaId].includes(operadorCdaId) ? 'operador' : 'asistente';
     throw new ConflictException(`El ${quien} ya tiene pareja el ${dia}`);
   }
 

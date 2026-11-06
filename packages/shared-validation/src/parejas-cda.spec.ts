@@ -11,6 +11,7 @@ import {
   cargarPropuestaParejasCdaSchema,
   propuestaParejasCdaSchema,
   filaParejaCdaSchema,
+  MENSAJE_FILA_SIN_OPERADOR_CDA,
   intercambiarParejaCdaSchema,
   tecnicosReporteParejasCdaSchema,
 } from './index';
@@ -155,6 +156,18 @@ describe('parejas CDA por día', () => {
     expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: '957' }).success).toBe(false);
     expect(asignarRecintoParejaCdaSchema.safeParse({}).success).toBe(false);
     expect(asignarRecintoParejaCdaSchema.safeParse({ recintoId: RE, kitId: OP }).success).toBe(false);
+  });
+
+  it('una reserva puede ir con solo el asistente; un recinto, nunca sin operador', () => {
+    const solo = (codigo: string, extra: Record<string, string> = {}) =>
+      filaParejaCdaSchema.safeParse({ cedula_operador: '', telefono_operador: '', telefono_asistente: '', codigo_recinto: codigo, ...extra });
+    expect(solo(CODIGO_RESERVA_PAREJAS_CDA, { cedula_asistente: CEDULA_AS }).success).toBe(true);
+    expect(solo('reserva', { cedula_asistente: CEDULA_AS }).success).toBe(true);
+    const enRecinto = solo('957', { cedula_asistente: CEDULA_AS });
+    expect(enRecinto.success).toBe(false);
+    expect(enRecinto.error?.issues[0]).toMatchObject({ path: ['cedula_operador'], message: MENSAJE_FILA_SIN_OPERADOR_CDA });
+    // Una reserva vacía tampoco.
+    expect(solo(CODIGO_RESERVA_PAREJAS_CDA).success).toBe(false);
   });
 
   it('la plantilla acepta RESERVA como código de recinto', () => {
