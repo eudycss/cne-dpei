@@ -3,6 +3,7 @@ import {
   strongPasswordSchema,
   resumenJornadaSchema,
   leerNumeroMochila,
+  leerCodigoQrKit,
   numeroMochilaRequestSchema,
   textoFrecuenciaResumenJornada,
   RESUMEN_JORNADA_DETENIDO,
@@ -646,6 +647,13 @@ describe('N.º de mochila', () => {
 
   it.each(['', '0', '10000', 'abc', '4 5', '-3', '12a', null, undefined])('no acepta %p', (valor) => {
     expect(leerNumeroMochila(valor)).toBeNull();
+  });
+
+  it('el QR del kit: código en mayúsculas sin espacios; otra cosa da null', () => {
+    expect(leerCodigoQrKit(' p2zcerv4 ')).toBe('P2ZCERV4');
+    expect(leerCodigoQrKit('https://x.com/a')).toBeNull();
+    expect(leerCodigoQrKit('AB')).toBeNull();
+    expect(leerCodigoQrKit(undefined)).toBeNull();
   });
 
   it('el pedido acepta un número de 1 a 9999 o null, y reemplazar opcional', () => {

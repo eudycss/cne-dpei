@@ -72,14 +72,22 @@ export class MochilasKitController {
     return this.mochilas.cargar(file, eventoId, aplicar === 'true', user?.sub);
   }
 
+  @Get('mochilas/qr/:codigo')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @ApiOperation({ summary: 'QR escaneado: su kit, recinto y N.º de mochila (si ya tiene)' })
+  porQr(@Param('codigo') codigo: string) {
+    return this.mochilas.porQr(codigo);
+  }
+
+  /** El supervisor registra o corrige al escanear; pasarle un número de otro QR es solo del administrador. */
   @Put(':id/mochila')
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
   @ApiOperation({ summary: 'Poner, cambiar o quitar (null) el N.º de mochila del QR del kit' })
   asignar(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(numeroMochilaRequestSchema)) body: NumeroMochilaRequest,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.mochilas.asignar(id, body, user?.sub);
+    return this.mochilas.asignar(id, body, user?.sub, user?.roles?.includes('ADMINISTRADOR') ?? false);
   }
 }

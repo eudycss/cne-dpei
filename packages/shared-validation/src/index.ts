@@ -408,6 +408,12 @@ export function leerNumeroMochila(valor: unknown): number | null {
   return n >= 1 && n <= MAX_NUMERO_MOCHILA ? n : null;
 }
 
+/** Lo leído de un QR de kit (el QR trae solo el código): mayúsculas, sin espacios; null si no parece un código. */
+export function leerCodigoQrKit(valor: unknown): string | null {
+  const codigo = String(valor ?? '').trim().toUpperCase();
+  return /^[A-Z0-9-]{4,40}$/.test(codigo) ? codigo : null;
+}
+
 export const bulkKitRowSchema = z
   .object({
     nombre: z.string().min(1, 'Nombre requerido').max(160),

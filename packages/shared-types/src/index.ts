@@ -416,6 +416,17 @@ export interface NumeroMochilaResponse {
   quitadoDe: string | null;
 }
 
+/** Lo que se ve al escanear el QR de una mochila. */
+export interface MochilaPorQr {
+  /** Kit más reciente con ese QR (para guardar el número). */
+  kitId: string;
+  codigoUnico: string;
+  numeroMochila: number | null;
+  nombreKit: string;
+  evento: string;
+  recinto: { codigoRecinto: string; nombre: string } | null;
+}
+
 export type EstadoFilaMochila = 'NUEVA' | 'CAMBIA' | 'IGUAL' | 'ERROR';
 
 export interface FilaCargaMochila {

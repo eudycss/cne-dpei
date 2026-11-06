@@ -18,7 +18,7 @@ const kit = (codigoUnico: string, codigoRecinto: string | null) => ({
 describe('MochilasKitService', () => {
   const prisma = {
     kitElectoral: { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
-    eventoElectoral: { findUnique: jest.fn() },
+    eventoElectoral: { findUnique: jest.fn(), findMany: jest.fn() },
     mochilaKit: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -63,7 +63,7 @@ describe('MochilasKitService', () => {
     it('si el número es de otro QR avisa con el QR y su recinto, sin guardar', async () => {
       prisma.mochilaKit.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ codigoUnico: 'OTRO2345' });
       prisma.kitElectoral.findFirst.mockResolvedValue({ recinto: { codigoRecinto: '1487', nombre: 'UE Atahualpa' } });
-      const error = await service.asignar(KIT, { numero: 23 }).catch((e) => e);
+      const error = await service.asignar(KIT, { numero: 23 }, 'u-admin', true).catch((e) => e);
       expect(error).toBeInstanceOf(ConflictException);
       expect(error.getResponse()).toEqual(
         expect.objectContaining({
@@ -76,13 +76,34 @@ describe('MochilasKitService', () => {
 
     it('con reemplazar se lo quita al otro QR y se lo da a este, en una sola transacción', async () => {
       prisma.mochilaKit.findUnique.mockResolvedValueOnce({ numero: 5 }).mockResolvedValueOnce({ codigoUnico: 'OTRO2345' });
-      const r = await service.asignar(KIT, { numero: 23, reemplazar: true });
+      const r = await service.asignar(KIT, { numero: 23, reemplazar: true }, 'u-admin', true);
       expect(r).toEqual({ codigoUnico: 'P2ZCERV4', numeroMochila: 23, numeroAnterior: 5, quitadoDe: 'OTRO2345' });
       const [ops] = prisma.$transaction.mock.calls[0];
       expect(ops).toEqual([
         { op: 'deleteMany', args: { where: { codigoUnico: 'OTRO2345' } } },
         expect.objectContaining({ op: 'upsert' }),
       ]);
+    });
+
+    it('sin decir quién puede reemplazar, no reemplaza (lo seguro por defecto)', async () => {
+      prisma.mochilaKit.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ codigoUnico: 'OTRO2345' });
+      prisma.kitElectoral.findFirst.mockResolvedValue(null);
+      await expect(service.asignar(KIT, { numero: 23, reemplazar: true })).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('el supervisor (sin poder reemplazar) recibe el aviso aunque pida reemplazar, y no se guarda', async () => {
+      prisma.mochilaKit.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ codigoUnico: 'OTRO2345' });
+      prisma.kitElectoral.findFirst.mockResolvedValue(null);
+      const error = await service.asignar(KIT, { numero: 23, reemplazar: true }, 'u-sup', false).catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getResponse()).toEqual(
+        expect.objectContaining({
+          puedeReemplazar: false,
+          message: 'La mochila N.º 23 ya está ligada al QR OTRO2345. Revise el número de la mochila; si está bien, avise al administrador.',
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('el mismo número que ya tiene no cuenta como de otro QR', async () => {
@@ -101,6 +122,50 @@ describe('MochilasKitService', () => {
       await expect(service.asignar(KIT, { numero: 54 })).rejects.toBeInstanceOf(NotFoundException);
       await expect(service.asignar(KIT, { numero: 0 })).rejects.toThrow();
       await expect(service.asignar(KIT, { numero: 10000 })).rejects.toThrow();
+    });
+  });
+
+  describe('porQr (escanear la mochila)', () => {
+    const kitDe = (evento: string, estado: string) => ({
+      id: `kit-${evento}`,
+      codigoUnico: 'P2ZCERV4',
+      nombre: 'Kit Recinto 1440',
+      eventoId: `ev-${evento}`,
+      recinto: { codigoRecinto: '1440', nombre: 'UE Atahualpa' },
+      estadoEvento: estado,
+    });
+    const conEventos = (kits: ReturnType<typeof kitDe>[]) => {
+      prisma.kitElectoral.findMany.mockResolvedValue(kits);
+      prisma.eventoElectoral.findMany.mockResolvedValue(
+        kits.map((k) => ({ id: k.eventoId, nombre: k.eventoId.slice(3), estado: k.estadoEvento })),
+      );
+    };
+
+    it('lee el código en minúsculas o con espacios, prefiere el kit del evento activo y trae el número', async () => {
+      conEventos([kitDe('Viejo', 'CERRADO'), kitDe('2 Prueba', 'ACTIVO')]);
+      prisma.mochilaKit.findUnique.mockResolvedValue({ numero: 54 });
+      const r = await service.porQr('  p2zcerv4 ');
+      expect(prisma.kitElectoral.findMany.mock.calls[0][0].where).toEqual({ OR: [{ codigoUnico: 'P2ZCERV4' }, { qrPayload: 'P2ZCERV4' }] });
+      expect(r).toEqual({
+        kitId: 'kit-2 Prueba',
+        codigoUnico: 'P2ZCERV4',
+        numeroMochila: 54,
+        nombreKit: 'Kit Recinto 1440',
+        evento: '2 Prueba',
+        recinto: { codigoRecinto: '1440', nombre: 'UE Atahualpa' },
+      });
+    });
+
+    it('sin evento activo usa el kit más reciente; sin número da null', async () => {
+      conEventos([kitDe('Reciente', 'CERRADO'), kitDe('Viejo', 'CERRADO')]);
+      prisma.mochilaKit.findUnique.mockResolvedValue(null);
+      expect(await service.porQr('P2ZCERV4')).toEqual(expect.objectContaining({ kitId: 'kit-Reciente', numeroMochila: null }));
+    });
+
+    it('un QR que no es de un kit: 400 si no parece un código, 404 si no existe', async () => {
+      await expect(service.porQr('https://otra-cosa.com/x')).rejects.toBeInstanceOf(BadRequestException);
+      prisma.kitElectoral.findMany.mockResolvedValue([]);
+      await expect(service.porQr('ZZZZ9999')).rejects.toThrow('El QR ZZZZ9999 no es de ningún kit registrado');
     });
   });
 

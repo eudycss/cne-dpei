@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import {
+  leerCodigoQrKit,
   leerNumeroMochila,
   MAX_FILAS_CARGA_MOCHILAS,
   numeroMochilaRequestSchema,
@@ -8,6 +9,7 @@ import {
 import type {
   CargaMochilasResult,
   FilaCargaMochila,
+  MochilaPorQr,
   NumeroMochilaRequest,
   NumeroMochilaResponse,
 } from '@cne/shared-types';
@@ -81,11 +83,56 @@ export class MochilasKitService {
   }
 
   /**
-   * Pone, cambia o quita (null) el N.º de mochila del QR del kit. Si el número
-   * ya es de otro QR, avisa (409) salvo que se pida `reemplazar`.
+   * Lo que trae un QR escaneado: el kit más reciente con ese código (el del
+   * evento activo si lo hay), su recinto y el N.º de mochila si ya tiene.
    */
-  async asignar(kitId: string, input: NumeroMochilaRequest, usuarioId?: string): Promise<NumeroMochilaResponse> {
-    const { numero, reemplazar } = numeroMochilaRequestSchema.parse(input);
+  async porQr(valor: string): Promise<MochilaPorQr> {
+    const codigo = leerCodigoQrKit(valor);
+    if (!codigo) throw new BadRequestException('Ese QR no es de un kit');
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { OR: [{ codigoUnico: codigo }, { qrPayload: codigo }] },
+      orderBy: { creadoEn: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        codigoUnico: true,
+        nombre: true,
+        eventoId: true,
+        recinto: { select: { codigoRecinto: true, nombre: true } },
+      },
+    });
+    if (kits.length === 0) throw new NotFoundException(`El QR ${codigo} no es de ningún kit registrado`);
+    const eventos = await this.prisma.eventoElectoral.findMany({
+      where: { id: { in: [...new Set(kits.map((k) => k.eventoId))] } },
+      select: { id: true, nombre: true, estado: true },
+    });
+    const eventoPorId = new Map<string, { nombre: string; estado: string }>(eventos.map((e) => [e.id, e]));
+    const kit = kits.find((k) => eventoPorId.get(k.eventoId)?.estado === 'ACTIVO') ?? kits[0];
+    const mochila = await this.prisma.mochilaKit.findUnique({ where: { codigoUnico: kit.codigoUnico }, select: { numero: true } });
+    return {
+      kitId: kit.id,
+      codigoUnico: kit.codigoUnico,
+      numeroMochila: mochila?.numero ?? null,
+      nombreKit: kit.nombre,
+      evento: eventoPorId.get(kit.eventoId)?.nombre ?? '',
+      recinto: kit.recinto,
+    };
+  }
+
+  /**
+   * Pone, cambia o quita (null) el N.º de mochila del QR del kit. Si el número
+   * ya es de otro QR, avisa (409) salvo que se pida `reemplazar`, y eso solo lo
+   * puede el administrador (`puedeReemplazar`): el supervisor solo recibe el aviso.
+   */
+  async asignar(
+    kitId: string,
+    input: NumeroMochilaRequest,
+    usuarioId?: string,
+    puedeReemplazar = false,
+  ): Promise<NumeroMochilaResponse> {
+    const parsed = numeroMochilaRequestSchema.parse(input);
+    const numero = parsed.numero;
+    const reemplazar = parsed.reemplazar === true && puedeReemplazar;
     const kit = await this.prisma.kitElectoral.findUnique({ where: { id: kitId }, select: { codigoUnico: true } });
     if (!kit) throw new NotFoundException('Kit no encontrado');
     const { codigoUnico } = kit;
@@ -101,9 +148,12 @@ export class MochilasKitService {
     const quitadoDe = duenio && duenio.codigoUnico !== codigoUnico ? duenio.codigoUnico : null;
     if (quitadoDe && !reemplazar) {
       throw new ConflictException({
-        message: `La mochila N.º ${numero} ya está ligada al QR ${quitadoDe}${await this.textoRecinto(quitadoDe)}.`,
+        message:
+          `La mochila N.º ${numero} ya está ligada al QR ${quitadoDe}${await this.textoRecinto(quitadoDe)}.` +
+          (puedeReemplazar ? '' : ' Revise el número de la mochila; si está bien, avise al administrador.'),
         codigo: 'MOCHILA_EN_OTRO_QR',
         codigoUnico: quitadoDe,
+        puedeReemplazar,
       });
     }
 

@@ -9,8 +9,12 @@ const rolesDe = (metodo: string) =>
   ]);
 
 describe('MochilasKitController', () => {
-  it.each(['plantilla', 'cargar', 'asignar'])('%s: solo el administrador', (metodo) => {
+  it.each(['plantilla', 'cargar'])('%s: solo el administrador', (metodo) => {
     expect(rolesDe(metodo)).toEqual(['ADMINISTRADOR']);
+  });
+
+  it.each(['porQr', 'asignar'])('%s: administrador y técnico supervisor (escanean las mochilas)', (metodo) => {
+    expect(rolesDe(metodo)).toEqual(['ADMINISTRADOR', 'TECNICO_SUPERVISOR']);
   });
 
   it('reporte: también técnico supervisor y lector (los mismos que ven la lista de kits)', () => {
@@ -28,10 +32,14 @@ describe('MochilasKitController', () => {
     expect(cargar).toHaveBeenCalledWith(file, 'ev', true, 'u1');
   });
 
-  it('asignar pasa quién hizo el cambio', () => {
+  it('asignar pasa quién hizo el cambio, y solo el administrador puede quitarle el número a otro QR', () => {
     const asignar = jest.fn().mockResolvedValue({});
     const ctrl = new MochilasKitController({ asignar } as never);
-    ctrl.asignar('kit-1', { numero: 54 }, { sub: 'u1' } as never);
-    expect(asignar).toHaveBeenCalledWith('kit-1', { numero: 54 }, 'u1');
+    ctrl.asignar('kit-1', { numero: 54, reemplazar: true }, { sub: 'u1', roles: ['ADMINISTRADOR'] } as never);
+    ctrl.asignar('kit-1', { numero: 54, reemplazar: true }, { sub: 'u2', roles: ['TECNICO_SUPERVISOR'] } as never);
+    expect(asignar.mock.calls).toEqual([
+      ['kit-1', { numero: 54, reemplazar: true }, 'u1', true],
+      ['kit-1', { numero: 54, reemplazar: true }, 'u2', false],
+    ]);
   });
 });
