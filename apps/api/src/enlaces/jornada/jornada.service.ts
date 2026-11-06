@@ -663,15 +663,16 @@ function personasDelKit(
   kit: { operador: { nombres: string; apellidos: string; telefono: string | null } | null },
   pareja:
     | {
-        operador: { apellidosNombres: string; telefono: string | null };
+        operador: { apellidosNombres: string; telefono: string | null } | null;
         asistente: { apellidosNombres: string; telefono: string | null } | null;
       }
     | undefined,
 ): PersonaJornada[] {
   if (pareja) {
-    const personas: PersonaJornada[] = [
-      { nombre: pareja.operador.apellidosNombres, telefono: pareja.operador.telefono, rol: 'Op.' },
-    ];
+    const personas: PersonaJornada[] = [];
+    if (pareja.operador) {
+      personas.push({ nombre: pareja.operador.apellidosNombres, telefono: pareja.operador.telefono, rol: 'Op.' });
+    }
     if (pareja.asistente) {
       personas.push({ nombre: pareja.asistente.apellidosNombres, telefono: pareja.asistente.telefono, rol: 'Asis.' });
     }

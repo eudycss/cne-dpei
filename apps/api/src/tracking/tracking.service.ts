@@ -80,7 +80,7 @@ type PersonaCdaRecinto = { apellidosNombres: string; telefono: string | null; gr
  * número ("2.ª pareja") porque la APK solo muestra el nombre y este texto.
  */
 export function parejasDelRecinto(
-  parejas: { kitId: string | null; operador: PersonaCdaRecinto; asistente: PersonaCdaRecinto | null }[],
+  parejas: { kitId: string | null; operador: PersonaCdaRecinto | null; asistente: PersonaCdaRecinto | null }[],
   usuarioId: string,
   kitIds: Set<string>,
 ): MiAsignacionCompanero[] {

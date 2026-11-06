@@ -47,10 +47,16 @@ export function VistaPreviaParejas({ vista, primeraColumna = 'Fila' }: { vista: 
                   )}
                 </td>
                 <td>
-                  {f.operador.nombre ?? '—'}
-                  <br />
-                  <span className="muted mono">{f.operador.cedula}</span>
-                  {f.operador.nuevo && <span className="ocda-estado pendiente">Nuevo</span>}
+                  {f.operador ? (
+                    <>
+                      {f.operador.nombre ?? '—'}
+                      <br />
+                      <span className="muted mono">{f.operador.cedula}</span>
+                      {f.operador.nuevo && <span className="ocda-estado pendiente">Nuevo</span>}
+                    </>
+                  ) : (
+                    <span className="muted">Sin operador</span>
+                  )}
                 </td>
                 <td>
                   {f.asistente ? (

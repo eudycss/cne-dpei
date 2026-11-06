@@ -1268,7 +1268,8 @@ export interface ParejaReservaCda {
   id: string;
   /** AAAA-MM-DD */
   fecha: string;
-  operador: PersonaParejaCda;
+  /** null = reserva incompleta (solo el asistente): hay que completarla antes de asignarle un recinto. */
+  operador: PersonaParejaCda | null;
   asistente: PersonaParejaCda | null;
 }
 
@@ -1480,7 +1481,8 @@ export interface IntercambiarParejaCdaRequest {
 
 export interface FilaImportParejaCda {
   fila: number;
-  operador: { cedula: string; nombre: string | null; nuevo: boolean };
+  /** null solo en una reserva con asistente y sin operador. */
+  operador: { cedula: string; nombre: string | null; nuevo: boolean } | null;
   asistente: { cedula: string; nombre: string | null; nuevo: boolean } | null;
   recinto: RecintoParejaCda | null;
   /** codigo_recinto = RESERVA: la pareja queda de reserva (sin recinto ni kit). */

@@ -891,6 +891,63 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(within(lista).getByRole('button', { name: 'Asignar a recinto la pareja de reserva de SOLANO PEDRO' })).toBeInTheDocument();
     });
 
+    it('reserva sin operador: muestra el espacio vacío, no deja asignar recinto y se completa con un operador libre', async () => {
+      const VEGA = { id: 'as9', apellidosNombres: 'VEGA SAMAEL', cedula: '1004424790', telefono: null, dispositivo: null, grupo: 'ASISTENTE' as const };
+      mockApi({ reserva: [{ id: 'pR2', fecha: DIA, operador: null, asistente: VEGA }] });
+      const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
+      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+
+      const lista = await screen.findByRole('list', { name: `Parejas de reserva del ${DIA}` });
+      expect(lista).toHaveTextContent('Sin operador');
+      expect(lista).toHaveTextContent('VEGA SAMAEL');
+      const asignar = within(lista).getByRole('button', { name: 'Asignar a recinto la pareja de reserva de VEGA SAMAEL' });
+      expect(asignar).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(asignar);
+      expect(screen.queryByRole('dialog', { name: 'Asignar a recinto' })).not.toBeInTheDocument();
+      expect(asignar).toHaveAccessibleDescription('Complete el operador antes de asignarle un recinto: el kit va a su nombre.');
+
+      await userEvent.click(within(lista).getByRole('button', { name: 'Completar el operador de la reserva de VEGA SAMAEL' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Completar el operador' });
+      const combo = await within(dialogo).findByRole('combobox', { name: 'Operador CDA' });
+      expect(within(dialogo).getByRole('button', { name: 'Completar' })).toBeDisabled();
+      await userEvent.selectOptions(combo, 'op2');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Completar' }));
+
+      await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/parejas-cda/pR2', { operadorCdaId: 'op2' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Completar el operador' })).not.toBeInTheDocument());
+      expect(sileo.success).toHaveBeenCalledWith({ title: 'Reserva completada', description: 'VEGA SAMAEL' });
+    });
+
+    it('completar el asistente envía su id; quien no es admin no ve "Completar"', async () => {
+      mockApi({ reserva: [RESERVA] }, { asistentes: [JUAN] });
+      const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
+      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      const { unmount } = renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Completar el asistente de la reserva de SOLANO PEDRO' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Completar el asistente' });
+      await userEvent.selectOptions(await within(dialogo).findByRole('combobox', { name: 'Asistente CDA' }), 'as1');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Completar' }));
+      await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/parejas-cda/pR', { asistenteCdaId: 'as1' }));
+      unmount();
+
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+      await screen.findByRole('list', { name: `Parejas de reserva del ${DIA}` });
+      expect(screen.queryByRole('button', { name: /^Completar / })).not.toBeInTheDocument();
+    });
+
+    it('completar el asistente sin asistentes libres lo dice y no deja guardar', async () => {
+      mockApi({ reserva: [RESERVA] }, { asistentes: [] });
+      renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Completar el asistente de la reserva de SOLANO PEDRO' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Completar el asistente' });
+      expect(await within(dialogo).findByRole('status')).toHaveTextContent('No hay ningún Asistente CDA libre este día.');
+      expect(within(dialogo).getByRole('button', { name: 'Completar' })).toBeDisabled();
+    });
+
     it('sin parejas de reserva, la pestaña explica cómo cargarlas', async () => {
       mockApi({ reserva: [] });
       renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);

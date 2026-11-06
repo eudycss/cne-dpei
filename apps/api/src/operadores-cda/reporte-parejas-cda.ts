@@ -53,15 +53,18 @@ function resumen(parejas: ParejaCdaFila[], reserva: number): Celda[][] {
   ];
 }
 
+/** Para ordenar la reserva: el operador o, en una reserva sin él, el asistente. */
+const nombreReserva = (p: ParejaReservaCda) => p.operador?.apellidosNombres ?? p.asistente?.apellidosNombres ?? '';
+
 /** Operadores y Asistentes CDA activos que no están en ninguna pareja del día. */
 function tablaReserva(fecha: string, reserva: ParejaReservaCda[]): TablaReporte {
   const filas: Celda[][] = [...reserva]
-    .sort((a, b) => a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es'))
+    .sort((a, b) => nombreReserva(a).localeCompare(nombreReserva(b), 'es'))
     .map((p, i) => [
       i + 1,
-      p.operador.apellidosNombres,
-      p.operador.cedula,
-      celular(p.operador),
+      p.operador?.apellidosNombres ?? '— (sin operador)',
+      p.operador?.cedula ?? '',
+      p.operador ? celular(p.operador) : '',
       p.asistente?.apellidosNombres ?? '— (sin asistente)',
       p.asistente?.cedula ?? '',
       p.asistente ? celular(p.asistente) : '',

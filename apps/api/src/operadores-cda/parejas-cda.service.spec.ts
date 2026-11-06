@@ -842,7 +842,7 @@ describe('ParejasCdaService', () => {
     it('una cédula de 9 dígitos (Excel le quitó el 0 inicial) se completa', async () => {
       const file = await plantilla([{ cedula_operador: '401234562', nombre_operador: 'CERO', codigo_recinto: '957' }]);
       const r = await service.importar(file, DIA, false, 'admin');
-      expect(r.filas[0].operador.cedula).toBe('0401234562');
+      expect(r.filas[0].operador?.cedula).toBe('0401234562');
     });
   });
 
@@ -1960,6 +1960,128 @@ describe('ParejasCdaService', () => {
       await expect(service.asignarKit('pR')).rejects.toThrow('Esta pareja es de reserva: asígnele un recinto para darle kit');
       await expect(service.darKitPropio('pR')).rejects.toThrow('Esta pareja es de reserva: asígnele un recinto para darle kit');
       expect(kits.create).not.toHaveBeenCalled();
+    });
+
+    describe('reserva incompleta: solo el asistente', () => {
+      const VEGA = { ...ASISTENTE, id: 'as9', apellidosNombres: 'VEGA SAMAEL', cedula: '1004424790', usuarioId: null };
+      const SOLO_AS = pareja({ id: 'pA', recintoId: null, recinto: null, operadorCdaId: null, operador: null, asistenteCdaId: 'as9', asistente: VEGA });
+
+      it('listar: sale en la reserva con el operador vacío', async () => {
+        delDia([], [SOLO_AS]);
+        const dia = await service.listar(DIA);
+        expect(dia.reserva).toMatchObject([{ id: 'pA', operador: null, asistente: { id: 'as9', apellidosNombres: 'VEGA SAMAEL' } }]);
+      });
+
+      it('importar: RESERVA acepta una fila con solo el asistente (avisa que falta el operador) y la guarda sin él', async () => {
+        prisma.operadorCda.findMany.mockResolvedValue([{ id: 'as9', cedula: '1004424790', grupo: 'ASISTENTE', activo: true, apellidosNombres: 'VEGA SAMAEL' }]);
+        prisma.parejaCda.create.mockResolvedValueOnce({ id: 'pA' });
+        const fila = { cedula_asistente: '1004424790', codigo_recinto: 'RESERVA' };
+
+        const previa = await service.importar(await plantilla([fila]), DIA, false, 'admin');
+        expect(previa.filas[0]).toMatchObject({ reserva: true, operador: null, asistente: { cedula: '1004424790' }, errores: [] });
+        expect(previa.filas[0].avisos).toContain('Reserva sin operador: complétela antes de asignarle un recinto');
+
+        const r = await service.importar(await plantilla([fila]), DIA, true, 'admin');
+        expect(prisma.parejaCda.create.mock.calls[0][0].data).toMatchObject({ operadorCdaId: null, asistenteCdaId: 'as9', recintoId: null });
+        expect(r.guardadas).toBe(1);
+        expect(prisma.operadorCda.create).not.toHaveBeenCalled();
+      });
+
+      it('importar: sin operador solo vale en RESERVA y con asistente', async () => {
+        prisma.operadorCda.findMany.mockResolvedValue([{ id: 'as9', cedula: '1004424790', grupo: 'ASISTENTE', activo: true, apellidosNombres: 'VEGA SAMAEL' }]);
+        prisma.recinto.findMany.mockResolvedValue([{ id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA', tipo: 'CDA' }]);
+        const file = await plantilla([
+          { cedula_asistente: '1004424790', codigo_recinto: '957' },
+          { codigo_recinto: 'RESERVA', articulos: 'LAP' },
+        ]);
+
+        const r = await service.importar(file, DIA, true, 'admin');
+
+        for (const f of r.filas) expect(f.errores.join(' ')).toContain('Falta el operador: solo una pareja de RESERVA puede ir sin operador');
+        expect(r.guardadas).toBe(0);
+        expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+      });
+
+      it('editar: "Completar" pone al operador; quitarle el asistente la dejaría vacía', async () => {
+        prisma.parejaCda.findUnique.mockResolvedValue(SOLO_AS);
+        prisma.operadorCda.findUnique.mockResolvedValue({ grupo: 'OPERADOR', activo: true });
+
+        await service.editar('pA', { operadorCdaId: 'op1' });
+        expect(prisma.parejaCda.update).toHaveBeenCalledWith({ where: { id: 'pA' }, data: { operadorCdaId: 'op1', asistenteCdaId: 'as9' } });
+        // Comprueba que el operador esté libre ese día en cualquier columna.
+        expect(prisma.parejaCda.findFirst.mock.calls[0][0].where.OR).toEqual([
+          { operadorCdaId: { in: ['op1', 'as9'] } },
+          { asistenteCdaId: { in: ['op1', 'as9'] } },
+        ]);
+
+        prisma.parejaCda.update.mockClear();
+        await expect(service.editar('pA', { asistenteCdaId: null })).rejects.toThrow('La pareja de reserva no puede quedar sin nadie');
+        expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      });
+
+      it('editar: el asistente que se completa no puede estar en otra pareja ese día', async () => {
+        prisma.parejaCda.findUnique.mockResolvedValue(RESERVA);
+        prisma.operadorCda.findUnique.mockResolvedValue({ grupo: 'ASISTENTE', activo: true });
+        prisma.parejaCda.findFirst.mockResolvedValueOnce({ operadorCdaId: null, asistenteCdaId: 'as9' });
+
+        await expect(service.editar('pR', { asistenteCdaId: 'as9' })).rejects.toThrow(`El asistente ya tiene pareja el ${DIA}`);
+        expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      });
+
+      it('asignar a recinto: no se puede sin operador (el kit va a su nombre)', async () => {
+        prisma.parejaCda.findUnique.mockResolvedValueOnce(SOLO_AS);
+        await expect(service.asignarRecinto('pA', 'r1')).rejects.toThrow(
+          'Esta reserva no tiene operador: complétela con un Operador CDA antes de asignarle un recinto',
+        );
+        expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
+        expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      });
+
+      it('intercambiar: sin operador no cambia recinto ni operador, y el asistente solo si no queda vacía', async () => {
+        prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'pA' ? SOLO_AS : where.id === 'pR' ? RESERVA : pareja()),
+        );
+        await expect(service.intercambiar('pA', 'p1', 'RECINTO')).rejects.toThrow('Esta reserva no tiene operador');
+        await expect(service.intercambiar('pA', 'p1', 'OPERADOR')).rejects.toThrow('Esta reserva no tiene operador');
+        // RESERVA no tiene asistente: VEGA se iría y pA quedaría sin nadie.
+        await expect(service.intercambiar('pA', 'pR', 'ASISTENTE')).rejects.toThrow('La pareja de reserva no puede quedar sin nadie');
+        expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+
+        // Desde la reserva sin operador: se libera primero el asistente de la otra (la base no deja una pareja vacía).
+        await service.intercambiar('pA', 'p1', 'ASISTENTE');
+        expect(prisma.parejaCda.update.mock.calls.map((c) => c[0])).toEqual([
+          { where: { id: 'p1' }, data: { asistenteCdaId: null } },
+          { where: { id: 'pA' }, data: { asistenteCdaId: 'as1' } },
+          { where: { id: 'p1' }, data: { asistenteCdaId: 'as9' } },
+        ]);
+      });
+
+      it('intercambiar asistentes entre dos reservas sin operador: 400 (quedaría una vacía por un instante)', async () => {
+        const OTRA = { ...SOLO_AS, id: 'pB', asistenteCdaId: 'as8', asistente: { ...VEGA, id: 'as8', apellidosNombres: 'ZAMBRANO HAROL' } };
+        prisma.parejaCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(where.id === 'pA' ? SOLO_AS : OTRA));
+        await expect(service.intercambiar('pA', 'pB', 'ASISTENTE')).rejects.toThrow('Las dos reservas no tienen operador');
+        expect(prisma.parejaCda.update).not.toHaveBeenCalled();
+      });
+
+      it('copiar: lleva la reserva sin operador; si su asistente ya tiene pareja, la omite con su nombre', async () => {
+        prisma.parejaCda.findMany.mockResolvedValueOnce([SOLO_AS]).mockResolvedValueOnce([]);
+        prisma.operadorCda.findMany.mockResolvedValue([{ id: 'as9', grupo: 'ASISTENTE' }]);
+        expect(await service.copiar(DIA, '2026-11-05', 'uAdmin')).toEqual({ copiadas: 1, omitidas: [] });
+        expect(prisma.parejaCda.createMany.mock.calls[0][0].data[0]).toMatchObject({ operadorCdaId: null, asistenteCdaId: 'as9', recintoId: null });
+
+        prisma.parejaCda.findMany.mockResolvedValueOnce([SOLO_AS]).mockResolvedValueOnce([{ operadorCdaId: 'op1', asistenteCdaId: 'as9' }]);
+        expect(await service.copiar(DIA, '2026-11-05', 'uAdmin')).toEqual({
+          copiadas: 0,
+          omitidas: [{ pareja: 'VEGA SAMAEL · Reserva', motivo: 'El asistente ya tiene pareja ese día' }],
+        });
+      });
+
+      it('quitarla solo la borra (no tiene kit)', async () => {
+        prisma.parejaCda.findUnique.mockResolvedValueOnce(SOLO_AS);
+        await service.eliminar('pA');
+        expect(prisma.parejaCda.delete).toHaveBeenCalledWith({ where: { id: 'pA' } });
+        expect(kits.quitarOperador).not.toHaveBeenCalled();
+      });
     });
 
     it('quitar una pareja de reserva solo la borra', async () => {
