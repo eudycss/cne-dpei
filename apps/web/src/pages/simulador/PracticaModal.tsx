@@ -17,6 +17,22 @@ import {
 } from '../../lib/queries/simulador';
 
 /** Campos numéricos del formulario (se escriben como texto y se validan con el esquema compartido). */
+/**
+ * Configuración recomendada (un pomodoro): 25 min alcanzan para medir sin cansar.
+ * Meta alcanzable: ~7 registros por minuto (15 actas de 12 filas); 10 % de trampas
+ * mide si leen las letras sin volverlo injusto; 2 intentos: el primero para
+ * conocer la pantalla, el reporte toma el mejor.
+ */
+export const CONFIG_RECOMENDADA = {
+  filasPorActa: '12',
+  votoMin: '0',
+  votoMax: '350',
+  metaActas: '15',
+  plazoMinutos: '25',
+  pctDigitosDistintos: '10',
+  intentosMax: '2',
+};
+
 const NUMEROS = ['filasPorActa', 'votoMin', 'votoMax', 'metaActas', 'plazoMinutos', 'pctDigitosDistintos', 'intentosMax'] as const;
 type CampoNumero = (typeof NUMEROS)[number];
 
@@ -36,6 +52,7 @@ const ETIQUETAS: Record<CampoNumero, string> = {
 const AYUDAS: Partial<Record<CampoNumero, string>> = {
   filasPorActa: 'Candidatos y campos de cada acta (1 a 40).',
   votoMax: 'Hasta 999.',
+  metaActas: 'Las que debe completar para «Cumplió». Con 12 filas, 15 actas = 180 registros (unos 7 por minuto en 25 min).',
   plazoMinutos: 'Lo que tiene cada persona para digitar: se cuentan los registros que alcance. Corre desde que empieza.',
   pctDigitosDistintos: 'En esas filas los casilleros muestran otro número: lo correcto es digitar lo de las letras.',
 };
@@ -66,7 +83,7 @@ function formularioInicial(p?: PracticaDigitacion): Formulario {
     nombre: '',
     inicio: '',
     fin: '',
-    numeros: { filasPorActa: '12', votoMin: '0', votoMax: '350', metaActas: '200', plazoMinutos: '60', pctDigitosDistintos: '10', intentosMax: '1' },
+    numeros: CONFIG_RECOMENDADA,
     cargos: [],
     personas: [],
   };
