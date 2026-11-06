@@ -40,7 +40,14 @@ describe('KitsService', () => {
     parejaCda: {
       count: jest.fn(),
     },
-    $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
+    mochilaKit: {
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    // Arreglo de operaciones o transacción interactiva (recibe el mismo cliente).
+    $transaction: jest.fn((arg: unknown): Promise<unknown> =>
+      typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
+    ),
     $queryRaw: jest.fn(),
   };
 
@@ -79,11 +86,14 @@ describe('KitsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
+    prisma.$transaction.mockImplementation((arg: unknown): Promise<unknown> =>
+      typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
+    );
     prisma.itemKitCatalog.findMany.mockResolvedValue([]);
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
     prisma.kitElectoral.findMany.mockResolvedValue([]);
     prisma.parejaCda.count.mockResolvedValue(0);
+    prisma.mochilaKit.findMany.mockResolvedValue([]);
 
     const moduleRef = await Test.createTestingModule({
       providers: [KitsService, { provide: PrismaService, useValue: prisma }],
@@ -114,12 +124,28 @@ describe('KitsService', () => {
       await service.list({ eventoId, search: 'Juan Montalvo' });
 
       const sql = prisma.$queryRaw.mock.calls[0][0];
-      expect(sql.sql).toContain('FROM kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id');
-      expect(sql.sql).toContain('t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto');
+      expect(sql.sql).toContain(
+        'FROM kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id LEFT JOIN mochilas_kit m ON m.codigo_unico = t.codigo_unico',
+      );
+      expect(sql.sql).toContain("t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto,'mochila ' || m.numero");
       expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%montalvo%', eventoId]));
       expect(sql.sql).toContain('(t.evento_id = ?::uuid) AND');
       // Los ids encontrados se combinan con el resto del filtro (evento, prueba).
       expect(prisma.kitElectoral.count.mock.calls[0][0].where).toEqual({ eventoId, esPrueba: false, id: { in: ['k1'] } });
+    });
+  });
+
+  describe('list: N.º de mochila', () => {
+    it('cada kit trae el N.º de la mochila de su QR (null si no tiene)', async () => {
+      prisma.kitElectoral.count.mockResolvedValueOnce(2);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow(), kitRow({ id: 'k2', codigoUnico: 'SINNUM22' })]);
+      prisma.mochilaKit.findMany.mockResolvedValueOnce([{ codigoUnico: 'ABCD2345', numero: 54 }]);
+      const r = await service.list({ eventoId });
+      expect(prisma.mochilaKit.findMany).toHaveBeenCalledWith({
+        where: { codigoUnico: { in: ['ABCD2345', 'SINNUM22'] } },
+        select: { codigoUnico: true, numero: true },
+      });
+      expect(r.items.map((k) => k.numeroMochila)).toEqual([54, null]);
     });
   });
 
@@ -964,6 +990,11 @@ describe('KitsService', () => {
           data: propio.data,
         });
         expect(r).toMatchObject({ codigoUnico: 'NUEVO222', codigoAnterior: 'ABCD2345', otrosEventos: 2 });
+        // La mochila es la misma con otra etiqueta: su número pasa al código nuevo.
+        expect(prisma.mochilaKit.updateMany).toHaveBeenCalledWith({
+          where: { codigoUnico: 'ABCD2345' },
+          data: { codigoUnico: propio.data.codigoUnico },
+        });
       });
 
       it('un kit de prueba o sin recinto no toca kits de otros eventos', async () => {
@@ -1000,6 +1031,8 @@ describe('KitsService', () => {
         prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow());
         prisma.kitElectoral.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
         await expect(service.regenerarCodigo(kitId, {})).rejects.toThrow(ConflictException);
+        // Tampoco se mueve el N.º de mochila.
+        expect(prisma.mochilaKit.updateMany).not.toHaveBeenCalled();
       });
 
       it('con la jornada iniciada pide justificación', async () => {

@@ -384,6 +384,30 @@ export const desasignarKitSchema = z.object({
 // el operador se referencia por su cédula, el recinto por su código y el
 // contenido por los códigos de ítems del catálogo (separados por coma).
 // La asignación es opcional: si se omiten ambos, el kit queda en bodega.
+// --- N.º de mochila del kit (número pintado en la mochila física con el QR) ---
+export const MAX_NUMERO_MOCHILA = 9999;
+export const MAX_FILAS_CARGA_MOCHILAS = 2000;
+export const numeroMochilaSchema = z
+  .number({ invalid_type_error: 'El N.º de mochila debe ser un número' })
+  .int('El N.º de mochila debe ser un número entero')
+  .min(1, 'El N.º de mochila va de 1 a 9999')
+  .max(MAX_NUMERO_MOCHILA, 'El N.º de mochila va de 1 a 9999');
+export const numeroMochilaRequestSchema = z.object({
+  numero: numeroMochilaSchema.nullable(),
+  reemplazar: z.boolean().optional(),
+});
+/**
+ * Lee el N.º de mochila escrito en una celda o un campo: "45", "045", "N.º 45",
+ * "#45", "M-45" → 45. null si no es un número de 1 a 9999.
+ */
+export function leerNumeroMochila(valor: unknown): number | null {
+  const texto = String(valor ?? '').trim();
+  const m = /^(?:n\.?\s*[º°o]?\.?|no\.?|#|m-?|mochila)?\s*(\d{1,4})(?:\.0+)?$/i.exec(texto);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n >= 1 && n <= MAX_NUMERO_MOCHILA ? n : null;
+}
+
 export const bulkKitRowSchema = z
   .object({
     nombre: z.string().min(1, 'Nombre requerido').max(160),

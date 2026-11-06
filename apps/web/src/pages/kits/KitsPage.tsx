@@ -35,6 +35,8 @@ import {
 } from '../../lib/queries/kits';
 import { PasoFlujo } from '../../components/PasoFlujo';
 import { QrNuevoModal, puedeQrNuevo } from './QrNuevoModal';
+import { NumeroMochilaModal } from './NumeroMochilaModal';
+import { MochilasKitPanel } from './MochilasKitPanel';
 import { crearKitConParejaCda, getDisponiblesKitCda } from '../../lib/queries/operadores-cda';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -91,6 +93,7 @@ export function KitsPage() {
   const [assigning, setAssigning] = useState<Kit | null>(null);
   const [editing, setEditing] = useState<Kit | null>(null);
   const [qrNuevo, setQrNuevo] = useState<Kit | null>(null);
+  const [mochila, setMochila] = useState<Kit | null>(null);
   const [importResult, setImportResult] = useState<BulkUploadResult | null>(null);
   const [incluirPrueba, setIncluirPrueba] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -311,8 +314,8 @@ export function KitsPage() {
           {/* Toolbar */}
           <div className="row" style={{ marginBottom: '0.75rem' }}>
             <SearchInput
-              ariaLabel="Buscar kit por nombre, código o recinto"
-              placeholder="Buscar por kit, código o recinto…"
+              ariaLabel="Buscar kit por nombre, código, recinto o N.º de mochila"
+              placeholder="Buscar por kit, código, recinto o mochila…"
               value={search}
               onChange={(v) => setSearch(v)}
               style={{ flex: 1 }}
@@ -363,6 +366,7 @@ export function KitsPage() {
                 </button>
               </>
             )}
+            <MochilasKitPanel eventoId={eventoId} isAdmin={isAdmin} onCargado={invalidateKits} />
           </div>
 
           {isLoading ? (
@@ -383,6 +387,7 @@ export function KitsPage() {
                       </th>
                     )}
                     <th>Código</th>
+                    <th>Mochila</th>
                     <th>Nombre</th>
                     <th>Contenidos</th>
                     <th>Operador</th>
@@ -406,6 +411,25 @@ export function KitsPage() {
                         <code style={{ fontFamily: 'monospace', fontSize: '0.9rem', letterSpacing: '0.05em' }}>
                           {kit.codigoUnico}
                         </code>
+                      </td>
+                      <td>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            style={{ fontSize: '0.8rem', padding: '0.2rem 0.55rem', whiteSpace: 'nowrap' }}
+                            aria-label={
+                              kit.numeroMochila != null
+                                ? `Mochila N.º ${kit.numeroMochila} de ${kit.nombre}: cambiar`
+                                : `Poner N.º de mochila a ${kit.nombre}`
+                            }
+                            onClick={() => setMochila(kit)}
+                          >
+                            {kit.numeroMochila != null ? `N.º ${kit.numeroMochila} ✎` : '+ N.º'}
+                          </button>
+                        ) : (
+                          <span className={kit.numeroMochila != null ? '' : 'muted'}>{kit.numeroMochila ?? '—'}</span>
+                        )}
                       </td>
                       <td>
                         {kit.nombre}
@@ -506,7 +530,7 @@ export function KitsPage() {
                   ))}
                   {kitsData?.items.length === 0 && (
                     <tr>
-                      <td colSpan={isAdmin ? 7 : 5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      <td colSpan={isAdmin ? 8 : 6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                         {debounced ? 'No hay kits que coincidan con la búsqueda.' : 'No hay kits creados para este evento.'}
                       </td>
                     </tr>
@@ -593,6 +617,17 @@ export function KitsPage() {
           onClose={() => setAssigning(null)}
           onDone={() => {
             setAssigning(null);
+            invalidateKits();
+          }}
+        />
+      )}
+
+      {mochila && (
+        <NumeroMochilaModal
+          kit={mochila}
+          onClose={() => setMochila(null)}
+          onDone={() => {
+            setMochila(null);
             invalidateKits();
           }}
         />

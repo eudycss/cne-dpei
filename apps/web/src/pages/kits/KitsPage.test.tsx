@@ -10,12 +10,13 @@ import { AuthProvider } from '../../auth/AuthContext';
 import { api } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
-  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn() },
 }));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
+const putMock = api.put as unknown as ReturnType<typeof vi.fn>;
 
 const USER_KEY = 'cne.user';
 
@@ -492,6 +493,96 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     expect(screen.queryByText('Recinto')).not.toBeInTheDocument();
   });
 
+  describe('N.º de mochila', () => {
+    it('la columna Mochila muestra el número; el admin lo abre para cambiarlo y se guarda con PUT', async () => {
+      kitsActuales = [kit({ numeroMochila: 54 }), kit({ id: 'otro-kit', codigoUnico: 'SINNUM22', nombre: 'Kit sin número', numeroMochila: null })];
+      putMock.mockResolvedValue({ data: { codigoUnico: 'ABCD2345', numeroMochila: 55, numeroAnterior: 54, quitadoDe: null } });
+      renderKitsPage();
+      expect(await screen.findByRole('button', { name: 'Poner N.º de mochila a Kit sin número' })).toHaveTextContent('+ N.º');
+      await userEvent.click(screen.getByRole('button', { name: 'Mochila N.º 54 de 28 — Escuela Central: cambiar' }));
+
+      const dialogo = screen.getByRole('dialog', { name: 'N.º de mochila' });
+      const campo = within(dialogo).getByLabelText('N.º de mochila (1 a 9999)');
+      expect(campo).toHaveValue('54');
+      // Sin cambios no se guarda.
+      expect(within(dialogo).getByRole('button', { name: 'Guardar' })).toBeDisabled();
+      await userEvent.clear(campo);
+      await userEvent.type(campo, '55');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(putMock).toHaveBeenCalledWith(`/kits/${kitId}/mochila`, { numero: 55 }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'N.º de mochila' })).not.toBeInTheDocument());
+    });
+
+    it('un número que no es válido avisa y no deja guardar', async () => {
+      renderKitsPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Poner N.º de mochila a 28 — Escuela Central' }));
+      const dialogo = screen.getByRole('dialog', { name: 'N.º de mochila' });
+      await userEvent.type(within(dialogo).getByLabelText('N.º de mochila (1 a 9999)'), 'abc');
+      expect(within(dialogo).getByRole('alert')).toHaveTextContent('Escriba un número de 1 a 9999.');
+      expect(within(dialogo).getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    });
+
+    it('si el número ya es de otro QR lo explica y permite pasárselo a este kit', async () => {
+      putMock
+        .mockRejectedValueOnce({
+          isAxiosError: true,
+          response: { status: 409, data: { codigo: 'MOCHILA_EN_OTRO_QR', message: 'La mochila N.º 23 ya está ligada al QR OTRO2345 (recinto 1487 · UE Atahualpa).' } },
+        })
+        .mockResolvedValueOnce({ data: { codigoUnico: 'ABCD2345', numeroMochila: 23, numeroAnterior: null, quitadoDe: 'OTRO2345' } });
+      renderKitsPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Poner N.º de mochila a 28 — Escuela Central' }));
+      const dialogo = screen.getByRole('dialog', { name: 'N.º de mochila' });
+      await userEvent.type(within(dialogo).getByLabelText('N.º de mochila (1 a 9999)'), '23');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+
+      expect(await within(dialogo).findByText(/ya está ligada al QR OTRO2345/)).toBeInTheDocument();
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, pasárselo a este kit' }));
+      await waitFor(() => expect(putMock).toHaveBeenLastCalledWith(`/kits/${kitId}/mochila`, { numero: 23, reemplazar: true }));
+    });
+
+    it('un LECTOR ve el número como texto y solo el reporte de mochilas', async () => {
+      setSessionUser(['LECTOR']);
+      kitsActuales = [kit({ numeroMochila: 54 })];
+      renderKitsPage();
+      await screen.findByText('ABCD2345');
+      expect(screen.getByText('54')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Mochila N.º 54/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reporte mochilas' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cargar mochilas' })).not.toBeInTheDocument();
+    });
+
+    it('cargar mochilas: primero la vista previa (errores arriba) y solo al confirmar se guarda', async () => {
+      const previa = {
+        aplicada: false,
+        guardadas: 1,
+        errores: 1,
+        filas: [
+          { fila: 2, codigoRecinto: '1440', nombreRecinto: 'UE Atahualpa', codigoUnico: 'AAAA2222', numero: 54, estado: 'NUEVA', mensaje: null },
+          { fila: 3, codigoRecinto: '971', nombreRecinto: null, codigoUnico: null, numero: 62, estado: 'ERROR', mensaje: 'El recinto 971 tiene 2 kits' },
+        ],
+      };
+      postMock.mockImplementation((url: string) =>
+        Promise.resolve({ data: url.includes('aplicar=true') ? { ...previa, aplicada: true } : previa }),
+      );
+      renderKitsPage();
+      await screen.findByText('ABCD2345');
+      const archivo = new File(['Recinto,N.º mochila\n1440,54\n971,62\n'], 'mochilas.csv', { type: 'text/csv' });
+      await userEvent.upload(screen.getByLabelText('Archivo de N.º de mochila'), archivo);
+
+      const dialogo = await screen.findByRole('dialog', { name: 'Revisar mochilas antes de guardar' });
+      expect(within(dialogo).getByRole('status')).toHaveTextContent('Se guardarán 1 N.º de mochila. 1 fila con error no se guardará');
+      const filas = within(dialogo).getAllByRole('row').slice(1);
+      expect(within(filas[0]).getByText('Error')).toBeInTheDocument();
+      expect(within(filas[1]).getByText('Nueva')).toBeInTheDocument();
+      expect(postMock).toHaveBeenCalledTimes(1);
+      expect(postMock.mock.calls[0][0]).toBe('/kits/mochilas/carga?eventoId=55555555-5555-5555-5555-555555555555&aplicar=false');
+
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar 1' }));
+      await waitFor(() => expect(postMock.mock.calls[1][0]).toContain('aplicar=true'));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Revisar mochilas antes de guardar' })).not.toBeInTheDocument());
+    });
+  });
+
   describe('QR nuevo', () => {
     const abrir = async () => {
       renderKitsPage();
@@ -538,10 +629,10 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     });
   });
 
-  it('el buscador se ofrece por kit, código o recinto y manda lo escrito a la API', async () => {
+  it('el buscador se ofrece por kit, código, recinto o N.º de mochila y manda lo escrito a la API', async () => {
     renderKitsPage();
     await screen.findByText('ABCD2345');
-    const buscador = screen.getByRole('textbox', { name: 'Buscar kit por nombre, código o recinto' });
+    const buscador = screen.getByRole('textbox', { name: 'Buscar kit por nombre, código, recinto o N.º de mochila' });
     fireEvent.change(buscador, { target: { value: 'juan montalvo' } });
     await waitFor(() =>
       expect(getMock.mock.calls.some(([url]) => String(url).startsWith('/kits?') && String(url).includes('search=juan+montalvo'))).toBe(true),

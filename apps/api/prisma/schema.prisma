@@ -413,6 +413,20 @@ model KitElectoral {
   @@map("kits_electorales")
 }
 
+/// N.º pintado en la mochila física ↔ código del QR pegado en ella. Es de la
+/// mochila, no del evento: el código se repite en todos los eventos del recinto
+/// (ver codigoParaKit), así que el número se carga una sola vez.
+model MochilaKit {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigoUnico      String   @unique @map("codigo_unico") @db.VarChar(40)
+  /// 1 a 9999 (CHECK en la migración).
+  numero           Int      @unique
+  actualizadoPorId String?  @map("actualizado_por_id") @db.Uuid
+  actualizadoEn    DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("mochilas_kit")
+}
+
 // Catálogo editable de tipos de ítem de kit (ej. Computador, Impresora) — CRUD
 // por ADMINISTRADOR, mismo patrón que TipoEventoCatalog.
 model ItemKitCatalog {

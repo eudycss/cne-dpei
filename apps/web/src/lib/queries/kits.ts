@@ -1,9 +1,12 @@
 import type {
   AsignarKitRequest,
   BulkUploadResult,
+  CargaMochilasResult,
   CreateKitRequest,
   EditKitRequest,
   Kit,
+  NumeroMochilaRequest,
+  NumeroMochilaResponse,
   Paginated,
 } from '@cne/shared-types';
 import { api } from '../api';
@@ -27,3 +30,19 @@ export const bulkUploadKits = (eventoId: string, file: File) => {
 export const downloadKitsTemplate = () => api.get('/kits/template.xlsx', { responseType: 'blob' });
 export const downloadKitsPdfQr = (kitIds: string[]) =>
   api.post('/kits/pdf-qr', { kitIds }, { responseType: 'blob' });
+
+// ─── N.º de mochila ──────────────────────────────────────────────────────────
+export const guardarNumeroMochila = (kitId: string, body: NumeroMochilaRequest) =>
+  api.put<NumeroMochilaResponse>(`/kits/${kitId}/mochila`, body);
+/** Sin `aplicar` solo devuelve la vista previa (no guarda nada). */
+export const cargarMochilas = (eventoId: string, file: File, aplicar: boolean) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<CargaMochilasResult>(
+    `/kits/mochilas/carga?eventoId=${encodeURIComponent(eventoId)}&aplicar=${aplicar}`,
+    fd,
+  );
+};
+export const downloadMochilasPlantilla = () => api.get<Blob>('/kits/mochilas/plantilla.xlsx', { responseType: 'blob' });
+export const downloadMochilasReporte = (eventoId: string) =>
+  api.get<Blob>(`/kits/mochilas/reporte.xlsx?eventoId=${encodeURIComponent(eventoId)}`, { responseType: 'blob' });

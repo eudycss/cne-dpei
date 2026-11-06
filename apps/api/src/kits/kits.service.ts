@@ -72,11 +72,17 @@ export class KitsService {
     const where: any = { eventoId: opts.eventoId };
     if (!opts.incluirPrueba) where.esPrueba = false;
     // Sin tildes y por palabras en cualquier orden. El nombre del kit solo trae
-    // el código del recinto ("Kit Recinto 1198"): también por su recinto.
+    // el código del recinto ("Kit Recinto 1198"): también por su recinto y por el N.º de mochila.
     const ids = await idsPorBusqueda(
       this.prisma,
-      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id`,
-      [Prisma.raw('t.nombre'), Prisma.raw('t.codigo_unico'), Prisma.raw('r.nombre'), Prisma.raw('r.codigo_recinto')],
+      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id LEFT JOIN mochilas_kit m ON m.codigo_unico = t.codigo_unico`,
+      [
+        Prisma.raw('t.nombre'),
+        Prisma.raw('t.codigo_unico'),
+        Prisma.raw('r.nombre'),
+        Prisma.raw('r.codigo_recinto'),
+        Prisma.raw("'mochila ' || m.numero"),
+      ],
       opts.search,
       // Solo los kits del evento: sin esto volverían los de todos los eventos.
       Prisma.sql`t.evento_id = ${opts.eventoId}::uuid`,
@@ -92,7 +98,17 @@ export class KitsService {
         include: { itemsContenido: { include: { item: true } } },
       }),
     ]);
-    return { items: items.map(toKitDto), total, page, pageSize };
+    const mochilas = await this.prisma.mochilaKit.findMany({
+      where: { codigoUnico: { in: items.map((k) => k.codigoUnico) } },
+      select: { codigoUnico: true, numero: true },
+    });
+    const numeroPorCodigo = new Map<string, number>(mochilas.map((m) => [m.codigoUnico, m.numero]));
+    return {
+      items: items.map((k) => ({ ...toKitDto(k), numeroMochila: numeroPorCodigo.get(k.codigoUnico) ?? null })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /**
@@ -396,20 +412,24 @@ export class KitsService {
 
     const codigoUnico = await this.generarCodigoUnico(kit.eventoId);
     const sinSalir = { in: ['EN_BODEGA', 'ASIGNADO'] as EstadoKit[] };
-    const [propio, otros] = await this.prisma.$transaction([
-      // Condicional: si el kit salió mientras tanto, no se toca.
-      this.prisma.kitElectoral.updateMany({ where: { id, estado: sinSalir }, data: { codigoUnico, qrPayload: codigoUnico } }),
-      this.prisma.kitElectoral.updateMany({
+    // Una sola transacción: si el kit salió mientras tanto, no cambia nada (ni el N.º de mochila).
+    const otros = await this.prisma.$transaction(async (tx) => {
+      const propio = await tx.kitElectoral.updateMany({ where: { id, estado: sinSalir }, data: { codigoUnico, qrPayload: codigoUnico } });
+      if (propio.count !== 1) {
+        throw new ConflictException('El kit ya salió de la Delegación: su QR no se puede cambiar (cadena de custodia)');
+      }
+      const enOtrosEventos = await tx.kitElectoral.updateMany({
         where:
           kit.recintoId && !kit.esPrueba
             ? { recintoId: kit.recintoId, codigoUnico: kit.codigoUnico, esPrueba: false, eventoId: { not: kit.eventoId }, estado: sinSalir }
             : { id: { in: [] } },
         data: { codigoUnico, qrPayload: codigoUnico },
-      }),
-    ]);
-    if (propio.count !== 1) {
-      throw new ConflictException('El kit ya salió de la Delegación: su QR no se puede cambiar (cadena de custodia)');
-    }
+      });
+      // La mochila es la misma con otra etiqueta: su número pasa al código nuevo. Un kit
+      // de otro evento que ya salió conserva el código viejo y queda sin número.
+      await tx.mochilaKit.updateMany({ where: { codigoUnico: kit.codigoUnico }, data: { codigoUnico } });
+      return enOtrosEventos;
+    });
     const updated = await this.prisma.kitElectoral.findUnique({
       where: { id },
       include: { itemsContenido: { include: { item: true } } },

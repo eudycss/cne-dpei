@@ -397,6 +397,45 @@ export interface Kit {
   estado: EstadoKit;
   esPrueba: boolean;
   creadoEn: string;
+  /** Número de la mochila física con este QR (vale en todos los eventos); null = sin cargar. */
+  numeroMochila?: number | null;
+}
+
+/** Cambiar o quitar (null) el N.º de mochila del QR de un kit. */
+export interface NumeroMochilaRequest {
+  numero: number | null;
+  /** El número ya es de otro QR: quitárselo a ese y dárselo a este. */
+  reemplazar?: boolean;
+}
+
+export interface NumeroMochilaResponse {
+  codigoUnico: string;
+  numeroMochila: number | null;
+  numeroAnterior: number | null;
+  /** Código del QR al que se le quitó el número (con reemplazar). */
+  quitadoDe: string | null;
+}
+
+export type EstadoFilaMochila = 'NUEVA' | 'CAMBIA' | 'IGUAL' | 'ERROR';
+
+export interface FilaCargaMochila {
+  /** Fila del archivo (la 1 es el encabezado). */
+  fila: number;
+  codigoRecinto: string | null;
+  nombreRecinto: string | null;
+  codigoUnico: string | null;
+  numero: number | null;
+  estado: EstadoFilaMochila;
+  mensaje: string | null;
+}
+
+export interface CargaMochilasResult {
+  /** false = solo vista previa (no se guardó nada). */
+  aplicada: boolean;
+  filas: FilaCargaMochila[];
+  /** Filas NUEVA o CAMBIA (las que se guardan o se guardarían). */
+  guardadas: number;
+  errores: number;
 }
 
 export interface CreateKitRequest {
