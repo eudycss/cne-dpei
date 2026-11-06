@@ -222,6 +222,30 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(data.datosDespues)).not.toContain('apellidosNombres');
   });
 
+  it('el Excel de convocatoria queda con sus conteos', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/convocatoria/carga?aplicar=true',
+      query: { aplicar: 'true' },
+      params: {},
+      body: {},
+      user: ADMIN,
+    }, { aplicada: true, nuevas: 60, errores: 2, fechas: [{}, {}], filas: [{ apellidosNombres: 'X' }] });
+    expect(data).toMatchObject({ accion: 'CONVOCATORIA_CDA_CARGA', datosDespues: { aplicada: true, nuevas: 60, errores: 2, fechas: 2 } });
+    expect(JSON.stringify(data.datosDespues)).not.toContain('apellidosNombres');
+  });
+
+  it('la vista previa del Excel de convocatoria no queda en la bitácora', async () => {
+    const { create } = await auditar({
+      method: 'POST',
+      originalUrl: '/operadores-cda/convocatoria/carga?aplicar=false',
+      query: { aplicar: 'false' },
+      body: {},
+      user: ADMIN,
+    }, { aplicada: false, nuevas: 3, errores: 0, fechas: [] });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',

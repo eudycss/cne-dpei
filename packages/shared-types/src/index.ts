@@ -1701,6 +1701,38 @@ export interface ConvocatoriaCdaDia {
   total: number;
 }
 
+/** Una fila del Excel de convocatoria y qué pasa con ella. */
+export type EstadoFilaConvocatoriaCda = 'NUEVA' | 'YA_CONVOCADA' | 'EN_PAREJAS' | 'ERROR';
+
+export interface FilaCargaConvocatoriaCda {
+  /** Fila del archivo (la 1 es el encabezado). */
+  fila: number;
+  fecha: string | null;
+  cedula: string | null;
+  apellidosNombres: string | null;
+  estado: EstadoFilaConvocatoriaCda;
+  mensaje: string | null;
+}
+
+/** Cómo queda cada fecha del archivo: convocados y, de ellos, quién marcó entrada. */
+export interface ResumenFechaConvocatoriaCda {
+  fecha: string;
+  convocados: number;
+  vinieron: number;
+  /** Convocados sin entrada: falta (hoy todavía pueden llegar). */
+  sinEntrada: number;
+}
+
+export interface CargaConvocatoriaCdaResult {
+  /** false = solo vista previa. */
+  aplicada: boolean;
+  filas: FilaCargaConvocatoriaCda[];
+  /** Personas que se agregan (o se agregarían) a la convocatoria. */
+  nuevas: number;
+  errores: number;
+  fechas: ResumenFechaConvocatoriaCda[];
+}
+
 /** Convocados a mano de un día (los de Parejas se agregan solos). */
 export interface GuardarConvocatoriaCdaRequest {
   operadorIds: string[];

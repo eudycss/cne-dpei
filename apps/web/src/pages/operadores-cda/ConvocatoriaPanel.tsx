@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { ConvocatoriaCdaPersona } from '@cne/shared-types';
@@ -8,6 +8,7 @@ import { Cargando } from '../../components/Cargando';
 import { getConvocatoriaCda, guardarConvocatoriaCda } from '../../lib/queries/operadores-cda';
 import { useModulos } from '../../lib/useModulos';
 import { hoyEcuador, mensajeError } from './utils';
+import { CargaConvocatoriaExcel } from './CargaConvocatoriaExcel';
 
 interface GrupoCargo {
   clave: string;
@@ -41,7 +42,8 @@ export function ConvocatoriaPanel() {
   const qc = useQueryClient();
   const [fecha, setFecha] = useState(hoy);
   const [busqueda, setBusqueda] = useState('');
-  const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  // Lo que se está editando, ligado a lo guardado de ese día: si llegan otros datos (otro día, o tras guardar), se parte de nuevo de lo guardado.
+  const [edicion, setEdicion] = useState<{ de: ReadonlySet<string>; ids: Set<string> } | null>(null);
   const [copiarDe, setCopiarDe] = useState('');
   const [copiando, setCopiando] = useState(false);
 
@@ -54,8 +56,9 @@ export function ConvocatoriaPanel() {
     () => new Set((data?.personas ?? []).filter((p) => p.convocado && !p.porPareja).map((p) => p.operadorId)),
     [data],
   );
-  // Al llegar los datos del día (o tras guardar) las casillas parten de lo guardado.
-  useEffect(() => setMarcados(new Set(guardados)), [guardados]);
+  const marcados: ReadonlySet<string> = edicion && edicion.de === guardados ? edicion.ids : guardados;
+  const setMarcados = (cambio: Set<string> | ((prev: ReadonlySet<string>) => Set<string>)) =>
+    setEdicion({ de: guardados, ids: typeof cambio === 'function' ? cambio(marcados) : cambio });
 
   const guardar = useMutation({
     mutationFn: () => guardarConvocatoriaCda(fecha, [...marcados]),
@@ -160,6 +163,7 @@ export function ConvocatoriaPanel() {
             <button type="button" className="btn secondary" disabled={!copiarDe || copiarDe === fecha || copiando} onClick={copiar}>
               {copiando ? 'Copiando…' : 'Copiar'}
             </button>
+            <CargaConvocatoriaExcel fecha={fecha} />
           </span>
         )}
       </div>

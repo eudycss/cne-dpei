@@ -530,6 +530,25 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Excel de convocatoria: solo conteos.
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/convocatoria\/carga$/,
+    // La vista previa no cambia nada: solo se registra lo que se guarda.
+    cuando: (req) => req.query?.aplicar === 'true',
+    accion: 'CONVOCATORIA_CDA_CARGA',
+    entidad: 'convocatoria_cda',
+    entidadId: () => undefined,
+    resumen: (res) => {
+      const r = (res ?? {}) as { aplicada?: unknown; nuevas?: unknown; errores?: unknown; fechas?: unknown };
+      return {
+        aplicada: r.aplicada === true,
+        nuevas: Number(r.nuevas) || 0,
+        errores: Number(r.errores) || 0,
+        fechas: Array.isArray(r.fechas) ? r.fechas.length : 0,
+      };
+    },
+  },
   // Fase 4 — tracking del operador (HU2)
   { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
   // Fase 4 — llegada al recinto y recepción de kits (HU3)

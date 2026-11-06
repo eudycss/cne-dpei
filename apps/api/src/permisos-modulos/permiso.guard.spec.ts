@@ -84,6 +84,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [ActasCdaController, 'firmar', 'cda.actas.gestionar'],
   [FotoCdaController, 'crearEnlace', 'cda.fotos.enlace'],
   [ConvocatoriaCdaController, 'guardar', 'cda.convocatoria.gestionar'],
+  [ConvocatoriaCdaController, 'cargar', 'cda.convocatoria.gestionar'],
 ];
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.

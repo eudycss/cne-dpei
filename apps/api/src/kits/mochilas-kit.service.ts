@@ -14,7 +14,7 @@ import type {
   NumeroMochilaResponse,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
-import { parseUploadRows } from '../common/parse-upload-rows';
+import { columna, leerFilasArchivo } from '../common/columnas-excel';
 
 /** Encabezado de la plantilla → claves que se aceptan (sin tildes ni signos, en minúsculas). */
 const COLUMNAS = {
@@ -22,35 +22,6 @@ const COLUMNAS = {
   codigo: ['codigoqr', 'qr', 'codigo', 'codigounico'],
   numero: ['nmochila', 'nomochila', 'numeromochila', 'mochila', 'numero'],
 } as const;
-
-/** "N.º mochila" → "nmochila"; "Código QR" → "codigoqr". */
-function claveColumna(encabezado: string): string {
-  return encabezado
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function columna(fila: Record<string, string>, aceptadas: readonly string[]): string {
-  for (const [encabezado, valor] of Object.entries(fila)) {
-    if (aceptadas.includes(claveColumna(encabezado))) return (valor ?? '').trim();
-  }
-  return '';
-}
-
-/** Solo .xlsx o .csv; un archivo dañado es un 400 (sin el detalle interno), no un 500. */
-async function leerArchivo(file: Express.Multer.File): Promise<Record<string, string>[]> {
-  const nombre = (file.originalname ?? '').toLowerCase();
-  if (!nombre.endsWith('.xlsx') && !nombre.endsWith('.csv')) {
-    throw new BadRequestException('Use la plantilla en Excel (.xlsx) o un archivo .csv');
-  }
-  try {
-    return await parseUploadRows(file);
-  } catch {
-    throw new BadRequestException('No se pudo leer el archivo: revise que sea la plantilla de mochilas');
-  }
-}
 
 /** "0971" y "971" son el mismo recinto (Excel suele quitar o poner ceros). */
 const claveRecinto = (codigo: string) => codigo.trim().replace(/^0+(?=\d)/, '');
@@ -187,7 +158,7 @@ export class MochilasKitService {
     const evento = await this.prisma.eventoElectoral.findUnique({ where: { id: eventoId }, select: { id: true } });
     if (!evento) throw new NotFoundException('Evento no encontrado');
 
-    const datos = (await leerArchivo(file)).filter((f) => Object.values(f).some((v) => (v ?? '').trim() !== ''));
+    const datos = await leerFilasArchivo(file, 'la plantilla de mochilas');
     if (datos.length === 0) throw new BadRequestException('El archivo no tiene filas');
     if (datos.length > MAX_FILAS_CARGA_MOCHILAS) {
       throw new BadRequestException(`El archivo tiene ${datos.length} filas; el máximo es ${MAX_FILAS_CARGA_MOCHILAS}`);
