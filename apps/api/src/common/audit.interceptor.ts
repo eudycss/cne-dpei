@@ -491,6 +491,28 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // N.º de mochila del QR: el número anterior, el nuevo y a qué QR se le quitó.
+  {
+    method: 'PUT',
+    pathRegex: /^\/kits\/[^/]+\/mochila$/,
+    accion: 'KIT_MOCHILA',
+    entidad: 'kit',
+    resumen: (res) => {
+      const r = (res ?? {}) as { codigoUnico?: unknown; numeroMochila?: unknown; numeroAnterior?: unknown; quitadoDe?: unknown };
+      return { codigoUnico: r.codigoUnico, numeroAnterior: r.numeroAnterior ?? null, numeroNuevo: r.numeroMochila ?? null, quitadoDe: r.quitadoDe ?? null };
+    },
+  },
+  // Carga de mochilas: solo los conteos (la vista previa también queda, con aplicada=false).
+  {
+    method: 'POST',
+    pathRegex: /^\/kits\/mochilas\/carga$/,
+    accion: 'KIT_MOCHILAS_CARGA',
+    entidad: 'kit',
+    resumen: (res) => {
+      const r = (res ?? {}) as { aplicada?: unknown; guardadas?: unknown; errores?: unknown };
+      return { aplicada: r.aplicada === true, guardadas: Number(r.guardadas) || 0, errores: Number(r.errores) || 0 };
+    },
+  },
   // Fase 4 — tracking del operador (HU2)
   { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
   // Fase 4 — llegada al recinto y recepción de kits (HU3)

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   strongPasswordSchema,
   resumenJornadaSchema,
+  leerNumeroMochila,
+  numeroMochilaRequestSchema,
   textoFrecuenciaResumenJornada,
   RESUMEN_JORNADA_DETENIDO,
   MARGEN_LLEGADA_MAX_METROS,
@@ -621,5 +623,36 @@ describe('resumenJornadaSchema', () => {
     expect(textoFrecuenciaResumenJornada(240)).toBe('4 h');
     expect(textoFrecuenciaResumenJornada(480)).toBe('8 h');
     expect(textoFrecuenciaResumenJornada(RESUMEN_JORNADA_DETENIDO)).toBe('Detenido');
+  });
+});
+
+describe('N.º de mochila', () => {
+  it.each([
+    ['45', 45],
+    ['045', 45],
+    [' 7 ', 7],
+    ['N.º 45', 45],
+    ['n° 12', 12],
+    ['No. 3', 3],
+    ['#9', 9],
+    ['M-62', 62],
+    ['mochila 54', 54],
+    ['54.0', 54],
+    [54, 54],
+    ['9999', 9999],
+  ])('lee %p como %p', (valor, esperado) => {
+    expect(leerNumeroMochila(valor)).toBe(esperado);
+  });
+
+  it.each(['', '0', '10000', 'abc', '4 5', '-3', '12a', null, undefined])('no acepta %p', (valor) => {
+    expect(leerNumeroMochila(valor)).toBeNull();
+  });
+
+  it('el pedido acepta un número de 1 a 9999 o null, y reemplazar opcional', () => {
+    expect(numeroMochilaRequestSchema.safeParse({ numero: 54 }).success).toBe(true);
+    expect(numeroMochilaRequestSchema.safeParse({ numero: null, reemplazar: true }).success).toBe(true);
+    expect(numeroMochilaRequestSchema.safeParse({ numero: 0 }).success).toBe(false);
+    expect(numeroMochilaRequestSchema.safeParse({ numero: 4.5 }).success).toBe(false);
+    expect(numeroMochilaRequestSchema.safeParse({ numero: '45' }).success).toBe(false);
   });
 });

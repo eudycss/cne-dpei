@@ -176,6 +176,36 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('el N.º de mochila de un kit queda con el anterior, el nuevo y a qué QR se le quitó', async () => {
+    const { data } = await auditar({
+      method: 'PUT',
+      originalUrl: `/kits/${OTRO}/mochila`,
+      params: { id: OTRO },
+      body: { numero: 23, reemplazar: true },
+      user: ADMIN,
+    }, { codigoUnico: 'P2ZCERV4', numeroMochila: 23, numeroAnterior: 5, quitadoDe: 'OTRO2345' });
+    expect(data).toMatchObject({
+      accion: 'KIT_MOCHILA',
+      entidad: 'kit',
+      entidadId: OTRO,
+      datosDespues: { codigoUnico: 'P2ZCERV4', numeroAnterior: 5, numeroNuevo: 23, quitadoDe: 'OTRO2345' },
+    });
+  });
+
+  it('la carga de mochilas queda con sus conteos', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: '/kits/mochilas/carga?eventoId=x&aplicar=true',
+      params: {},
+      body: {},
+      user: ADMIN,
+    }, { aplicada: true, guardadas: 28, errores: 2, filas: [] });
+    expect(data).toMatchObject({
+      accion: 'KIT_MOCHILAS_CARGA',
+      datosDespues: { aplicada: true, guardadas: 28, errores: 2 },
+    });
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',
