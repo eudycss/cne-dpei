@@ -14,6 +14,7 @@ import { textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador } from './dia-ecuador';
 import { enTramos, personalDelCargo } from './periodos-cargo';
 import { CONFIG_ASISTENCIA_POR_DEFECTO, clasificarEntrada } from './puntualidad';
+import { convocadosEntre } from './convocatoria';
 import {
   type ArchivoReporte,
   type Celda,
@@ -50,6 +51,7 @@ const COLUMNAS_DETALLE: ColumnaReporte[] = [
   { titulo: 'Entrada', ancho: 9 },
   { titulo: 'Min. de atraso', ancho: 15 },
   { titulo: 'Estado', ancho: 11 },
+  { titulo: 'Convocado', ancho: 11 },
 ];
 
 /** "3 puntuales · 1 atraso · 0 faltas" (+ pendientes si los hay). */
@@ -98,7 +100,11 @@ export class AtrasosCdaService {
     const ahora = new Date();
     if (hasta > diaEcuador(ahora)) throw new BadRequestException('La fecha final no puede ser futura');
 
-    const [config, personal] = await Promise.all([this.getConfig(grupo), personalDelCargo(this.prisma, grupo)]);
+    const [config, personal, convocados] = await Promise.all([
+      this.getConfig(grupo),
+      personalDelCargo(this.prisma, grupo),
+      convocadosEntre(this.prisma, desde, hasta),
+    ]);
     const asistencias = await this.prisma.asistenciaCda.findMany({
       where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: personal.map((p) => p.operador.id) } },
       select: { operadorId: true, fecha: true, entradaEn: true },
@@ -128,6 +134,9 @@ export class AtrasosCdaService {
         // Los días en otro cargo (antes o después de un cambio) no cuentan aquí, ni como falta.
         if (!enTramos(tramos, dia)) continue;
         const entradaEn = entradas.get(clave(o.id, dia)) ?? null;
+        // Solo los convocados ese día pueden tener falta; quien vino sin convocatoria igual cuenta.
+        const convocado = convocados.es(dia, o.id);
+        if (!convocado && !entradaEn) continue;
         const { estado, minutosAtraso } = clasificarEntrada(entradaEn, dia, config, ahora);
         filas.push({
           fecha: dia,
@@ -137,6 +146,7 @@ export class AtrasosCdaService {
           entrada: entradaEn ? horaEcuador(entradaEn) : null,
           minutosAtraso,
           estado,
+          convocado,
         });
         if (estado === 'PUNTUAL') r.puntuales++;
         else if (estado === 'ATRASO') r.atrasos++;
@@ -175,6 +185,7 @@ export class AtrasosCdaService {
       f.entrada ?? '',
       f.estado === 'ATRASO' ? f.minutosAtraso : '',
       ETIQUETA[f.estado],
+      f.convocado ? 'Sí' : 'No',
     ];
 
     const resumen: TablaReporte = {
@@ -205,7 +216,8 @@ export class AtrasosCdaService {
         titulo: `Reporte de atrasos — ${textos.titulo}`,
         detalle:
           `Hora de entrada ${rep.config.horaEntrada} · gracia ${rep.config.minutosGracia} min · ` +
-          `del ${diaCorto(rep.desde)} al ${diaCorto(rep.hasta)}`,
+          `del ${diaCorto(rep.desde)} al ${diaCorto(rep.hasta)} · ` +
+          'solo los convocados ese día (Convocatoria o Parejas) pueden tener falta',
         archivo: `atrasos_${textos.archivo}`,
         desde: rep.desde,
         hasta: rep.hasta,

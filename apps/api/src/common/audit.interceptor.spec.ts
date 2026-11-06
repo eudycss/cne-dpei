@@ -206,6 +206,22 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('guardar la convocatoria del día queda con la fecha y los conteos (sin nombres)', async () => {
+    const { data } = await auditar({
+      method: 'PUT',
+      originalUrl: '/operadores-cda/convocatoria/2026-11-05',
+      params: { fecha: '2026-11-05' },
+      body: { operadorIds: ['a', 'b'] },
+      user: ADMIN,
+    }, { fecha: '2026-11-05', convocados: 65, total: 128, agregados: 2, quitados: 1, personas: [{ apellidosNombres: 'X' }] });
+    expect(data).toMatchObject({
+      accion: 'CONVOCATORIA_CDA_GUARDAR',
+      entidad: 'convocatoria_cda',
+      datosDespues: { fecha: '2026-11-05', convocados: 65, agregados: 2, quitados: 1 },
+    });
+    expect(JSON.stringify(data.datosDespues)).not.toContain('apellidosNombres');
+  });
+
   it('reabrir un evento guarda el id de la ruta y la justificación', async () => {
     const { data } = await auditar({
       method: 'POST',

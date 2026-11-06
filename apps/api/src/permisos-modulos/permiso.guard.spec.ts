@@ -13,6 +13,7 @@ import { CredencialQrCdaController } from '../operadores-cda/credencial-qr-cda.c
 import { ActasCdaController } from '../operadores-cda/actas-cda.controller';
 import { FotoCdaController } from '../operadores-cda/foto-cda.controller';
 import { OperadoresCdaController } from '../operadores-cda/operadores-cda.controller';
+import { ConvocatoriaCdaController } from '../operadores-cda/convocatoria-cda.controller';
 import { MODULO_KEY, ModuloGuard } from './modulo.guard';
 
 function contexto(roles: string[], permisos: PermisoId[] | undefined): ExecutionContext {
@@ -82,6 +83,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [ActasCdaController, 'pdf', 'cda.actas.gestionar'],
   [ActasCdaController, 'firmar', 'cda.actas.gestionar'],
   [FotoCdaController, 'crearEnlace', 'cda.fotos.enlace'],
+  [ConvocatoriaCdaController, 'guardar', 'cda.convocatoria.gestionar'],
 ];
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -149,6 +151,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     CredencialQrCdaController,
     ActasCdaController,
     FotoCdaController,
+    ConvocatoriaCdaController,
   ];
   const metodos = CONTROLADORES.flatMap((c: any) =>
     Object.getOwnPropertyNames(c.prototype)

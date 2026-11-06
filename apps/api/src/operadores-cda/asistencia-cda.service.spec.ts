@@ -5,6 +5,14 @@ import * as ExcelJS from 'exceljs';
 import { AsistenciaCdaService, contadoresDelDia, textoOrigen } from './asistencia-cda.service';
 import { PrismaService } from '../db/prisma.service';
 import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
+import { convocadosEntre } from './convocatoria';
+
+// Por defecto todos están convocados (así se prueba lo de siempre); las pruebas de la convocatoria lo cambian.
+jest.mock('./convocatoria', () => ({ convocadosEntre: jest.fn() }));
+const convocadosMock = convocadosEntre as jest.Mock;
+const todosConvocados = { es: () => true, esPorPareja: () => false };
+/** Solo `ids` convocados (cualquier día). */
+const soloConvocados = (...ids: string[]) => ({ es: (_dia: string, id: string) => ids.includes(id), esPorPareja: () => false });
 
 const OP = '11111111-2222-4333-8444-555555555555';
 const USR = '99999999-2222-4333-8444-555555555555';
@@ -52,6 +60,7 @@ describe('AsistenciaCdaService', () => {
     jest.clearAllMocks();
     jest.useFakeTimers({ now: AHORA, doNotFake: ['nextTick', 'setImmediate'] });
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma));
+    convocadosMock.mockResolvedValue(todosConvocados);
     const moduleRef = await Test.createTestingModule({
       providers: [AsistenciaCdaService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -78,6 +87,16 @@ describe('AsistenciaCdaService', () => {
       });
       expect(r.filas[0]).toMatchObject({ entradaEn: '2026-10-22T13:05:00.000Z', entradaPor: 'Ana Técnica', salidaEn: null });
       expect(r.filas[1]).toMatchObject({ entradaEn: null, entradaPor: null });
+    });
+
+    it('dice quién está convocado ese día y cuántos son', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([operador(), operador({ id: 'o2', cedula: '1002003000' })]);
+      prisma.asistenciaCda.findMany.mockResolvedValueOnce([]);
+      convocadosMock.mockResolvedValueOnce(soloConvocados('o2'));
+      const r = await service.dia();
+      expect(convocadosMock).toHaveBeenCalledWith(prisma, '2026-10-22', '2026-10-22');
+      expect(r.filas.map((f) => f.convocado)).toEqual([false, true]);
+      expect(r.convocados).toBe(1);
     });
 
     it('un día pasado no es "hoy"; un día futuro o inválido se rechaza', async () => {
@@ -423,6 +442,38 @@ describe('AsistenciaCdaService', () => {
         },
       ]);
     };
+
+    it('solo los convocados faltan: el no convocado sin entrada no sale; si vino, sale como "no convocado"', async () => {
+      conDosOperadores();
+      // Ana (OP) vino el 21 sin estar convocada; Juan (o2) convocado el 22 y no vino.
+      convocadosMock.mockResolvedValueOnce({ es: (dia: string, id: string) => id === 'o2' && dia === '2026-10-22', esPorPareja: () => false });
+      const archivo = await service.exportar('2026-10-20', '2026-10-22', 'GENERAL', 'xlsx');
+      const wb = await leerExcel(archivo.contenido);
+      const [resumen, ws, faltaron] = wb.worksheets;
+      // El 20 Ana trabajaba pero nadie fue convocado; el 21 vino sin estar convocada (no cuenta en el total).
+      expect(datos(resumen).map((f) => [f[1], f[3], f[4]])).toEqual([
+        ['2026-10-20', 'Sin convocatoria', ''],
+        ['2026-10-21', '0/0 (+1 no conv.)', '0/0'],
+        ['2026-10-22', '0/1', '0/1'],
+      ]);
+      const estados = datos(ws).map((f) => [f[1], f[3], f[f.length - 1]]);
+      expect(estados).toEqual([
+        ['2026-10-21', expect.any(String), 'Completa (no convocado)'],
+        ['2026-10-22', 'RUIZ MORA JUAN', 'Sin entrada'],
+      ]);
+      expect(datos(faltaron).map((f) => f[3])).toEqual(['RUIZ MORA JUAN']);
+    });
+
+    it('los contadores del día cuentan solo a los convocados y suman aparte a los que vinieron sin convocatoria', () => {
+      expect(
+        contadoresDelDia([
+          { conEntrada: true, conSalida: true, convocado: true },
+          { conEntrada: false, conSalida: false, convocado: true },
+          { conEntrada: true, conSalida: false, convocado: false },
+          { conEntrada: true, conSalida: true, convocado: false },
+        ]),
+      ).toEqual({ asistieron: '1/2 (+2 no conv.)', entrada: '1/2', salida: '1/2' });
+    });
 
     it('general: resumen por día, detalle numerado con estado y hoja de faltantes', async () => {
       conDosOperadores();

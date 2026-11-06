@@ -5,6 +5,14 @@ import * as ExcelJS from 'exceljs';
 import { AtrasosCdaService } from './atrasos-cda.service';
 import { PrismaService } from '../db/prisma.service';
 import { FILA_ENCABEZADOS_EXCEL } from './reporte-cda';
+import { convocadosEntre } from './convocatoria';
+
+// Por defecto todos están convocados (así se prueba lo de siempre); las pruebas de la convocatoria lo cambian.
+jest.mock('./convocatoria', () => ({ convocadosEntre: jest.fn() }));
+const convocadosMock = convocadosEntre as jest.Mock;
+const todosConvocados = { es: () => true, esPorPareja: () => false };
+/** Solo `ids` convocados (cualquier día). */
+const soloConvocados = (...ids: string[]) => ({ es: (_dia: string, id: string) => ids.includes(id), esPorPareja: () => false });
 
 // 22-oct-2026 08:05 en Ecuador: hoy aún está dentro de la gracia.
 const AHORA = new Date('2026-10-22T13:05:00Z');
@@ -34,6 +42,7 @@ describe('AtrasosCdaService', () => {
     jest.clearAllMocks();
     jest.useFakeTimers({ now: AHORA, doNotFake: ['nextTick', 'setImmediate'] });
     prisma.configAsistenciaCda.findUnique.mockResolvedValue(null);
+    convocadosMock.mockResolvedValue(todosConvocados);
     const moduleRef = await Test.createTestingModule({
       providers: [AtrasosCdaService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -68,6 +77,52 @@ describe('AtrasosCdaService', () => {
       prisma.configAsistenciaCda.upsert.mockResolvedValueOnce({ grupo: 'ASISTENTE', horaEntrada: '09:00', minutosGracia: 15 });
       await service.guardarConfig({ horaEntrada: '09:00', minutosGracia: 15 }, 'ASISTENTE');
       expect(prisma.configAsistenciaCda.upsert.mock.calls[0][0].where).toEqual({ grupo: 'ASISTENTE' });
+    });
+  });
+
+  describe('reporte: solo los convocados pueden faltar', () => {
+    beforeEach(() => {
+      prisma.operadorCda.findMany.mockResolvedValue([operador('1', 'ANDRADE ANA'), operador('2', 'BENÍTEZ BRUNO'), operador('3', 'CHÁVEZ CARLA')]);
+      prisma.asistenciaCda.findMany.mockResolvedValue([
+        { operadorId: '1', fecha: fecha('2026-10-20'), entradaEn: ec('2026-10-20', '08:30') },
+        // Carla vino el 21 sin estar convocada.
+        { operadorId: '3', fecha: fecha('2026-10-21'), entradaEn: ec('2026-10-21', '07:55') },
+      ]);
+    });
+
+    it('el no convocado sin entrada no aparece (no es falta); el que vino sin convocatoria cuenta, marcado', async () => {
+      // Ana y Bruno convocados el 20; el 21 nadie (pero Carla vino).
+      convocadosMock.mockResolvedValue({ es: (dia: string, id: string) => dia === '2026-10-20' && id !== '3', esPorPareja: () => false });
+      const r = await service.reporte('2026-10-20', '2026-10-21');
+      expect(convocadosMock).toHaveBeenCalledWith(prisma, '2026-10-20', '2026-10-21');
+      expect(r.filas.map((f) => `${f.fecha} ${f.apellidosNombres} ${f.estado} ${f.convocado ? 'conv' : 'no-conv'}`)).toEqual([
+        '2026-10-20 ANDRADE ANA ATRASO conv',
+        '2026-10-20 BENÍTEZ BRUNO FALTA conv',
+        '2026-10-21 CHÁVEZ CARLA PUNTUAL no-conv',
+      ]);
+      expect(r.totales.faltas).toBe(1);
+    });
+
+    it('un día sin convocatoria no tiene faltas', async () => {
+      convocadosMock.mockResolvedValue(soloConvocados());
+      const r = await service.reporte('2026-10-20', '2026-10-21');
+      expect(r.totales.faltas).toBe(0);
+      expect(r.filas.map((f) => f.apellidosNombres)).toEqual(['ANDRADE ANA', 'CHÁVEZ CARLA']);
+    });
+
+    it('el Excel dice si estaba convocado y la regla en el encabezado', async () => {
+      convocadosMock.mockResolvedValue(soloConvocados('1'));
+      const archivo = await service.exportar('2026-10-20', '2026-10-21', 'GENERAL', 'xlsx');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(archivo.contenido as any);
+      const detalle = wb.getWorksheet('Detalle')!;
+      const filas = detalle.getSheetValues().slice(FILA_ENCABEZADOS_EXCEL + 1) as unknown[][];
+      expect(filas.map((f) => [f[2], f[f.length - 1]])).toEqual([
+        ['ANDRADE ANA', 'Sí'],
+        ['ANDRADE ANA', 'Sí'],
+        ['CHÁVEZ CARLA', 'No'],
+      ]);
+      expect(JSON.stringify(detalle.getSheetValues().slice(0, FILA_ENCABEZADOS_EXCEL))).toContain('solo los convocados');
     });
   });
 
@@ -112,6 +167,7 @@ describe('AtrasosCdaService', () => {
         ['CHÁVEZ CARLA', 1, 0, 0, 0],
       ]);
       expect(r.totales).toEqual({ puntuales: 2, atrasos: 2, faltas: 1, pendientes: 3, minutosAtraso: 71 });
+      expect(r.filas.every((f) => f.convocado)).toBe(true);
       expect(prisma.asistenciaCda.findMany.mock.calls[0][0].where).toEqual({
         fecha: { gte: fecha('2026-10-20'), lte: fecha('2026-10-22') },
         operadorId: { in: ['1', '2', '3'] },
@@ -200,9 +256,9 @@ describe('AtrasosCdaService', () => {
       expect(resumen.getRow(DATOS).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', 0, 1, 1, 25]);
 
       const detalle = wb.getWorksheet('Detalle')!;
-      expect(detalle.getRow(DATOS).values).toEqual([undefined, '2026-10-20', 'ANDRADE ANA', '1700000001', '08:00', '', '', 'Falta']);
+      expect(detalle.getRow(DATOS).values).toEqual([undefined, '2026-10-20', 'ANDRADE ANA', '1700000001', '08:00', '', '', 'Falta', 'Sí']);
       expect(detalle.getRow(DATOS + 1).values).toEqual([
-        undefined, '2026-10-21', 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso',
+        undefined, '2026-10-21', 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso', 'Sí',
       ]);
     });
 
@@ -214,7 +270,7 @@ describe('AtrasosCdaService', () => {
       expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen', '2026-10-20', '2026-10-21', '2026-10-22']);
       const dia21 = wb.getWorksheet('2026-10-21')!;
       expect(dia21.getCell('A6').value).toBe('miércoles, 21 de octubre de 2026 · 0 puntuales · 1 atraso · 0 faltas');
-      expect(dia21.getRow(DATOS).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso']);
+      expect(dia21.getRow(DATOS).values).toEqual([undefined, 'ANDRADE ANA', '1700000001', '08:00', '08:25', 25, 'Atraso', 'Sí']);
       // Hoy (22) dentro de la gracia: aparece el pendiente.
       expect(wb.getWorksheet('2026-10-22')!.getCell('A6').value).toContain('1 pendiente');
     });
