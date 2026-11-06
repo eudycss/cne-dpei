@@ -100,7 +100,12 @@ export function ParejasPanel() {
     queryFn: () => getParejasCda(dia),
     enabled: !!diaUrl || fechasCargadas,
   });
-  const refrescar = () => qc.invalidateQueries({ queryKey: ['parejas-cda'] });
+  const refrescar = () => {
+    qc.invalidateQueries({ queryKey: ['parejas-cda'] });
+    // Quien va en Parejas está convocado: cambian la convocatoria y la asistencia de ese día.
+    qc.invalidateQueries({ queryKey: ['convocatoria-cda'] });
+    qc.invalidateQueries({ queryKey: ['asistencia-cda'] });
+  };
   const congelado = !!data?.congelado;
   const motivo = justificacion.trim() || undefined;
 

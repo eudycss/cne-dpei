@@ -59,6 +59,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
   const [escaneando, setEscaneando] = useState(false);
   const [corrigiendo, setCorrigiendo] = useState<AsistenciaCdaFila | null>(null);
   const [ocupados, setOcupados] = useState<ReadonlySet<string>>(new Set());
+  // Los no convocados del día no pueden faltar: van ocultos salvo que se pida verlos (alguien llegó igual).
+  const [verNoConvocados, setVerNoConvocados] = useState(false);
   const clave = ['asistencia-cda', grupo, fecha];
 
   const { data, isLoading, error } = useQuery({
@@ -112,8 +114,22 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
     onSettled: (_r, _e, m) => ocupar(m, false),
   });
 
-  const filas = data?.filas ?? [];
-  const conteo = (f: Filtro) => filas.filter(FILTROS.find((x) => x.id === f)!.cumple).length;
+  const todas = data?.filas ?? [];
+  // Sin nadie convocado ese día no hay faltas: se ve a todos para poder marcar a quien llegue.
+  const hayConvocatoria = (data?.convocados ?? 0) > 0;
+  const conMarca = (f: AsistenciaCdaFila) => !!f.entradaEn || !!f.salidaEn;
+  const esperado = (f: AsistenciaCdaFila) => !hayConvocatoria || f.convocado;
+  // Los resúmenes y los botones masivos son siempre de los convocados (el día sin convocatoria, de todos).
+  const base = useMemo(() => todas.filter(esperado), [todas, hayConvocatoria]);
+  const noConvocados = todas.length - base.length;
+  // Quien vino sin estar convocado se ve siempre; los demás no convocados, a pedido.
+  const ocultos = hayConvocatoria ? todas.filter((f) => !f.convocado && !conMarca(f)).length : 0;
+  const filas = useMemo(
+    () => (verNoConvocados ? todas : todas.filter((f) => esperado(f) || conMarca(f))),
+    [todas, hayConvocatoria, verNoConvocados],
+  );
+  const contar = (lista: AsistenciaCdaFila[], f: Filtro) => lista.filter(FILTROS.find((x) => x.id === f)!.cumple).length;
+  const conteo = (f: Filtro) => contar(filas, f);
   const visibles = useMemo(() => {
     const q = busqueda.trim();
     const cumple = FILTROS.find((x) => x.id === filtro)!.cumple;
@@ -122,8 +138,9 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
     );
   }, [filas, filtro, busqueda]);
 
-  const pendientesEntrada = visibles.filter((f) => !f.entradaEn);
-  const pendientesSalida = visibles.filter((f) => f.entradaEn && !f.salidaEn);
+  // Masivos: solo a los convocados que se ven (nunca a un no convocado por estar mostrándolos).
+  const pendientesEntrada = visibles.filter((f) => esperado(f) && !f.entradaEn);
+  const pendientesSalida = visibles.filter((f) => esperado(f) && f.entradaEn && !f.salidaEn);
   const esHoy = data?.esHoy ?? fecha === hoy;
   const corrige = !esHoy && puedeCorregir;
   const motivoBloqueo = !esHoy
@@ -141,9 +158,9 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
     }
   }
 
-  const total = filas.length;
-  const presentes = total - conteo('sin-entrada');
-  const conFoto = filas.filter((f) => f.operador.tieneFoto).length;
+  const total = base.length;
+  const presentes = total - contar(base, 'sin-entrada');
+  const conFoto = base.filter((f) => f.operador.tieneFoto).length;
   const porcentaje = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
   return (
@@ -192,8 +209,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           />
           <Kpi
             etiqueta="Pendientes de salida"
-            valor={String(conteo('sin-salida'))}
-            parte={conteo('sin-salida')}
+            valor={String(contar(base, 'sin-salida'))}
+            parte={contar(base, 'sin-salida')}
             total={total}
             detalle="Con entrada y sin salida"
           />
@@ -206,8 +223,8 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
           />
           <Kpi
             etiqueta="Completos"
-            valor={String(conteo('completos'))}
-            parte={conteo('completos')}
+            valor={String(contar(base, 'completos'))}
+            parte={contar(base, 'completos')}
             total={total}
             detalle="Entrada y salida registradas"
           />
@@ -229,7 +246,11 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
             type="date"
             value={fecha}
             max={hoy}
-            onChange={(e) => e.target.value && setFecha(e.target.value)}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              setFecha(e.target.value);
+              setVerNoConvocados(false);
+            }}
           />
         </label>
         <div className="ocda-filtros" role="group" aria-label="Filtrar por estado" style={{ margin: 0 }}>
@@ -248,6 +269,25 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
         </div>
       </div>
 
+      {data && todas.length > 0 && !hayConvocatoria && (
+        <div className="banner aviso">
+          No hay convocatoria ni parejas para este día: nadie tiene falta. Puede marcar a quien llegue; para convocar, use la
+          pestaña Convocatoria.
+        </div>
+      )}
+      {data && hayConvocatoria && (
+        <div className="row" style={{ gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>
+            {data.convocados} convocado{data.convocados === 1 ? '' : 's'} este día
+            {noConvocados > 0 && ` · ${noConvocados} no convocado${noConvocados === 1 ? '' : 's'} (sin falta)`}
+          </span>
+          {ocultos > 0 && (
+            <button type="button" className="ocda-chip" aria-pressed={verNoConvocados} onClick={() => setVerNoConvocados((v) => !v)}>
+              {verNoConvocados ? 'Ocultar no convocados' : `Ver no convocados (${ocultos})`}
+            </button>
+          )}
+        </div>
+      )}
       {!esHoy && data && (
         <div className="banner" role="status">
           {corrige
@@ -299,6 +339,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                           <span className="ocda-persona-nombre">{o.apellidosNombres}</span>
                           <span className="ocda-persona-cargo" title={o.cargo}>
                             {cargoCorto(o.cargo)}
+                            {hayConvocatoria && !f.convocado && ' · No convocado'}
                           </span>
                         </span>
                       </span>
