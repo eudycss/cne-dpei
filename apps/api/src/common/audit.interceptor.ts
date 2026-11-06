@@ -513,6 +513,23 @@ const AUDIT_TABLE: Array<{
       return { aplicada: r.aplicada === true, guardadas: Number(r.guardadas) || 0, errores: Number(r.errores) || 0 };
     },
   },
+  // Convocatoria del día: decide quién puede tener falta. Solo conteos (sin datos personales).
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/convocatoria\/[^/]+$/,
+    accion: 'CONVOCATORIA_CDA_GUARDAR',
+    entidad: 'convocatoria_cda',
+    entidadId: () => undefined,
+    resumen: (res) => {
+      const r = (res ?? {}) as { fecha?: unknown; convocados?: unknown; agregados?: unknown; quitados?: unknown };
+      return {
+        fecha: typeof r.fecha === 'string' ? r.fecha : null,
+        convocados: Number(r.convocados) || 0,
+        agregados: Number(r.agregados) || 0,
+        quitados: Number(r.quitados) || 0,
+      };
+    },
+  },
   // Fase 4 — tracking del operador (HU2)
   { method: 'POST', pathRegex: /^\/tracking\/salida-dpi$/, accion: 'REGISTRO_SALIDA_DPI', entidad: 'eventos_tracking' },
   // Fase 4 — llegada al recinto y recepción de kits (HU3)

@@ -819,6 +819,7 @@ model OperadorCda {
   actualizadoEn    DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   asistencias AsistenciaCda[]
+  convocatorias ConvocatoriaCda[]
   enlacesFoto  EnlaceFotoCda[]
   actas        ActaEntregaCda[]
   credenciales CredencialQrCda[]
@@ -855,6 +856,22 @@ model AsistenciaCda {
   @@unique([operadorId, fecha], map: "uq_asistencias_cda_operador_fecha")
   @@index([fecha], map: "idx_asistencias_cda_fecha")
   @@map("asistencias_cda")
+}
+
+/// Convocatoria del día: a quién se llamó, además de quienes están en Parejas
+/// esa fecha (esos cuentan solos). Solo los convocados pueden tener falta.
+model ConvocatoriaCda {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha       DateTime @db.Date
+  operadorId  String   @map("operador_id") @db.Uuid
+  creadoPorId String?  @map("creado_por_id") @db.Uuid
+  creadoEn    DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  operador OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+
+  @@unique([fecha, operadorId], map: "uq_convocatorias_cda_fecha_operador")
+  @@index([operadorId], map: "idx_convocatorias_cda_operador")
+  @@map("convocatorias_cda")
 }
 
 /// Singleton (id = 1): hora oficial de entrada de los operadores CDA y minutos

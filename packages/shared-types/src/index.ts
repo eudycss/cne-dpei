@@ -1652,6 +1652,8 @@ export interface AsistenciaCdaFila {
   entradaPor: string | null;
   salidaEn: string | null;
   salidaPor: string | null;
+  /** Convocado ese día (Convocatoria o Parejas): solo ellos pueden tener falta. */
+  convocado: boolean;
 }
 
 /** Horas "HH:MM" (Ecuador) de un día pasado; null = sin marca. */
@@ -1673,6 +1675,35 @@ export interface AsistenciaCdaDia {
   /** Solo el día de hoy se puede marcar. */
   esHoy: boolean;
   filas: AsistenciaCdaFila[];
+  /** Cuántos de las filas están convocados ese día (Convocatoria o Parejas); 0 = día sin convocatoria. */
+  convocados: number;
+}
+
+/** Una persona en la Convocatoria de un día. */
+export interface ConvocatoriaCdaPersona {
+  operadorId: string;
+  apellidosNombres: string;
+  cedula: string;
+  /** Clave del cargo (grupo) y su nombre y centro (CDA o CPE). */
+  grupo: string;
+  cargo: string;
+  centro: string;
+  convocado: boolean;
+  /** Convocado porque está en Parejas ese día: no se quita desde la Convocatoria. */
+  porPareja: boolean;
+}
+
+export interface ConvocatoriaCdaDia {
+  /** AAAA-MM-DD */
+  fecha: string;
+  personas: ConvocatoriaCdaPersona[];
+  convocados: number;
+  total: number;
+}
+
+/** Convocados a mano de un día (los de Parejas se agregan solos). */
+export interface GuardarConvocatoriaCdaRequest {
+  operadorIds: string[];
 }
 
 /** Hora oficial de entrada ("HH:MM", Ecuador) y minutos de gracia. */
@@ -1695,6 +1726,8 @@ export interface FilaAtrasoCda {
   /** Minutos después de la hora oficial (0 si llegó antes). */
   minutosAtraso: number;
   estado: EstadoPuntualidad;
+  /** false = vino sin estar convocado ese día (sin entrada no aparece: nunca es falta). */
+  convocado: boolean;
 }
 
 export interface ResumenAtrasoOperadorCda {

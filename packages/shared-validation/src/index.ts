@@ -892,6 +892,19 @@ export const rangoAsistenciaSchema = z
   );
 export type RangoAsistenciaInput = z.infer<typeof rangoAsistenciaSchema>;
 
+/** Máximo de personas en la convocatoria de un día (todo el personal CDA y CPE cabe con holgura). */
+export const MAX_CONVOCADOS_CDA = 2000;
+/** Convocados a mano de un día: reemplaza la lista de esa fecha (los de Parejas van solos). */
+export const guardarConvocatoriaCdaSchema = z
+  .object({
+    operadorIds: z
+      .array(z.string().uuid('Persona inválida'))
+      .max(MAX_CONVOCADOS_CDA, `Máximo ${MAX_CONVOCADOS_CDA} personas`)
+      .transform((ids) => [...new Set(ids)]),
+  })
+  .strict();
+export type GuardarConvocatoriaCdaInput = z.infer<typeof guardarConvocatoriaCdaSchema>;
+
 /**
  * El PDF cuesta mucha más CPU que el Excel (Render: 0.1 vCPU) y más de un mes
  * no se imprime: para rangos largos, Excel.

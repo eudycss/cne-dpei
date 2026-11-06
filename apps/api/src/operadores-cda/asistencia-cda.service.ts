@@ -16,6 +16,7 @@ import { textosGrupo } from './grupo-cda';
 import { toOperadorCdaDto } from './operadores-cda.service';
 import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador, momentoEcuador } from './dia-ecuador';
 import { enTramos, personalDelCargo } from './periodos-cargo';
+import { convocadosEntre } from './convocatoria';
 import {
   type ArchivoReporte,
   type Celda,
@@ -78,6 +79,8 @@ type FilaExportada = {
   conEntrada: boolean;
   conSalida: boolean;
   faltante: Celda[];
+  /** false = vino sin estar convocado (no cuenta en el total del día). */
+  convocado?: boolean;
 };
 
 /**
@@ -85,15 +88,19 @@ type FilaExportada = {
  * Asistentes) cuenta a los que asistieron, es decir, los que registraron
  * entrada: por decisión del usuario coincide siempre con "Entrada".
  */
-export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida'>[]): {
+export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida' | 'convocado'>[]): {
   asistieron: string;
   entrada: string;
   salida: string;
 } {
-  const total = filas.length;
-  const entrada = filas.filter((f) => f.conEntrada).length;
-  const salida = filas.filter((f) => f.conSalida).length;
-  return { asistieron: `${entrada}/${total}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
+  // El total es de los convocados; quienes vinieron sin convocatoria van aparte ("+2 no conv.").
+  const convocados = filas.filter((f) => f.convocado !== false);
+  const extra = filas.length - convocados.length;
+  const total = convocados.length;
+  const entrada = convocados.filter((f) => f.conEntrada).length;
+  const salida = convocados.filter((f) => f.conSalida).length;
+  const aparte = extra > 0 ? ` (+${extra} no conv.)` : '';
+  return { asistieron: `${entrada}/${total}${aparte}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
 }
 
 function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
@@ -103,11 +110,13 @@ function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
 
 const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
 
-/** Hoy todavía pueden llegar: "Sin entrada"; un día pasado sin entrada es "Faltó". */
-function estado(entrada: boolean, salida: boolean, esHoy: boolean): string {
-  if (salida) return 'Completa';
-  if (entrada) return 'Sin salida';
-  return esHoy ? 'Sin entrada' : 'Faltó';
+/**
+ * Hoy todavía pueden llegar: "Sin entrada"; un día pasado sin entrada es "Faltó".
+ * Quien vino sin estar convocado lo dice (sin entrada no aparece: nunca falta).
+ */
+function estado(entrada: boolean, salida: boolean, esHoy: boolean, convocado = true): string {
+  const base = salida ? 'Completa' : entrada ? 'Sin salida' : esHoy ? 'Sin entrada' : 'Faltó';
+  return convocado ? base : `${base} (no convocado)`;
 }
 
 /** Cómo se registró la marca. Por texto (no por tipo): así una corrección también se lee aunque el tipo cambie. */
@@ -139,25 +148,26 @@ export class AsistenciaCdaService {
     const operadores = (await personalDelCargo(this.prisma, grupo))
       .filter((p) => enTramos(p.tramos, dia))
       .map((p) => p.operador);
-    const asistencias = await this.prisma.asistenciaCda.findMany({
-      where: { fecha: fechaDb(dia), operadorId: { in: operadores.map((o) => o.id) } },
-      include: CON_QUIEN_MARCO,
-    });
-    const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
-    return {
-      fecha: dia,
-      esHoy: dia === hoy,
-      filas: operadores.map((o) => {
-        const a = porOperador.get(o.id);
-        return {
-          operador: toOperadorCdaDto(o),
-          entradaEn: a?.entradaEn?.toISOString() ?? null,
-          entradaPor: nombre(a?.entradaPor ?? null),
-          salidaEn: a?.salidaEn?.toISOString() ?? null,
-          salidaPor: nombre(a?.salidaPor ?? null),
-        };
+    const [asistencias, convocados] = await Promise.all([
+      this.prisma.asistenciaCda.findMany({
+        where: { fecha: fechaDb(dia), operadorId: { in: operadores.map((o) => o.id) } },
+        include: CON_QUIEN_MARCO,
       }),
-    };
+      convocadosEntre(this.prisma, dia, dia),
+    ]);
+    const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
+    const filas = operadores.map((o) => {
+      const a = porOperador.get(o.id);
+      return {
+        operador: toOperadorCdaDto(o),
+        entradaEn: a?.entradaEn?.toISOString() ?? null,
+        entradaPor: nombre(a?.entradaPor ?? null),
+        salidaEn: a?.salidaEn?.toISOString() ?? null,
+        salidaPor: nombre(a?.salidaPor ?? null),
+        convocado: convocados.es(dia, o.id),
+      };
+    });
+    return { fecha: dia, esHoy: dia === hoy, filas, convocados: filas.filter((f) => f.convocado).length };
   }
 
   async marcar(
@@ -196,12 +206,14 @@ export class AsistenciaCdaService {
           (marca ? ` a las ${horaEcuador(marca)}${quien ? ` por ${quien}` : ''}` : ''),
       );
     }
+    const dia = diaEcuador(ahora);
     return {
       operador: toOperadorCdaDto(operador),
       entradaEn: actual.entradaEn?.toISOString() ?? null,
       entradaPor: nombre(actual.entradaPor),
       salidaEn: actual.salidaEn?.toISOString() ?? null,
       salidaPor: nombre(actual.salidaPor),
+      convocado: (await convocadosEntre(this.prisma, dia, dia)).es(dia, operadorId),
     };
   }
 
@@ -309,6 +321,7 @@ export class AsistenciaCdaService {
         entradaPor: nombre(fila.entradaPor),
         salidaEn: fila.salidaEn?.toISOString() ?? null,
         salidaPor: nombre(fila.salidaPor),
+        convocado: (await convocadosEntre(this.prisma, dia, dia)).es(dia, operadorId),
       },
       antes: { entradaEn: previa?.entradaEn?.toISOString() ?? null, salidaEn: previa?.salidaEn?.toISOString() ?? null },
     };
@@ -377,16 +390,21 @@ export class AsistenciaCdaService {
       throw new BadRequestException(`El rango es demasiado largo (máximo ${MAX_DIAS_EXPORTAR} días)`);
     }
 
-    const asistencias = await this.prisma.asistenciaCda.findMany({
-      where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: operadores.map((o) => o.id) } },
-      include: CON_QUIEN_MARCO,
-    });
+    const [asistencias, convocados] = await Promise.all([
+      this.prisma.asistenciaCda.findMany({
+        where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: operadores.map((o) => o.id) } },
+        include: CON_QUIEN_MARCO,
+      }),
+      convocadosEntre(this.prisma, desde, hasta),
+    ]);
     const clave = (operadorId: string, dia: string) => `${operadorId}|${dia}`;
     const porClave = new Map<string, (typeof asistencias)[number]>(
       asistencias.map((a) => [clave(a.operadorId, diaDeFechaDb(a.fecha)), a]),
     );
 
     const filas: FilaExportada[] = [];
+    // Días con personal que pudo ser convocado: si no hay filas, en el resumen dice "Sin convocatoria".
+    const conPersonal = new Set<string>();
     for (const dia of dias) {
       let numero = 0;
       for (const { operador: o, tramos } of personal) {
@@ -396,6 +414,10 @@ export class AsistenciaCdaService {
         const a = porClave.get(clave(o.id, dia));
         const conEntrada = !!a?.entradaEn;
         const conSalida = !!a?.salidaEn;
+        conPersonal.add(dia);
+        // Solo los convocados ese día pueden faltar; quien vino sin convocatoria igual aparece.
+        const convocado = convocados.es(dia, o.id);
+        if (!convocado && !conEntrada) continue;
         numero++;
         filas.push({
           fecha: dia,
@@ -409,17 +431,19 @@ export class AsistenciaCdaService {
             a?.salidaEn ? horaEcuador(a.salidaEn) : '',
             nombre(a?.salidaPor ?? null) ?? '',
             textoOrigen(a?.salidaEn, a?.salidaOrigen),
-            estado(conEntrada, conSalida, dia === hoy),
+            estado(conEntrada, conSalida, dia === hoy, convocado),
           ],
           conEntrada,
           conSalida,
           faltante: [numero, o.apellidosNombres, o.cedula, o.telefono ?? ''],
+          convocado,
         });
       }
     }
     const porDia = agruparPorDia(filas);
     const indicesSinEntrada = (lista: FilaExportada[]) =>
       lista.flatMap((f, i) => (f.conEntrada ? [] : [i]));
+    // Faltaron: convocados sin entrada (un no convocado sin entrada ni aparece).
     const sinEntrada = filas.filter((f) => !f.conEntrada);
 
     const tablas: TablaReporte[] =
@@ -429,10 +453,14 @@ export class AsistenciaCdaService {
               hoja: 'Resumen por día',
               titulo: 'Resumen por día',
               columnas: columnasResumenDia(grupo),
-              filas: [...porDia].map(([dia, delDia]) => {
-                const c = contadoresDelDia(delDia);
-                return [dia, diaLargo(dia), c.asistieron, c.entrada, c.salida];
-              }),
+              filas: dias
+                .filter((dia) => porDia.has(dia) || conPersonal.has(dia))
+                .map((dia) => {
+                  const delDia = porDia.get(dia);
+                  if (!delDia) return [dia, diaLargo(dia), 'Sin convocatoria', '', ''];
+                  const c = contadoresDelDia(delDia);
+                  return [dia, diaLargo(dia), c.asistieron, c.entrada, c.salida];
+                }),
             },
             {
               hoja: 'Asistencia',
