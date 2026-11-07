@@ -30,8 +30,7 @@ function fila(id: string, codigo: string, op: PersonaParejaCda, as: PersonaParej
     portador: op,
     kitCodigo: `KIT${codigo}`,
     estado: 'EN_APP',
-    recintoCompartido: false,
-    puedeRecibirKit: false,
+    parejasEnRecinto: 1,
     articulos: null,
     kitSalio: false,
     quienLleva: null,
@@ -53,10 +52,10 @@ const EVA = persona('e', 'DE LA CRUZ CHICAIZA EVA', 'OPERADOR', '0993333333');
 const JOSE = persona('j', 'TORRES PAZ JOSE', 'ASISTENTE', null);
 const RITA = persona('r', 'VACA GUEVARA RITA', 'OPERADOR', '0994444444');
 
-// 1286: dos parejas (la 2.ª solo registrada); 96: una pareja donde el asistente tiene el kit; 7777: sin técnico.
+// 1286: dos parejas, cada una con su kit; 96: una pareja donde el asistente tiene el kit; 7777: sin técnico.
 const FILAS: FilaTecnico[] = [
-  { pareja: fila('p1', '1286', ANA, LUIS, { recintoCompartido: true }), ingresa: 'OPERADOR', lleva: ANA },
-  { pareja: fila('p2', '1286', EVA, JOSE, { portador: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }), ingresa: null, lleva: null },
+  { pareja: fila('p1', '1286', ANA, LUIS, { parejasEnRecinto: 2 }), ingresa: 'OPERADOR', lleva: ANA },
+  { pareja: fila('p2', '1286', EVA, JOSE, { portador: EVA, kitCodigo: 'KIT1286-2', parejasEnRecinto: 2 }), ingresa: 'OPERADOR', lleva: EVA },
   { pareja: fila('p3', '96', RITA, LUIS, { portador: LUIS }), ingresa: 'ASISTENTE', lleva: LUIS },
   { pareja: fila('p4', '7777', persona('x', 'SOLO PEREZ JUAN', 'OPERADOR'), null, { estado: 'SIN_KIT' }), ingresa: null, lleva: null },
 ];
@@ -68,7 +67,7 @@ describe('reporte por técnico de parejas CDA', () => {
       const grupos = agruparPorTecnico(FILAS, DISTRIBUTIVO);
 
       expect(grupos.map((g) => [g.nombre, g.filas.map((f) => f.pareja.id)])).toEqual([
-        ['Ing. Sebastian Cabascango', ['p3', 'p1', 'p2']],
+        ['Ing. Sebastian Cabascango', ['p3', 'p2', 'p1']],
         ['Ing. Jairo Leal', ['p3']],
         ['Ing. Carlos Cañares', []],
         [null, ['p4']],
@@ -94,14 +93,15 @@ describe('reporte por técnico de parejas CDA', () => {
     it('una hoja por técnico elegido, con quién ingresa a la app y cuántas parejas van al recinto', () => {
       expect(reporte.tablas.map((t) => t.hoja)).toEqual(['Ing. Sebastian Cabascango', 'Ing. Jairo Leal', 'Ing. Carlos Cañares', 'Sin técnico']);
       const t = reporte.tablas[0];
-      expect(t.titulo).toBe('Ing. Sebastian Cabascango · 2 recintos · 3 parejas · 2 ingresan a la app');
+      expect(t.titulo).toBe('Ing. Sebastian Cabascango · 2 recintos · 3 parejas · 3 ingresan a la app');
       expect(t.columnas.map((c) => c.titulo)).toEqual([
         'N°', 'Código', 'Recinto', 'Parroquia', 'Parejas en el recinto', 'Kit', 'Ingresa a la app', 'Celular', 'Su pareja / integrantes', 'Observación',
       ]);
       expect(t.filas).toEqual([
         [1, '96', 'Recinto 96', 'SAGRARIO', '1 pareja', 'KIT96', 'MORA RUIZ LUIS (Asistente)', '0992 222 222', 'VACA GUEVARA RITA (Operador) · 0994 444 444', ''],
-        [2, '1286', 'Recinto 1286', 'SAGRARIO', '2 parejas', 'KIT1286', 'PEREZ LOPEZ ANA MARIA (Operador)', '0991 111 111', 'MORA RUIZ LUIS (Asistente) · 0992 222 222', '1.ª pareja: lleva el kit'],
-        [3, '1286', 'Recinto 1286', 'SAGRARIO', '2 parejas', 'Sin kit', 'NO INGRESA', '', 'Operador: DE LA CRUZ CHICAIZA EVA · 0993 333 333\nAsistente: TORRES PAZ JOSE · sin celular', '2.ª pareja: va con la pareja que tiene el kit'],
+        // Cada pareja del recinto ingresa con su propio kit.
+        [2, '1286', 'Recinto 1286', 'SAGRARIO', '2 parejas', 'KIT1286-2', 'DE LA CRUZ CHICAIZA EVA (Operador)', '0993 333 333', 'TORRES PAZ JOSE (Asistente) · sin celular', '2 parejas en el recinto: cada una con su kit'],
+        [3, '1286', 'Recinto 1286', 'SAGRARIO', '2 parejas', 'KIT1286', 'PEREZ LOPEZ ANA MARIA (Operador)', '0991 111 111', 'MORA RUIZ LUIS (Asistente) · 0992 222 222', '2 parejas en el recinto: cada una con su kit'],
       ]);
       expect(t.resaltadas).toEqual([]);
       expect(reporte.detalle).toContain('Primer Simulacro');
@@ -118,33 +118,33 @@ describe('reporte por técnico de parejas CDA', () => {
       expect(otra.detalle).toContain('sin evento activo');
     });
 
-    it('caso 6116: el kit de la 1.ª pareja (sin Android) lo lleva alguien de la 2.ª; esa persona ingresa y nada se resalta', () => {
+    it('caso 6116 con kits de la regla anterior (el de la 1.ª pareja lo lleva alguien de la 2.ª): se resaltan para volver a aplicar', () => {
       const ECHE = persona('ec', 'ECHEVERRIA BERMEO ANTHONY', 'OPERADOR', '0985774628');
       const LIMA = persona('li', 'LIMAICO NAZATE DANIELA', 'ASISTENTE', '0988860129');
       const HERR = persona('he', 'HERRERA HERRERA PAULA', 'OPERADOR', '0967018582');
       const MONT = persona('mo', 'MONTENEGRO ARCINIEGA DENNIS', 'ASISTENTE', '0982983178');
       const filas: FilaTecnico[] = [
-        { pareja: fila('k1', '6116', ECHE, LIMA, { portador: HERR, recintoCompartido: true }), ingresa: 'RECINTO', lleva: HERR },
-        { pareja: fila('k2', '6116', HERR, MONT, { portador: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }), ingresa: null, lleva: HERR },
+        { pareja: fila('k1', '6116', ECHE, LIMA, { portador: HERR, parejasEnRecinto: 2 }), ingresa: 'RECINTO', lleva: HERR },
+        { pareja: fila('k2', '6116', HERR, MONT, { portador: null, kitCodigo: null, estado: 'SIN_KIT', parejasEnRecinto: 2 }), ingresa: null, lleva: HERR },
       ];
       const t = reporteTecnicos({ fecha: '2026-11-01', evento: { id: 'ev', nombre: 'S' } }, agruparPorTecnico(filas, [asig('6116', 'Ing. William Paspuel', 1)])).tablas[0];
 
       expect(t.titulo).toBe('Ing. William Paspuel · 1 recintos · 2 parejas · 1 ingresan a la app');
       expect(t.filas.map((f) => f.slice(6, 10))).toEqual([
         [
-          'HERRERA HERRERA PAULA (Operador, de la 2.ª pareja)',
+          'HERRERA HERRERA PAULA (Operador, de otra pareja)',
           '0967 018 582',
           'Operador: ECHEVERRIA BERMEO ANTHONY · 0985 774 628\nAsistente: LIMAICO NAZATE DANIELA · 0988 860 129',
-          'Sin Android en esta pareja: el kit lo lleva la 2.ª pareja',
+          'El kit de esta pareja lo lleva otra pareja del recinto: pulse "Aplicar a la app" para darle el suyo',
         ],
         [
-          'HERRERA HERRERA PAULA (Operador): lleva el kit de la 1.ª pareja',
-          '0967 018 582',
-          'MONTENEGRO ARCINIEGA DENNIS (Asistente) · 0982 983 178',
-          '2.ª pareja: va con la 1.ª pareja',
+          'NADIE: pulse "Asignar kit"',
+          '',
+          'Operador: HERRERA HERRERA PAULA · 0967 018 582\nAsistente: MONTENEGRO ARCINIEGA DENNIS · 0982 983 178',
+          'Revisar antes de la jornada',
         ],
       ]);
-      expect(t.resaltadas).toEqual([]);
+      expect(t.resaltadas).toEqual([0, 1]);
     });
 
     it('sin parejas para los técnicos elegidos, una tabla que lo dice', () => {
@@ -184,9 +184,9 @@ describe('reporte por técnico de parejas CDA', () => {
       expect(nombres).toEqual([
         '96.Rita.Vaca.Sebastian',
         '96.Luis.Mora.Sebastian',
+        '1286.Eva.De La Cruz.Sebastian',
         '1286.Ana.Perez.Sebastian',
         '1286.Luis.Mora.Sebastian',
-        '1286.Eva.De La Cruz.Sebastian',
         // José no tiene celular: no sale. En el 96 Jairo también responde.
         '96.Rita.Vaca.Jairo',
         '96.Luis.Mora.Jairo',

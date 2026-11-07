@@ -1201,12 +1201,12 @@ export interface OperadorCda {
 // --- Parejas Operador CDA + Asistente CDA por día ---
 
 /**
- * EN_APP: el kit del recinto (evento activo) está asignado al operador.
- * SIN_KIT: el recinto no tiene kit en el evento activo (faltan artículos).
- * SOLO_REGISTRADA: segunda pareja en el mismo recinto y día.
+ * Cada pareja con recinto lleva su propio kit (así cada una tiene a alguien rastreado).
+ * EN_APP: su kit (evento activo) está asignado a quien lo lleva.
+ * SIN_KIT: todavía no tiene kit en el evento activo (falta "Aplicar a la app" o faltan artículos).
  * PENDIENTE_EVENTO: el evento activo no es de esa fecha; se aplica después.
  */
-export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'SOLO_REGISTRADA' | 'PENDIENTE_EVENTO';
+export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'PENDIENTE_EVENTO';
 
 /** Celular de la persona (la APK solo se instala en Android). */
 export type DispositivoCda = 'ANDROID' | 'IPHONE';
@@ -1240,10 +1240,8 @@ export interface ParejaCdaFila {
   asistente: PersonaParejaCda | null;
   kitCodigo: string | null;
   estado: EstadoParejaCda;
-  /** Otra pareja va al mismo recinto ese día. */
-  recintoCompartido: boolean;
-  /** Pareja solo registrada cuyo recinto tiene un kit sin persona: "Asignar kit" le pasa ese mismo kit. */
-  puedeRecibirKit: boolean;
+  /** Cuántas parejas van a ese recinto ese día (esta incluida); cada una con su kit. */
+  parejasEnRecinto: number;
   /** Artículos para crear el kit si el recinto no lo tiene. */
   articulos: string | null;
   /** El kit de esta pareja (del evento del día) ya salió de la Delegación: quien lo lleva y el recinto no se cambian. */
@@ -1507,7 +1505,6 @@ export interface AplicarParejasCdaResult {
   enApp: number;
   kitsCreados: number;
   sinKit: number;
-  soloRegistradas: number;
   errores: { pareja: string; error: string }[];
 }
 

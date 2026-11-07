@@ -222,22 +222,12 @@ export class ParejasCdaController {
 
   @Post(':id/asignar-kit')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Asigna (o crea) el kit del recinto al operador de esta pareja' })
+  @ApiOperation({ summary: 'Asigna a esta pareja su kit (uno libre del recinto o uno nuevo) y la pone en la app' })
   asignarKit(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
     return this.parejas.asignarKit(id, body?.justificacion);
-  }
-
-  @Post(':id/kit-propio')
-  @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Crea otro kit del recinto para esta pareja (la otra lleva el del recinto) y lo pone en la app' })
-  darKitPropio(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
-  ) {
-    return this.parejas.darKitPropio(id, body?.justificacion);
   }
 
   @Post('copiar')

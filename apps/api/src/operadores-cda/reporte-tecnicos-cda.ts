@@ -56,8 +56,6 @@ export const claveTecnico = (s: string) =>
 
 const porCodigo = (a: FilaTecnico, b: FilaTecnico) =>
   a.pareja.recinto.codigo.localeCompare(b.pareja.recinto.codigo, 'es', { numeric: true }) ||
-  // En cada recinto, primero la pareja que lleva el kit.
-  Number(!a.pareja.portador) - Number(!b.pareja.portador) ||
   a.pareja.operador.apellidosNombres.localeCompare(b.pareja.operador.apellidosNombres, 'es');
 
 /**
@@ -115,32 +113,16 @@ function integrantes(p: ParejaCdaFila): string {
 /** Columnas "Ingresa a la app", "Celular", "Su pareja / integrantes" y "Observación"; y si hay que revisarla. */
 function quienIngresa(f: FilaTecnico, parejasEnRecinto: number, hayEvento: boolean): { celdas: Celda[]; revisar: boolean } {
   const p = f.pareja;
-  if (!p.portador) {
-    if (f.lleva) {
-      // Lleva el kit de la 1.ª pareja (que no tiene Android): sí ingresa a la app.
-      const lleva = f.lleva;
-      const otro = [p.operador, p.asistente].find((x) => x && x.id !== lleva.id);
-      return {
-        celdas: [
-          `${lleva.apellidosNombres} (${cargo(lleva)}): lleva el kit de la 1.ª pareja`,
-          celular(lleva.telefono),
-          otro ? `${otro.apellidosNombres} (${cargo(otro)}) · ${celular(otro.telefono)}` : 'Sin pareja',
-          '2.ª pareja: va con la 1.ª pareja',
-        ],
-        revisar: false,
-      };
-    }
-    return { celdas: ['NO INGRESA', '', integrantes(p), '2.ª pareja: va con la pareja que tiene el kit'], revisar: false };
-  }
+  // Kit asignado con la regla anterior (antes de "un kit por pareja"): lo lleva alguien de otra pareja del recinto.
   if (f.ingresa === 'RECINTO' && f.lleva) {
     return {
       celdas: [
-        `${f.lleva.apellidosNombres} (${cargo(f.lleva)}, de la 2.ª pareja)`,
+        `${f.lleva.apellidosNombres} (${cargo(f.lleva)}, de otra pareja)`,
         celular(f.lleva.telefono),
         integrantes(p),
-        'Sin Android en esta pareja: el kit lo lleva la 2.ª pareja',
+        'El kit de esta pareja lo lleva otra pareja del recinto: pulse "Aplicar a la app" para darle el suyo',
       ],
-      revisar: false,
+      revisar: true,
     };
   }
   if (f.ingresa === 'OPERADOR' || f.ingresa === 'ASISTENTE') {
@@ -150,7 +132,7 @@ function quienIngresa(f: FilaTecnico, parejasEnRecinto: number, hayEvento: boole
         `${lleva.apellidosNombres} (${cargo(lleva)})`,
         celular(lleva.telefono),
         otro ? `${otro.apellidosNombres} (${cargo(otro)}) · ${celular(otro.telefono)}` : 'Sin pareja',
-        parejasEnRecinto > 1 ? '1.ª pareja: lleva el kit' : '',
+        parejasEnRecinto > 1 ? `${parejasEnRecinto} parejas en el recinto: cada una con su kit` : '',
       ],
       revisar: false,
     };
@@ -206,7 +188,7 @@ export function reporteTecnicos(dia: { fecha: string; evento: { id: string; nomb
   const hojas = nombresDeHoja(grupos);
   return {
     titulo: 'Parejas CDA por técnico: quién ingresa a la app',
-    detalle: `${diaLargo(dia.fecha)} · ${evento} · Ingresa a la app quien lleva el kit (clave inicial: su cédula); en recintos con 2 parejas solo la 1.ª`,
+    detalle: `${diaLargo(dia.fecha)} · ${evento} · Ingresa a la app quien lleva el kit de cada pareja (clave inicial: su cédula); en un recinto con varias parejas, cada una lleva el suyo`,
     archivo: 'parejas_por_tecnico',
     desde: dia.fecha,
     hasta: dia.fecha,

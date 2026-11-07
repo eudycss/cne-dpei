@@ -25,8 +25,7 @@ const fila = (codigo: string, extra: Partial<ParejaCdaFila> = {}): ParejaCdaFila
     portador: operador,
     kitCodigo: `K-${codigo}`,
     estado: 'EN_APP',
-    recintoCompartido: false,
-    puedeRecibirKit: false,
+    parejasEnRecinto: 1,
     articulos: null,
     kitSalio: false,
     quienLleva: null,
@@ -91,22 +90,16 @@ describe('reporteParejas', () => {
     const r = reporteParejas(
       dia([
         fila('1', { estado: 'SIN_KIT', portador: null, kitCodigo: null }),
-        fila('2', { estado: 'SOLO_REGISTRADA', asistente: null, portador: null, kitCodigo: null, recintoCompartido: true }),
+        fila('2', { asistente: null, parejasEnRecinto: 2 }),
         fila('3', { operador: persona('OP IPHONE', 'IPHONE'), asistente: null }),
         fila('4', { estado: 'PENDIENTE_EVENTO', portador: null, kitCodigo: null }),
-        fila('5', { estado: 'SOLO_REGISTRADA', portador: null, kitCodigo: null, recintoCompartido: true }),
+        fila('5', { parejasEnRecinto: 2 }),
       ]),
     );
     const t = r.tablas[0];
     const estados = t.filas.map((f) => f[11]);
 
-    expect(estados).toEqual([
-      'Sin kit',
-      'Persona sola (acompaña a la pareja del recinto)',
-      'Con kit · sin Android · sin asistente',
-      'Pendiente de evento',
-      'Solo registrada (2.ª pareja del recinto)',
-    ]);
+    expect(estados).toEqual(['Sin kit', 'Con kit · sin asistente', 'Con kit · sin Android · sin asistente', 'Pendiente de evento', 'Con kit']);
     expect(t.filas[1].slice(7, 10)).toEqual(['— (sin pareja)', '', '']);
     expect(t.filas[0][10]).toBe('—');
     expect(t.resaltadas).toEqual([0, 1, 2]);
@@ -116,7 +109,7 @@ describe('reporteParejas', () => {
     const r = reporteParejas(
       dia([
         fila('10'),
-        fila('10', { operador: persona('OP2 10', null), asistente: null, estado: 'SOLO_REGISTRADA', portador: null, kitCodigo: null }),
+        fila('10', { operador: persona('OP2 10', null), asistente: null, parejasEnRecinto: 2 }),
         fila('20', { estado: 'SIN_KIT', portador: null, kitCodigo: null }),
       ]),
     );
