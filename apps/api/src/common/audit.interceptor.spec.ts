@@ -192,6 +192,24 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('tiempos de viaje de los CDA: qué recinto y cuántos minutos, sin otros datos', async () => {
+    const R = 'cccccccc-0000-0000-0000-000000000001';
+    const { data } = await auditar({
+      method: 'PUT',
+      originalUrl: '/recintos/tiempos-viaje',
+      body: { tiempos: [{ recintoId: R, minutos: 75 }, { recintoId: 'no-uuid', minutos: null, nombre: 'X' }] },
+      user: ADMIN,
+    });
+    expect(data).toMatchObject({ accion: 'RECINTO_TIEMPOS_VIAJE', entidad: 'recinto' });
+    expect(data.datosDespues).toEqual({
+      total: 2,
+      tiempos: [
+        { recintoId: R, minutos: 75 },
+        { recintoId: null, minutos: null },
+      ],
+    });
+  });
+
   it('pasar a reserva y asignar recinto a una pareja CDA quedan en la bitácora', async () => {
     const reserva = await auditar({
       method: 'POST',

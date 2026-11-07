@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseGuards,
@@ -14,11 +15,14 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { CreateRecintoRequest, UpdateRecintoRequest } from '@cne/shared-types';
+import type { CreateRecintoRequest, GuardarTiemposViajeRequest, UpdateRecintoRequest } from '@cne/shared-types';
+import { guardarTiemposViajeSchema } from '@cne/shared-validation';
 import { Throttle } from '@nestjs/throttler';
 import { RecintosService } from './recintos.service';
 import { RecintosSyncService } from './recintos-sync.service';
 import { TiposEventoService } from './tipos-evento.service';
+import { TiemposViajeService } from './tiempos-viaje.service';
+import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -32,6 +36,7 @@ export class CatalogController {
     private readonly recintos: RecintosService,
     private readonly tiposEvento: TiposEventoService,
     private readonly recintosSync: RecintosSyncService,
+    private readonly tiemposViaje: TiemposViajeService,
   ) {}
 
   @Get('recintos')
@@ -83,6 +88,21 @@ export class CatalogController {
   @ApiOperation({ summary: 'Aplica los cambios de recintos del Google Sheet (los que no tienen error)' })
   syncRecintos() {
     return this.recintosSync.aplicar();
+  }
+
+  // Antes de 'recintos/:id': si no, "tiempos-viaje" llegaría como id.
+  @Get('recintos/tiempos-viaje')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Tiempo de viaje de cada CDA desde la Delegación: configurado, medido y sugerido' })
+  listarTiemposViaje() {
+    return this.tiemposViaje.listar();
+  }
+
+  @Put('recintos/tiempos-viaje')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Guarda el tiempo de viaje de uno o varios CDA (límite de los avisos de retraso del bot Jornada)' })
+  guardarTiemposViaje(@Body(new ZodValidationPipe(guardarTiemposViajeSchema)) body: GuardarTiemposViajeRequest) {
+    return this.tiemposViaje.guardar(body);
   }
 
   @Get('recintos/:id')
