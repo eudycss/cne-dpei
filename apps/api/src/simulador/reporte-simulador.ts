@@ -6,7 +6,7 @@ import type {
   ReporteSimulador,
 } from '@cne/shared-types';
 
-import { motivoCierre, type IntentoParaEstado, type Parcial } from './reglas-simulador';
+import { actasFaltantes, finDelTiempo, motivoCierre, msUsados, type IntentoParaEstado, type Parcial } from './reglas-simulador';
 
 /**
  * Reporte del simulador (lógica pura, sin base): resume cada intento, elige el
@@ -33,9 +33,9 @@ export function resumirIntento(
   const digitadas = intento.filasDigitadas + extra.digitadas;
   const correctas = intento.filasCorrectas + extra.correctas;
   // Fin: cuando se cerró (o, cerrado por tiempo sin marca, el vencimiento); en curso, ahora. Nunca pasa del plazo.
-  const cierre = motivo === 'TIEMPO' ? (intento.terminadoEn ?? intento.venceEn) : motivo === 'META' ? (intento.terminadoEn ?? ahora) : ahora;
-  const fin = Math.min(intento.venceEn.getTime(), cierre.getTime());
-  const minutos = Math.max(0, fin - intento.iniciadoEn.getTime()) / MINUTO_MS;
+  const fin = finDelTiempo(intento, motivo, ahora).getTime();
+  const ms = msUsados(intento, motivo, ahora);
+  const minutos = ms / MINUTO_MS;
   return {
     numero: intento.numero,
     cargo: intento.cargo,
@@ -43,6 +43,8 @@ export function resumirIntento(
     terminadoEn: motivo ? new Date(fin).toISOString() : null,
     motivo,
     minutos: unDecimal(minutos),
+    segundos: Math.floor(ms / 1000),
+    actasFaltantes: actasFaltantes(intento, metaActas),
     filasDigitadas: digitadas,
     filasCorrectas: correctas,
     filasConError: digitadas - correctas,

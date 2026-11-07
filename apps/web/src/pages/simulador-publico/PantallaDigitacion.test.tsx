@@ -24,6 +24,8 @@ const estado = (o: Partial<EstadoIntentoSimulador> = {}): EstadoIntentoSimulador
   venceEn: new Date(Date.now() + 59 * 60_000).toISOString(),
   terminado: false,
   motivo: null,
+  segundosUsados: null,
+  actasFaltantes: 0,
   ...o,
 });
 const ACTA: ActaSimulador = {

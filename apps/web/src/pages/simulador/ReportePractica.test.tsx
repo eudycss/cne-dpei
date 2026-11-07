@@ -29,6 +29,8 @@ const intento = (o: Partial<IntentoReporteSimulador> = {}): IntentoReporteSimula
   terminadoEn: '2026-11-10T14:30:00.000Z',
   motivo: 'TIEMPO',
   minutos: 30,
+  segundos: 1800,
+  actasFaltantes: 10,
   filasDigitadas: 100,
   filasCorrectas: 90,
   filasConError: 10,
@@ -60,7 +62,7 @@ const REPORTE: ReporteSimulador = {
   totales: { personas: 2, presentaron: 1, cumplieron: 1, enCurso: 0, noSePresentaron: 1 },
   filas: [
     fila({
-      intentos: [intento(), intento({ numero: 2, motivo: 'META', cumplio: true, actasCompletadas: 20, filasCorrectas: 198, filasDigitadas: 200, filasConError: 2 })],
+      intentos: [intento(), intento({ numero: 2, motivo: 'META', cumplio: true, segundos: 1104, actasFaltantes: 0, actasCompletadas: 20, filasCorrectas: 198, filasDigitadas: 200, filasConError: 2 })],
       mejor: 2,
       cumplio: true,
     }),
@@ -96,8 +98,13 @@ describe('ReportePractica', () => {
 
     const [, ana, luis] = within(tabla).getAllByRole('row');
     const celdas = (r: HTMLElement) => within(r).getAllByRole('cell').map((c) => c.textContent);
-    expect(celdas(ana)).toEqual(['1', '0991234567', 'Digitadores', 'Terminó', '200', '198', '2', '3.3', '20 de 20', 'Sí', 'Ver 2']);
-    expect(celdas(luis)).toEqual(['2', '—', 'Digitadores', 'No se presentó', '—', '—', '—', '—', '—', '—', '0']);
+    // Una columna por intento con su tiempo: cumplió → 18:24; se acabó → tiempo y actas que faltaron.
+    expect(within(tabla).getByRole('columnheader', { name: 'Intento 1' })).toBeInTheDocument();
+    expect(within(tabla).getByRole('columnheader', { name: 'Intento 2' })).toBeInTheDocument();
+    expect(celdas(ana)).toEqual([
+      '1', '0991234567', 'Digitadores', 'Terminó', '200', '198', '2', '3.3', '20 de 20', 'Sí', '30:00 · faltaron 10 actas', '18:24', 'Ver 2',
+    ]);
+    expect(celdas(luis)).toEqual(['2', '—', 'Digitadores', 'No se presentó', '—', '—', '—', '—', '—', '—', '—', '—', '0']);
   });
 
   it('filtra por estado', async () => {
@@ -121,6 +128,10 @@ describe('ReportePractica', () => {
     expect(filas).toHaveLength(3);
     expect(filas[2]).toHaveTextContent('Mejor');
     expect(filas[2]).toHaveTextContent('Cumplió la meta');
+    expect(within(dialogo).getByRole('columnheader', { name: 'Tiempo' })).toBeInTheDocument();
+    expect(within(dialogo).queryByRole('columnheader', { name: 'Minutos' })).not.toBeInTheDocument();
+    expect(filas[1]).toHaveTextContent('30:00 · faltaron 10 actas');
+    expect(filas[2]).toHaveTextContent('18:24');
     await user.click(within(dialogo).getByRole('button', { name: 'Descargar PDF de ANA PÉREZ' }));
     await waitFor(() =>
       expect(getMock).toHaveBeenCalledWith(`/simulador-digitacion/practicas/${ID}/reporte.pdf`, { params: { operadorId: ANA }, responseType: 'blob' }),

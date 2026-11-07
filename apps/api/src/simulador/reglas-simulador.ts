@@ -51,6 +51,24 @@ export function motivoCierre(intento: IntentoParaEstado, metaActas: number, ahor
   return null;
 }
 
+/**
+ * Hasta cuándo cuenta el tiempo del intento: al cumplir la meta, cuando se
+ * cerró (o el vencimiento, si se acabó sin marca) o ahora si sigue abierto.
+ * Nunca pasa del plazo. La pantalla de la persona y los reportes usan esto.
+ */
+export function finDelTiempo(intento: IntentoParaEstado, motivo: 'META' | 'TIEMPO' | null, ahora: Date): Date {
+  const cierre = motivo === 'TIEMPO' ? (intento.terminadoEn ?? intento.venceEn) : motivo === 'META' ? (intento.terminadoEn ?? ahora) : ahora;
+  return new Date(Math.min(intento.venceEn.getTime(), cierre.getTime()));
+}
+
+/** Milisegundos usados del intento (desde que empezó hasta `finDelTiempo`). */
+export function msUsados(intento: IntentoParaEstado, motivo: 'META' | 'TIEMPO' | null, ahora: Date): number {
+  return Math.max(0, finDelTiempo(intento, motivo, ahora).getTime() - intento.iniciadoEn.getTime());
+}
+
+/** Actas que le faltan para la meta (0 si ya la cumplió). */
+export const actasFaltantes = (intento: IntentoParaEstado, metaActas: number) => Math.max(0, metaActas - intento.actasCompletadas);
+
 export function estadoIntento(
   intento: IntentoParaEstado,
   practica: { nombre: string; metaActas: number },
@@ -73,5 +91,7 @@ export function estadoIntento(
     venceEn: intento.venceEn.toISOString(),
     terminado: motivo !== null,
     motivo,
+    segundosUsados: motivo ? Math.floor(msUsados(intento, motivo, ahora) / 1000) : null,
+    actasFaltantes: actasFaltantes(intento, practica.metaActas),
   };
 }

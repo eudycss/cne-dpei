@@ -36,6 +36,8 @@ const resumen = (o: Partial<IntentoReporteSimulador> = {}): IntentoReporteSimula
   terminadoEn: min(30).toISOString(),
   motivo: 'TIEMPO',
   minutos: 30,
+  segundos: 1800,
+  actasFaltantes: 190,
   filasDigitadas: 100,
   filasCorrectas: 90,
   filasConError: 10,
@@ -68,6 +70,8 @@ describe('resumirIntento', () => {
     expect(r).toMatchObject({
       motivo: 'TIEMPO',
       minutos: 30,
+      segundos: 1800,
+      actasFaltantes: 191,
       terminadoEn: min(30).toISOString(),
       filasDigitadas: 100,
       filasCorrectas: 94,
@@ -85,7 +89,7 @@ describe('resumirIntento', () => {
       min(40),
       { digitadas: 3, correctas: 3 },
     );
-    expect(r).toMatchObject({ motivo: 'META', cumplio: true, minutos: 12.5, filasDigitadas: 200, registrosPorMinuto: 16 });
+    expect(r).toMatchObject({ motivo: 'META', cumplio: true, minutos: 12.5, segundos: 750, actasFaltantes: 0, filasDigitadas: 200, registrosPorMinuto: 16 });
   });
 
   it('en curso: minutos hasta ahora, sin fin ni acta a medias', () => {
