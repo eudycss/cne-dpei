@@ -19,6 +19,7 @@ describe('JornadaService', () => {
     eventoTracking: { findMany: jest.fn() },
     recepcionDpiKit: { findMany: jest.fn() },
     recepcionKit: { findMany: jest.fn() },
+    posicionGps: { groupBy: jest.fn() },
     configEnlaces: { findUnique: jest.fn(), upsert: jest.fn() },
   };
   const distributivo = { asignaciones: jest.fn() };
@@ -37,7 +38,7 @@ describe('JornadaService', () => {
       {
         id: 'k1',
         operadorId: 'u1',
-        recinto: { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
+        recinto: { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura', tiempoDpiMin: 45, canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
         operador: { nombres: 'Ana', apellidos: 'Pérez', telefono: '0990000001' },
       },
       {
@@ -85,6 +86,7 @@ describe('JornadaService', () => {
     );
     prisma.recepcionDpiKit.findMany.mockResolvedValue([]);
     prisma.recepcionKit.findMany.mockResolvedValue([]);
+    prisma.posicionGps.groupBy.mockResolvedValue([{ operadorId: 'u1', _max: { capturadoEn: T('2026-11-29T13:30:00Z') } }]);
     distributivo.asignaciones.mockResolvedValue([
       { codigoRecinto: '971', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo' },
       { codigoRecinto: '1487', localidad: '', parroquia: '', numeroTecnico: 2, tecnico: 'Carlos' },
@@ -142,8 +144,11 @@ describe('JornadaService', () => {
     it('arma una fila por kit con la pareja más reciente, el técnico y el primer registro de cada momento', async () => {
       const j = (await service.cargar())!;
       expect(j.evento).toBe('Elecciones 2027');
+      // El GPS se consulta solo de quien va en camino (u1 salió y no llegó; u2 no salió).
+      expect(prisma.posicionGps.groupBy.mock.calls[0][0].where.operadorId).toEqual({ in: ['u1'] });
       expect(j.unidades).toEqual([
         {
+          operadorId: 'u1',
           codigoRecinto: '971',
           nombreRecinto: 'UE Chaltura',
           tecnico: { numero: 1, nombre: 'Jairo' },
@@ -156,8 +161,12 @@ describe('JornadaService', () => {
           kitRecibido: null,
           kitEscaneado: null,
           actas: null,
+          // Tiempo de viaje del recinto y último GPS del día (para los avisos).
+          tiempoViajeMin: 45,
+          ultimoGps: T('2026-11-29T13:30:00Z'),
         },
         {
+          operadorId: 'u2',
           codigoRecinto: '1487',
           nombreRecinto: 'UE Apuela',
           tecnico: { numero: 2, nombre: 'Carlos' },
@@ -168,6 +177,8 @@ describe('JornadaService', () => {
           kitRecibido: null,
           kitEscaneado: null,
           actas: null,
+          tiempoViajeMin: null,
+          ultimoGps: null,
         },
       ]);
       expect(j.sinKit).toEqual([

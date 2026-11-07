@@ -636,6 +636,21 @@ model Alerta {
   @@map("alertas")
 }
 
+/// Bot Jornada: avisos con sonido ya enviados (retraso, "llegó", sin GPS,
+/// alerta reenviada). Evita repetirlos tras un reinicio del servidor.
+model AvisoJornada {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventoId  String   @map("evento_id") @db.Uuid
+  /// Día de jornada en Ecuador (AAAA-MM-DD).
+  dia       String   @db.VarChar(10)
+  /// Qué aviso: "RETRASO_IDA:<operador>", "ALERTA:<id>"…
+  clave     String   @db.VarChar(120)
+  enviadoEn DateTime @default(now()) @map("enviado_en") @db.Timestamptz(6)
+
+  @@unique([eventoId, dia, clave])
+  @@map("avisos_jornada")
+}
+
 // =====================================================================
 // NOTIFICACIONES (HU19)
 // =====================================================================

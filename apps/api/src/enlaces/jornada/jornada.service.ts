@@ -436,7 +436,9 @@ export class JornadaService {
         select: {
           id: true,
           operadorId: true,
-          recinto: { select: { id: true, codigoRecinto: true, nombre: true, canton: { select: { codigo: true, nombre: true } } } },
+          recinto: {
+            select: { id: true, codigoRecinto: true, nombre: true, tiempoDpiMin: true, canton: { select: { codigo: true, nombre: true } } },
+          },
           operador: { select: { nombres: true, apellidos: true, telefono: true } },
         },
       }),
@@ -499,6 +501,7 @@ export class JornadaService {
         },
       }),
     ]);
+    const gpsPorOperador = await this.ultimoGpsEnCamino(evento.id, tracking, dia.desde);
     const visitas = await this.prisma.eventoTracking.findMany({
       where: {
         eventoId: evento.id,
@@ -591,6 +594,7 @@ export class JornadaService {
       const personas = personasDelKit(k, parejaPorKit.get(k.id));
       personasPorRecinto.set(k.recinto!.id, [...(personasPorRecinto.get(k.recinto!.id) ?? []), ...personas]);
       unidades.push({
+        operadorId: k.operadorId!,
         codigoRecinto: k.recinto!.codigoRecinto,
         nombreRecinto: k.recinto!.nombre,
         tecnico: tecnicoDe(k.recinto!.codigoRecinto),
@@ -600,6 +604,8 @@ export class JornadaService {
         kitRecibido: recibidoDelOperador(k.operadorId!),
         kitEscaneado: escaneoDelOperador(k.operadorId!),
         actas: actasPorOperador.get(k.operadorId!) ?? null,
+        tiempoViajeMin: k.recinto!.tiempoDpiMin ?? null,
+        ultimoGps: gpsPorOperador.get(k.operadorId!) ?? null,
       });
     }
 
@@ -639,12 +645,37 @@ export class JornadaService {
       }));
 
     return {
+      eventoId: evento.id,
       evento: evento.nombre,
       unidades,
       noCdas: noCdasJornada,
       sinKit,
       sinDistributivo: asignaciones === null,
     };
+  }
+
+  /**
+   * Último GPS del día solo de quienes van en camino (salió y no llegó, de ida o
+   * de vuelta): son pocos, y así la consulta de cada minuto no recorre las
+   * posiciones de todo el día de todos los operadores.
+   */
+  private async ultimoGpsEnCamino(
+    eventoId: string,
+    tracking: { operadorId: string; tipo: string }[],
+    desde: Date,
+  ): Promise<Map<string, Date | null>> {
+    const momentos = new Map<string, Set<string>>();
+    for (const t of tracking) momentos.set(t.operadorId, (momentos.get(t.operadorId) ?? new Set()).add(t.tipo));
+    const enCamino = [...momentos]
+      .filter(([, m]) => (m.has('SALIDA_DPI') && !m.has('LLEGADA_RECINTO')) || (m.has('SALIDA_RECINTO') && !m.has('LLEGADA_DPI')))
+      .map(([id]) => id);
+    if (enCamino.length === 0) return new Map();
+    const gps = await this.prisma.posicionGps.groupBy({
+      by: ['operadorId'],
+      where: { eventoId, operadorId: { in: enCamino }, capturadoEn: { gte: desde } },
+      _max: { capturadoEn: true },
+    });
+    return new Map<string, Date | null>(gps.map((g) => [g.operadorId, g._max.capturadoEn]));
   }
 
   /** null si el distributivo no está configurado o no se pudo leer: la jornada sigue, sin técnicos. */

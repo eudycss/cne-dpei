@@ -42,6 +42,7 @@ const A_LAS = (hhmm: string) => new Date(`2026-11-29T${hhmm}:00-05:00`);
 
 function unidad(codigo: string, tecnico: TecnicoJornada, extra: Partial<UnidadJornada> = {}): UnidadJornada {
   return {
+    operadorId: `op-${codigo}`,
     codigoRecinto: codigo,
     nombreRecinto: `Recinto ${codigo}`,
     tecnico,
@@ -54,6 +55,8 @@ function unidad(codigo: string, tecnico: TecnicoJornada, extra: Partial<UnidadJo
     kitRecibido: null,
     kitEscaneado: null,
     actas: null,
+    tiempoViajeMin: null,
+    ultimoGps: null,
     ...extra,
   };
 }
@@ -75,6 +78,7 @@ function noCda(codigo: string, cda: string, extra: Partial<NoCdaJornada> = {}): 
 
 function jornada(extra: Partial<Jornada> = {}): Jornada {
   return {
+    eventoId: 'ev-1',
     evento: 'Elecciones 2027',
     unidades: [
       unidad('1487', CARLOS, { canton: OTAVALO }),
