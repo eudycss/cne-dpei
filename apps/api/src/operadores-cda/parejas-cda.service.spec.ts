@@ -56,6 +56,7 @@ describe('ParejasCdaService', () => {
       createMany: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      count: jest.fn(),
       delete: jest.fn(),
     },
     operadorCda: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
@@ -80,6 +81,8 @@ describe('ParejasCdaService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // clearAllMocks no borra las respuestas "Once" que una prueba no usó: no deben pasar a la siguiente.
+    for (const fn of [prisma.parejaCda.findMany, prisma.parejaCda.findUnique, prisma.kitElectoral.findFirst, prisma.kitElectoral.findMany]) fn.mockReset();
     kits.estaCongelado.mockReturnValue(false);
     prisma.parejaCda.findMany.mockResolvedValue([]);
     prisma.operadorCda.findMany.mockResolvedValue([]);
@@ -94,6 +97,7 @@ describe('ParejasCdaService', () => {
     prisma.kitElectoral.delete.mockResolvedValue({});
     prisma.parejaCda.findFirst.mockResolvedValue(null);
     prisma.parejaCda.updateMany.mockResolvedValue({ count: 1 });
+    prisma.parejaCda.count.mockResolvedValue(0);
     const moduleRef = await Test.createTestingModule({
       providers: [
         ParejasCdaService,
@@ -163,7 +167,7 @@ describe('ParejasCdaService', () => {
       expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toEqual({ fecha: FECHA, recintoId: { not: null } });
     });
 
-    it('estados: en la app, sin kit y la segunda del mismo recinto solo registrada', async () => {
+    it('estados: cada pareja del recinto va con su propio kit (ninguna queda solo registrada) y dice cuántas van', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja({ kitId: 'k1', kit: { codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: 'u1' } }),
         pareja({ id: 'p2', operadorCdaId: 'op2', operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3' }, asistente: null, creadoEn: new Date('2026-10-29T11:00:00Z') }),
@@ -174,61 +178,32 @@ describe('ParejasCdaService', () => {
 
       expect(r.evento).toEqual(EVENTO);
       expect(r.congelado).toBe(false);
-      expect(r.parejas.map((p) => [p.id, p.estado, p.recintoCompartido])).toEqual([
-        ['p1', 'EN_APP', true],
-        ['p2', 'SOLO_REGISTRADA', true],
-        ['p3', 'SIN_KIT', false],
+      expect(r.parejas.map((p) => [p.id, p.estado, p.parejasEnRecinto])).toEqual([
+        ['p1', 'EN_APP', 2],
+        ['p2', 'SIN_KIT', 2],
+        ['p3', 'SIN_KIT', 1],
       ]);
       expect(r.parejas[0]).toMatchObject({ fecha: DIA, kitCodigo: 'KIT-1', recinto: { codigo: '957', nombre: 'UE ATAHUALPA', canton: 'COTACACHI' } });
-      expect(r.parejas[1].asistente).toBeNull();
+      expect(r.parejas[1]).toMatchObject({ asistente: null, portador: { id: 'op2' } });
     });
 
-    it('recinto con dos dispositivos: cada pareja con su propio kit está en la app', async () => {
+    it('tres parejas en un recinto: cada una lleva su kit con su propia persona de Android (no se presta de otra pareja)', async () => {
+      const conAndroid = (o: Record<string, unknown>) => ({ ...o, dispositivo: 'ANDROID' });
       prisma.parejaCda.findMany.mockResolvedValueOnce([
-        pareja({ kitId: 'k1', kit: { codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: 'u1' } }),
-        pareja({
-          id: 'p2',
-          operadorCdaId: 'op2',
-          operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3' },
-          kitId: 'k2',
-          kit: { codigoUnico: 'KIT-2', eventoId: 'ev2', operadorId: 'u3' },
-          creadoEn: new Date('2026-10-29T11:00:00Z'),
-        }),
-        pareja({ id: 'p3', operadorCdaId: 'op3', operador: { ...OPERADOR, id: 'op3' }, creadoEn: new Date('2026-10-29T12:00:00Z') }),
+        // Sin Android en la pareja: lo lleva su operador aunque otra pareja del recinto tenga Android.
+        pareja({ id: 'pA', asistente: null, creadoEn: new Date('2026-10-29T09:00:00Z') }),
+        pareja({ id: 'pB', operadorCdaId: 'op2', operador: conAndroid({ ...OPERADOR, id: 'op2', usuarioId: 'u3' }), asistenteCdaId: 'as2', asistente: conAndroid({ ...ASISTENTE, id: 'as2', usuarioId: 'u4' }) }),
+        pareja({ id: 'pC', operadorCdaId: 'op3', operador: { ...OPERADOR, id: 'op3', usuarioId: 'u5' }, asistenteCdaId: 'as3', asistente: conAndroid({ ...ASISTENTE, id: 'as3', usuarioId: 'u6' }) }),
       ]);
 
       const r = await service.listar(DIA);
 
-      expect(r.parejas.map((p) => [p.id, p.estado, p.recintoCompartido])).toEqual([
-        ['p1', 'EN_APP', true],
-        ['p2', 'EN_APP', true],
-        ['p3', 'SOLO_REGISTRADA', true],
+      expect(r.parejas.map((p) => [p.id, p.portador?.id, p.parejasEnRecinto])).toEqual([
+        ['pA', 'op1', 3],
+        ['pB', 'op2', 3],
+        ['pC', 'as3', 3],
       ]);
-    });
-
-    it('dos kits en el recinto y ninguna pareja de sobra: no se avisa "recinto compartido"', async () => {
-      prisma.parejaCda.findMany.mockResolvedValueOnce([
-        pareja({ kitId: 'k1', kit: { codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: 'u1' } }),
-        pareja({ id: 'p2', operadorCdaId: 'op2', operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3' }, kitId: 'k2', kit: { codigoUnico: 'KIT-2', eventoId: 'ev2', operadorId: 'u3' } }),
-      ]);
-
-      const r = await service.listar(DIA);
-
-      expect(r.parejas.map((p) => p.recintoCompartido)).toEqual([false, false]);
-    });
-
-    it('la pareja con kit propio va a la app aunque otra sin kit se haya registrado antes en el recinto', async () => {
-      prisma.parejaCda.findMany.mockResolvedValueOnce([
-        pareja({ id: 'pA', creadoEn: new Date('2026-10-29T09:00:00Z') }),
-        pareja({ id: 'pB', operadorCdaId: 'op2', operador: { ...OPERADOR, id: 'op2', usuarioId: 'u3' }, kitId: 'k2', kit: { codigoUnico: 'KIT-2', eventoId: 'ev2', operadorId: 'u3' } }),
-      ]);
-
-      const r = await service.listar(DIA);
-
-      expect(r.parejas.map((p) => [p.id, p.estado])).toEqual([
-        ['pA', 'SOLO_REGISTRADA'],
-        ['pB', 'EN_APP'],
-      ]);
+      expect(r.parejas.every((p) => p.estado === 'SIN_KIT')).toBe(true);
     });
 
     it('sin evento activo de esa fecha: la lista queda pendiente', async () => {
@@ -369,14 +344,15 @@ describe('ParejasCdaService', () => {
         eventoId: 'ev2',
         nombre: '957 — UE ATAHUALPA',
         recintoId: 'r1',
+        otroDispositivo: true,
         detalleItems: [
           { itemId: 'iLap', serie: '123' },
           { itemId: 'iMod', serie: null },
         ],
       });
       expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u1' });
-      expect(prisma.parejaCda.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { kitId: 'kNuevo' } });
-      expect(r).toEqual({ enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] });
+      expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { id: 'p1', kitId: null }, data: { kitId: 'kNuevo' } });
+      expect(r).toEqual({ enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] });
     });
 
     it('jornada iniciada: con justificación la pasa a la asignación; sin ella no crea el kit y lo explica', async () => {
@@ -416,7 +392,7 @@ describe('ParejasCdaService', () => {
       await expect(service.aplicar(DIA)).rejects.toThrow(BadRequestException);
     });
 
-    it('asigna el kit existente al operador (creándole la cuenta), crea el que falta, cuenta la segunda pareja y reporta errores sin cortar', async () => {
+    it('asigna el kit existente al operador (creándole la cuenta), crea los que faltan (también a la 2.ª pareja del recinto) y reporta errores sin cortar', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja({ operador: { ...OPERADOR, usuarioId: null } }),
         pareja({ id: 'p2', operadorCdaId: 'op2', operador: { ...OPERADOR, id: 'op2', apellidosNombres: 'SEGUNDO' }, creadoEn: new Date('2026-10-29T12:00:00Z') }),
@@ -426,23 +402,29 @@ describe('ParejasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ usuarioId: 'uNuevo' });
       prisma.kitElectoral.findFirst
         .mockResolvedValueOnce({ id: 'k1', operadorId: 'uViejo' })
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: 'k3', operadorId: null })
         .mockResolvedValueOnce(null);
-      kits.asignar.mockResolvedValueOnce({}).mockRejectedValueOnce(new ConflictException('Este operador ya tiene kits asignados a otro recinto en este evento'));
+      kits.asignar
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new ConflictException('Este operador ya tiene kits asignados a otro recinto en este evento'));
 
       const r = await service.aplicar(DIA);
 
       expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1');
-      expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} } });
+      expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} }, estado: { in: ['EN_BODEGA', 'ASIGNADO'] } });
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'uNuevo' });
+      // La 2.ª pareja de r1 recibe su propio kit (otro dispositivo), no queda solo registrada.
+      expect(kits.create).toHaveBeenNthCalledWith(1, { eventoId: 'ev2', nombre: '957 — UE ATAHUALPA', recintoId: 'r1', otroDispositivo: true });
+      expect(kits.asignar).toHaveBeenNthCalledWith(2, 'kNuevo', { operadorId: 'u1' });
       // Recinto sin kit y pareja sin artículos: el kit se crea con los artículos por defecto del catálogo.
-      expect(kits.create).toHaveBeenCalledWith({ eventoId: 'ev2', nombre: '1225 — UE C', recintoId: 'r3' });
-      expect(kits.asignar).toHaveBeenNthCalledWith(3, 'kNuevo', { operadorId: 'u4' });
+      expect(kits.create).toHaveBeenNthCalledWith(2, { eventoId: 'ev2', nombre: '1225 — UE C', recintoId: 'r3', otroDispositivo: true });
+      expect(kits.asignar).toHaveBeenNthCalledWith(4, 'kNuevo', { operadorId: 'u4' });
       expect(r).toEqual({
-        enApp: 2,
-        kitsCreados: 1,
+        enApp: 3,
+        kitsCreados: 2,
         sinKit: 0,
-        soloRegistradas: 1,
         errores: [{ pareja: 'TERCERO · 1126', error: 'Este operador ya tiene kits asignados a otro recinto en este evento' }],
       });
     });
@@ -1001,97 +983,6 @@ describe('ParejasCdaService', () => {
     });
   });
 
-  describe('darle su propio kit a la 2.ª pareja del recinto', () => {
-    const PRIMERA = pareja({ id: 'p0', operadorCdaId: 'op0', asistenteCdaId: null, asistente: null, kitId: 'k1', kit: { codigoUnico: 'K1', eventoId: 'ev2', operadorId: 'u0', estado: 'ASIGNADO' }, operador: { ...OPERADOR, id: 'op0', usuarioId: 'u0' } });
-    const SEGUNDA = pareja({ creadoEn: new Date('2026-10-29T11:00:00Z') });
-
-    beforeEach(() => {
-      prisma.parejaCda.findUnique.mockResolvedValue(SEGUNDA);
-      // reset: una respuesta "Once" que un test no usó (falló antes) no debe pasar al siguiente.
-      for (const m of [prisma.parejaCda.findMany, prisma.kitElectoral.findFirst, kits.asignar]) m.mockReset();
-      kits.asignar.mockResolvedValue({});
-      prisma.parejaCda.findMany.mockResolvedValueOnce([PRIMERA, SEGUNDA]);
-      prisma.parejaCda.findMany.mockResolvedValue([PRIMERA, { ...SEGUNDA, kitId: 'kNuevo', kit: { codigoUnico: 'KN', eventoId: 'ev2', operadorId: null, estado: 'EN_BODEGA' } }]);
-      prisma.kitElectoral.findFirst.mockResolvedValue({ id: 'kNuevo', operadorId: null, estado: 'EN_BODEGA', codigoUnico: 'KN' });
-    });
-
-    it('crea otro kit del recinto ("otro dispositivo"), lo vincula a la pareja y lo pone en la app de su gente', async () => {
-      const r = await service.darKitPropio('p1');
-
-      expect(kits.create).toHaveBeenCalledWith(expect.objectContaining({ eventoId: 'ev2', recintoId: 'r1', otroDispositivo: true }));
-      expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { id: 'p1', kitId: null }, data: { kitId: 'kNuevo' } });
-      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u1' });
-      expect(r).toMatchObject({ enApp: 1, errores: [] });
-    });
-
-    it('jornada iniciada: sin justificación no crea nada; con ella, sí', async () => {
-      kits.estaCongelado.mockReturnValue(true);
-      await expect(service.darKitPropio('p1')).rejects.toThrow('congeladas');
-      expect(kits.create).not.toHaveBeenCalled();
-
-      await service.darKitPropio('p1', 'Va una tercera pareja');
-      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u1', justificacion: 'Va una tercera pareja' });
-    });
-
-    it('la pareja que ya tiene kit no recibe otro', async () => {
-      prisma.parejaCda.findUnique.mockResolvedValueOnce(PRIMERA);
-      await expect(service.darKitPropio('p0')).rejects.toThrow('ya tiene su kit');
-      expect(kits.create).not.toHaveBeenCalled();
-    });
-
-    it('sin evento ACTIVO ese día: 400', async () => {
-      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
-      await expect(service.darKitPropio('p1')).rejects.toThrow(BadRequestException);
-      expect(kits.create).not.toHaveBeenCalled();
-    });
-
-    it('si no se puede poner en la app, borra el kit nuevo y la pareja queda como estaba', async () => {
-      kits.asignar.mockRejectedValueOnce(new ConflictException('Ese operador ya tiene otro recinto'));
-      const r = await service.darKitPropio('p1');
-
-      expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: 'Ese operador ya tiene otro recinto' }]);
-      expect(prisma.parejaCda.update).toHaveBeenLastCalledWith({ where: { id: 'p1' }, data: { kitId: null } });
-      expect(prisma.kitElectoral.delete).toHaveBeenCalledWith({ where: { id: 'kNuevo' } });
-    });
-
-    it('doble clic o dos administradores a la vez: solo uno vincula su kit; el otro borra el suyo y lo dice', async () => {
-      prisma.parejaCda.updateMany.mockResolvedValueOnce({ count: 0 });
-      await expect(service.darKitPropio('p1')).rejects.toThrow('ya recibió su kit');
-      expect(prisma.kitElectoral.delete).toHaveBeenCalledWith({ where: { id: 'kNuevo' } });
-      expect(kits.asignar).not.toHaveBeenCalled();
-    });
-
-    it('si el paso a la app lanza, deshace todo y devuelve el error', async () => {
-      prisma.parejaCda.findMany.mockReset();
-      prisma.parejaCda.findMany.mockResolvedValueOnce([PRIMERA, SEGUNDA]).mockRejectedValueOnce(new Error('BD caída'));
-      await expect(service.darKitPropio('p1')).rejects.toThrow('BD caída');
-      expect(prisma.parejaCda.update).toHaveBeenLastCalledWith({ where: { id: 'p1' }, data: { kitId: null } });
-      expect(prisma.kitElectoral.delete).toHaveBeenCalledWith({ where: { id: 'kNuevo' } });
-    });
-
-    it('si no se puede borrar el kit nuevo, lo avisa en los errores (no queda escondido)', async () => {
-      kits.asignar.mockRejectedValueOnce(new ConflictException('No'));
-      prisma.kitElectoral.delete.mockRejectedValueOnce(new Error('FK'));
-      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-      const r = await service.darKitPropio('p1');
-      expect(r.errores.map((e) => e.error).join(' ')).toContain('quedó en Kits sin pareja');
-    });
-
-    it('solo para una pareja que comparte el recinto con otra que ya lleva kit', async () => {
-      prisma.parejaCda.findMany.mockReset();
-      prisma.parejaCda.findMany.mockResolvedValueOnce([SEGUNDA]);
-      await expect(service.darKitPropio('p1')).rejects.toThrow('use "Asignar kit"');
-      expect(kits.create).not.toHaveBeenCalled();
-    });
-
-    it('si el recinto tiene un kit sin persona, se usa ese ("Asignar kit"), no se crea otro', async () => {
-      prisma.parejaCda.findMany.mockReset();
-      prisma.parejaCda.findMany.mockResolvedValueOnce([{ ...PRIMERA, kit: { codigoUnico: 'K1', eventoId: 'ev2', operadorId: null, estado: 'ASIGNADO' } }, SEGUNDA]);
-      await expect(service.darKitPropio('p1')).rejects.toThrow('use "Asignar kit"');
-      expect(kits.create).not.toHaveBeenCalled();
-    });
-  });
-
   describe('editar', () => {
     beforeEach(() => {
       prisma.operadorCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
@@ -1281,12 +1172,16 @@ describe('ParejasCdaService', () => {
         pareja({ id: 'p3', creadoEn: new Date('2026-10-28T08:00:00Z'), recintoId: 'r2', operador: { ...OPERADOR, id: 'op3', usuarioId: 'u3' } }),
         pareja({ recintoId: 'r2', kitId: 'k2', operador: { ...OPERADOR, usuarioId: 'u1' } }),
       ]);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'ASIGNADO' });
+      // k2 es de p1: la otra pareja del recinto no lo encuentra como libre y recibe uno propio.
+      prisma.kitElectoral.findFirst.mockImplementation(({ where }: { where: { id?: string } }) =>
+        Promise.resolve(where.id === 'k2' ? { id: 'k2', operadorId: null, estado: 'ASIGNADO' } : null),
+      );
 
       await service.intercambiar('p1', 'p2', 'RECINTO');
 
-      expect(kits.asignar).toHaveBeenCalledTimes(1);
       expect(kits.asignar).toHaveBeenCalledWith('k2', { operadorId: 'u1' });
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u3' });
+      expect(kits.asignar).not.toHaveBeenCalledWith('k2', { operadorId: 'u3' });
     });
 
     it('jornada iniciada: sin justificación no cambia nada, aunque las parejas no tengan kit', async () => {
@@ -1383,7 +1278,7 @@ describe('ParejasCdaService', () => {
       expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
     });
 
-    it('recinto con dos parejas: basta que una de las 4 personas tenga Android', async () => {
+    it('recinto con dos parejas: cada una lleva su kit con su propia gente (no toma a la de Android de la otra)', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja({ operador: IPHONE(OPERADOR), asistente: IPHONE(ASISTENTE) }),
         pareja({
@@ -1396,17 +1291,19 @@ describe('ParejasCdaService', () => {
         }),
       ]);
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ usuarioId: 'u4' });
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' }).mockResolvedValueOnce(null);
 
       const r = await service.aplicar(DIA);
 
-      // Le crea la cuenta de la app a ese asistente y el kit queda a su nombre.
+      // p1 no tiene Android: su kit queda con su operador (y la web avisa que no se podrá rastrear).
+      expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'u1' });
+      // p2: se le crea la cuenta a su asistente con Android y lleva un kit propio.
       expect(cuentas.crearOVincular).toHaveBeenCalledWith('as2');
-      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u4' });
-      expect(r).toMatchObject({ enApp: 1, soloRegistradas: 1 });
+      expect(kits.asignar).toHaveBeenNthCalledWith(2, 'kNuevo', { operadorId: 'u4' });
+      expect(r).toMatchObject({ enApp: 2, kitsCreados: 1 });
     });
 
-    it('recinto con dos kits propios: la misma persona con Android no lleva los dos', async () => {
+    it('recinto con dos kits propios y una tercera pareja: cada una con el suyo', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja({ kitId: 'k1', operador: IPHONE(OPERADOR), asistente: IPHONE(ASISTENTE) }),
         pareja({
@@ -1429,13 +1326,15 @@ describe('ParejasCdaService', () => {
       ]);
       prisma.kitElectoral.findFirst
         .mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'ASIGNADO' })
-        .mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'ASIGNADO' });
+        .mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'ASIGNADO' })
+        .mockResolvedValueOnce(null);
 
       await service.aplicar(DIA);
 
       expect(kits.asignar.mock.calls).toEqual([
-        ['k1', { operadorId: 'u5' }],
+        ['k1', { operadorId: 'u1' }],
         ['k2', { operadorId: 'u3' }],
+        ['kNuevo', { operadorId: 'u5' }],
       ]);
     });
 
@@ -1473,13 +1372,13 @@ describe('ParejasCdaService', () => {
       expect(parejas[0].portador).not.toHaveProperty('usuarioId');
     });
 
-    it('la segunda pareja del recinto no lleva kit (portador null)', async () => {
+    it('la segunda pareja del recinto también lleva kit: su portador es de ella', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
         pareja(),
         pareja({ id: 'p2', operadorCdaId: 'op2', asistenteCdaId: null, asistente: null, creadoEn: new Date('2026-10-29T12:00:00Z'), operador: { ...OPERADOR, id: 'op2', apellidosNombres: 'SEGUNDO' } }),
       ]);
       const { parejas } = await service.listar(DIA);
-      expect(parejas.find((p) => p.id === 'p2')?.portador).toBeNull();
+      expect(parejas.find((p) => p.id === 'p2')?.portador).toMatchObject({ id: 'op2' });
       expect(parejas.find((p) => p.id === 'p1')?.portador).toMatchObject({ id: 'op1' });
     });
 
@@ -1515,13 +1414,81 @@ describe('ParejasCdaService', () => {
       expect(kits.asignar).not.toHaveBeenCalled();
     });
 
-    it('la segunda pareja del recinto (el kit lo lleva la otra): 409 que lo explica, sin tocar kits', async () => {
+    it('la segunda pareja del recinto (la otra ya lleva el kit del recinto): recibe otro kit propio y no toca el de la otra', async () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([
-        pareja({ id: 'p0', kitId: 'k1', operador: { ...OPERADOR, id: 'op0', usuarioId: 'u0' } }),
+        pareja({ id: 'p0', kitId: 'k1', kit: { id: 'k1', operadorId: 'u0', eventoId: 'ev2', estado: 'ASIGNADO' }, operador: { ...OPERADOR, id: 'op0', usuarioId: 'u0' } }),
         pareja(),
       ]);
-      await expect(service.asignarKit('p1')).rejects.toThrow('comparte el recinto con otra que lleva el kit');
+      // El kit k1 tiene pareja: no hay kit libre en el recinto.
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce(null);
+
+      const r = await service.asignarKit('p1');
+
+      expect(kits.create).toHaveBeenCalledWith(expect.objectContaining({ eventoId: 'ev2', recintoId: 'r1', otroDispositivo: true }));
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u1' });
+      expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { id: 'p1', kitId: null }, data: { kitId: 'kNuevo' } });
+      expect(r).toMatchObject({ enApp: 1, kitsCreados: 1, errores: [] });
+    });
+
+    it('doble clic / dos administradores: si la pareja ya recibió otro kit, no asigna y borra el kit recién creado', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.parejaCda.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      const r = await service.asignarKit('p1');
+
+      expect(kits.create).toHaveBeenCalledTimes(1);
+      expect(prisma.kitElectoral.delete).toHaveBeenCalledWith({ where: { id: 'kNuevo' } });
       expect(kits.asignar).not.toHaveBeenCalled();
+      expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: expect.stringContaining('Otro pedido asignó este kit al mismo tiempo') }]);
+    });
+
+    it('si otra pareja tomó el mismo kit libre a la vez, se deshace el vínculo y no se asigna', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'kLibre', operadorId: null, estado: 'EN_BODEGA' });
+      prisma.parejaCda.count.mockResolvedValueOnce(1);
+
+      const r = await service.asignarKit('p1');
+
+      expect(prisma.parejaCda.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { kitId: null } });
+      // El kit libre no era nuevo: no se borra.
+      expect(prisma.kitElectoral.delete).not.toHaveBeenCalled();
+      expect(kits.asignar).not.toHaveBeenCalled();
+      expect(r.errores).toHaveLength(1);
+    });
+
+    it('el kit se vincula a la pareja antes de asignarlo (si asignar falla, la próxima vez usa el mismo y no crea otro)', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      kits.asignar.mockRejectedValueOnce(new ConflictException('Este operador ya tiene kits asignados a otro recinto en este evento'));
+
+      const r = await service.asignarKit('p1');
+
+      expect(prisma.parejaCda.updateMany.mock.invocationCallOrder[0]).toBeLessThan(kits.asignar.mock.invocationCallOrder[0]);
+      expect(prisma.kitElectoral.delete).not.toHaveBeenCalled();
+      expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: 'Este operador ya tiene kits asignados a otro recinto en este evento' }]);
+    });
+
+    it('recinto al tope de kits: el error vuelve en errores y las demás parejas siguen', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        pareja(),
+        pareja({ id: 'p2', recintoId: 'r2', recinto: { id: 'r2', codigoRecinto: '1126', nombre: 'UE B' }, operador: { ...OPERADOR, id: 'op2', usuarioId: 'u2', apellidosNombres: 'SEGUNDO' } }),
+      ]);
+      kits.create.mockRejectedValueOnce(new ConflictException('Este recinto ya tiene 5 kits (el máximo)'));
+
+      const r = await service.aplicar(DIA);
+
+      expect(r).toMatchObject({ enApp: 1, kitsCreados: 1, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'Este recinto ya tiene 5 kits (el máximo)' }] });
+      expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'u2' });
+    });
+
+    it('una pareja sin kit toma primero un kit libre del recinto (sin pareja) antes de crear otro', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'kLibre', operadorId: null, estado: 'EN_BODEGA' });
+
+      await service.asignarKit('p1');
+
+      expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} }, estado: { in: ['EN_BODEGA', 'ASIGNADO'] } });
+      expect(kits.create).not.toHaveBeenCalled();
+      expect(kits.asignar).toHaveBeenCalledWith('kLibre', { operadorId: 'u1' });
     });
 
     it('si el kit no se puede asignar (p. ej. jornada iniciada sin justificación), el motivo vuelve en errores', async () => {
@@ -1538,90 +1505,6 @@ describe('ParejasCdaService', () => {
       await expect(service.asignarKit('nada')).rejects.toThrow('Pareja no encontrada');
     });
 
-    // Caso 1307 (31-oct): quitaron el kit en Kits y la otra pareja del recinto no podía tomarlo.
-    describe('el kit del recinto quedó sin persona', () => {
-      const KIT_LIBRE = { id: 'k1', codigoUnico: 'KIT-1', eventoId: 'ev2', operadorId: null, estado: 'EN_BODEGA' };
-      const conKit = () => pareja({ id: 'p0', kitId: 'k1', kit: KIT_LIBRE, operador: { ...OPERADOR, id: 'op0', usuarioId: 'u0' } });
-
-      it('la lista ofrece "Asignar kit" a la otra pareja del recinto', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-        const { parejas } = await service.listar(DIA);
-        expect(parejas.find((p) => p.id === 'p1')).toMatchObject({ estado: 'SOLO_REGISTRADA', puedeRecibirKit: true });
-        expect(parejas.find((p) => p.id === 'p0')).toMatchObject({ estado: 'SIN_KIT', puedeRecibirKit: false });
-      });
-
-      it('si el kit sí lo lleva alguien, la otra pareja no puede tomarlo', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([{ ...conKit(), kit: { ...KIT_LIBRE, operadorId: 'u0' } }, pareja()]);
-        const { parejas } = await service.listar(DIA);
-        expect(parejas.find((p) => p.id === 'p1')?.puedeRecibirKit).toBe(false);
-      });
-
-      it('un kit que ya salió de la Delegación no se ofrece', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([{ ...conKit(), kit: { ...KIT_LIBRE, estado: 'EN_TRANSITO' } }, pareja()]);
-        const { parejas } = await service.listar(DIA);
-        expect(parejas.find((p) => p.id === 'p1')?.puedeRecibirKit).toBe(false);
-      });
-
-      it('"Asignar kit" en la otra pareja le pasa el MISMO kit (mismo QR) y lo asigna a su gente', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-        prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
-
-        const r = await service.asignarKit('p1');
-
-        expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { id: 'p0', kitId: 'k1' }, data: { kitId: null } });
-        expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { id: 'p1', kitId: null }, data: { kitId: 'k1' } });
-        expect(kits.create).not.toHaveBeenCalled();
-        expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
-        expect(r).toMatchObject({ enApp: 1, kitsCreados: 0, errores: [] });
-      });
-
-      it('jornada congelada sin justificación: no mueve el kit y lo explica', async () => {
-        kits.estaCongelado.mockReturnValue(true);
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-
-        const r = await service.asignarKit('p1');
-
-        expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
-        expect(kits.asignar).not.toHaveBeenCalled();
-        expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: expect.stringContaining('congeladas') }]);
-      });
-
-      it('jornada congelada con justificación: sí lo mueve', async () => {
-        kits.estaCongelado.mockReturnValue(true);
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-        prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
-
-        await service.asignarKit('p1', 'Cambio de última hora');
-
-        expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1', justificacion: 'Cambio de última hora' });
-      });
-
-      it('si asignar el kit falla, el kit vuelve a la pareja que lo tenía', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-        prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
-        kits.asignar.mockRejectedValueOnce(new ConflictException('El operador ya tiene otro recinto'));
-
-        const r = await service.asignarKit('p1');
-
-        expect(r.errores).toEqual([{ pareja: 'PÉREZ ANA · 957', error: 'El operador ya tiene otro recinto' }]);
-        expect(prisma.parejaCda.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { kitId: null } });
-        expect(prisma.parejaCda.update).toHaveBeenCalledWith({ where: { id: 'p0' }, data: { kitId: 'k1' } });
-      });
-
-      it('si otro ya movió el kit (carrera), no lo duplica', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([conKit(), pareja()]);
-        prisma.parejaCda.updateMany.mockResolvedValueOnce({ count: 0 });
-
-        await expect(service.asignarKit('p1')).rejects.toThrow('El kit del recinto cambió');
-        expect(kits.asignar).not.toHaveBeenCalled();
-      });
-
-      it('un kit de otro evento no se ofrece', async () => {
-        prisma.parejaCda.findMany.mockResolvedValueOnce([{ ...conKit(), kit: { ...KIT_LIBRE, eventoId: 'evViejo' } }, pareja()]);
-        const { parejas } = await service.listar(DIA);
-        expect(parejas.find((p) => p.id === 'p1')?.puedeRecibirKit).toBe(false);
-      });
-    });
   });
 
   it('la lista trae el dispositivo de cada persona', async () => {
@@ -1958,7 +1841,6 @@ describe('ParejasCdaService', () => {
     it('una pareja de reserva no recibe kit hasta tener recinto', async () => {
       prisma.parejaCda.findUnique.mockResolvedValue(RESERVA);
       await expect(service.asignarKit('pR')).rejects.toThrow('Esta pareja es de reserva: asígnele un recinto para darle kit');
-      await expect(service.darKitPropio('pR')).rejects.toThrow('Esta pareja es de reserva: asígnele un recinto para darle kit');
       expect(kits.create).not.toHaveBeenCalled();
     });
 

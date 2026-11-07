@@ -14,10 +14,12 @@ import { ComboFiltrable, textoRecinto } from './ParejaFormModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { mensajeError } from './utils';
 
-/** Pareja que va a la app en cada recinto (la que cede su lugar al asignarle una de reserva). */
+/**
+ * Pareja que cede su lugar en cada recinto al asignarle una de reserva: la
+ * primera de la lista (por nombre del operador), la misma que elige la API.
+ */
 function titularesPorRecinto(parejas: ParejaCdaFila[]): Map<string, ParejaCdaFila> {
   const m = new Map<string, ParejaCdaFila>();
-  for (const p of parejas) if (p.estado !== 'SOLO_REGISTRADA' && !m.has(p.recinto.id)) m.set(p.recinto.id, p);
   for (const p of parejas) if (!m.has(p.recinto.id)) m.set(p.recinto.id, p);
   return m;
 }

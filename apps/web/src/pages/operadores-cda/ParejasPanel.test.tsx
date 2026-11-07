@@ -32,8 +32,7 @@ function fila(over: Partial<ParejaCdaFila> = {}): ParejaCdaFila {
     asistente: JUAN,
     kitCodigo: 'KIT-0001',
     estado: 'EN_APP',
-    recintoCompartido: false,
-    puedeRecibirKit: false,
+    parejasEnRecinto: 1,
     articulos: null,
     portador: ANA,
     kitSalio: false,
@@ -88,7 +87,8 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     mockApi({
       parejas: [
         fila(),
-        fila({ id: 'p2', operador: LUIS, asistente: null, kitCodigo: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true }),
+        fila({ id: 'p2', operador: LUIS, asistente: null, kitCodigo: null, estado: 'SIN_KIT', portador: LUIS, parejasEnRecinto: 3 }),
+        fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, parejasEnRecinto: 3 }),
       ],
     });
     renderPagina();
@@ -99,10 +99,15 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(filas[0]).toHaveTextContent('PÉREZ ANA');
     expect(filas[0]).toHaveTextContent('RUIZ JUAN');
     expect(filas[0]).toHaveTextContent('En la app');
+    expect(filas[0]).not.toHaveTextContent('parejas');
     expect(filas[1]).toHaveTextContent('Sin asistente');
-    expect(filas[1]).toHaveTextContent('Solo registrada');
-    expect(filas[1]).toHaveTextContent('2 parejas');
-    expect(screen.getByText('2 pareja(s) en 1 recinto(s)')).toBeInTheDocument();
+    // Cada pareja del recinto lleva su propio kit: la 2.ª no queda "solo registrada".
+    expect(filas[1]).toHaveTextContent('Sin kit');
+    expect(filas[1]).toHaveTextContent('se asignará a MORA LUIS');
+    expect(filas[1]).not.toHaveTextContent('Solo registrada');
+    // El número real de parejas del recinto, no un "2" fijo.
+    expect(within(filas[1]).getByText(/^3 parejas/)).toHaveAttribute('title', 'Cada pareja lleva su propio kit');
+    expect(screen.getByText('3 pareja(s) en 1 recinto(s)')).toBeInTheDocument();
     expect(screen.getByText(/Evento activo de este día: Prueba Técnica 2/)).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith(`/parejas-cda?fecha=${DIA}`);
   });
@@ -117,7 +122,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
   it('"Aplicar a la app" pasa la lista del día y resume el resultado', async () => {
     mockApi();
-    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } });
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Aplicar a la app' }));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(`/parejas-cda/aplicar?fecha=${DIA}`, {}));
@@ -126,7 +131,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
   it('los errores del paso a la app quedan a la vista hasta cerrarlos', async () => {
     mockApi();
     postMock.mockResolvedValueOnce({
-      data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'Este operador ya tiene kits asignados a otro recinto en este evento' }] },
+      data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'Este operador ya tiene kits asignados a otro recinto en este evento' }] },
     });
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Aplicar a la app' }));
@@ -138,7 +143,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
   it('jornada iniciada: pide justificación para aplicar y la envía', async () => {
     mockApi({ congelado: true });
-    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } });
     renderPagina();
     const boton = await screen.findByRole('button', { name: 'Aplicar a la app' });
     expect(await screen.findByText(/las asignaciones están congeladas/)).toBeInTheDocument();
@@ -161,7 +166,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
   it('agregar pareja: por defecto solo los disponibles; "Usar todos" vuelve a pedirlos; guarda los 3 datos', async () => {
     mockApi({ parejas: [] }, { operadores: [LUIS], asistentes: [JUAN], recintos: [R957] });
-    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] } });
+    postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] } });
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Agregar pareja' }));
 
@@ -264,7 +269,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     };
     postMock
       .mockResolvedValueOnce({ data: vista })
-      .mockResolvedValueOnce({ data: { ...vista, guardado: true, guardadas: 1, app: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } } });
+      .mockResolvedValueOnce({ data: { ...vista, guardado: true, guardadas: 1, app: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } } });
     renderPagina();
     await userEvent.click(await screen.findByRole('button', { name: 'Cargar plantilla' }));
 
@@ -480,7 +485,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     mockApi({
       parejas: [
         fila(),
-        fila({ id: 'p2', operador: LUIS, asistente: null, estado: 'SOLO_REGISTRADA', recintoCompartido: true, kitCodigo: null }),
+        fila({ id: 'p2', operador: LUIS, asistente: null, parejasEnRecinto: 2, kitCodigo: 'KIT-0002' }),
         fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, recinto: R1126 }),
       ],
     });
@@ -504,7 +509,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       const operador = await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
       expect(operador).toHaveValue('IPHONE');
       expect(screen.getByRole('combobox', { name: 'Asistente: dispositivo de RUIZ JUAN' })).toHaveValue('IPHONE');
-      expect(screen.getByText('iPhone: la APK no se instala')).toBeInTheDocument();
+      expect(screen.getByText('iPhone: la APK no se instala (sin rastreo)')).toBeInTheDocument();
 
       await userEvent.selectOptions(operador, 'ANDROID');
       await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/op1/dispositivo', { dispositivo: 'ANDROID' }));
@@ -514,11 +519,11 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await waitFor(() => expect(patchMock).toHaveBeenCalledWith('/operadores-cda/as1/dispositivo', { dispositivo: null }));
     });
 
-    it('la segunda pareja del recinto (sin kit) no lleva el aviso de iPhone', async () => {
-      mockApi({ parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null })] });
+    it('sin quien lleve el kit todavía (sin evento) no avisa de iPhone', async () => {
+      mockApi({ evento: null, parejas: [fila({ operador: { ...ANA, dispositivo: 'IPHONE' }, estado: 'PENDIENTE_EVENTO', kitCodigo: null, portador: null })] });
       renderPagina();
       await screen.findByRole('combobox', { name: 'Operador: dispositivo de PÉREZ ANA' });
-      expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
+      expect(screen.queryByText(/iPhone: la APK no se instala/)).not.toBeInTheDocument();
     });
 
     it('dice quién lleva el kit (el de Android) y no avisa si lo tiene', async () => {
@@ -527,7 +532,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       renderPagina();
       const tabla = await screen.findByRole('region', { name: `Parejas del ${DIA}` });
       expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Lleva el kit: RUIZ JUAN');
-      expect(screen.queryByText('iPhone: la APK no se instala')).not.toBeInTheDocument();
+      expect(screen.queryByText(/iPhone: la APK no se instala/)).not.toBeInTheDocument();
     });
 
     it('quien no es administrador lo ve como texto', async () => {
@@ -546,7 +551,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
     it('solo en las filas "Sin kit"; confirma y asigna el kit de esa pareja', async () => {
       mockApi({ parejas: [SIN_KIT, fila({ id: 'p2', operador: LUIS, recinto: { id: 'r2', codigo: '1126', nombre: 'UE B' } })] });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] } });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
       expect(screen.queryByRole('button', { name: 'Asignar kit a MORA LUIS' })).not.toBeInTheDocument();
@@ -558,55 +563,30 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
 
-    // Caso 1307: quitaron el kit en Kits; la otra pareja del recinto debe poder tomarlo.
-    it('la otra pareja del recinto puede tomar el kit que quedó sin persona', async () => {
+    it('la 2.ª pareja del recinto también recibe su kit con "Asignar kit" (ya no hay "Darle su propio kit")', async () => {
       mockApi({
         parejas: [
-          fila({ estado: 'SIN_KIT', recintoCompartido: true }),
-          fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true, puedeRecibirKit: true }),
+          fila({ parejasEnRecinto: 2 }),
+          fila({ id: 'p2', operador: LUIS, estado: 'SIN_KIT', kitCodigo: null, portador: LUIS, parejasEnRecinto: 2, quienLleva: null }),
         ],
       });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] } });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a MORA LUIS' }));
+      expect(screen.queryByRole('button', { name: /Darle su propio kit/ })).not.toBeInTheDocument();
       const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
+      expect(dialogo).toHaveTextContent('cada pareja del recinto lleva el suyo');
       await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar' }));
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p2/asignar-kit', {}));
-    });
-
-    it('la 2.ª pareja del recinto puede recibir su propio kit: crea otro kit del recinto y lo pone en su app', async () => {
-      mockApi({
-        parejas: [
-          fila({ recintoCompartido: true }),
-          fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true, quienLleva: null }),
-        ],
-      });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] } });
-      renderPagina();
-      await userEvent.click(await screen.findByRole('button', { name: 'Darle su propio kit a MORA LUIS' }));
-      expect(screen.queryByRole('button', { name: 'Darle su propio kit a PÉREZ ANA' })).not.toBeInTheDocument();
-      const dialogo = screen.getByRole('dialog', { name: 'Darle su propio kit' });
-      expect(dialogo).toHaveTextContent('otro kit del recinto 957 · UE ATAHUALPA');
-      await userEvent.click(within(dialogo).getByRole('button', { name: 'Crear y asignar' }));
-      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p2/kit-propio', {}));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
 
-    it('sin evento activo ese día no se ofrece "Darle su propio kit"', async () => {
-      mockApi({
-        evento: null,
-        parejas: [fila({ estado: 'PENDIENTE_EVENTO' }), fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null })],
-      });
+    it('una pareja sin nadie con Android avisa en el diálogo que no se podrá rastrear', async () => {
+      const IPH = { ...LUIS, dispositivo: 'IPHONE' as const };
+      mockApi({ parejas: [fila({ id: 'p2', operador: IPH, asistente: null, estado: 'SIN_KIT', kitCodigo: null, portador: IPH })] });
       renderPagina();
-      await screen.findByText('MORA LUIS');
-      expect(screen.queryByRole('button', { name: /Darle su propio kit/ })).not.toBeInTheDocument();
-    });
-
-    it('una pareja solo registrada sin kit libre en su recinto no ofrece "Asignar kit"', async () => {
-      mockApi({ parejas: [fila(), fila({ id: 'p2', operador: LUIS, estado: 'SOLO_REGISTRADA', kitCodigo: null, portador: null, recintoCompartido: true })] });
-      renderPagina();
-      await screen.findByText('MORA LUIS');
-      expect(screen.queryByRole('button', { name: 'Asignar kit a MORA LUIS' })).not.toBeInTheDocument();
+      await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a MORA LUIS' }));
+      expect(screen.getByRole('dialog', { name: 'Asignar kit' })).toHaveTextContent('esta pareja no se podrá rastrear');
     });
 
     it('"Sin kit": no dice que alguien lo lleva, sino a quién se le asignará', async () => {
@@ -621,7 +601,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     it('si el kit no se pudo asignar, el motivo queda en el diálogo', async () => {
       mockApi({ parejas: [SIN_KIT] });
       postMock.mockResolvedValueOnce({
-        data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'El usuario no es un OPERADOR_CDA activo' }] },
+        data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [{ pareja: 'PÉREZ ANA · 957', error: 'El usuario no es un OPERADOR_CDA activo' }] },
       });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
@@ -635,7 +615,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
         congelado: true,
         parejas: [fila({ estado: 'SIN_KIT', kitCodigo: null, operador: { ...ANA, dispositivo: 'IPHONE' }, portador: { ...ANA, dispositivo: 'IPHONE' } })],
       });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } });
       renderPagina();
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar kit a PÉREZ ANA' }));
       const dialogo = screen.getByRole('dialog', { name: 'Asignar kit' });
@@ -715,7 +695,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE B' };
     const PEDRO = { id: 'as2', apellidosNombres: 'SOLÍS PEDRO', cedula: '1712345683', telefono: null, dispositivo: null, grupo: 'ASISTENTE' };
     const OTRA = fila({ id: 'p2', operador: LUIS, asistente: PEDRO, recinto: R1126, kitCodigo: 'KIT-0002' });
-    const OK = { data: { enApp: 2, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } };
+    const OK = { data: { enApp: 2, kitsCreados: 0, sinKit: 0, errores: [] } };
 
     async function abrir(campo: 'operador' | 'asistente' | 'recinto') {
       await userEvent.click(await screen.findByRole('button', { name: `Cambiar ${campo} de PÉREZ ANA` }));
@@ -767,7 +747,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
     it('elegir el asistente de otra pareja intercambia los asistentes', async () => {
       mockApi({ parejas: [fila(), OTRA] }, { operadores: [], asistentes: [], recintos: [] });
-      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] } });
       renderPagina();
       const dialogo = await abrir('asistente');
       await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Nuevo asistente' }), 'as2');
@@ -779,9 +759,10 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'ASISTENTE' }));
     });
 
-    it('recinto con dos parejas: se intercambia con la que tiene el kit', async () => {
-      const SOLO = fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, asistente: null, recinto: R1126, estado: 'SOLO_REGISTRADA', kitCodigo: null });
-      mockApi({ parejas: [fila(), SOLO, OTRA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
+    it('recinto con varias parejas: se intercambia con la primera de la lista (la misma que elige la API)', async () => {
+      const SEGUNDA = fila({ id: 'p3', operador: { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' }, asistente: null, recinto: R1126, parejasEnRecinto: 2 });
+      // La API la manda ordenada por recinto y por operador: MORA LUIS antes que VEGA RITA.
+      mockApi({ parejas: [fila(), OTRA, SEGUNDA] }, { operadores: [], asistentes: [], recintos: [R957, R1126] });
       postMock.mockResolvedValueOnce(OK);
       renderPagina();
       const dialogo = await abrir('recinto');
@@ -895,7 +876,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       const VEGA = { id: 'as9', apellidosNombres: 'VEGA SAMAEL', cedula: '1004424790', telefono: null, dispositivo: null, grupo: 'ASISTENTE' as const };
       mockApi({ reserva: [{ id: 'pR2', fecha: DIA, operador: null, asistente: VEGA }] });
       const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
-      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] } });
       renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
 
       const lista = await screen.findByRole('list', { name: `Parejas de reserva del ${DIA}` });
@@ -922,7 +903,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     it('completar el asistente envía su id; quien no es admin no ve "Completar"', async () => {
       mockApi({ reserva: [RESERVA] }, { asistentes: [JUAN] });
       const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
-      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      patchMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] } });
       const { unmount } = renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
 
       await userEvent.click(await screen.findByRole('button', { name: 'Completar el asistente de la reserva de SOLANO PEDRO' }));
@@ -964,7 +945,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
     it('asignar a un recinto ocupado avisa quién pasa a reserva antes de intercambiar', async () => {
       mockApi({ reserva: [RESERVA] }, { recintos: [R957, R228] });
-      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } });
       renderPagina(`/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`);
 
       await userEvent.click(await screen.findByRole('button', { name: 'Asignar a recinto la pareja de reserva de SOLANO PEDRO' }));
@@ -987,7 +968,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
 
     it('pasar a reserva avisa que el kit sale de la app y llama a la API', async () => {
       mockApi();
-      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, soloRegistradas: 0, errores: [] } });
+      postMock.mockResolvedValueOnce({ data: { enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] } });
       renderPagina();
 
       await userEvent.click(await screen.findByRole('button', { name: 'Pasar a reserva la pareja de PÉREZ ANA' }));
@@ -1011,7 +992,7 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       const dialogo = screen.getByRole('dialog', { name: 'Asignar a recinto' });
       return { dialogo, combo: await within(dialogo).findByRole('combobox', { name: 'Recinto CDA' }) };
     };
-    const SIN_ERRORES = { enApp: 1, kitsCreados: 1, sinKit: 0, soloRegistradas: 0, errores: [] };
+    const SIN_ERRORES = { enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] };
 
     it('asignar a un recinto libre lo explica y asigna (sin intercambio)', async () => {
       mockApi({ reserva: [RESERVA] }, { recintos: [R957, R228] });

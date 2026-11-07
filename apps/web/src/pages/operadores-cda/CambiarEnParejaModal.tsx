@@ -71,11 +71,8 @@ export function CambiarEnParejaModal({
   });
 
   const otras = parejas.filter((p) => p.id !== pareja.id);
-  // En un recinto con dos parejas se intercambia con la que tiene el kit (la que no está "solo registrada").
-  const duenoDe = (id: string) => {
-    const con = otras.filter((p) => valorDe(p, campo)?.id === id);
-    return con.find((p) => p.estado !== 'SOLO_REGISTRADA') ?? con[0] ?? null;
-  };
+  // En un recinto con varias parejas se intercambia con la primera de la lista (como "Asignar a recinto").
+  const duenoDe = (id: string) => otras.find((p) => valorDe(p, campo)?.id === id) ?? null;
   // En una pareja anterior a la regla, quien no es del cargo de su columna lleva su cargo.
   const grupoColumna = campo === 'ASISTENTE' ? 'ASISTENTE' : 'OPERADOR';
   const textoBase = (o: Opcion) =>

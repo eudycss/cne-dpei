@@ -47,7 +47,6 @@ function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; column
 const ESTADO: Record<EstadoParejaCda, { texto: string; clase: string }> = {
   EN_APP: { texto: 'En la app', clase: 'ok' },
   SIN_KIT: { texto: 'Sin kit', clase: 'aviso' },
-  SOLO_REGISTRADA: { texto: 'Solo registrada', clase: 'vacio' },
   PENDIENTE_EVENTO: { texto: 'Sin evento de este día', clase: 'pendiente' },
 };
 
@@ -75,7 +74,7 @@ export function ParejasPanel() {
   const [importando, setImportando] = useState(false);
   const [reporteTecnicos, setReporteTecnicos] = useState(false);
   const [copiando, setCopiando] = useState(false);
-  const [asignandoKit, setAsignandoKit] = useState<{ pareja: ParejaCdaFila; kitPropio: boolean } | null>(null);
+  const [asignandoKit, setAsignandoKit] = useState<ParejaCdaFila | null>(null);
   const [quitarA, setQuitarA] = useState<ParejaCdaFila | null>(null);
   const [aReserva, setAReserva] = useState<ParejaCdaFila | null>(null);
   const [justificacion, setJustificacion] = useState('');
@@ -417,9 +416,9 @@ export function ParejasPanel() {
                           </td>
                           <td>
                             <span className="mono">{p.recinto.codigo}</span> · {p.recinto.nombre}
-                            {p.recintoCompartido && (
-                              <span className="ocda-estado aviso" style={{ marginLeft: 6 }}>
-                                2 parejas
+                            {p.parejasEnRecinto > 1 && (
+                              <span className="ocda-estado aviso" style={{ marginLeft: 6 }} title="Cada pareja lleva su propio kit">
+                                {p.parejasEnRecinto} parejas<span className="sr-only">: cada pareja lleva su propio kit</span>
                               </span>
                             )}
                             {botonCambiar(p, 'RECINTO', 'recinto')}
@@ -427,9 +426,9 @@ export function ParejasPanel() {
                           <td>
                             <DispositivoPersona rol="Operador" persona={p.operador} editable={isAdmin} />
                             <DispositivoPersona rol="Asistente" persona={p.asistente} editable={isAdmin} />
-                            {/* Lleva el kit el de Android del recinto; si nadie lo tiene, el operador (iPhone). */}
+                            {/* Lleva el kit el de Android de la pareja; si nadie lo tiene, el operador (iPhone). */}
                             {p.portador?.dispositivo === 'IPHONE' && (
-                              <span className="ocda-estado aviso">iPhone: la APK no se instala</span>
+                              <span className="ocda-estado aviso">iPhone: la APK no se instala (sin rastreo)</span>
                             )}
                           </td>
                           <td>
@@ -441,29 +440,15 @@ export function ParejasPanel() {
                                 <div className="muted">Lleva el kit: {p.portador.apellidosNombres}</div>
                               ))}
                             {p.kitCodigo && <div className="muted mono">{p.kitCodigo}</div>}
-                            {/* "Sin kit", o la otra pareja del recinto cuando su kit quedó sin persona. */}
-                            {isAdmin && (p.estado === 'SIN_KIT' || (p.estado === 'SOLO_REGISTRADA' && p.puedeRecibirKit)) && (
+                            {isAdmin && p.estado === 'SIN_KIT' && (
                               <div>
                                 <button
                                   type="button"
                                   className="ocda-btn-texto"
                                   aria-label={`Asignar kit a ${p.operador.apellidosNombres}`}
-                                  onClick={() => setAsignandoKit({ pareja: p, kitPropio: false })}
+                                  onClick={() => setAsignandoKit(p)}
                                 >
                                   Asignar kit
-                                </button>
-                              </div>
-                            )}
-                            {/* Otra pareja del recinto que también va con su propio dispositivo. */}
-                            {isAdmin && data?.evento && p.estado === 'SOLO_REGISTRADA' && !p.puedeRecibirKit && (
-                              <div>
-                                <button
-                                  type="button"
-                                  className="ocda-btn-texto"
-                                  aria-label={`Darle su propio kit a ${p.operador.apellidosNombres}`}
-                                  onClick={() => setAsignandoKit({ pareja: p, kitPropio: true })}
-                                >
-                                  Darle su propio kit
                                 </button>
                               </div>
                             )}
@@ -553,8 +538,7 @@ export function ParejasPanel() {
       )}
       {asignandoKit && (
         <AsignarKitModal
-          pareja={asignandoKit.pareja}
-          kitPropio={asignandoKit.kitPropio}
+          pareja={asignandoKit}
           congelado={congelado}
           justificacionInicial={justificacion}
           onResultado={mostrarResultado}

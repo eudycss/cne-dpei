@@ -14,7 +14,6 @@ const CELULAR: Record<DispositivoCda, string> = { ANDROID: 'Android', IPHONE: 'i
 const ESTADO: Record<EstadoParejaCda, string> = {
   EN_APP: 'Con kit',
   SIN_KIT: 'Sin kit',
-  SOLO_REGISTRADA: 'Solo registrada (2.ª pareja del recinto)',
   PENDIENTE_EVENTO: 'Pendiente de evento',
 };
 
@@ -26,7 +25,6 @@ const nombreRecinto = (nombre: string) => nombre.replace(/\\/g, '/');
 const kitSinAndroid = (p: ParejaCdaFila) => p.estado === 'EN_APP' && p.portador?.dispositivo !== 'ANDROID';
 
 function estado(p: ParejaCdaFila): string {
-  if (!p.asistente && p.estado === 'SOLO_REGISTRADA') return 'Persona sola (acompaña a la pareja del recinto)';
   const partes = [ESTADO[p.estado]];
   if (kitSinAndroid(p)) partes.push('sin Android');
   if (!p.asistente) partes.push('sin asistente');
