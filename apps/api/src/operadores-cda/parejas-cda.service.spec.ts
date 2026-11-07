@@ -1074,6 +1074,80 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  describe('editar: quien sale pasa a reserva o queda libre', () => {
+    beforeEach(() => {
+      prisma.operadorCda.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id.startsWith('op') ? { grupo: 'OPERADOR', activo: true } : { grupo: 'ASISTENTE', activo: true }),
+      );
+      prisma.recinto.findUnique.mockResolvedValue({ activo: true, tipo: 'CDA' });
+      prisma.parejaCda.findUnique.mockResolvedValue(pareja());
+    });
+
+    it('sin "pasa a reserva", quien sale queda libre (no se crea nada) y el cambio vuelve para la bitácora', async () => {
+      const r = await service.editar('p1', { asistenteCdaId: 'as2' });
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+      expect(r.cambio).toEqual({
+        antes: { operadorCdaId: 'op1', asistenteCdaId: 'as1', recintoId: 'r1' },
+        despues: { operadorCdaId: 'op1', asistenteCdaId: 'as2', recintoId: 'r1' },
+        aReserva: [],
+      });
+    });
+
+    it('el asistente reemplazado queda en una reserva solo con él, el mismo día y en la misma transacción', async () => {
+      const r = await service.editar('p1', { asistenteCdaId: 'as2' }, undefined, { aReserva: true, usuarioId: 'uAdmin' });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.parejaCda.create).toHaveBeenCalledWith({
+        data: { fecha: FECHA, operadorCdaId: null, asistenteCdaId: 'as1', recintoId: null, articulos: null, creadoPorId: 'uAdmin' },
+      });
+      // Primero sale de la pareja (únicos por día) y después entra a la reserva.
+      expect(prisma.parejaCda.update.mock.invocationCallOrder[0]).toBeLessThan(prisma.parejaCda.create.mock.invocationCallOrder[0]);
+      expect(r.cambio.aReserva).toEqual(['as1']);
+    });
+
+    it('el operador reemplazado queda en una reserva sin asistente', async () => {
+      await service.editar('p1', { operadorCdaId: 'op2' }, undefined, { aReserva: true });
+      expect(prisma.parejaCda.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ operadorCdaId: 'op1', asistenteCdaId: null, recintoId: null }),
+      });
+    });
+
+    it('pareja anterior a la regla: quien sale va a la reserva en la columna de su cargo, no en la que estaba', async () => {
+      prisma.parejaCda.findUnique.mockResolvedValue(pareja({ operadorCdaId: 'as7', operador: { ...ASISTENTE, id: 'as7' } }));
+      await service.editar('p1', { operadorCdaId: 'op2' }, undefined, { aReserva: true });
+      expect(prisma.parejaCda.create).toHaveBeenCalledWith({ data: expect.objectContaining({ operadorCdaId: null, asistenteCdaId: 'as7' }) });
+    });
+
+    it('si salen los dos a la vez, cada uno queda en su propia reserva', async () => {
+      const r = await service.editar('p1', { operadorCdaId: 'op2', asistenteCdaId: 'as2' }, undefined, { aReserva: true });
+      expect(prisma.parejaCda.create).toHaveBeenCalledTimes(2);
+      expect(r.cambio.aReserva).toEqual(['op1', 'as1']);
+    });
+
+    it('dejar la pareja "sin asistente" también puede mandarlo a reserva', async () => {
+      await service.editar('p1', { asistenteCdaId: null }, undefined, { aReserva: true });
+      expect(prisma.parejaCda.create).toHaveBeenCalledWith({ data: expect.objectContaining({ operadorCdaId: null, asistenteCdaId: 'as1' }) });
+    });
+
+    it('cambiar solo el recinto no saca a nadie: no se crea reserva', async () => {
+      const r = await service.editar('p1', { recintoId: 'r2' }, undefined, { aReserva: true });
+      expect(prisma.parejaCda.create).not.toHaveBeenCalled();
+      expect(r.cambio.despues.recintoId).toBe('r2');
+    });
+
+    it('si la reserva no se puede guardar (ya tiene pareja ese día), avisa como conflicto', async () => {
+      prisma.parejaCda.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x', meta: { target: 'uq_parejas_cda_fecha_asistente' } }),
+      );
+      await expect(service.editar('p1', { asistenteCdaId: 'as2' }, undefined, { aReserva: true })).rejects.toThrow(
+        new ConflictException('Ese asistente ya tiene pareja el 2026-10-30'),
+      );
+    });
+
+    it('al quitar una pareja devuelve cómo estaba (para la bitácora)', async () => {
+      await expect(service.eliminar('p1')).resolves.toEqual({ operadorCdaId: 'op1', asistenteCdaId: 'as1', recintoId: 'r1' });
+    });
+  });
+
   describe('intercambiar con otra pareja del mismo día', () => {
     const P1 = pareja({ kitId: 'k1', kit: { id: 'k1', operadorId: 'u1', eventoId: 'ev2' } });
     const P2 = pareja({

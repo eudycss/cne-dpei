@@ -173,10 +173,14 @@ export class ParejasCdaController {
 
   @Patch(':id')
   @Roles('ADMINISTRADOR')
-  @ApiOperation({ summary: 'Cambia el operador, el asistente o el recinto de una pareja' })
-  editar(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(editarParejaCdaSchema)) body: EditarParejaCdaRequest) {
-    const { justificacion, ...cambios } = body;
-    return this.parejas.editar(id, cambios, justificacion);
+  @ApiOperation({ summary: 'Cambia el operador, el asistente o el recinto de una pareja (con saleAReserva, quien sale queda en reserva)' })
+  editar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(editarParejaCdaSchema)) body: EditarParejaCdaRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const { justificacion, saleAReserva, ...cambios } = body;
+    return this.parejas.editar(id, cambios, justificacion, { aReserva: saleAReserva === true, usuarioId: user.sub });
   }
 
   @Post(':id/intercambiar')
@@ -197,7 +201,8 @@ export class ParejasCdaController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
-    await this.parejas.eliminar(id, body?.justificacion);
+    // Con 204 la respuesta va vacía; lo devuelto (cómo estaba la pareja) lo usa la bitácora.
+    return this.parejas.eliminar(id, body?.justificacion);
   }
 
   @Post(':id/reserva')

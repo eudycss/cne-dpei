@@ -1453,7 +1453,26 @@ export interface EditarParejaCdaRequest {
   operadorCdaId?: string;
   asistenteCdaId?: string | null;
   recintoId?: string;
+  /** Quien sale de la pareja pasa a una reserva solo con él o ella (si no, queda libre). */
+  saleAReserva?: boolean;
   justificacion?: string;
+}
+
+/** Integrantes y recinto de una pareja (ids), para la bitácora. */
+export interface IntegrantesParejaCda {
+  operadorCdaId: string | null;
+  asistenteCdaId: string | null;
+  recintoId: string | null;
+}
+
+/** Resultado de editar una pareja: cómo estaba, cómo quedó y quién pasó a reserva. */
+export interface EditarParejaCdaResult extends AplicarParejasCdaResult {
+  cambio: {
+    antes: IntegrantesParejaCda;
+    despues: IntegrantesParejaCda;
+    /** Personas (ids de operadores_cda) que salieron y quedaron en una reserva propia. */
+    aReserva: string[];
+  };
 }
 
 export type CampoParejaCda = 'OPERADOR' | 'ASISTENTE' | 'RECINTO';

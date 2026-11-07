@@ -4,6 +4,7 @@ import type { AplicarParejasCdaResult, CampoParejaCda, ParejaCdaFila, PersonaPar
 import { Modal } from '../../components/Modal';
 import { editarParejaCda, getDisponiblesParejasCda, intercambiarParejaCda } from '../../lib/queries/operadores-cda';
 import { ComboFiltrable, cargoPareja, textoPersona, textoRecinto } from './ParejaFormModal';
+import { Opciones, type Opcion as OpcionRadio } from './ExportarReporteModal';
 import { mensajeError } from './utils';
 
 type Opcion = PersonaParejaCda | RecintoParejaCda;
@@ -31,6 +32,13 @@ function unir(listas: (Opcion | null | undefined)[][], texto: (o: Opcion) => str
 /** Cómo queda una pareja: "OPERADOR – ASISTENTE pasa a CÓDIGO · RECINTO". */
 const linea = (op: PersonaParejaCda, as: PersonaParejaCda | null, r: RecintoParejaCda) =>
   `${op.apellidosNombres} – ${as?.apellidosNombres ?? 'sin asistente'} pasa a ${textoRecinto(r)}`;
+
+type Salida = 'RESERVA' | 'LIBRE';
+
+const SALIDAS: OpcionRadio<Salida>[] = [
+  { valor: 'RESERVA', etiqueta: 'Pasa a reserva', detalle: 'Queda en la pestaña Reserva de este día, sin pareja (se completa con "Completar")' },
+  { valor: 'LIBRE', etiqueta: 'Queda libre', detalle: 'Sale de la lista de este día; se puede volver a elegir' },
+];
 
 /**
  * Cambia el operador, el asistente o el recinto de una pareja. Si lo elegido
@@ -62,6 +70,7 @@ export function CambiarEnParejaModal({
   const actualId = valorDe(pareja, campo)?.id ?? '';
   const [valor, setValor] = useState(actualId);
   const [justificacion, setJustificacion] = useState(justificacionInicial);
+  const [salida, setSalida] = useState<Salida>('RESERVA');
   const motivo = justificacion.trim() || undefined;
 
   // "Todos": quien ya tiene pareja este día viene de la lista, para intercambiar.
@@ -113,6 +122,9 @@ export function CambiarEnParejaModal({
     }
   }
   const tocaKits = campo !== 'ASISTENTE' && !!(pareja.kitCodigo || otra?.kitCodigo);
+  // Quien deja la pareja sin ir a otra (en un intercambio nadie sale): ¿reserva o libre?
+  const saliente = campo !== 'RECINTO' && !otra && lineas.length > 0 ? (valorDe(pareja, campo) as PersonaParejaCda | null) : null;
+  if (saliente) lineas.push(`${saliente.apellidosNombres} ${salida === 'RESERVA' ? 'pasa a Reserva' : 'queda libre'}`);
 
   const guardar = useMutation({
     mutationFn: () => {
@@ -120,7 +132,7 @@ export function CambiarEnParejaModal({
       if (otra) return intercambiarParejaCda(pareja.id, { conId: otra.id, campo, ...just });
       const cambio =
         campo === 'OPERADOR' ? { operadorCdaId: valor } : campo === 'ASISTENTE' ? { asistenteCdaId: valor || null } : { recintoId: valor };
-      return editarParejaCda(pareja.id, { ...cambio, ...just });
+      return editarParejaCda(pareja.id, { ...cambio, ...(saliente && { saleAReserva: salida === 'RESERVA' }), ...just });
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['parejas-cda'] });
@@ -165,6 +177,10 @@ export function CambiarEnParejaModal({
           vacio={textos.vacio}
           requerido={campo !== 'ASISTENTE'}
         />
+
+        {saliente && (
+          <Opciones nombre="cambiar-pareja-salida" leyenda={`¿Qué pasa con ${saliente.apellidosNombres}?`} opciones={SALIDAS} valor={salida} onChange={setSalida} />
+        )}
 
         {/* Siempre montada (vacía y oculta a la vista) para que el lector de pantalla anuncie el resumen. */}
         <div className={lineas.length ? `banner ${otra ? 'aviso' : 'info'}` : 'sr-only'} role="status" aria-live="polite">

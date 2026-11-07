@@ -108,6 +108,13 @@ describe('parejas CDA por día', () => {
     expect(editarParejaCdaSchema.safeParse({}).success).toBe(false);
   });
 
+  it('cambiar: "pasa a reserva" acompaña a un cambio, no basta solo', () => {
+    expect(editarParejaCdaSchema.safeParse({ asistenteCdaId: null, saleAReserva: true }).success).toBe(true);
+    expect(editarParejaCdaSchema.safeParse({ saleAReserva: true }).success).toBe(false);
+    expect(editarParejaCdaSchema.safeParse({ saleAReserva: true, justificacion: 'x' }).success).toBe(false);
+    expect(editarParejaCdaSchema.safeParse({ operadorCdaId: OP, saleAReserva: 'si' }).success).toBe(false);
+  });
+
   it('fila de la plantilla: cédula del operador y código de recinto obligatorios', () => {
     const fila = filaParejaCdaSchema.safeParse({
       cedula_operador: CEDULA_OP,

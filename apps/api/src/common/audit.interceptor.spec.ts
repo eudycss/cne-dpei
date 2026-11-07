@@ -135,6 +135,63 @@ describe('AuditInterceptor', () => {
     });
   });
 
+  it('cambiar a alguien de una pareja CDA: cómo estaba, cómo quedó, quién pasó a reserva y la justificación', async () => {
+    const OP = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const OP2 = 'aaaaaaaa-0000-0000-0000-000000000002';
+    const AS = 'bbbbbbbb-0000-0000-0000-000000000001';
+    const RE = 'cccccccc-0000-0000-0000-000000000001';
+    const { data } = await auditar(
+      {
+        method: 'PATCH',
+        originalUrl: `/parejas-cda/${OTRO}`,
+        params: { id: OTRO },
+        body: { operadorCdaId: OP2, saleAReserva: true, justificacion: 'Se enfermó' },
+        user: ADMIN,
+      },
+      {
+        enApp: 1,
+        cambio: {
+          antes: { operadorCdaId: OP, asistenteCdaId: AS, recintoId: RE, apellidosNombres: 'NO DEBE QUEDAR' },
+          despues: { operadorCdaId: OP2, asistenteCdaId: AS, recintoId: RE },
+          aReserva: [OP, 'no-es-uuid'],
+        },
+      },
+    );
+
+    expect(data).toMatchObject({ usuarioId: ADMIN.sub, accion: 'PAREJA_CDA_EDITAR', entidad: 'pareja_cda', entidadId: OTRO });
+    expect(data.datosDespues).toEqual({
+      antes: { operadorCdaId: OP, asistenteCdaId: AS, recintoId: RE },
+      despues: { operadorCdaId: OP2, asistenteCdaId: AS, recintoId: RE },
+      aReserva: [OP],
+      justificacion: 'Se enfermó',
+    });
+    expect(JSON.stringify(data)).not.toMatch(/NO DEBE QUEDAR/);
+  });
+
+  it('agregar y quitar una pareja CDA también quedan en la bitácora', async () => {
+    const OP = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const crear = await auditar({
+      method: 'POST',
+      originalUrl: '/parejas-cda',
+      body: { fecha: '2026-11-15', operadorCdaId: OP, asistenteCdaId: null, recintoId: OTRO },
+      user: ADMIN,
+    });
+    expect(crear.data).toMatchObject({
+      accion: 'PAREJA_CDA_CREAR',
+      datosDespues: { fecha: '2026-11-15', operadorCdaId: OP, asistenteCdaId: null, recintoId: OTRO },
+    });
+
+    const quitar = await auditar(
+      { method: 'DELETE', originalUrl: `/parejas-cda/${OTRO}`, params: { id: OTRO }, body: {}, user: ADMIN },
+      { operadorCdaId: OP, asistenteCdaId: null, recintoId: null },
+    );
+    expect(quitar.data).toMatchObject({
+      accion: 'PAREJA_CDA_ELIMINAR',
+      entidadId: OTRO,
+      datosDespues: { antes: { operadorCdaId: OP, asistenteCdaId: null, recintoId: null }, justificacion: null },
+    });
+  });
+
   it('pasar a reserva y asignar recinto a una pareja CDA quedan en la bitácora', async () => {
     const reserva = await auditar({
       method: 'POST',

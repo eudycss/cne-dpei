@@ -12,6 +12,8 @@ import type {
   CrearParejaCdaRequest,
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
+  EditarParejaCdaResult,
+  IntegrantesParejaCda,
   EstadoParejaCda,
   FilaImportParejaCda,
   FormatoReporteCda,
@@ -89,6 +91,13 @@ const MENSAJE_RESERVA_VACIA = 'La pareja de reserva no puede quedar sin nadie';
 const conRecinto = (ids: (string | null)[]): string[] => ids.filter((id): id is string => !!id);
 
 const vacio = (): AplicarParejasCdaResult => ({ enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] });
+
+/** Ids de los integrantes y del recinto de una pareja (para la bitácora). */
+const integrantes = (p: IntegrantesParejaCda): IntegrantesParejaCda => ({
+  operadorCdaId: p.operadorCdaId,
+  asistenteCdaId: p.asistenteCdaId,
+  recintoId: p.recintoId,
+});
 
 /**
  * Parejas Operador CDA + Asistente CDA por día. Cada día tiene su lista; la
@@ -204,8 +213,15 @@ export class ParejasCdaService {
    * pasa al nuevo. Si cambia el recinto, el kit anterior queda en su recinto
    * sin operador (su QR impreso no cambia); antes de guardar se comprueba
    * que se pueda soltar, y se suelta solo si el cambio se guardó.
+   * Con `aReserva`, quien sale (operador o asistente reemplazado o quitado)
+   * queda en una pareja de reserva solo con él o ella; si no, queda libre.
    */
-  async editar(id: string, datos: EditarParejaCdaRequest, justificacion?: string): Promise<AplicarParejasCdaResult> {
+  async editar(
+    id: string,
+    datos: Omit<EditarParejaCdaRequest, 'saleAReserva' | 'justificacion'>,
+    justificacion?: string,
+    opciones: { aReserva?: boolean; usuarioId?: string } = {},
+  ): Promise<EditarParejaCdaResult> {
     const actual = await this.leerPareja(id);
     const operadorCdaId = datos.operadorCdaId ?? actual.operadorCdaId;
     const asistenteCdaId = datos.asistenteCdaId === undefined ? actual.asistenteCdaId : datos.asistenteCdaId;
@@ -231,19 +247,44 @@ export class ParejasCdaService {
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion, true);
 
     const fecha = diaDeFechaDb(actual.fecha);
+    // Quien sale va a la columna de su cargo (no a la de donde estaba: una pareja
+    // anterior a la regla puede tener a un asistente como operador).
+    const enSuColumna = (personaId: string, grupo: string | undefined) =>
+      grupo === 'ASISTENTE' ? { operadorCdaId: null, asistenteCdaId: personaId } : { operadorCdaId: personaId, asistenteCdaId: null };
+    const salen = [
+      ...(actual.operadorCdaId && actual.operadorCdaId !== operadorCdaId ? [enSuColumna(actual.operadorCdaId, actual.operador?.grupo)] : []),
+      ...(actual.asistenteCdaId && actual.asistenteCdaId !== asistenteCdaId ? [enSuColumna(actual.asistenteCdaId, actual.asistente?.grupo)] : []),
+    ];
+    const reservas = opciones.aReserva ? salen : [];
+    // La pareja y las reservas de quien sale se guardan juntas: o todo o nada.
     await this.guardar(fecha, () =>
-      this.prisma.parejaCda.update({
-        where: { id },
-        data: {
-          operadorCdaId,
-          asistenteCdaId,
-          ...(cambiaRecinto && { recintoId: datos.recintoId, kitId: null }),
-        },
+      this.prisma.$transaction(async (tx) => {
+        await tx.parejaCda.update({
+          where: { id },
+          data: {
+            operadorCdaId,
+            asistenteCdaId,
+            ...(cambiaRecinto && { recintoId: datos.recintoId, kitId: null }),
+          },
+        });
+        for (const r of reservas) {
+          await tx.parejaCda.create({
+            data: { fecha: actual.fecha, ...r, recintoId: null, articulos: null, creadoPorId: opciones.usuarioId ?? null },
+          });
+        }
       }),
     );
     if (kitAnterior) await this.kits.quitarOperador(kitAnterior, justificacion);
     const recintos = conRecinto([actual.recintoId, ...(cambiaRecinto ? [datos.recintoId as string] : [])]);
-    return (await this.aplicarDia(fecha, { recintos }, justificacion)) ?? vacio();
+    const resultado = (await this.aplicarDia(fecha, { recintos }, justificacion)) ?? vacio();
+    return {
+      ...resultado,
+      cambio: {
+        antes: integrantes(actual),
+        despues: { operadorCdaId, asistenteCdaId, recintoId: cambiaRecinto ? (datos.recintoId as string) : actual.recintoId },
+        aReserva: reservas.map((r) => (r.operadorCdaId ?? r.asistenteCdaId) as string),
+      },
+    };
   }
 
   /**
@@ -477,12 +518,14 @@ export class ParejasCdaService {
    * justificación), la pareja no se borra. La siguiente pareja del mismo
    * recinto, si la hay, pasa a la app.
    */
-  async eliminar(id: string, justificacion?: string): Promise<void> {
+  /** Devuelve cómo estaba la pareja, para la bitácora (la respuesta HTTP va vacía). */
+  async eliminar(id: string, justificacion?: string): Promise<IntegrantesParejaCda> {
     const actual = await this.leerPareja(id);
     const kit = await this.kitDelOperador(actual);
     if (kit) await this.kits.quitarOperador(kit, justificacion);
     await this.prisma.parejaCda.delete({ where: { id } });
     await this.aplicarDia(diaDeFechaDb(actual.fecha), { recintos: conRecinto([actual.recintoId]) }, justificacion);
+    return integrantes(actual);
   }
 
   /**
