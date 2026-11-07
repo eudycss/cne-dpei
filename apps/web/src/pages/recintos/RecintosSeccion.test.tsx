@@ -12,6 +12,7 @@ vi.mock('../../auth/AuthContext', () => ({
 }));
 vi.mock('./RecintosPage', () => ({ RecintosPage: () => <div>listado de recintos</div> }));
 vi.mock('../enlaces/EnlacesPage', () => ({ EnlacesPage: () => <div>estado de enlaces</div> }));
+vi.mock('./TiemposViajePage', () => ({ TiemposViajePage: () => <div>tabla de tiempos</div> }));
 
 function UbicacionActual() {
   const { search } = useLocation();
@@ -47,7 +48,7 @@ describe('RecintosSeccion', () => {
   it('el administrador ve las pestañas y por defecto el listado de recintos', () => {
     renderSeccion();
     expect(screen.getByRole('heading', { level: 2, name: 'Recintos Electorales' })).toBeInTheDocument();
-    expect(screen.getByRole('tablist', { name: 'Recintos y enlaces' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Recintos, enlaces y tiempos de viaje' })).toBeInTheDocument();
     expect(pestana('Recintos')).toHaveAttribute('aria-selected', 'true');
     expect(pestana('Enlaces')).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tabpanel', { name: 'Recintos' })).toHaveTextContent('listado de recintos');
@@ -58,6 +59,17 @@ describe('RecintosSeccion', () => {
     expect(pestana('Enlaces')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Enlaces' })).toHaveTextContent('estado de enlaces');
     expect(screen.queryByText('listado de recintos')).not.toBeInTheDocument();
+  });
+
+  it('?tab=tiempos abre directo la pestaña Tiempos de viaje', () => {
+    renderSeccion('/recintos?tab=tiempos');
+    expect(pestana('Tiempos de viaje')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Tiempos de viaje' })).toHaveTextContent('tabla de tiempos');
+  });
+
+  it('una pestaña desconocida en la URL abre el listado de recintos', () => {
+    renderSeccion('/recintos?tab=otra');
+    expect(pestana('Recintos')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('al hacer clic cambia de pestaña y lo refleja en la URL', async () => {
@@ -88,24 +100,28 @@ describe('RecintosSeccion', () => {
     expect(pestana('Enlaces')).toHaveAttribute('aria-selected', 'true');
 
     await userEvent.keyboard('{ArrowRight}');
+    expect(pestana('Tiempos de viaje')).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowRight}');
     expect(pestana('Recintos')).toHaveFocus();
 
     await userEvent.keyboard('{ArrowLeft}');
-    expect(pestana('Enlaces')).toHaveFocus();
+    expect(pestana('Tiempos de viaje')).toHaveFocus();
 
     await userEvent.keyboard('{Home}');
     expect(pestana('Recintos')).toHaveAttribute('aria-selected', 'true');
 
     await userEvent.keyboard('{End}');
-    expect(pestana('Enlaces')).toHaveAttribute('aria-selected', 'true');
+    expect(pestana('Tiempos de viaje')).toHaveAttribute('aria-selected', 'true');
   });
 
   it.each<RoleName>(['TECNICO_SUPERVISOR', 'LECTOR'])(
-    '%s no ve pestañas ni puede abrir Enlaces desde la URL',
+    '%s no ve pestañas ni puede abrir Tiempos de viaje desde la URL',
     (rol) => {
       roles = [rol];
-      renderSeccion('/recintos?tab=enlaces');
+      renderSeccion('/recintos?tab=tiempos');
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByText('tabla de tiempos')).not.toBeInTheDocument();
       expect(screen.getByText('listado de recintos')).toBeInTheDocument();
       expect(screen.queryByText('estado de enlaces')).not.toBeInTheDocument();
     },

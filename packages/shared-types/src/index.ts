@@ -2122,3 +2122,38 @@ export interface ReporteSimulador {
   /** Ordenadas: primero quien cumplió y más registros correctos; al final quien no se presentó. */
   filas: FilaReporteSimulador[];
 }
+
+// ─── Tiempos de viaje por recinto (bot Jornada: avisos de retraso) ───────────
+
+/** De dónde sale el tiempo sugerido: viajes medidos del recinto o promedio de su cantón. */
+export type OrigenTiempoViaje = 'MEDIDO' | 'CANTON';
+
+/** Un CDA con su tiempo de viaje desde la Delegación (ida o vuelta). */
+export interface TiempoViajeRecinto {
+  id: string;
+  codigo: string;
+  nombre: string;
+  canton: string;
+  /** Minutos configurados (límite de los avisos de retraso); null = sin configurar. */
+  tiempoMin: number | null;
+  /** El viaje más largo medido en eventos anteriores (ida o vuelta), en minutos. */
+  medidoMaxMin: number | null;
+  viajesMedidos: number;
+  /** Medido + margen, o promedio del cantón; null si no hay con qué calcularlo. */
+  sugeridoMin: number | null;
+  origenSugerido: OrigenTiempoViaje | null;
+}
+
+export interface TiemposViajeRecintos {
+  /** Minutos que se suman al viaje más largo medido. */
+  margenMin: number;
+  recintos: TiempoViajeRecinto[];
+}
+
+export interface GuardarTiemposViajeRequest {
+  tiempos: { recintoId: string; minutos: number | null }[];
+}
+
+export interface GuardarTiemposViajeResult {
+  actualizados: number;
+}

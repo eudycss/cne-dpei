@@ -519,6 +519,24 @@ const AUDIT_TABLE: Array<{
   { method: 'DELETE', pathRegex: /^\/items-kit\/[^/]+$/, accion: 'ITEM_KIT_DELETE', entidad: 'item_kit' },
   // Recintos sincronizados desde el Google Sheet
   { method: 'POST', pathRegex: /^\/recintos\/sync$/, accion: 'RECINTOS_SYNC', entidad: 'recinto' },
+  // Tiempo de viaje de los CDA (límite de los avisos de retraso del bot Jornada): qué recinto y cuántos minutos.
+  {
+    method: 'PUT',
+    pathRegex: /^\/recintos\/tiempos-viaje$/,
+    accion: 'RECINTO_TIEMPOS_VIAJE',
+    entidad: 'recinto',
+    resumen: (_res, req) => {
+      const tiempos = (req.body as { tiempos?: unknown } | undefined)?.tiempos;
+      const lista = Array.isArray(tiempos) ? tiempos : [];
+      return {
+        total: lista.length,
+        tiempos: lista.slice(0, 500).map((t) => {
+          const f = (t ?? {}) as { recintoId?: unknown; minutos?: unknown };
+          return { recintoId: idUuid(f.recintoId) ?? null, minutos: typeof f.minutos === 'number' ? f.minutos : null };
+        }),
+      };
+    },
+  },
   // HU12 — asignación de kits a recintos/operadores (incluye freeze CA6)
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/asignar$/, accion: 'KIT_ASIGNAR', entidad: 'kit', campos: ['operadorId', 'recintoId', 'justificacion'] },
   { method: 'PATCH', pathRegex: /^\/kits\/[^/]+\/desasignar$/, accion: 'KIT_DESASIGNAR', entidad: 'kit', campos: ['justificacion'] },
