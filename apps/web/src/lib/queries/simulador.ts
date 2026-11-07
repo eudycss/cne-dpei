@@ -24,6 +24,12 @@ export async function descargarReporteSimulador(practicaId: string, formato: 'xl
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `simulador_digitacion.${formato}`));
 }
 
+/** El monitor anula un intento (motivo obligatorio): no cuenta y la persona puede empezar otro. */
+export async function anularIntentoSimulador(intentoId: string, motivo: string): Promise<{ id: string }> {
+  const { data } = await api.post<{ id: string }>(`${BASE}/intentos/${intentoId}/anular`, { motivo });
+  return data;
+}
+
 export async function getPracticasDigitacion(): Promise<PracticaDigitacion[]> {
   const { data } = await api.get<PracticaDigitacion[]>(`${BASE}/practicas`);
   return data;

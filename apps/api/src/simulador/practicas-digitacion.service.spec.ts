@@ -60,11 +60,12 @@ describe('PracticasDigitacionService', () => {
     practicaDigitacionPersona: { createMany: jest.fn(), deleteMany: jest.fn() },
     operadorCda: { count: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
     cargoCda: { findMany: jest.fn() },
-    intentoDigitacion: { findMany: jest.fn() },
+    intentoDigitacion: { findMany: jest.fn(), findUnique: jest.fn() },
     actaDigitacion: { findMany: jest.fn() },
     novedadDigitacion: { findMany: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
   };
   let service: PracticasDigitacionService;
 
@@ -176,6 +177,50 @@ describe('PracticasDigitacionService', () => {
     it('práctica inexistente: 404', async () => {
       prisma.practicaDigitacion.findUnique.mockResolvedValue(null);
       await expect(service.reporte(ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('el intento anulado se muestra con su motivo, pero no puede ser el mejor', async () => {
+      prisma.intentoDigitacion.findMany.mockResolvedValue([
+        intentoBd({}),
+        intentoBd({ id: 'i2', numero: 2, filasDigitadas: 70, filasCorrectas: 69, anuladoEn: AHORA, motivoAnulacion: 'Cerró el navegador' }),
+      ]);
+      const r = await service.reporte(ID, AHORA);
+      const ana = r.filas.find((f) => f.apellidosNombres === 'ANA PÉREZ')!;
+      expect(ana.mejor).toBe(1);
+      expect(ana.intentos[1]).toMatchObject({ id: 'i2', anulado: true, motivoAnulacion: 'Cerró el navegador', cumplio: false });
+    });
+  });
+
+  describe('anularIntento', () => {
+    const AHORA = new Date('2026-11-10T14:20:00Z');
+    const USUARIO = '44444444-4444-4444-8444-444444444444';
+    const abierto = { id: 'i1', practicaId: ID, operadorId: P1, anuladoEn: null as Date | null };
+    /** El SQL y sus valores, para revisar la sentencia sin base. */
+    const sentencia = () => {
+      const [partes, ...valores] = prisma.$executeRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+      return { sql: partes.join('?').replace(/\s+/g, ' '), valores };
+    };
+
+    it('guarda quién, cuándo y por qué en una sola sentencia que no pisa la hora de fin', async () => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(abierto);
+      prisma.$executeRaw.mockResolvedValue(1);
+      const r = await service.anularIntento('i1', 'Cerró el navegador', USUARIO, AHORA);
+      const { sql, valores } = sentencia();
+      expect(sql).toContain('"terminado_en" = COALESCE("terminado_en", LEAST("vence_en", ?))');
+      expect(sql).toContain('AND "anulado_en" IS NULL');
+      expect(valores).toEqual([AHORA, USUARIO, 'Cerró el navegador', AHORA, 'i1']);
+      expect(r).toEqual({ id: 'i1', practicaId: ID, operadorId: P1, anuladoEn: AHORA.toISOString() });
+    });
+
+    it('inexistente: 404; ya anulado (o anulado a la vez por otro): 409', async () => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValueOnce(null);
+      await expect(service.anularIntento('i1', 'motivo largo', USUARIO, AHORA)).rejects.toBeInstanceOf(NotFoundException);
+      prisma.intentoDigitacion.findUnique.mockResolvedValueOnce({ ...abierto, anuladoEn: AHORA });
+      await expect(service.anularIntento('i1', 'motivo largo', USUARIO, AHORA)).rejects.toThrow('ya estaba anulado');
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+      prisma.intentoDigitacion.findUnique.mockResolvedValueOnce(abierto);
+      prisma.$executeRaw.mockResolvedValueOnce(0);
+      await expect(service.anularIntento('i1', 'motivo largo', USUARIO, AHORA)).rejects.toThrow('ya estaba anulado');
     });
   });
 

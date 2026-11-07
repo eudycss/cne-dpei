@@ -2073,7 +2073,11 @@ export interface GuardarActaSimuladorResponse {
 
 /** Un intento, como sale en el reporte (incluye el acta a medias si se acabó el tiempo). */
 export interface IntentoReporteSimulador {
+  id: string;
   numero: number;
+  /** Anulado por el monitor: se muestra, pero no cuenta para el límite ni para el mejor intento. */
+  anulado: boolean;
+  motivoAnulacion: string | null;
   /** Cargo al empezar. */
   cargo: string;
   iniciadoEn: string;

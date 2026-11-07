@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { FilaReporteSimulador, IntentoReporteSimulador, PracticaDigitacion } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { textoTiempoIntento } from '@cne/shared-validation';
 import { mensajeError } from '../operadores-cda/utils';
-import { claveReporte, descargarReporteSimulador, fechaHoraEcuador, getReporteSimulador } from '../../lib/queries/simulador';
+import { anularIntentoSimulador, claveReporte, descargarReporteSimulador, fechaHoraEcuador, getReporteSimulador } from '../../lib/queries/simulador';
+import { anularIntentoSimuladorSchema } from '@cne/shared-validation';
 
 /** Mientras la práctica corre, el reporte se refresca solo. */
 export const REFRESCO_REPORTE_MS = 30_000;
@@ -50,6 +51,7 @@ function pasaFiltro(f: FilaReporteSimulador, filtro: Filtro): boolean {
 export const mejorDe = (f: FilaReporteSimulador) => f.intentos.find((i) => i.numero === f.mejor) ?? null;
 
 export function resultado(i: IntentoReporteSimulador): string {
+  if (i.anulado) return `Anulado: ${i.motivoAnulacion ?? 'sin motivo'}`;
   if (i.motivo === 'META') return 'Cumplió la meta';
   if (i.motivo === 'TIEMPO') return 'Se acabó el tiempo';
   return 'En curso';
@@ -285,12 +287,24 @@ function DetallePersona({
   metaActas: number;
   onClose: () => void;
 }) {
+  const [anulando, setAnulando] = useState<IntentoReporteSimulador | null>(null);
+  /** Al cerrar el formulario el foco vuelve al botón (o al título si el intento ya quedó anulado). */
+  function cerrarAnular(anulado: boolean) {
+    const id = anulando?.id;
+    setAnulando(null);
+    requestAnimationFrame(() => {
+      const boton = !anulado && id ? document.getElementById(`sim-anular-${id}`) : null;
+      (boton ?? document.getElementById('sim-persona-titulo'))?.focus();
+    });
+  }
   return (
     <Modal labelledBy="sim-persona-titulo" onClose={onClose} maxWidth={960}>
       <div className="login-card" style={{ width: '100%', maxWidth: 'none' }}>
         <div className="ocda-modal-cabecera">
           <div>
-            <h2 id="sim-persona-titulo">{persona.apellidosNombres}</h2>
+            <h2 id="sim-persona-titulo" tabIndex={-1}>
+              {persona.apellidosNombres}
+            </h2>
             <p className="muted">
               Cédula <span className="mono">{persona.cedula}</span> · Celular <span className="mono">{persona.telefono ?? '—'}</span> ·{' '}
               {persona.cargo}
@@ -311,14 +325,18 @@ function DetallePersona({
                 <th scope="col">Por minuto</th>
                 <th scope="col">Actas</th>
                 <th scope="col">Sin errores</th>
+                <th scope="col">
+                  <span className="sr-only">Acciones</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {persona.intentos.map((i) => (
-                <tr key={i.numero}>
+                <tr key={i.numero} className={i.anulado ? 'sim-anulado' : undefined}>
                   <th scope="row">
                     {i.numero}
                     {i.numero === persona.mejor && <span className="ocda-estado ok sim-inactiva">Mejor</span>}
+                    {i.anulado && <span className="ocda-estado vacio sim-inactiva">Anulado</span>}
                   </th>
                   <td>{fechaHoraEcuador(i.iniciadoEn)}</td>
                   <td>{resultado(i)}</td>
@@ -331,11 +349,36 @@ function DetallePersona({
                     {i.actasCompletadas} de {metaActas}
                   </td>
                   <td>{i.actasPerfectas}</td>
+                  <td>
+                    {!i.anulado && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                        id={`sim-anular-${i.id}`}
+                        aria-label={`Anular intento ${i.numero} de ${persona.apellidosNombres}`}
+                        aria-expanded={anulando?.id === i.id}
+                        aria-controls={anulando?.id === i.id ? 'sim-anular-form' : undefined}
+                        onClick={() => setAnulando(i)}
+                      >
+                        Anular
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {anulando && (
+          <AnularIntento
+            key={anulando.id}
+            practicaId={practicaId}
+            intento={anulando}
+            persona={persona.apellidosNombres}
+            onListo={cerrarAnular}
+          />
+        )}
         <div className="modal-acciones">
           <Descargas practicaId={practicaId} operadorId={persona.operadorId} de={`de ${persona.apellidosNombres}`} />
           <button type="button" className="btn secondary" onClick={onClose}>
@@ -344,5 +387,95 @@ function DetallePersona({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Anular un intento (p. ej. cerró el navegador por error y perdió tiempo): el
+ * intento queda guardado como "Anulado", no cuenta para el límite ni para el
+ * mejor, y la persona puede entrar de nuevo con un intento limpio.
+ */
+function AnularIntento({
+  practicaId,
+  intento,
+  persona,
+  onListo,
+}: {
+  practicaId: string;
+  intento: IntentoReporteSimulador;
+  persona: string;
+  onListo: (anulado: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const campo = useRef<HTMLTextAreaElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    form.current?.scrollIntoView?.({ block: 'nearest' });
+    campo.current?.focus();
+  }, []);
+
+  const anular = useMutation({
+    mutationFn: (m: string) => anularIntentoSimulador(intento.id, m),
+    onSuccess: () => {
+      sileo.success({ title: `Intento ${intento.numero} anulado`, description: 'La persona puede entrar de nuevo con su cédula.' });
+      void qc.invalidateQueries({ queryKey: claveReporte(practicaId) });
+      onListo(true);
+    },
+    onError: (e) => setError(mensajeError(e, 'No se pudo anular el intento')),
+  });
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    const r = anularIntentoSimuladorSchema.safeParse({ motivo });
+    if (!r.success) return setError(r.error.issues[0]?.message ?? 'Motivo inválido');
+    anular.mutate(r.data.motivo);
+  }
+
+  return (
+    <form id="sim-anular-form" ref={form} className="sim-anular" onSubmit={enviar} noValidate aria-labelledby="sim-anular-titulo">
+      <h3 id="sim-anular-titulo">
+        Anular el intento {intento.numero} de {persona}
+      </h3>
+      <p className="muted">
+        El intento queda guardado como anulado y no cuenta. Si sigue abierto, se cierra y su pantalla deja de funcionar. La persona
+        puede entrar de nuevo con un intento limpio.
+      </p>
+      <div className="ocda-form-campo">
+        <label htmlFor="sim-anular-motivo">Motivo</label>
+        <span id="sim-anular-ayuda" className="muted">
+          Obligatorio, de 5 a 200 caracteres ({motivo.trim().length}/200).
+        </span>
+        <textarea
+          id="sim-anular-motivo"
+          ref={campo}
+          rows={2}
+          maxLength={200}
+          value={motivo}
+          aria-required
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'sim-anular-ayuda sim-anular-error' : 'sim-anular-ayuda'}
+          placeholder="Ej.: cerró el navegador por error"
+          onChange={(e) => {
+            setMotivo(e.target.value);
+            setError(null);
+          }}
+        />
+        {error && (
+          <span id="sim-anular-error" className="ocda-form-error" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+      <div className="row" style={{ justifyContent: 'flex-end', gap: '0.5rem' }}>
+        <button type="button" className="btn secondary" onClick={() => onListo(false)} disabled={anular.isPending}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn danger" disabled={anular.isPending}>
+          {anular.isPending ? 'Anulando…' : 'Anular intento'}
+        </button>
+      </div>
+    </form>
   );
 }

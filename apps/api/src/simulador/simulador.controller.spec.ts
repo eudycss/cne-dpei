@@ -125,6 +125,17 @@ describe('SimuladorPublicoController', () => {
     const r = await ctrl.iniciar(req as never, { cedula: '1710034065', practicaId: 'p' });
     expect(r).toEqual({ token: 't', estado: { terminado: false } });
     expect(req).toMatchObject({ operadorCdaId: 'op-1', simuladorRetomado: true });
-    expect(servicio.iniciar).toHaveBeenCalledWith('1710034065', 'p');
+    expect(servicio.iniciar).toHaveBeenCalledWith('1710034065', 'p', undefined);
+    await ctrl.iniciar(req as never, { cedula: '1710034065', practicaId: 'p', equipo: 'e'.repeat(22) });
+    expect(servicio.iniciar).toHaveBeenLastCalledWith('1710034065', 'p', 'e'.repeat(22));
+  });
+});
+
+describe('SimuladorController.anularIntento', () => {
+  it('pasa el id, el motivo y quién anula (el usuario del token)', async () => {
+    const practicas = { anularIntento: jest.fn().mockResolvedValue({ id: 'i1' }) };
+    const ctrl = new SimuladorController(practicas as never);
+    await ctrl.anularIntento('i1', { motivo: 'Cerró el navegador' }, { sub: 'u1' } as never);
+    expect(practicas.anularIntento).toHaveBeenCalledWith('i1', 'Cerró el navegador', 'u1');
   });
 });

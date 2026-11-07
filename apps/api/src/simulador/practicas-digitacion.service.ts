@@ -204,6 +204,36 @@ export class PracticasDigitacionService {
     };
   }
 
+  /**
+   * Anula un intento: se conserva como evidencia, deja de contar para el
+   * límite y el mejor intento, y su sesión deja de servir. Si seguía abierto,
+   * se cierra ahora. Solo se anula una vez (el primero que llega gana).
+   */
+  async anularIntento(
+    id: string,
+    motivo: string,
+    usuarioId: string,
+    ahora = new Date(),
+  ): Promise<{ id: string; practicaId: string; operadorId: string; anuladoEn: string }> {
+    const intento = await this.prisma.intentoDigitacion.findUnique({
+      where: { id },
+      select: { id: true, practicaId: true, operadorId: true, anuladoEn: true },
+    });
+    if (!intento) throw new NotFoundException('Intento no encontrado');
+    if (intento.anuladoEn) throw new ConflictException('Ese intento ya estaba anulado');
+    // Una sola sentencia: si terminó justo en medio, conserva esa hora (COALESCE);
+    // si seguía abierto, se cierra ahora (o al vencer, si ya venció).
+    const count = await this.prisma.$executeRaw`
+      UPDATE "intentos_digitacion"
+      SET "anulado_en" = ${ahora},
+          "anulado_por_id" = ${usuarioId}::uuid,
+          "motivo_anulacion" = ${motivo},
+          "terminado_en" = COALESCE("terminado_en", LEAST("vence_en", ${ahora}))
+      WHERE "id" = ${id}::uuid AND "anulado_en" IS NULL`;
+    if (count === 0) throw new ConflictException('Ese intento ya estaba anulado');
+    return { id: intento.id, practicaId: intento.practicaId, operadorId: intento.operadorId, anuladoEn: ahora.toISOString() };
+  }
+
   async crear(input: PracticaDigitacionInput): Promise<PracticaDigitacion> {
     try {
       const id = await this.prisma.$transaction(async (tx) => {
