@@ -8,7 +8,7 @@ import { debeRefrescar, ReportePractica, resultado } from './ReportePractica';
 import { api } from '../../lib/api';
 import { guardar } from '../../lib/queries/operadores-cda';
 
-vi.mock('../../lib/api', () => ({ api: { get: vi.fn() } }));
+vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../lib/queries/operadores-cda', async (original) => ({
   ...(await original<typeof import('../../lib/queries/operadores-cda')>()),
@@ -16,6 +16,7 @@ vi.mock('../../lib/queries/operadores-cda', async (original) => ({
 }));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const guardarMock = guardar as unknown as ReturnType<typeof vi.fn>;
 const ID = '11111111-1111-4111-8111-111111111111';
 const ANA = '22222222-2222-4222-8222-222222222222';
@@ -23,7 +24,10 @@ const ANA = '22222222-2222-4222-8222-222222222222';
 const PRACTICA = { id: ID, nombre: 'Simulacro 1', metaActas: 20, plazoMinutos: 30 } as PracticaDigitacion;
 
 const intento = (o: Partial<IntentoReporteSimulador> = {}): IntentoReporteSimulador => ({
+  id: `int-${o.numero ?? 1}`,
   numero: 1,
+  anulado: false,
+  motivoAnulacion: null,
   cargo: 'Digitadores',
   iniciadoEn: '2026-11-10T14:00:00.000Z',
   terminadoEn: '2026-11-10T14:30:00.000Z',
@@ -137,6 +141,71 @@ describe('ReportePractica', () => {
       expect(getMock).toHaveBeenCalledWith(`/simulador-digitacion/practicas/${ID}/reporte.pdf`, { params: { operadorId: ANA }, responseType: 'blob' }),
     );
     expect(guardarMock).toHaveBeenCalledWith(expect.any(Blob), 'simulador_digitacion_2026.xlsx');
+  });
+
+  it('anular un intento: pide el motivo, lo envía y refresca el reporte', async () => {
+    const user = userEvent.setup();
+    postMock.mockResolvedValue({ data: { id: 'int-1' } });
+    renderReporte();
+    await user.click(await screen.findByRole('button', { name: 'Ver los 2 intento(s) de ANA PÉREZ' }));
+    const dialogo = screen.getByRole('dialog');
+    await user.click(within(dialogo).getByRole('button', { name: 'Anular intento 1 de ANA PÉREZ' }));
+    const motivo = within(dialogo).getByLabelText('Motivo');
+    expect(motivo).toHaveFocus();
+    // Sin motivo no se envía.
+    await user.click(within(dialogo).getByRole('button', { name: 'Anular intento' }));
+    expect(await within(dialogo).findByRole('alert')).toHaveTextContent('Escriba el motivo');
+    expect(postMock).not.toHaveBeenCalled();
+    await user.type(motivo, 'Cerró el navegador por error');
+    const lecturas = getMock.mock.calls.filter(([u]) => String(u).endsWith('/reporte')).length;
+    await user.click(within(dialogo).getByRole('button', { name: 'Anular intento' }));
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/simulador-digitacion/intentos/int-1/anular', { motivo: 'Cerró el navegador por error' }),
+    );
+    await waitFor(() => expect(getMock.mock.calls.filter(([u]) => String(u).endsWith('/reporte')).length).toBeGreaterThan(lecturas));
+    expect(within(dialogo).queryByLabelText('Motivo')).not.toBeInTheDocument();
+    // Ya anulado, el foco va al título del detalle.
+    await waitFor(() => expect(within(dialogo).getByRole('heading', { name: 'ANA PÉREZ' })).toHaveFocus());
+  });
+
+  it('cancelar anular: cierra el formulario y devuelve el foco al botón', async () => {
+    const user = userEvent.setup();
+    renderReporte();
+    await user.click(await screen.findByRole('button', { name: 'Ver los 2 intento(s) de ANA PÉREZ' }));
+    const dialogo = screen.getByRole('dialog');
+    const boton = within(dialogo).getByRole('button', { name: 'Anular intento 1 de ANA PÉREZ' });
+    await user.click(boton);
+    expect(boton).toHaveAttribute('aria-expanded', 'true');
+    expect(boton).toHaveAttribute('aria-controls', 'sim-anular-form');
+    expect(within(dialogo).getByLabelText('Motivo')).toHaveAccessibleDescription(/Obligatorio, de 5 a 200/);
+    await user.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
+    expect(within(dialogo).queryByLabelText('Motivo')).not.toBeInTheDocument();
+    await waitFor(() => expect(boton).toHaveFocus());
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it('el intento anulado se marca, muestra su motivo y no tiene botón de anular', async () => {
+    const user = userEvent.setup();
+    getMock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          ...REPORTE,
+          filas: [
+            fila({
+              intentos: [intento({ anulado: true, motivoAnulacion: 'Cerró el navegador' }), intento({ numero: 2 })],
+              mejor: 2,
+            }),
+          ],
+        },
+      }),
+    );
+    renderReporte();
+    expect(await screen.findByRole('cell', { name: 'Anulado' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ver los 2 intento(s) de ANA PÉREZ' }));
+    const filas = within(within(screen.getByRole('dialog')).getByRole('table')).getAllByRole('row');
+    expect(filas[1]).toHaveTextContent('Anulado: Cerró el navegador');
+    expect(within(filas[1]).queryByRole('button', { name: /Anular/ })).not.toBeInTheDocument();
+    expect(within(filas[2]).getByRole('button', { name: 'Anular intento 2 de ANA PÉREZ' })).toBeInTheDocument();
   });
 
   it('Excel general sin persona; Volver', async () => {

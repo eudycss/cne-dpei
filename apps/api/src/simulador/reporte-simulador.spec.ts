@@ -17,6 +17,7 @@ const INICIO = new Date('2026-11-10T14:00:00Z');
 const min = (m: number) => new Date(INICIO.getTime() + m * 60_000);
 
 const intento = (o: Partial<IntentoParaReporte> = {}): IntentoParaReporte => ({
+  id: 'i1',
   numero: 1,
   cargo: 'Digitadores',
   iniciadoEn: INICIO,
@@ -30,7 +31,10 @@ const intento = (o: Partial<IntentoParaReporte> = {}): IntentoParaReporte => ({
 });
 
 const resumen = (o: Partial<IntentoReporteSimulador> = {}): IntentoReporteSimulador => ({
+  id: 'i1',
   numero: 1,
+  anulado: false,
+  motivoAnulacion: null,
   cargo: 'Digitadores',
   iniciadoEn: INICIO.toISOString(),
   terminadoEn: min(30).toISOString(),
@@ -127,6 +131,26 @@ describe('mejor intento', () => {
 
   it('sin intentos: null', () => {
     expect(mejorIntento([])).toBeNull();
+  });
+
+  it('un anulado no compite aunque haya cumplido; si todos están anulados, no hay mejor', () => {
+    const anulado = resumen({ numero: 1, cumplio: true, motivo: 'META', anulado: true });
+    expect(mejorIntento([anulado, resumen({ numero: 2 })])?.numero).toBe(2);
+    expect(mejorIntento([anulado])).toBeNull();
+  });
+
+  it('solo intentos anulados: se presentó (terminó), pero sin mejor ni cumplido', () => {
+    const f = filaPersona(
+      { operadorId: 'a', cedula: '1710034065', apellidosNombres: 'ANA', telefono: null, cargo: 'Digitadores', asignada: true },
+      [resumen({ numero: 1, anulado: true, motivoAnulacion: 'Cerró el navegador' })],
+    );
+    expect(f).toMatchObject({ estado: 'TERMINADO', mejor: null, cumplio: false });
+    expect(totales([f])).toMatchObject({ presentaron: 1, noSePresentaron: 0 });
+  });
+
+  it('resumirIntento: el anulado lleva su motivo y nunca cuenta como cumplido', () => {
+    const r = resumirIntento(intento({ actasCompletadas: 200, terminadoEn: min(20), anuladoEn: min(21), motivoAnulacion: 'Se equivocó de cédula' }), 200, min(30));
+    expect(r).toMatchObject({ anulado: true, motivoAnulacion: 'Se equivocó de cédula', cumplio: false, motivo: 'META' });
   });
 });
 

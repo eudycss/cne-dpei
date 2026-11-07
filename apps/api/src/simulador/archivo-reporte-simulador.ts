@@ -21,6 +21,7 @@ export const ESTADO_PERSONA: Record<FilaReporteSimulador['estado'], string> = {
 };
 
 export function resultadoIntento(i: IntentoReporteSimulador): string {
+  if (i.anulado) return `Anulado: ${i.motivoAnulacion ?? 'sin motivo'}`;
   if (i.motivo === 'META') return 'Cumplió la meta';
   if (i.motivo === 'TIEMPO') return 'Se acabó el tiempo';
   return 'En curso';

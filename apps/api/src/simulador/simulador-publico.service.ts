@@ -34,6 +34,9 @@ export const ABIERTA_EN_OTRO_EQUIPO =
 
 const DEMASIADOS = 'Demasiados intentos con esta cédula; espere un minuto';
 
+export const INTENTO_ANULADO =
+  'El monitor anuló este intento. Vuelva a entrar con su cédula para empezar uno nuevo (no se le descuenta).';
+
 const PERSONA = { select: { id: true, grupo: true, activo: true, apellidosNombres: true, cargoCda: { select: { nombre: true } } } };
 
 const INTENTO = {
@@ -77,11 +80,13 @@ export class SimuladorPublicoService {
 
   /**
    * Empieza un intento, o retoma el que sigue con tiempo (con un token nuevo:
-   * el de otra pestaña o equipo deja de servir).
+   * el de otra pestaña o equipo deja de servir). `equipo`: identificador del
+   * navegador; desde el mismo equipo se retoma sin esperar (cerró por error).
    */
   async iniciar(
     cedula: string,
     practicaId: string,
+    equipo?: string,
   ): Promise<IniciarSimuladorResponse & { operadorId: string; retomado: boolean }> {
     this.limiteInicio.registrar(cedula, this.ahora().getTime());
     const persona = await this.persona(cedula);
@@ -95,24 +100,30 @@ export class SimuladorPublicoService {
     await this.cerrarVencidos(persona.id, practica.id, ahora);
     const token = nuevoToken();
     const tokenHash = hashTokenSimulador(token);
+    const equipoHash = equipo ? hashTokenSimulador(equipo) : null;
     const enCurso = await this.prisma.intentoDigitacion.findFirst({
-      where: { practicaId, operadorId: persona.id, terminadoEn: null, venceEn: { gt: ahora } },
+      where: { practicaId, operadorId: persona.id, terminadoEn: null, anuladoEn: null, venceEn: { gt: ahora } },
     });
 
     let intento;
     if (enCurso) {
-      if (ahora.getTime() - enCurso.ultimaActividadEn.getTime() < RETOME_BLOQUEADO_MS) {
+      const mismoEquipo = equipoHash !== null && equipoHash === enCurso.equipoHash;
+      if (!mismoEquipo && ahora.getTime() - enCurso.ultimaActividadEn.getTime() < RETOME_BLOQUEADO_MS) {
         throw new ConflictException(ABIERTA_EN_OTRO_EQUIPO);
       }
       intento = await this.prisma.intentoDigitacion.update({
         where: { id: enCurso.id },
-        data: { tokenHash, ultimaActividadEn: ahora },
+        data: { tokenHash, ultimaActividadEn: ahora, equipoHash },
       });
     } else {
       if (ahora < practica.inicio || ahora > practica.fin) {
         throw new ConflictException('La práctica no está abierta en este momento');
       }
-      const usados = await this.prisma.intentoDigitacion.count({ where: { practicaId, operadorId: persona.id } });
+      // Los anulados no cuentan para el límite, pero conservan su número.
+      const [usados, total] = await Promise.all([
+        this.prisma.intentoDigitacion.count({ where: { practicaId, operadorId: persona.id, anuladoEn: null } }),
+        this.prisma.intentoDigitacion.count({ where: { practicaId, operadorId: persona.id } }),
+      ]);
       if (usados >= practica.intentosMax) {
         throw new ConflictException(`Ya usó sus ${practica.intentosMax} intento(s) de esta práctica`);
       }
@@ -121,9 +132,10 @@ export class SimuladorPublicoService {
           data: {
             practicaId,
             operadorId: persona.id,
-            numero: usados + 1,
+            numero: total + 1,
             cargo: persona.cargoCda.nombre,
             tokenHash,
+            equipoHash,
             iniciadoEn: ahora,
             venceEn: new Date(ahora.getTime() + practica.plazoMinutos * 60_000),
             ultimaActividadEn: ahora,
@@ -307,7 +319,7 @@ export class SimuladorPublicoService {
       include: {
         cargos: { select: { cargo: true } },
         personas: { where: { operadorId: persona.id } },
-        intentos: { where: { operadorId: persona.id }, select: { terminadoEn: true, venceEn: true } },
+        intentos: { where: { operadorId: persona.id, anuladoEn: null }, select: { terminadoEn: true, venceEn: true } },
       },
       orderBy: { inicio: 'asc' },
     });
@@ -347,6 +359,7 @@ export class SimuladorPublicoService {
   private async intentoPorToken(token: string): Promise<IntentoConPractica> {
     const intento = await this.prisma.intentoDigitacion.findUnique({ where: { tokenHash: hashTokenSimulador(token) }, ...INTENTO });
     if (!intento) throw new UnauthorizedException('La sesión de práctica no es válida; vuelva a entrar con su cédula');
+    if (intento.anuladoEn) throw new UnauthorizedException(INTENTO_ANULADO);
     return intento;
   }
 

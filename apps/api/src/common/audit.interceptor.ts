@@ -196,6 +196,19 @@ const AUDIT_TABLE: Array<{
       operadorId: idUuid((req.query as Record<string, unknown> | undefined)?.operadorId) ?? null,
     }),
   },
+  // Anular un intento: de quién y de qué práctica. El motivo (texto libre) queda en el
+  // intento, no en la bitácora inmutable, por si alguien escribe datos personales.
+  {
+    method: 'POST',
+    pathRegex: /^\/simulador-digitacion\/intentos\/[^/]+\/anular$/,
+    accion: 'PRACTICA_DIGITACION_ANULAR_INTENTO',
+    entidad: 'intento_digitacion',
+    entidadId: (req) => idUuid(req.params?.id),
+    resumen: (res) => {
+      const r = (res ?? {}) as { practicaId?: unknown; operadorId?: unknown };
+      return { practicaId: idUuid(r.practicaId) ?? null, operadorId: idUuid(r.operadorId) ?? null };
+    },
+  },
   {
     method: 'POST',
     pathRegex: /^\/simulador-digitacion\/novedades$/,

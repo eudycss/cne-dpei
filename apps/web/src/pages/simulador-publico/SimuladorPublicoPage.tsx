@@ -42,7 +42,7 @@ function usePaginaSimulador() {
 }
 
 const SESION_PERDIDA =
-  'Su sesión de práctica se abrió en otro equipo o ya no es válida. Vuelva a entrar con su cédula.';
+  'Su sesión de práctica se abrió en otro equipo, el monitor anuló el intento o ya no es válida. Vuelva a entrar con su cédula.';
 
 /**
  * Simulador de digitación (público, como la pantalla de Digitación del SIER).

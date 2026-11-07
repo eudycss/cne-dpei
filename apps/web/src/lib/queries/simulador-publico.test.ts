@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { espaciado, reloj, trazoDeFila } from './simulador-publico';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { equipoSimulador, espaciado, reloj, trazoDeFila } from './simulador-publico';
 
 describe('ayudas del simulador público', () => {
   it('espaciado: letras separadas y palabras más separadas', () => {
@@ -26,5 +26,32 @@ describe('ayudas del simulador público', () => {
     expect(reloj(61_000)).toBe('01:01');
     expect(reloj(59_001)).toBe('01:00');
     expect(reloj(3_600_000 + 5_000)).toBe('1:00:05');
+  });
+});
+
+describe('equipoSimulador', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('crea un identificador al azar una vez y luego lo reutiliza', () => {
+    const a = equipoSimulador();
+    expect(a).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(equipoSimulador()).toBe(a);
+  });
+
+  it('si lo guardado no tiene la forma esperada, lo reemplaza', () => {
+    localStorage.setItem('cne.simulador.equipo', '<script>');
+    const nuevo = equipoSimulador();
+    expect(nuevo).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(localStorage.getItem('cne.simulador.equipo')).toBe(nuevo);
+  });
+
+  it('sin almacenamiento (modo privado bloqueado): null, sin romper', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('bloqueado');
+    });
+    expect(equipoSimulador()).toBeNull();
   });
 });

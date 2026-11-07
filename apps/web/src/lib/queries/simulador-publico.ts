@@ -17,8 +17,33 @@ export async function ingresarSimulador(cedula: string): Promise<IngresoSimulado
 }
 
 export async function iniciarSimulador(cedula: string, practicaId: string): Promise<IniciarSimuladorResponse> {
-  const { data } = await apiPublico.post<IniciarSimuladorResponse>(`${BASE}/iniciar`, { cedula, practicaId });
+  const equipo = equipoSimulador();
+  const { data } = await apiPublico.post<IniciarSimuladorResponse>(`${BASE}/iniciar`, {
+    cedula,
+    practicaId,
+    ...(equipo ? { equipo } : {}),
+  });
   return data;
+}
+
+/**
+ * Identificador al azar de este navegador (localStorage, sin datos de la
+ * persona). Con él, quien cerró el navegador por error retoma su práctica en
+ * el mismo equipo sin esperar los 2 minutos; solo no basta: se pide la cédula.
+ * Sin almacenamiento (modo privado bloqueado) se sigue sin él.
+ */
+const CLAVE_EQUIPO = 'cne.simulador.equipo';
+export function equipoSimulador(): string | null {
+  try {
+    const guardado = localStorage.getItem(CLAVE_EQUIPO);
+    if (guardado && /^[A-Za-z0-9_-]{22,64}$/.test(guardado)) return guardado;
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    const nuevo = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    localStorage.setItem(CLAVE_EQUIPO, nuevo);
+    return nuevo;
+  } catch {
+    return null;
+  }
 }
 
 export async function estadoSimulador(token: string): Promise<EstadoIntentoSimulador> {

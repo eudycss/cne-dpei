@@ -15,7 +15,10 @@ import { actasFaltantes, finDelTiempo, motivoCierre, msUsados, type IntentoParaE
  */
 
 export interface IntentoParaReporte extends IntentoParaEstado {
+  id: string;
   cargo: string;
+  anuladoEn?: Date | null;
+  motivoAnulacion?: string | null;
 }
 
 const MINUTO_MS = 60_000;
@@ -37,7 +40,10 @@ export function resumirIntento(
   const ms = msUsados(intento, motivo, ahora);
   const minutos = ms / MINUTO_MS;
   return {
+    id: intento.id,
     numero: intento.numero,
+    anulado: Boolean(intento.anuladoEn),
+    motivoAnulacion: intento.anuladoEn ? (intento.motivoAnulacion ?? null) : null,
     cargo: intento.cargo,
     iniciadoEn: intento.iniciadoEn.toISOString(),
     terminadoEn: motivo ? new Date(fin).toISOString() : null,
@@ -52,7 +58,7 @@ export function resumirIntento(
     actasCompletadas: intento.actasCompletadas,
     actasPerfectas: intento.actasPerfectas,
     actasConError: intento.actasCompletadas - intento.actasPerfectas,
-    cumplio: motivo === 'META',
+    cumplio: motivo === 'META' && !intento.anuladoEn,
   };
 }
 
@@ -66,8 +72,10 @@ export function compararIntentos(a: IntentoReporteSimulador, b: IntentoReporteSi
   );
 }
 
+/** El mejor de los que cuentan (los anulados no compiten). */
 export function mejorIntento(intentos: IntentoReporteSimulador[]): IntentoReporteSimulador | null {
-  return intentos.length ? [...intentos].sort(compararIntentos)[0] : null;
+  const validos = intentos.filter((i) => !i.anulado);
+  return validos.length ? validos.sort(compararIntentos)[0] : null;
 }
 
 export interface PersonaParaReporte {
@@ -83,9 +91,10 @@ export interface PersonaParaReporte {
 export function filaPersona(persona: PersonaParaReporte, intentos: IntentoReporteSimulador[]): FilaReporteSimulador {
   const ordenados = [...intentos].sort((a, b) => a.numero - b.numero);
   const mejor = mejorIntento(ordenados);
-  const estado: EstadoPersonaReporteSimulador = !mejor
+  // Se presentó si tiene algún intento, aunque todos estén anulados (entonces no tiene mejor).
+  const estado: EstadoPersonaReporteSimulador = ordenados.length === 0
     ? 'NO_SE_PRESENTO'
-    : ordenados.some((i) => i.motivo === null)
+    : ordenados.some((i) => i.motivo === null && !i.anulado)
       ? 'EN_CURSO'
       : 'TERMINADO';
   return {
