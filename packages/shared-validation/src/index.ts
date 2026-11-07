@@ -1315,3 +1315,31 @@ export function textoTiempoIntento(i: { segundos: number; motivo: 'META' | 'TIEM
   if (i.motivo === 'META' || i.actasFaltantes <= 0) return reloj;
   return `${reloj} · ${i.actasFaltantes === 1 ? 'faltó 1 acta' : `faltaron ${i.actasFaltantes} actas`}`;
 }
+
+// ─── Tiempos de viaje por recinto (bot Jornada) ──────────────────────────────
+
+/** Margen que se suma al viaje más largo medido para sugerir el tiempo de un recinto. */
+export const MARGEN_TIEMPO_VIAJE_MIN = 30;
+export const MIN_TIEMPO_VIAJE_MIN = 5;
+export const MAX_TIEMPO_VIAJE_MIN = 600;
+
+export const minutosTiempoViajeSchema = z
+  .number({ invalid_type_error: 'Escriba los minutos' })
+  .int('Minutos enteros')
+  .min(MIN_TIEMPO_VIAJE_MIN, `Mínimo ${MIN_TIEMPO_VIAJE_MIN} minutos`)
+  .max(MAX_TIEMPO_VIAJE_MIN, `Máximo ${MAX_TIEMPO_VIAJE_MIN} minutos (10 horas)`);
+
+/** Guardar uno o varios tiempos de viaje (null = quitar el tiempo del recinto). */
+export const guardarTiemposViajeSchema = z
+  .object({
+    tiempos: z
+      .array(z.object({ recintoId: z.string().uuid('Recinto inválido'), minutos: minutosTiempoViajeSchema.nullable() }).strict())
+      .min(1, 'Indique al menos un recinto')
+      .max(500, 'Máximo 500 recintos por vez'),
+  })
+  .strict()
+  .refine((d) => new Set(d.tiempos.map((t) => t.recintoId)).size === d.tiempos.length, {
+    message: 'Un recinto aparece dos veces',
+    path: ['tiempos'],
+  });
+export type GuardarTiemposViajeInput = z.infer<typeof guardarTiemposViajeSchema>;

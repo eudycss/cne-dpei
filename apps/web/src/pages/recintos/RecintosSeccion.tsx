@@ -3,19 +3,21 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
 import { RecintosPage } from './RecintosPage';
 import { EnlacesPage } from '../enlaces/EnlacesPage';
+import { TiemposViajePage } from './TiemposViajePage';
 
-type Pestana = 'recintos' | 'enlaces';
+type Pestana = 'recintos' | 'enlaces' | 'tiempos';
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'recintos', etiqueta: 'Recintos' },
   { id: 'enlaces', etiqueta: 'Enlaces' },
+  { id: 'tiempos', etiqueta: 'Tiempos de viaje' },
 ];
 
 /**
  * Recintos y el estado de sus enlaces en una sola página con pestañas (patrón
  * WAI-ARIA Tabs, activación automática). Los datos siguen separados: los enlaces
- * vienen de la hoja de Drive. La pestaña Enlaces es solo del administrador y se
- * abre directo con `?tab=enlaces`.
+ * vienen de la hoja de Drive. Las pestañas Enlaces y Tiempos de viaje son solo del
+ * administrador y se abren directo con `?tab=enlaces` / `?tab=tiempos`.
  */
 export function RecintosSeccion() {
   const { user } = useAuth();
@@ -32,7 +34,7 @@ export function RecintosSeccion() {
     );
   }
 
-  const activa: Pestana = params.get('tab') === 'enlaces' ? 'enlaces' : 'recintos';
+  const activa: Pestana = PESTANAS.find((p) => p.id === params.get('tab'))?.id ?? 'recintos';
 
   function seleccionar(indice: number) {
     const { id } = PESTANAS[indice];
@@ -57,7 +59,7 @@ export function RecintosSeccion() {
   return (
     <>
       <h2>Recintos Electorales</h2>
-      <div role="tablist" aria-label="Recintos y enlaces" className="pestanas">
+      <div role="tablist" aria-label="Recintos, enlaces y tiempos de viaje" className="pestanas">
         {PESTANAS.map((p, i) => (
           <button
             key={p.id}
@@ -79,7 +81,7 @@ export function RecintosSeccion() {
         ))}
       </div>
       <div role="tabpanel" id={`panel-${activa}`} aria-labelledby={`pestana-${activa}`}>
-        {activa === 'enlaces' ? <EnlacesPage /> : <RecintosPage />}
+        {activa === 'enlaces' ? <EnlacesPage /> : activa === 'tiempos' ? <TiemposViajePage /> : <RecintosPage />}
       </div>
     </>
   );

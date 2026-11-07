@@ -4,10 +4,11 @@ import { RecintosService } from './recintos.service';
 import { RecintosSheetClient } from './recintos-sheet.client';
 import { RecintosSyncService } from './recintos-sync.service';
 import { TiposEventoService } from './tipos-evento.service';
+import { TiemposViajeService } from './tiempos-viaje.service';
 
 @Module({
   controllers: [CatalogController],
-  providers: [RecintosService, TiposEventoService, RecintosSheetClient, RecintosSyncService],
+  providers: [RecintosService, TiposEventoService, RecintosSheetClient, RecintosSyncService, TiemposViajeService],
   exports: [RecintosService, TiposEventoService],
 })
 export class CatalogModule {}
