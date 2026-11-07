@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-import { ABIERTA_EN_OTRO_EQUIPO, hashTokenSimulador, SimuladorPublicoService } from './simulador-publico.service';
+import { ABIERTA_EN_OTRO_EQUIPO, INTENTO_ANULADO, hashTokenSimulador, SimuladorPublicoService } from './simulador-publico.service';
 import type { PrismaService } from '../db/prisma.service';
 
 const AHORA = new Date('2026-11-10T14:00:00Z');
@@ -51,6 +51,8 @@ const intento = (o: Record<string, unknown> = {}) => ({
   filasFallidas: 0,
   filasDigitadas: 0,
   filasCorrectas: 0,
+  anuladoEn: null as Date | null,
+  equipoHash: null as string | null,
   practica: practica(),
   operador: { apellidosNombres: PERSONA.apellidosNombres },
   ...o,
@@ -157,7 +159,8 @@ describe('SimuladorPublicoService', () => {
       expect(prisma.intentoDigitacion.create).not.toHaveBeenCalled();
       expect(prisma.intentoDigitacion.update).toHaveBeenCalledWith({
         where: { id: 'int-1' },
-        data: { tokenHash: hashTokenSimulador(r.token), ultimaActividadEn: AHORA },
+        // Sin identificador de equipo, el anterior deja de servir para saltar la espera.
+        data: { tokenHash: hashTokenSimulador(r.token), ultimaActividadEn: AHORA, equipoHash: null },
       });
       expect(r.retomado).toBe(true);
     });
@@ -166,6 +169,37 @@ describe('SimuladorPublicoService', () => {
       prisma.intentoDigitacion.findFirst.mockResolvedValue(intento({ ultimaActividadEn: minutos(-1) }));
       await expect(service.iniciar(CEDULA, PRACTICA_ID)).rejects.toThrow(ABIERTA_EN_OTRO_EQUIPO);
       expect(prisma.intentoDigitacion.update).not.toHaveBeenCalled();
+    });
+
+    it('desde el mismo equipo retoma al instante (cerró el navegador por error)', async () => {
+      const EQUIPO = 'q'.repeat(22);
+      prisma.intentoDigitacion.findFirst.mockResolvedValue(
+        intento({ ultimaActividadEn: minutos(-1), equipoHash: hashTokenSimulador(EQUIPO) }),
+      );
+      prisma.intentoDigitacion.update.mockImplementation(({ data }) => Promise.resolve({ ...intento(), ...data }));
+      const r = await service.iniciar(CEDULA, PRACTICA_ID, EQUIPO);
+      expect(r.retomado).toBe(true);
+      expect(prisma.intentoDigitacion.update.mock.calls[0][0].data.equipoHash).toBe(hashTokenSimulador(EQUIPO));
+      // Con otro equipo (o sin identificador) sigue la espera de 2 minutos.
+      await expect(service.iniciar(CEDULA, PRACTICA_ID, 'z'.repeat(22))).rejects.toThrow(ABIERTA_EN_OTRO_EQUIPO);
+      await expect(service.iniciar(CEDULA, PRACTICA_ID)).rejects.toThrow(ABIERTA_EN_OTRO_EQUIPO);
+    });
+
+    it('guarda solo el hash del equipo al crear el intento', async () => {
+      const EQUIPO = 'q'.repeat(22);
+      await service.iniciar(CEDULA, PRACTICA_ID, EQUIPO);
+      expect(prisma.intentoDigitacion.create.mock.calls[0][0].data.equipoHash).toBe(hashTokenSimulador(EQUIPO));
+    });
+
+    it('el intento en curso que se busca excluye los anulados', async () => {
+      await service.iniciar(CEDULA, PRACTICA_ID);
+      expect(prisma.intentoDigitacion.findFirst.mock.calls[0][0].where).toMatchObject({ anuladoEn: null, terminadoEn: null });
+    });
+
+    it('los anulados no cuentan para el límite, pero el número sigue (1 válido + 1 anulado → intento 3)', async () => {
+      prisma.intentoDigitacion.count.mockImplementation(({ where }) => Promise.resolve('anuladoEn' in where ? 1 : 2));
+      await service.iniciar(CEDULA, PRACTICA_ID);
+      expect(prisma.intentoDigitacion.create.mock.calls[0][0].data.numero).toBe(3);
     });
 
     it('más de 5 inicios por minuto con la misma cédula: 429 (aunque cambie de IP)', async () => {
@@ -211,6 +245,12 @@ describe('SimuladorPublicoService', () => {
     it('token desconocido: 401', async () => {
       prisma.intentoDigitacion.findUnique.mockResolvedValue(null);
       await expect(service.estado(TOKEN)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('intento anulado por el monitor: 401 con el aviso de empezar uno nuevo', async () => {
+      prisma.intentoDigitacion.findUnique.mockResolvedValue(intento({ anuladoEn: minutos(-1) }));
+      await expect(service.estado(TOKEN)).rejects.toThrow(INTENTO_ANULADO);
+      expect(prisma.intentoDigitacion.updateMany).not.toHaveBeenCalled();
     });
 
     it('busca por el hash, nunca por el token, y marca la sesión como en uso', async () => {

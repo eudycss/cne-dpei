@@ -998,6 +998,10 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .sim-agregar { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0; }
 .sim-agregar .ocda-form-campo { flex: 1; min-width: 240px; }
 .sim-inactiva { margin-left: 0.5rem; }
+.sim-anulado td, .sim-anulado th { color: var(--f-text-muted); }
+.sim-anular { margin-top: 1rem; padding: 1rem; border: 1px solid var(--f-error, var(--error)); border-radius: 10px; display: flex; flex-direction: column; gap: 0.75rem; }
+.sim-anular h3 { margin: 0; font-size: 1rem; }
+.sim-anular p { margin: 0; }
 .sim-cargos:focus-visible { outline: 2px solid var(--f-text); outline-offset: 2px; }
 .sim-nota:empty { display: none; }
 

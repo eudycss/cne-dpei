@@ -110,7 +110,10 @@ describe('SimuladorPublicoPage', () => {
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
     await user.click(await screen.findByRole('button', { name: 'Empezar intento 1' }));
     expect(await screen.findByRole('button', { name: 'Nueva acta' })).toBeInTheDocument();
-    expect(postMock).toHaveBeenCalledWith('/publico/simulador/iniciar', { cedula: CEDULA, practicaId: 'p1' });
+    // Va el identificador al azar del equipo (para retomar sin esperar), nunca el token en localStorage.
+    const equipo = localStorage.getItem('cne.simulador.equipo');
+    expect(equipo).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(postMock).toHaveBeenCalledWith('/publico/simulador/iniciar', { cedula: CEDULA, practicaId: 'p1', equipo });
     expect(sessionStorage.getItem('cne.simulador.token')).toBe(TOKEN);
     expect(localStorage.getItem('cne.simulador.token')).toBeNull();
   });

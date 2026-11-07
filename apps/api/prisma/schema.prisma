@@ -171,6 +171,7 @@ model Usuario {
   actasCdaCreadas       ActaEntregaCda[] @relation("ActaEntregaCdaCreadoPor")
   cambiosCargoCda       CambioCargoCda[] @relation("CambioCargoCdaHechoPor")
   llegadasDpiManuales   EventoTracking[] @relation("LlegadaDpiManualPor")
+  intentosDigitacionAnulados IntentoDigitacion[] @relation("IntentoDigitacionAnuladoPor")
 
   @@map("usuarios")
 }
@@ -1116,6 +1117,13 @@ model IntentoDigitacion {
   filasDigitadas   Int                @default(0) @map("filas_digitadas")
   /// De esos, los que coincidieron con las letras.
   filasCorrectas   Int                @default(0) @map("filas_correctas")
+  /// Anulado por el monitor: se conserva, pero no cuenta para el límite ni para el mejor intento.
+  anuladoEn        DateTime?          @map("anulado_en") @db.Timestamptz(6)
+  anuladoPorId     String?            @map("anulado_por_id") @db.Uuid
+  anuladoPor       Usuario?           @relation("IntentoDigitacionAnuladoPor", fields: [anuladoPorId], references: [id], onDelete: Restrict)
+  motivoAnulacion  String?            @map("motivo_anulacion") @db.VarChar(200)
+  /// sha256 del identificador del navegador donde se usa: desde ese mismo equipo se retoma sin esperar.
+  equipoHash       String?            @map("equipo_hash") @db.VarChar(64)
 
   actas ActaDigitacion[]
 

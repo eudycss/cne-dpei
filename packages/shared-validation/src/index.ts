@@ -1270,7 +1270,19 @@ export const activarPracticaDigitacionSchema = z.object({ activa: z.boolean() })
 
 export const ingresoSimuladorSchema = z.object({ cedula: cedulaSchema });
 
-export const iniciarSimuladorSchema = z.object({ cedula: cedulaSchema, practicaId: z.string().uuid('Práctica inválida') });
+/** Identificador al azar del navegador (localStorage): desde el mismo equipo se retoma sin esperar. */
+export const equipoSimuladorSchema = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/, 'Equipo inválido');
+export const iniciarSimuladorSchema = z.object({
+  cedula: cedulaSchema,
+  practicaId: z.string().uuid('Práctica inválida'),
+  equipo: equipoSimuladorSchema.optional(),
+});
+
+/** El monitor anula un intento (p. ej. cerraron el navegador por error): el motivo es obligatorio. */
+export const anularIntentoSimuladorSchema = z
+  .object({ motivo: z.string().trim().min(5, 'Escriba el motivo (mínimo 5 letras)').max(200, 'Máximo 200 caracteres') })
+  .strict();
+export type AnularIntentoSimuladorInput = z.infer<typeof anularIntentoSimuladorSchema>;
 
 /** Token del intento: 32 bytes en base64url (lo entrega "iniciar"). */
 export const tokenSimuladorSchema = z.object({
@@ -1307,9 +1319,15 @@ export function relojSimulador(segundos: number): string {
 
 /**
  * Tiempo de un intento, igual en la pantalla de la persona y en los reportes:
- * cumplió → "18:24"; se acabó el tiempo → "25:00 · faltaron 3 actas"; abierto → "En curso".
+ * cumplió → "18:24"; se acabó el tiempo → "25:00 · faltaron 3 actas"; abierto → "En curso"; anulado → "Anulado".
  */
-export function textoTiempoIntento(i: { segundos: number; motivo: 'META' | 'TIEMPO' | null; actasFaltantes: number }): string {
+export function textoTiempoIntento(i: {
+  segundos: number;
+  motivo: 'META' | 'TIEMPO' | null;
+  actasFaltantes: number;
+  anulado?: boolean;
+}): string {
+  if (i.anulado) return 'Anulado';
   if (i.motivo === null) return 'En curso';
   const reloj = relojSimulador(i.segundos);
   if (i.motivo === 'META' || i.actasFaltantes <= 0) return reloj;

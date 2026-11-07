@@ -6,6 +6,7 @@ import {
   relojSimulador,
   textoTiempoIntento,
   tokenSimuladorSchema,
+  anularIntentoSimuladorSchema,
 } from './index';
 
 const P1 = '22222222-2222-4222-8222-222222222222';
@@ -91,5 +92,21 @@ describe('tiempo de un intento del simulador', () => {
     expect(textoTiempoIntento({ segundos: 1500, motivo: 'TIEMPO', actasFaltantes: 3 })).toBe('25:00 · faltaron 3 actas');
     expect(textoTiempoIntento({ segundos: 1500, motivo: 'TIEMPO', actasFaltantes: 1 })).toBe('25:00 · faltó 1 acta');
     expect(textoTiempoIntento({ segundos: 300, motivo: null, actasFaltantes: 10 })).toBe('En curso');
+    expect(textoTiempoIntento({ segundos: 1104, motivo: 'META', actasFaltantes: 0, anulado: true })).toBe('Anulado');
+  });
+
+  it('anularIntentoSimuladorSchema: motivo obligatorio (5 a 200), sin campos extra', () => {
+    expect(anularIntentoSimuladorSchema.parse({ motivo: '  Cerró el navegador  ' })).toEqual({ motivo: 'Cerró el navegador' });
+    expect(anularIntentoSimuladorSchema.safeParse({ motivo: 'no' }).success).toBe(false);
+    expect(anularIntentoSimuladorSchema.safeParse({ motivo: 'x'.repeat(201) }).success).toBe(false);
+    expect(anularIntentoSimuladorSchema.safeParse({ motivo: 'Cerró el navegador', otro: 1 }).success).toBe(false);
+  });
+
+  it('iniciarSimuladorSchema: el equipo es opcional y con forma de identificador al azar', () => {
+    const base = { cedula: '1710034065', practicaId: '11111111-1111-4111-8111-111111111111' };
+    expect(iniciarSimuladorSchema.safeParse(base).success).toBe(true);
+    expect(iniciarSimuladorSchema.safeParse({ ...base, equipo: 'A'.repeat(22) }).success).toBe(true);
+    expect(iniciarSimuladorSchema.safeParse({ ...base, equipo: 'corto' }).success).toBe(false);
+    expect(iniciarSimuladorSchema.safeParse({ ...base, equipo: '<script>'.repeat(4) }).success).toBe(false);
   });
 });

@@ -731,6 +731,26 @@ describe('AuditInterceptor', () => {
     });
     expect(individual.data).toMatchObject({ datosDespues: { formato: 'pdf', operadorId: OTRO } });
 
+    // Anular un intento: quién (usuario), de qué persona y práctica; el motivo (texto libre) no.
+    const INTENTO = '55555555-5555-4555-8555-555555555555';
+    const anular = await auditar(
+      {
+        method: 'POST',
+        originalUrl: `/simulador-digitacion/intentos/${INTENTO}/anular`,
+        params: { id: INTENTO },
+        body: { motivo: 'Cerró el navegador de JUAN PÉREZ' },
+        user: ADMIN,
+      },
+      { id: INTENTO, practicaId: PRACTICA, operadorId: OTRO, anuladoEn: '2026-11-10T14:20:00.000Z' },
+    );
+    expect(anular.data).toMatchObject({
+      accion: 'PRACTICA_DIGITACION_ANULAR_INTENTO',
+      entidad: 'intento_digitacion',
+      entidadId: INTENTO,
+      datosDespues: { practicaId: PRACTICA, operadorId: OTRO },
+    });
+    expect(JSON.stringify(anular.data)).not.toContain('JUAN');
+
     // Ver el reporte en pantalla no se audita.
     const ver = await auditar({ method: 'GET', originalUrl: `/simulador-digitacion/practicas/${PRACTICA}/reporte`, params: { id: PRACTICA }, user: ADMIN });
     expect(ver.create).not.toHaveBeenCalled();

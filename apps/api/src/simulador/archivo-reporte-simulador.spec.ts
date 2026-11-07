@@ -6,7 +6,10 @@ import { FILA_ENCABEZADOS_EXCEL } from '../operadores-cda/reporte-cda';
 import { filaPersona, totales } from './reporte-simulador';
 
 const intento = (o: Partial<IntentoReporteSimulador> = {}): IntentoReporteSimulador => ({
+  id: 'i1',
   numero: 1,
+  anulado: false,
+  motivoAnulacion: null,
   cargo: 'Digitadores',
   iniciadoEn: '2026-11-10T14:00:00.000Z',
   terminadoEn: '2026-11-10T14:30:00.000Z',
@@ -163,6 +166,7 @@ describe('archivoReporteSimulador', () => {
     expect(resultadoIntento(intento({ motivo: 'META' }))).toBe('Cumplió la meta');
     expect(resultadoIntento(intento())).toBe('Se acabó el tiempo');
     expect(resultadoIntento(intento({ motivo: null }))).toBe('En curso');
+    expect(resultadoIntento(intento({ anulado: true, motivoAnulacion: 'Cerró el navegador' }))).toBe('Anulado: Cerró el navegador');
   });
 });
 

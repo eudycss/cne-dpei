@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import type { FormatoReporteCda } from '@cne/shared-types';
 import {
+  anularIntentoSimuladorSchema,
   borradorActaSimuladorSchema,
   activarNovedadDigitacionSchema,
   activarPracticaDigitacionSchema,
@@ -13,10 +14,12 @@ import {
   nombreNovedadDigitacionSchema,
   practicaDigitacionSchema,
   tokenSimuladorSchema,
+  type AnularIntentoSimuladorInput,
   type GuardarActaSimuladorInput,
   type PracticaDigitacionInput,
 } from '@cne/shared-validation';
 
+import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -116,6 +119,16 @@ export class SimuladorController {
     enviarReporte(res, await archivoReporteSimulador(rep, formato, operadorId ? filaDe(rep, operadorId) : undefined));
   }
 
+  @Post('intentos/:id/anular')
+  @ApiOperation({ summary: 'Anula un intento (motivo obligatorio): no cuenta y la persona puede empezar otro' })
+  anularIntento(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(anularIntentoSimuladorSchema)) body: AnularIntentoSimuladorInput,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.practicas.anularIntento(id, body.motivo, user.sub);
+  }
+
   @Patch('practicas/:id/activa')
   cambiarActiva(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(activarPracticaDigitacionSchema)) body: { activa: boolean }) {
     return this.practicas.cambiarActiva(id, body.activa);
@@ -166,8 +179,11 @@ export class SimuladorPublicoController {
   @Post('iniciar')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @ApiOperation({ summary: 'Empieza (o retoma) un intento y entrega el token de la sesión' })
-  async iniciar(@Req() req: Request, @Body(new ZodValidationPipe(iniciarSimuladorSchema)) body: { cedula: string; practicaId: string }) {
-    const { operadorId, retomado, ...respuesta } = await this.simulador.iniciar(body.cedula, body.practicaId);
+  async iniciar(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(iniciarSimuladorSchema)) body: { cedula: string; practicaId: string; equipo?: string },
+  ) {
+    const { operadorId, retomado, ...respuesta } = await this.simulador.iniciar(body.cedula, body.practicaId, body.equipo);
     // Para la bitácora (audit.interceptor), sin devolverlos a la página pública.
     Object.assign(req, { operadorCdaId: operadorId, simuladorRetomado: retomado });
     return respuesta;
