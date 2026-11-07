@@ -37,6 +37,8 @@ const estado = (o: Partial<EstadoIntentoSimulador> = {}): EstadoIntentoSimulador
   venceEn: new Date(Date.now() + 3600_000).toISOString(),
   terminado: false,
   motivo: null,
+  segundosUsados: null,
+  actasFaltantes: 0,
   ...o,
 });
 
@@ -168,7 +170,16 @@ describe('SimuladorPublicoPage', () => {
   it('práctica terminada al recargar: muestra el resumen', async () => {
     sessionStorage.setItem('cne.simulador.token', TOKEN);
     postMock.mockResolvedValue({
-      data: estado({ terminado: true, motivo: 'TIEMPO', completadas: 120, perfectas: 100, filasDigitadas: 965, filasCorrectas: 940 }),
+      data: estado({
+        terminado: true,
+        motivo: 'TIEMPO',
+        completadas: 120,
+        perfectas: 100,
+        filasDigitadas: 965,
+        filasCorrectas: 940,
+        segundosUsados: 3600,
+        actasFaltantes: 80,
+      }),
     });
     renderPagina();
     const titulo = await screen.findByRole('heading', { name: 'Se acabó el tiempo' });
@@ -179,7 +190,17 @@ describe('SimuladorPublicoPage', () => {
     expect(cifra('Registros con error')).toBe('25');
     expect(cifra('Actas digitadas')).toBe('120 de 200');
     expect(cifra('Con algún error')).toBe('20');
+    expect(screen.getByText(/Tiempo usado:/)).toHaveTextContent('Tiempo usado: 60:00 · faltaron 80 actas para la meta');
     expect(sessionStorage.getItem('cne.simulador.token')).toBeNull();
+  });
+
+  it('cumplió la meta: muestra en cuánto tiempo', async () => {
+    sessionStorage.setItem('cne.simulador.token', TOKEN);
+    postMock.mockResolvedValue({ data: estado({ terminado: true, motivo: 'META', completadas: 200, segundosUsados: 1104 }) });
+    renderPagina();
+    await screen.findByRole('heading', { name: 'Cumplió la meta' });
+    expect(screen.getByText(/Cumplió la meta en/)).toHaveTextContent('Cumplió la meta en 18:24');
+    expect(screen.queryByText(/faltaron|faltó/)).not.toBeInTheDocument();
   });
 
   it('el aviso de sesión perdida existe para el ingreso', () => {

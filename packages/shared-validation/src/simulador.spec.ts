@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { guardarActaSimuladorSchema, iniciarSimuladorSchema, practicaDigitacionSchema, tokenSimuladorSchema } from './index';
+import {
+  guardarActaSimuladorSchema,
+  iniciarSimuladorSchema,
+  practicaDigitacionSchema,
+  relojSimulador,
+  textoTiempoIntento,
+  tokenSimuladorSchema,
+} from './index';
 
 const P1 = '22222222-2222-4222-8222-222222222222';
 const BASE = {
@@ -67,5 +74,22 @@ describe('esquemas públicos del simulador', () => {
     for (const valores of [[], [1000], [-1], [1.5], ['62'], Array(41).fill(1)]) {
       expect(guardarActaSimuladorSchema.safeParse({ token: TOKEN, actaId: P1, valores }).success).toBe(false);
     }
+  });
+});
+
+describe('tiempo de un intento del simulador', () => {
+  it('reloj mm:ss (los minutos pueden pasar de 59)', () => {
+    expect(relojSimulador(1104)).toBe('18:24');
+    expect(relojSimulador(5)).toBe('00:05');
+    expect(relojSimulador(4500)).toBe('75:00');
+    expect(relojSimulador(-3)).toBe('00:00');
+    expect(relojSimulador(59.9)).toBe('00:59');
+  });
+
+  it('cumplió: solo el tiempo; se acabó: tiempo y actas que faltaron; abierto: En curso', () => {
+    expect(textoTiempoIntento({ segundos: 1104, motivo: 'META', actasFaltantes: 0 })).toBe('18:24');
+    expect(textoTiempoIntento({ segundos: 1500, motivo: 'TIEMPO', actasFaltantes: 3 })).toBe('25:00 · faltaron 3 actas');
+    expect(textoTiempoIntento({ segundos: 1500, motivo: 'TIEMPO', actasFaltantes: 1 })).toBe('25:00 · faltó 1 acta');
+    expect(textoTiempoIntento({ segundos: 300, motivo: null, actasFaltantes: 10 })).toBe('En curso');
   });
 });

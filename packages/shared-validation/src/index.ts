@@ -1297,6 +1297,25 @@ export const nombreNovedadDigitacionSchema = z.object({
 });
 export const activarNovedadDigitacionSchema = z.object({ activa: z.boolean() });
 
+// ─── Simulador: tiempo de cada intento ───────────────────────────────────────
+
+/** Segundos como cronómetro: 1104 → "18:24" (los minutos pueden pasar de 59: "75:00"). */
+export function relojSimulador(segundos: number): string {
+  const s = Math.max(0, Math.floor(segundos));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Tiempo de un intento, igual en la pantalla de la persona y en los reportes:
+ * cumplió → "18:24"; se acabó el tiempo → "25:00 · faltaron 3 actas"; abierto → "En curso".
+ */
+export function textoTiempoIntento(i: { segundos: number; motivo: 'META' | 'TIEMPO' | null; actasFaltantes: number }): string {
+  if (i.motivo === null) return 'En curso';
+  const reloj = relojSimulador(i.segundos);
+  if (i.motivo === 'META' || i.actasFaltantes <= 0) return reloj;
+  return `${reloj} · ${i.actasFaltantes === 1 ? 'faltó 1 acta' : `faltaron ${i.actasFaltantes} actas`}`;
+}
+
 // ─── Tiempos de viaje por recinto (bot Jornada) ──────────────────────────────
 
 /** Margen que se suma al viaje más largo medido para sugerir el tiempo de un recinto. */

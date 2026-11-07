@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { FilaReporteSimulador, IntentoReporteSimulador, PracticaDigitacion } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
+import { textoTiempoIntento } from '@cne/shared-validation';
 import { mensajeError } from '../operadores-cda/utils';
 import { claveReporte, descargarReporteSimulador, fechaHoraEcuador, getReporteSimulador } from '../../lib/queries/simulador';
 
@@ -98,6 +99,8 @@ export function ReportePractica({ practica, onVolver }: { practica: PracticaDigi
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [persona, setPersona] = useState<FilaReporteSimulador | null>(null);
   const filas = data?.filas.filter((f) => pasaFiltro(f, filtro)) ?? [];
+  // Una columna por intento: tantas como el que más intentos tiene (de todo el reporte, no solo del filtro).
+  const columnasIntento = Array.from({ length: Math.max(1, ...(data?.filas ?? []).flatMap((f) => f.intentos.map((i) => i.numero))) }, (_, i) => i + 1);
 
   return (
     <section aria-labelledby="sim-reporte-titulo">
@@ -193,6 +196,11 @@ export function ReportePractica({ practica, onVolver }: { practica: PracticaDigi
                     <th scope="col">Por minuto</th>
                     <th scope="col">Actas</th>
                     <th scope="col">Cumplió</th>
+                    {columnasIntento.map((n) => (
+                      <th key={n} scope="col">
+                        Intento {n}
+                      </th>
+                    ))}
                     <th scope="col">Intentos</th>
                   </tr>
                 </thead>
@@ -221,6 +229,14 @@ export function ReportePractica({ practica, onVolver }: { practica: PracticaDigi
                         <td>{m?.registrosPorMinuto ?? '—'}</td>
                         <td>{m ? `${m.actasCompletadas} de ${data.practica.metaActas}` : '—'}</td>
                         <td>{f.estado === 'NO_SE_PRESENTO' ? '—' : f.cumplio ? 'Sí' : 'No'}</td>
+                        {columnasIntento.map((n) => {
+                          const i = f.intentos.find((x) => x.numero === n);
+                          return (
+                            <td key={n} className="mono">
+                              {i ? textoTiempoIntento(i) : '—'}
+                            </td>
+                          );
+                        })}
                         <td>
                           {f.intentos.length > 0 ? (
                             <button
@@ -288,7 +304,7 @@ function DetallePersona({
                 <th scope="col">Intento</th>
                 <th scope="col">Inicio</th>
                 <th scope="col">Resultado</th>
-                <th scope="col">Minutos</th>
+                <th scope="col">Tiempo</th>
                 <th scope="col">Registros digitados</th>
                 <th scope="col">Correctos</th>
                 <th scope="col">Con error</th>
@@ -306,7 +322,7 @@ function DetallePersona({
                   </th>
                   <td>{fechaHoraEcuador(i.iniciadoEn)}</td>
                   <td>{resultado(i)}</td>
-                  <td>{i.minutos}</td>
+                  <td className="mono">{textoTiempoIntento(i)}</td>
                   <td>{i.filasDigitadas}</td>
                   <td>{i.filasCorrectas}</td>
                   <td>{i.filasConError}</td>

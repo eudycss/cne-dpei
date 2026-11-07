@@ -88,6 +88,19 @@ describe('estado del intento', () => {
       venceEn: '2026-11-10T15:00:00.000Z',
       terminado: false,
       motivo: null,
+      segundosUsados: null,
+      actasFaltantes: 197,
     });
+  });
+
+  it('cumplió la meta: el tiempo hasta que la cumplió (no hasta ahora) y 0 actas faltantes', () => {
+    const cumplio = new Date(T0.getTime() + (18 * 60 + 24) * 1000);
+    const e = estadoIntento(intento({ actasCompletadas: 15, terminadoEn: cumplio }), { nombre: 'P1', metaActas: 15 }, { nombre: 'A.', cargo: 'X' }, despues);
+    expect(e).toMatchObject({ terminado: true, motivo: 'META', segundosUsados: 1104, actasFaltantes: 0 });
+  });
+
+  it('se acabó el tiempo: todo el plazo (aunque se mire después) y las actas que faltaron', () => {
+    const e = estadoIntento(intento({ actasCompletadas: 12 }), { nombre: 'P1', metaActas: 15 }, { nombre: 'A.', cargo: 'X' }, despues);
+    expect(e).toMatchObject({ motivo: 'TIEMPO', segundosUsados: 3600, actasFaltantes: 3 });
   });
 });

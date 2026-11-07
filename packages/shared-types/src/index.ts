@@ -2028,6 +2028,10 @@ export interface EstadoIntentoSimulador {
   terminado: boolean;
   /** Motivo del cierre, si terminó. */
   motivo: 'META' | 'TIEMPO' | null;
+  /** Tiempo usado (hasta cumplir la meta o el fin del plazo); null mientras sigue abierto. */
+  segundosUsados: number | null;
+  /** Actas que le faltaron para la meta (0 si la cumplió). */
+  actasFaltantes: number;
 }
 
 export interface IniciarSimuladorResponse {
@@ -2078,6 +2082,10 @@ export interface IntentoReporteSimulador {
   motivo: 'META' | 'TIEMPO' | null;
   /** Minutos usados (hasta cumplir la meta, el fin del tiempo o ahora si sigue en curso). */
   minutos: number;
+  /** Lo mismo en segundos enteros, para mostrarlo como "18:24". */
+  segundos: number;
+  /** Actas que le faltaron para la meta (0 si la cumplió). */
+  actasFaltantes: number;
   filasDigitadas: number;
   filasCorrectas: number;
   filasConError: number;

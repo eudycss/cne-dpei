@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { EstadoIntentoSimulador, IngresoSimuladorResponse, PracticaDisponibleSimulador } from '@cne/shared-types';
-import { ingresoSimuladorSchema } from '@cne/shared-validation';
+import { ingresoSimuladorSchema, relojSimulador } from '@cne/shared-validation';
 import {
   estadoHttp,
   estadoSimulador,
@@ -286,6 +286,18 @@ function Resumen({ estado, onSalir }: { estado: EstadoIntentoSimulador; onSalir:
       <p className="sier-persona">
         {estado.nombre} · {estado.cargo} · {estado.practica} (intento {estado.numeroIntento})
       </p>
+      {estado.segundosUsados !== null && (
+        <p className="sier-tiempo">
+          {cumplio ? 'Cumplió la meta en ' : 'Tiempo usado: '}
+          <strong>{relojSimulador(estado.segundosUsados)}</strong>
+          {!cumplio && estado.actasFaltantes > 0 && (
+            <>
+              {' · '}
+              <strong>{estado.actasFaltantes === 1 ? 'faltó 1 acta' : `faltaron ${estado.actasFaltantes} actas`}</strong> para la meta
+            </>
+          )}
+        </p>
+      )}
       <dl className="sier-cifras">
         <div>
           <dt>Registros digitados</dt>

@@ -1040,6 +1040,8 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .sier-practicas li { border: 1px solid var(--sier-borde); border-radius: 10px; padding: 1rem; display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
 .sier-practicas h3 { margin: 0; font-size: 1.05rem; }
 .sier-practicas p { margin: 0; }
+.sier-tiempo { font-size: 1.15rem; margin: 0 0 1rem; }
+.sier-tiempo strong { font-variant-numeric: tabular-nums; }
 .sier-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin: 0 0 1.25rem; }
 .sier-cifras div { border: 1px solid var(--sier-borde); border-radius: 10px; padding: 0.75rem; }
 .sier-cifras dt { font-size: 0.8rem; color: var(--sier-suave); }
