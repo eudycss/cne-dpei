@@ -28,6 +28,23 @@ function idUuid(v: unknown): string | undefined {
   return typeof v === 'string' && UUID.test(v) ? v : undefined;
 }
 
+/** Integrantes y recinto de una pareja CDA: solo ids (sin nombres ni cédulas). */
+function integrantesAuditables(v: unknown): Record<string, string | null> | null {
+  if (!v || typeof v !== 'object') return null;
+  const p = v as Record<string, unknown>;
+  return {
+    operadorCdaId: idUuid(p.operadorCdaId) ?? null,
+    asistenteCdaId: idUuid(p.asistenteCdaId) ?? null,
+    recintoId: idUuid(p.recintoId) ?? null,
+  };
+}
+
+/** Justificación del cambio (texto libre del administrador, recortado). */
+function justificacionAuditable(body: unknown): string | null {
+  const j = (body as { justificacion?: unknown } | undefined)?.justificacion;
+  return typeof j === 'string' && j.trim() ? j.trim().slice(0, 500) : null;
+}
+
 /** Configuración de una práctica del simulador: sin datos personales. */
 const CAMPOS_PRACTICA_DIGITACION = [
   'nombre', 'filasPorActa', 'votoMin', 'votoMax', 'metaActas', 'plazoMinutos',
@@ -458,6 +475,38 @@ const AUDIT_TABLE: Array<{
   { method: 'POST', pathRegex: /^\/parejas-cda\/copiar$/, accion: 'PAREJA_CDA_COPIAR', entidad: 'pareja_cda', campos: ['desde', 'hacia'] },
   // Intercambio entre dos parejas CDA del día: puede reasignar los kits en la app.
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/intercambiar$/, accion: 'PAREJA_CDA_INTERCAMBIAR', entidad: 'pareja_cda', campos: ['conId', 'campo', 'justificacion'] },
+  // Alta, cambio y baja de una pareja CDA: quién entró, quién salió (y si pasó a reserva), quién y cuándo.
+  {
+    method: 'POST',
+    pathRegex: /^\/parejas-cda$/,
+    accion: 'PAREJA_CDA_CREAR',
+    entidad: 'pareja_cda',
+    campos: ['fecha', 'operadorCdaId', 'asistenteCdaId', 'recintoId', 'justificacion'],
+  },
+  {
+    method: 'PATCH',
+    pathRegex: /^\/parejas-cda\/[^/]+$/,
+    accion: 'PAREJA_CDA_EDITAR',
+    entidad: 'pareja_cda',
+    entidadId: (req) => idUuid(req.params?.id),
+    resumen: (res, req) => {
+      const cambio = (res as { cambio?: { antes?: unknown; despues?: unknown; aReserva?: unknown } } | null)?.cambio;
+      return {
+        antes: integrantesAuditables(cambio?.antes),
+        despues: integrantesAuditables(cambio?.despues),
+        aReserva: Array.isArray(cambio?.aReserva) ? cambio.aReserva.map(idUuid).filter(Boolean).slice(0, 2) : [],
+        justificacion: justificacionAuditable(req.body),
+      };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/parejas-cda\/[^/]+$/,
+    accion: 'PAREJA_CDA_ELIMINAR',
+    entidad: 'pareja_cda',
+    entidadId: (req) => idUuid(req.params?.id),
+    resumen: (res, req) => ({ antes: integrantesAuditables(res), justificacion: justificacionAuditable(req.body) }),
+  },
   // Parejas de reserva: dejar el recinto (su kit queda sin operador) o recibir uno (puede intercambiarse con la titular).
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/reserva$/, accion: 'PAREJA_CDA_RESERVA', entidad: 'pareja_cda', campos: ['justificacion'] },
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/recinto$/, accion: 'PAREJA_CDA_ASIGNAR_RECINTO', entidad: 'pareja_cda', campos: ['recintoId', 'justificacion'] },

@@ -773,14 +773,14 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/p1/intercambiar', { conId: 'p2', campo: 'RECINTO' }));
     });
 
-    it('el asistente se puede dejar vacío', async () => {
+    it('el asistente se puede dejar vacío (por defecto, quien sale pasa a reserva)', async () => {
       mockApi({}, { operadores: [], asistentes: [PEDRO], recintos: [] });
       patchMock().mockResolvedValueOnce(OK);
       renderPagina();
       const dialogo = await abrir('asistente');
       await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Nuevo asistente' }), '');
       await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
-      await waitFor(() => expect(patchMock()).toHaveBeenCalledWith('/parejas-cda/p1', { asistenteCdaId: null }));
+      await waitFor(() => expect(patchMock()).toHaveBeenCalledWith('/parejas-cda/p1', { asistenteCdaId: null, saleAReserva: true }));
     });
 
     it('jornada iniciada: pide justificación antes de guardar y la envía', async () => {

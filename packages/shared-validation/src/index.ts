@@ -1077,10 +1077,12 @@ export const editarParejaCdaSchema = z
     operadorCdaId: z.string().uuid('Operador inválido').optional(),
     asistenteCdaId: z.string().uuid('Asistente inválido').nullable().optional(),
     recintoId: z.string().uuid('Recinto inválido').optional(),
+    /** Quien sale de la pareja (operador o asistente reemplazado) pasa a una reserva solo con él o ella. */
+    saleAReserva: z.boolean().optional(),
     justificacion: justificacionParejaCdaSchema,
   })
   .strict()
-  .refine((d) => Object.keys(d).some((k) => k !== 'justificacion'), 'Indique qué cambiar')
+  .refine((d) => Object.keys(d).some((k) => k !== 'justificacion' && k !== 'saleAReserva'), 'Indique qué cambiar')
   .refine(asistenteDistinto, { message: 'El asistente no puede ser el mismo operador', path: ['asistenteCdaId'] });
 export type EditarParejaCdaInput = z.infer<typeof editarParejaCdaSchema>;
 

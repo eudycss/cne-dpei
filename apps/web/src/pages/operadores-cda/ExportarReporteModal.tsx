@@ -13,7 +13,7 @@ import { Campo } from './Campo';
 import { useGrupoCda } from './grupo';
 import { hoyEcuador } from './utils';
 
-type Opcion<T> = { valor: T; etiqueta: string; detalle: string };
+export type Opcion<T> = { valor: T; etiqueta: string; detalle: string };
 
 const MODOS: Opcion<ModoReporteCda>[] = [
   { valor: 'GENERAL', etiqueta: 'General', detalle: 'Todo el rango en una sola tabla' },
@@ -31,7 +31,7 @@ const TITULO: Record<ReporteCda, string> = {
 };
 
 /** Grupo de opciones como tarjetas: radios nativos (teclado y lector de pantalla sin trabajo extra). */
-function Opciones<T extends string>({
+export function Opciones<T extends string>({
   nombre,
   leyenda,
   opciones,
