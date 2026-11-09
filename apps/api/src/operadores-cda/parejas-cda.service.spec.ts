@@ -58,10 +58,12 @@ describe('ParejasCdaService', () => {
       updateMany: jest.fn(),
       count: jest.fn(),
       delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
     operadorCda: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
     recinto: { findMany: jest.fn(), findUnique: jest.fn() },
-    eventoElectoral: { findFirst: jest.fn(), findUnique: jest.fn() },
+    eventoElectoral: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+    asistenciaCda: { count: jest.fn() },
     kitElectoral: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
     itemKitCatalog: { findMany: jest.fn() },
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
@@ -92,6 +94,12 @@ describe('ParejasCdaService', () => {
       { id: 'iMod', codigo: 'MOD' },
     ]);
     prisma.eventoElectoral.findFirst.mockResolvedValue(EVENTO);
+    prisma.eventoElectoral.findMany.mockReset();
+    prisma.eventoElectoral.findMany.mockResolvedValue([]);
+    prisma.asistenciaCda.count.mockReset();
+    prisma.asistenciaCda.count.mockResolvedValue(0);
+    prisma.parejaCda.deleteMany.mockReset();
+    prisma.parejaCda.deleteMany.mockResolvedValue({ count: 1 });
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
     prisma.kitElectoral.findMany.mockResolvedValue([]);
     prisma.kitElectoral.delete.mockResolvedValue({});
@@ -1586,6 +1594,119 @@ describe('ParejasCdaService', () => {
     const include = prisma.parejaCda.findMany.mock.calls[0][0].include;
     expect(include.operador.select.dispositivo).toBe(true);
     expect(include.asistente.select.dispositivo).toBe(true);
+  });
+
+  describe('mover o borrar la lista de un día', () => {
+    // Muy en el futuro: mover a un día pasado se rechaza y esta prueba no debe caducar.
+    const HACIA = '2099-11-20';
+    const FECHA_HACIA = new Date(`${HACIA}T00:00:00Z`);
+    const fila = (kitId: string | null = null) => ({
+      operadorCdaId: 'op1',
+      asistenteCdaId: 'as1',
+      recintoId: 'r1',
+      kitId,
+      operador: { usuarioId: 'u1' },
+      asistente: { usuarioId: 'u2' },
+    });
+
+    it('un kit asignado a mano a la persona protege la lista aunque la pareja no tenga kit_id', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.eventoElectoral.findMany.mockResolvedValueOnce([{ id: 'ev2', estado: 'ACTIVO', fechaJornada: FECHA }]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k9' });
+
+      await expect(service.borrarDia(DIA)).rejects.toThrow(/ya tiene kits asignados/);
+      expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: { in: ['ev2'] }, operadorId: { in: ['u1', 'u2'] } });
+      expect(prisma.parejaCda.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('una lista con asistencia registrada queda protegida', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.asistenciaCda.count.mockResolvedValueOnce(2);
+
+      await expect(service.borrarDia(DIA)).rejects.toThrow(/asistencia registrada/);
+      expect(prisma.parejaCda.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('si a la lista le dieron un kit mientras se borraba, se rechaza para revertir', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila(), fila()]);
+      prisma.parejaCda.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+      await expect(service.borrarDia(DIA)).rejects.toThrow(/La lista cambió/);
+      expect(prisma.parejaCda.deleteMany).toHaveBeenCalledWith({ where: { fecha: FECHA, kitId: null } });
+    });
+
+    it('no mueve a un día pasado', async () => {
+      await expect(service.moverDia(DIA, '2020-01-01')).rejects.toThrow(/día pasado/);
+      expect(prisma.parejaCda.findMany).not.toHaveBeenCalled();
+    });
+
+    it('mueve toda la lista a un día vacío', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.parejaCda.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await expect(service.moverDia(DIA, HACIA)).resolves.toEqual({ movidas: 1 });
+      expect(prisma.parejaCda.updateMany).toHaveBeenCalledWith({ where: { fecha: FECHA, kitId: null }, data: { fecha: FECHA_HACIA } });
+    });
+
+    it('no pisa un día que ya tiene lista', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.parejaCda.count.mockResolvedValueOnce(3);
+
+      await expect(service.moverDia(DIA, HACIA)).rejects.toThrow(/ya tiene una lista/);
+      expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('no mueve hacia un día con jornada cerrada', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.eventoElectoral.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ estado: 'CERRADO', fechaJornada: FECHA_HACIA }]);
+
+      await expect(service.moverDia(DIA, HACIA)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('borra la lista y devuelve cómo estaba para la bitácora', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+
+      const r = await service.borrarDia(DIA);
+
+      expect(prisma.parejaCda.deleteMany).toHaveBeenCalledWith({ where: { fecha: FECHA, kitId: null } });
+      expect(r).toEqual({ fecha: DIA, eliminadas: 1, parejas: [{ operadorCdaId: 'op1', asistenteCdaId: 'as1', recintoId: 'r1' }] });
+    });
+
+    it('un día sin parejas se rechaza', async () => {
+      await expect(service.borrarDia(DIA)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.parejaCda.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['borrar', () => service.borrarDia(DIA)],
+      ['mover', () => service.moverDia(DIA, HACIA)],
+    ])('%s: una lista con kits queda protegida', async (_n, accion) => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila(), fila('k1')]);
+
+      await expect(accion()).rejects.toThrow(/ya tiene kits asignados/);
+      expect(prisma.parejaCda.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.parejaCda.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['cerrada', 'CERRADO', false],
+      ['iniciada', 'ACTIVO', true],
+    ])('una jornada %s protege la lista aunque no tenga kits', async (_n, estado, congelado) => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.eventoElectoral.findMany.mockResolvedValueOnce([{ estado, fechaJornada: FECHA }]);
+      kits.estaCongelado.mockReturnValue(congelado);
+
+      await expect(service.borrarDia(DIA)).rejects.toThrow(/jornada iniciada o cerrada/);
+      expect(prisma.parejaCda.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('un evento ACTIVO que aún no inicia no bloquea', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([fila()]);
+      prisma.eventoElectoral.findMany.mockResolvedValueOnce([{ estado: 'ACTIVO', fechaJornada: FECHA }]);
+
+      await expect(service.borrarDia(DIA)).resolves.toMatchObject({ eliminadas: 1 });
+    });
   });
 
   describe('copiar la lista a otro día', () => {

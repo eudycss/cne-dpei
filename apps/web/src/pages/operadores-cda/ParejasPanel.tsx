@@ -23,6 +23,7 @@ import { ParejaFormModal, cargoPareja } from './ParejaFormModal';
 import { CambiarEnParejaModal } from './CambiarEnParejaModal';
 import { ImportarParejasModal } from './ImportarParejasModal';
 import { CopiarParejasModal } from './CopiarParejasModal';
+import { AccionesDiaParejas } from './AccionesDiaParejas';
 import { AsignarKitModal } from './AsignarKitModal';
 import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
@@ -216,6 +217,7 @@ export function ParejasPanel() {
       <p className="ocda-subtitulo" style={{ marginTop: 0 }}>
         Lista del <strong>{fechaLarga(dia)}</strong>
       </p>
+      {isAdmin && hayLista && <AccionesDiaParejas dia={dia} conKit={conKit} onMovido={elegirDia} onBorrado={() => elegirDia('')} />}
       {data && (
         <p className={`banner ${data.evento ? 'info' : 'aviso'}`}>
           {data.evento

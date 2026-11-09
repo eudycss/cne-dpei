@@ -16,6 +16,7 @@ vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn(), warning: vi
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+const deleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
 
 const DIA = '2026-10-30';
 const ANA = { id: 'op1', apellidosNombres: 'PÉREZ ANA', cedula: '1710034065', telefono: null, dispositivo: null, grupo: 'OPERADOR' };
@@ -110,6 +111,84 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(screen.getByText('3 pareja(s) en 1 recinto(s)')).toBeInTheDocument();
     expect(screen.getByText(/Evento activo de este día: Prueba Técnica 2/)).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith(`/parejas-cda?fecha=${DIA}`);
+  });
+
+  describe('cambiar la fecha o borrar la lista del día', () => {
+    const sinKit = () => [fila({ kitCodigo: null, estado: 'SIN_KIT' })];
+
+    it('cambia la fecha de la lista y lleva al día nuevo', async () => {
+      mockApi({ parejas: sinKit() });
+      postMock.mockResolvedValueOnce({ data: { movidas: 1 } });
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Cambiar fecha' }));
+      const dialogo = await screen.findByRole('dialog');
+      fireEvent.change(within(dialogo).getByLabelText('Nueva fecha'), { target: { value: '2026-11-20' } });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Cambiar fecha' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/dia/mover', { desde: DIA, hacia: '2026-11-20' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(getMock).toHaveBeenCalledWith('/parejas-cda?fecha=2026-11-20');
+    });
+
+    it('no deja mover al mismo día', async () => {
+      mockApi({ parejas: sinKit() });
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Cambiar fecha' }));
+      const dialogo = await screen.findByRole('dialog');
+      fireEvent.change(within(dialogo).getByLabelText('Nueva fecha'), { target: { value: DIA } });
+
+      expect(within(dialogo).getByRole('button', { name: 'Cambiar fecha' })).toBeDisabled();
+      expect(within(dialogo).getByText(`Elija un día distinto del ${DIA}.`)).toBeInTheDocument();
+    });
+
+    it('para borrar exige escribir la fecha', async () => {
+      mockApi({ parejas: sinKit() });
+      deleteMock.mockResolvedValueOnce({});
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Borrar lista' }));
+      const dialogo = await screen.findByRole('dialog');
+      const borrar = within(dialogo).getByRole('button', { name: 'Borrar lista' });
+      expect(borrar).toBeDisabled();
+
+      await userEvent.type(within(dialogo).getByLabelText(`Para confirmar, escriba ${DIA}`), DIA);
+      await userEvent.click(borrar);
+
+      await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`/parejas-cda/dia?fecha=${DIA}`));
+    });
+
+    it('muestra el motivo si el servidor protege la lista', async () => {
+      mockApi({ parejas: sinKit() });
+      deleteMock.mockRejectedValueOnce({ response: { data: { message: 'El 2026-10-30 tiene una jornada iniciada o cerrada' } } });
+      renderPagina();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Borrar lista' }));
+      const dialogo = await screen.findByRole('dialog');
+      await userEvent.type(within(dialogo).getByLabelText(`Para confirmar, escriba ${DIA}`), DIA);
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Borrar lista' }));
+
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('jornada iniciada o cerrada');
+    });
+
+    it('una lista con kits no ofrece las acciones y explica por qué', async () => {
+      mockApi();
+      renderPagina();
+
+      expect(await screen.findByText(/ya tiene kits asignados: no se puede cambiar de fecha ni borrar/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Borrar lista' })).not.toBeInTheDocument();
+    });
+
+    it('quien no es administrador no las ve', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ parejas: sinKit() });
+      renderPagina();
+
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('button', { name: 'Cambiar fecha' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Borrar lista' })).not.toBeInTheDocument();
+    });
   });
 
   it('sin evento activo de ese día lo explica y no deja "Aplicar a la app"', async () => {

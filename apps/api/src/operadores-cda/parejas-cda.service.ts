@@ -19,6 +19,7 @@ import type {
   FormatoReporteCda,
   ImportParejasCdaResult,
   Kit,
+  MoverDiaParejasCdaResult,
   ParejaCdaFila,
   ParejaReservaCda,
   ParejasCdaDia,
@@ -30,7 +31,7 @@ import { KitsService } from '../kits/kits.service';
 import { parseUploadRows } from '../common/parse-upload-rows';
 import { CuentasCdaService } from './cuentas-cda.service';
 import { textosGrupo } from './grupo-cda';
-import { diaDeFechaDb, fechaDb } from './dia-ecuador';
+import { diaDeFechaDb, diaEcuador, fechaDb } from './dia-ecuador';
 import { type ArchivoReporte, generarReporte } from './reporte-cda';
 import { reporteParejas } from './reporte-parejas-cda';
 import type { FilaTecnico, QuienIngresa } from './reporte-tecnicos-cda';
@@ -93,6 +94,11 @@ const conRecinto = (ids: (string | null)[]): string[] => ids.filter((id): id is 
 const vacio = (): AplicarParejasCdaResult => ({ enApp: 0, kitsCreados: 0, sinKit: 0, errores: [] });
 
 /** Ids de los integrantes y del recinto de una pareja (para la bitácora). */
+/** Si otra acción le dio un kit a la lista mientras se escribía, se revierte todo en vez de dejar ese kit huérfano. */
+function exigirMismaLista(afectadas: number, esperadas: number): void {
+  if (afectadas !== esperadas) throw new ConflictException('La lista cambió mientras se procesaba: revísela y vuelva a intentar');
+}
+
 const integrantes = (p: IntegrantesParejaCda): IntegrantesParejaCda => ({
   operadorCdaId: p.operadorCdaId,
   asistenteCdaId: p.asistenteCdaId,
@@ -376,6 +382,80 @@ export class ParejasCdaService {
     }
     if (data.length) await this.guardar(hacia, () => this.prisma.parejaCda.createMany({ data }));
     return { copiadas: data.length, omitidas };
+  }
+
+  /** Cambia la fecha de toda la lista. El día nuevo debe estar vacío y sin jornada real. */
+  async moverDia(desde: string, hacia: string): Promise<MoverDiaParejasCdaResult> {
+    if (desde === hacia) throw new BadRequestException('Elija un día distinto');
+    // En un día pasado aparecerían como faltas de personas que nunca estuvieron convocadas.
+    if (hacia < diaEcuador()) throw new BadRequestException('No se puede mover una lista a un día pasado');
+    const movidas = await this.guardar(hacia, () =>
+      this.prisma.$transaction(async (tx) => {
+        const parejas = await this.listaEditable(tx, desde);
+        await this.exigirSinJornada(tx, hacia);
+        if (await tx.parejaCda.count({ where: { fecha: fechaDb(hacia) } })) {
+          throw new ConflictException(`El ${hacia} ya tiene una lista: elija otro día o bórrela primero`);
+        }
+        const { count } = await tx.parejaCda.updateMany({ where: { fecha: fechaDb(desde), kitId: null }, data: { fecha: fechaDb(hacia) } });
+        exigirMismaLista(count, parejas.length);
+        return count;
+      }),
+    );
+    return { movidas };
+  }
+
+  /** Borra la lista de un día. Devuelve cómo estaba, para la bitácora (la respuesta HTTP va vacía). */
+  async borrarDia(fecha: string): Promise<{ fecha: string; eliminadas: number; parejas: IntegrantesParejaCda[] }> {
+    return this.prisma.$transaction(async (tx) => {
+      const parejas = await this.listaEditable(tx, fecha);
+      const { count } = await tx.parejaCda.deleteMany({ where: { fecha: fechaDb(fecha), kitId: null } });
+      exigirMismaLista(count, parejas.length);
+      return { fecha, eliminadas: parejas.length, parejas: parejas.map(integrantes) };
+    });
+  }
+
+  /** Una lista con kits, jornada real o asistencia es historial y cadena de custodia: no se mueve ni se borra. */
+  private async listaEditable(tx: Prisma.TransactionClient, fecha: string) {
+    const parejas = await tx.parejaCda.findMany({
+      where: { fecha: fechaDb(fecha) },
+      select: {
+        operadorCdaId: true,
+        asistenteCdaId: true,
+        recintoId: true,
+        kitId: true,
+        operador: { select: { usuarioId: true } },
+        asistente: { select: { usuarioId: true } },
+      },
+    });
+    if (!parejas.length) throw new BadRequestException(`El ${fecha} no tiene parejas`);
+    const conKit = `La lista del ${fecha} ya tiene kits asignados: no se puede mover ni borrar`;
+    if (parejas.some((p) => p.kitId)) throw new ConflictException(conKit);
+    const eventos = await this.exigirSinJornada(tx, fecha);
+
+    // Un kit asignado a mano (página Kits) queda en la persona, sin kit_id en la pareja.
+    const usuarios = parejas.flatMap((p) => [p.operador?.usuarioId, p.asistente?.usuarioId]).filter((id): id is string => !!id);
+    if (eventos.length && usuarios.length) {
+      const kit = await tx.kitElectoral.findFirst({ where: { eventoId: { in: eventos }, operadorId: { in: usuarios } }, select: { id: true } });
+      if (kit) throw new ConflictException(conKit);
+    }
+    // Quien va en la lista está convocado: cambiarla reescribiría las faltas y atrasos de ese día.
+    const personas = parejas.flatMap((p) => [p.operadorCdaId, p.asistenteCdaId]).filter((id): id is string => !!id);
+    if (await tx.asistenciaCda.count({ where: { fecha: fechaDb(fecha), operadorId: { in: personas } } })) {
+      throw new ConflictException(`La lista del ${fecha} ya tiene asistencia registrada: no se puede mover ni borrar`);
+    }
+    return parejas;
+  }
+
+  /** Rechaza el día con jornada iniciada o cerrada; devuelve los eventos de esa fecha. */
+  private async exigirSinJornada(tx: Prisma.TransactionClient, fecha: string): Promise<string[]> {
+    const eventos = await tx.eventoElectoral.findMany({
+      where: { fechaJornada: fechaDb(fecha) },
+      select: { id: true, estado: true, fechaJornada: true },
+    });
+    if (eventos.some((e) => e.estado === 'CERRADO' || this.kits.estaCongelado(e))) {
+      throw new ConflictException(`El ${fecha} tiene una jornada iniciada o cerrada: esa lista es historial y no se puede cambiar`);
+    }
+    return eventos.map((e) => e.id);
   }
 
   /**

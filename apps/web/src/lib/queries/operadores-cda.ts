@@ -15,6 +15,7 @@ import type {
   EditarParejaCdaRequest,
   ImportParejasCdaResult,
   IntercambiarParejaCdaRequest,
+  MoverDiaParejasCdaResult,
   ParejasCdaDia,
   ActaEntregaCda,
   AsistenciaCdaDia,
@@ -408,6 +409,17 @@ export async function cambiarDispositivoOperadorCda(id: string, dispositivo: Dis
 export async function copiarParejasCda(body: CopiarParejasCdaRequest): Promise<CopiarParejasCdaResult> {
   const { data } = await api.post<CopiarParejasCdaResult>('/parejas-cda/copiar', body);
   return data;
+}
+
+/** Cambia la fecha de toda la lista de un día. */
+export async function moverDiaParejasCda(body: CopiarParejasCdaRequest): Promise<MoverDiaParejasCdaResult> {
+  const { data } = await api.post<MoverDiaParejasCdaResult>('/parejas-cda/dia/mover', body);
+  return data;
+}
+
+/** Borra la lista de un día. */
+export async function borrarDiaParejasCda(fecha: string): Promise<void> {
+  await api.delete(`/parejas-cda/dia?fecha=${fecha}`);
 }
 
 /** Intercambia operador, asistente o recinto con otra pareja del mismo día. */
