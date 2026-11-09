@@ -28,6 +28,7 @@ import { AsignarKitModal } from './AsignarKitModal';
 import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { PasarAReservaModal, ReservaParejas } from './ReservaParejas';
+import { PersonalSinRecinto } from './PersonalSinRecinto';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError } from './utils';
 
@@ -410,15 +411,18 @@ export function ParejasPanel() {
         >
           {(vista) =>
             vista === 'reserva' ? (
-              <ReservaParejas
-                dia={dia}
-                reserva={reserva}
-                parejas={parejas}
-                isAdmin={isAdmin}
-                congelado={congelado}
-                justificacionInicial={justificacion}
-                onResultado={mostrarResultado}
-              />
+              <>
+                <ReservaParejas
+                  dia={dia}
+                  reserva={reserva}
+                  parejas={parejas}
+                  isAdmin={isAdmin}
+                  congelado={congelado}
+                  justificacionInicial={justificacion}
+                  onResultado={mostrarResultado}
+                />
+                {isAdmin && <PersonalSinRecinto dia={dia} />}
+              </>
             ) : parejas.length === 0 && sinPareja.length === 0 ? (
               <p className="muted">Ninguna pareja tiene recinto este día. Asígneselo a una de la pestaña Reserva.</p>
             ) : (

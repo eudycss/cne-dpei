@@ -112,6 +112,67 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     expect(getMock).toHaveBeenCalledWith(`/parejas-cda?fecha=${DIA}`);
   });
 
+  describe('Personal sin recinto (pestaña Reserva)', () => {
+    const rutaReserva = `/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`;
+    const region = () => screen.findByRole('region', { name: `Personal sin recinto del ${DIA}` });
+
+    it('lista a cada persona con su cédula y cargo, aunque no haya reservas', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+
+      const filas = within(await region()).getAllByRole('row').slice(1);
+      expect(filas).toHaveLength(2);
+      expect(filas[0]).toHaveTextContent('MORA LUIS');
+      expect(filas[0]).toHaveTextContent('1712345675');
+      expect(filas[0]).toHaveTextContent('Operador CDA');
+      expect(filas[1]).toHaveTextContent('RUIZ JUAN');
+      expect(filas[1]).toHaveTextContent('Asistente CDA');
+      expect(screen.getByText('2 persona(s): 1 operador(es) · 1 asistente(s)')).toBeInTheDocument();
+      expect(getMock).toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+    });
+
+    it('el buscador filtra por cargo', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+
+      const filas = within(await region()).getAllByRole('row').slice(1);
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toHaveTextContent('RUIZ JUAN');
+      expect(screen.getByText('1 de 2 persona(s)')).toBeInTheDocument();
+    });
+
+    it('avisa cuando no sobra nadie', async () => {
+      mockApi({ reserva: [] }, { operadores: [], asistentes: [] });
+      renderPagina(rutaReserva);
+
+      expect(await screen.findByText('Todo el personal activo ya tiene pareja o reserva este día.')).toBeInTheDocument();
+    });
+
+    it('muestra el error si no se puede cargar', async () => {
+      mockApi({ reserva: [] });
+      const base = getMock.getMockImplementation()!;
+      getMock.mockImplementation((url: string) =>
+        url.startsWith('/parejas-cda/disponibles') ? Promise.reject(new Error('caída')) : base(url),
+      );
+      renderPagina(rutaReserva);
+
+      expect(await screen.findByText('No se pudo cargar el personal sin recinto')).toBeInTheDocument();
+    });
+
+    it('quien no es administrador no lo ve ni lo consulta', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ reserva: [] });
+      renderPagina(rutaReserva);
+
+      await screen.findByText(/No hay parejas de reserva este día/);
+      expect(screen.queryByText('Personal sin recinto este día')).not.toBeInTheDocument();
+      expect(getMock).not.toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+    });
+  });
+
   describe('CDA sin pareja', () => {
     const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE SIN GENTE' };
     const R8320 = { id: 'r3', codigo: '8320', nombre: 'UE LEJANA' };
