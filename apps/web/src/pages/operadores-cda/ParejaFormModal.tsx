@@ -77,12 +77,15 @@ export const textoRecinto = (r: RecintoParejaCda) => `${r.codigo} · ${r.nombre}
 export function ParejaFormModal({
   dia,
   pareja,
+  recintoInicial = null,
   congelado = false,
   onResultado,
   onClose,
 }: {
   dia: string;
   pareja: ParejaCdaFila | null;
+  /** Completar un CDA sin pareja: llega elegido y se ofrece a todos los libres de ese día. */
+  recintoInicial?: RecintoParejaCda | null;
   /** Jornada iniciada: pasar el cambio a la app pide justificación. */
   congelado?: boolean;
   /** Recibe el resumen del paso a la app para dejarlo a la vista. */
@@ -90,10 +93,10 @@ export function ParejaFormModal({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [todos, setTodos] = useState(false);
+  const [todos, setTodos] = useState(!!recintoInicial);
   const [operadorId, setOperadorId] = useState(pareja?.operador.id ?? '');
   const [asistenteId, setAsistenteId] = useState(pareja?.asistente?.id ?? '');
-  const [recintoId, setRecintoId] = useState(pareja?.recinto.id ?? '');
+  const [recintoId, setRecintoId] = useState(pareja?.recinto.id ?? recintoInicial?.id ?? '');
   const [justificacion, setJustificacion] = useState('');
   const motivo = justificacion.trim() || undefined;
 
@@ -105,7 +108,7 @@ export function ParejaFormModal({
   // regla, quien no es del cargo de su columna no se ofrece (hay que cambiarlo).
   const operadores = conActual(data?.operadores, pareja?.operador?.grupo === 'OPERADOR' ? pareja.operador : null);
   const asistentes = conActual(data?.asistentes, pareja?.asistente?.grupo === 'ASISTENTE' ? pareja.asistente : null);
-  const recintos = conActual(data?.recintos, pareja?.recinto);
+  const recintos = conActual(data?.recintos, pareja?.recinto ?? recintoInicial);
 
   const guardar = useMutation({
     mutationFn: () =>
