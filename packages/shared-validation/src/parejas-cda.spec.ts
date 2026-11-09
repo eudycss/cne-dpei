@@ -4,6 +4,7 @@ import {
   CODIGO_RESERVA_PAREJAS_CDA,
   cambiarDispositivoOperadorCdaSchema,
   copiarParejasCdaSchema,
+  crearReservasParejaCdaSchema,
   crearParejaCdaSchema,
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
@@ -77,6 +78,22 @@ describe('reporte por técnico de parejas CDA', () => {
     for (const v of [undefined, [], '', ['   '], ['x'.repeat(121)], Array.from({ length: 31 }, (_, i) => `T${i}`), [3]]) {
       expect(tecnicosReporteParejasCdaSchema.safeParse(v).success).toBe(false);
     }
+  });
+});
+
+describe('pasar personal a reserva', () => {
+  const FECHA = '2026-11-15';
+
+  it('acepta operadores, asistentes o ambos', () => {
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: [OP], asistentes: [AS] }).success).toBe(true);
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: [], asistentes: [AS] }).success).toBe(true);
+  });
+
+  it('rechaza una lista vacía, repetidos, ids inválidos y campos de más', () => {
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: [], asistentes: [] }).success).toBe(false);
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: [OP], asistentes: [OP] }).success).toBe(false);
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: ['x'], asistentes: [] }).success).toBe(false);
+    expect(crearReservasParejaCdaSchema.safeParse({ fecha: FECHA, operadores: [OP], asistentes: [], recintoId: RE }).success).toBe(false);
   });
 });
 

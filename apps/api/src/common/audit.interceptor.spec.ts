@@ -106,6 +106,17 @@ describe('AuditInterceptor', () => {
     expect(disp.data).toMatchObject({ accion: 'OPERADOR_CDA_DISPOSITIVO', entidad: 'operador_cda', entidadId: OTRO, datosDespues: { campos: ['dispositivo'], dispositivo: 'IPHONE' } });
   });
 
+  it('pasar personal a reserva: el día, quiénes (solo ids) y cuántas', async () => {
+    const { data } = await auditar(
+      { method: 'POST', originalUrl: '/parejas-cda/reserva', params: {}, body: { fecha: '2026-11-15', operadores: [OTRO, 'no-uuid'], asistentes: [] }, user: ADMIN },
+      { creadas: 1 },
+    );
+    expect(data).toMatchObject({
+      accion: 'PAREJA_CDA_RESERVA_PERSONAL',
+      datosDespues: { fecha: '2026-11-15', operadores: [OTRO], asistentes: [], creadas: 1 },
+    });
+  });
+
   it('copiar la lista de parejas CDA: de qué día a cuál', async () => {
     const { data } = await auditar(
       { method: 'POST', originalUrl: '/parejas-cda/copiar', params: {}, body: { desde: '2026-10-28', hacia: '2026-11-04' }, user: ADMIN },

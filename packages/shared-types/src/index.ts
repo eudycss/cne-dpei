@@ -1485,6 +1485,17 @@ export interface CopiarParejasCdaRequest {
   hacia: string;
 }
 
+/** Personas sin pareja ese día que pasan a reserva, cada una por su cuenta. */
+export interface CrearReservasParejaCdaRequest {
+  fecha: string;
+  operadores: string[];
+  asistentes: string[];
+}
+
+export interface CrearReservasParejaCdaResult {
+  creadas: number;
+}
+
 export interface CopiarParejasCdaResult {
   copiadas: number;
   /** Las que no se copiaron y por qué ("OPERADOR · CÓDIGO"). */
