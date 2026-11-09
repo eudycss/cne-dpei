@@ -484,7 +484,6 @@ const AUDIT_TABLE: Array<{
   // Botón "Asignar kit" de una pareja CDA y celular de una persona CDA.
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/asignar-kit$/, accion: 'PAREJA_CDA_ASIGNAR_KIT', entidad: 'pareja_cda', campos: ['justificacion'] },
   { method: 'PATCH', pathRegex: /^\/operadores-cda\/[^/]+\/dispositivo$/, accion: 'OPERADOR_CDA_DISPOSITIVO', entidad: 'operador_cda', campos: ['dispositivo'] },
-  // Copia de la lista de parejas CDA a otro día.
   // Personal sin pareja que pasa a reserva (con resumen: los arreglos de "campos" se cortan en 50).
   {
     method: 'POST',
@@ -502,6 +501,7 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Copia de la lista de parejas CDA a otro día.
   { method: 'POST', pathRegex: /^\/parejas-cda\/copiar$/, accion: 'PAREJA_CDA_COPIAR', entidad: 'pareja_cda', campos: ['desde', 'hacia'] },
   // Intercambio entre dos parejas CDA del día: puede reasignar los kits en la app.
   { method: 'POST', pathRegex: /^\/parejas-cda\/[^/]+\/intercambiar$/, accion: 'PAREJA_CDA_INTERCAMBIAR', entidad: 'pareja_cda', campos: ['conId', 'campo', 'justificacion'] },
