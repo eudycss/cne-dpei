@@ -124,6 +124,11 @@ export class ParejasCdaService {
   async listar(fecha: string): Promise<ParejasCdaDia> {
     const [evento, parejas, reserva] = await Promise.all([this.eventoDeFecha(fecha), this.parejasDelDia(fecha), this.reservaDelDia(fecha)]);
     const porRecinto = parejasPorRecinto(parejas);
+    const recintosSinPareja = await this.prisma.recinto.findMany({
+      where: { tipo: 'CDA', activo: true, id: { notIn: [...porRecinto.keys()] } },
+      select: { id: true, codigoRecinto: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
     return {
       fecha,
       evento,
@@ -132,6 +137,7 @@ export class ParejasCdaService {
         .map((p) => aFila(p, evento, portadorDe(p), porRecinto.get(p.recintoId) ?? 1))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
       reserva,
+      recintosSinPareja: recintosSinPareja.map(aRecinto),
     };
   }
 

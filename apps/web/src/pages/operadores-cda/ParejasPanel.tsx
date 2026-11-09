@@ -3,7 +3,7 @@ import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCdaFila, PersonaParejaCda } from '@cne/shared-types';
+import type { AplicarParejasCdaResult, CampoParejaCda, EstadoParejaCda, ParejaCdaFila, PersonaParejaCda, RecintoParejaCda } from '@cne/shared-types';
 import { useAuth } from '../../auth/AuthContext';
 import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
@@ -13,6 +13,7 @@ import {
   aplicarParejasCda,
   descargarPlantillaParejasCda,
   descargarQrParejasCda,
+  getDisponiblesParejasCda,
   getFechasParejasCda,
   getParejasCda,
   pedirReporteParejasCda,
@@ -43,6 +44,54 @@ function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; column
   );
 }
 
+/** Fila de un CDA que aún no tiene pareja ese día; `onAsignar` solo llega si quien mira puede asignar. */
+function FilaRecintoSinPareja({
+  recinto,
+  numero,
+  conAcciones,
+  onAsignar,
+}: {
+  recinto: RecintoParejaCda;
+  numero: number;
+  conAcciones: boolean;
+  onAsignar: (recinto: RecintoParejaCda) => void;
+}) {
+  return (
+    <tr className="ocda-fila-sin-pareja">
+      <th scope="row" className="mono ocda-n-recinto" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+        {numero}
+      </th>
+      <td>
+        <span className="muted">Sin operador</span>
+      </td>
+      <td>
+        <span className="muted">Sin asistente</span>
+      </td>
+      <td>
+        <span className="mono">{recinto.codigo}</span> · {recinto.nombre}
+      </td>
+      <td>
+        <span className="muted">—</span>
+      </td>
+      <td>
+        <span className="ocda-estado aviso">Sin pareja</span>
+      </td>
+      {conAcciones && (
+        <td>
+          <button
+            type="button"
+            className="ocda-btn-texto"
+            aria-label={`Asignar pareja a ${recinto.codigo} ${recinto.nombre}`}
+            onClick={() => onAsignar(recinto)}
+          >
+            Asignar pareja
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
 /** Texto y color (clases de .ocda-estado) de cada estado. */
 const ESTADO: Record<EstadoParejaCda, { texto: string; clase: string }> = {
   EN_APP: { texto: 'En la app', clase: 'ok' },
@@ -69,6 +118,8 @@ export function ParejasPanel() {
   // Sin día en la dirección: el más reciente con lista (si no hay ninguna, hoy).
   const dia = diaUrl ?? (fechas?.length ? [...fechas].sort().at(-1)! : hoyEcuador());
   const [agregando, setAgregando] = useState(false);
+  const [asignandoRecinto, setAsignandoRecinto] = useState<RecintoParejaCda | null>(null);
+  const [soloSinPareja, setSoloSinPareja] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
@@ -98,6 +149,12 @@ export function ParejasPanel() {
     queryKey: ['parejas-cda', dia],
     queryFn: () => getParejasCda(dia),
     enabled: !!diaUrl || fechasCargadas,
+  });
+  // Personal libre ese día (la misma consulta del formulario); el servidor solo la permite al administrador.
+  const { data: disponibles } = useQuery({
+    queryKey: ['parejas-cda', 'disponibles', dia, true],
+    queryFn: () => getDisponiblesParejasCda(dia, true),
+    enabled: isAdmin && !!data,
   });
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['parejas-cda'] });
@@ -143,6 +200,7 @@ export function ParejasPanel() {
 
   const parejas = data?.parejas ?? [];
   const reserva = data?.reserva ?? [];
+  const sinPareja = data?.recintosSinPareja ?? [];
   // El día tiene lista aunque solo tenga parejas de reserva (salen en el reporte).
   const hayLista = parejas.length + reserva.length > 0;
 
@@ -179,17 +237,34 @@ export function ParejasPanel() {
         ),
       )
     : parejas;
+  const sinParejaVisibles = q ? sinPareja.filter((r) => coincideBusqueda([r.codigo, r.nombre], q)) : sinPareja;
+  // Si se completó el último vacío, el filtro deja de aplicar (ya no se muestra su casilla).
+  const soloVacios = soloSinPareja && sinPareja.length > 0;
   const conKit = parejas.some((p) => p.kitCodigo);
   // N° por recinto, como el Excel: las parejas del mismo recinto forman un bloque.
   const numeroRecinto = new Map<string, number>();
   for (const p of parejas) if (!numeroRecinto.has(p.recinto.id)) numeroRecinto.set(p.recinto.id, numeroRecinto.size + 1);
   // Orden estable por bloque: aunque dos recintos se llamen igual, sus parejas no se mezclan.
-  const filas = [...visibles].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
+  const filas = soloVacios ? [] : [...visibles].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
   const inicioBloque = (i: number) => i === 0 || filas[i - 1].recinto.id !== filas[i].recinto.id;
   const filasDelBloque = (i: number) => {
     let n = 1;
     while (filas[i + n]?.recinto.id === filas[i].recinto.id) n++;
     return n;
+  };
+  const resumenTabla = () => {
+    if (soloVacios) {
+      if (!q) return `${sinPareja.length} recinto(s) sin pareja`;
+      return sinParejaVisibles.length
+        ? `${sinParejaVisibles.length} de ${sinPareja.length} recinto(s) sin pareja`
+        : `Ningún recinto sin pareja coincide con "${q}".`;
+    }
+    if (q) {
+      if (!visibles.length && !sinParejaVisibles.length) return `Ninguna pareja coincide con "${q}".`;
+      return `${visibles.length} de ${parejas.length} pareja(s)${sinParejaVisibles.length ? ` · ${sinParejaVisibles.length} sin pareja` : ''}`;
+    }
+    if (!sinPareja.length) return `${parejas.length} pareja(s) en ${recintos} recinto(s)`;
+    return `${parejas.length} pareja(s) en ${recintos} de ${recintos + sinPareja.length} recinto(s) · ${sinPareja.length} sin pareja`;
   };
 
   return (
@@ -320,10 +395,10 @@ export function ParejasPanel() {
           {mensajeError(error, 'No se pudo cargar la lista')}
         </p>
       )}
-      {data && !hayLista && (
+      {data && !hayLista && sinPareja.length === 0 && (
         <p className="muted">Aún no hay parejas este día.{isAdmin && ' Agréguelas una por una o cargue la plantilla.'}</p>
       )}
-      {data && hayLista && (
+      {data && (hayLista || sinPareja.length > 0) && (
         <Pestanas
           pestanas={[
             { id: 'en-recintos', etiqueta: `En recintos (${parejas.length})` },
@@ -344,7 +419,7 @@ export function ParejasPanel() {
                 justificacionInicial={justificacion}
                 onResultado={mostrarResultado}
               />
-            ) : parejas.length === 0 ? (
+            ) : parejas.length === 0 && sinPareja.length === 0 ? (
               <p className="muted">Ninguna pareja tiene recinto este día. Asígneselo a una de la pestaña Reserva.</p>
             ) : (
               <>
@@ -357,18 +432,26 @@ export function ParejasPanel() {
                       ariaLabel="Buscar por persona, código o nombre de recinto"
                     />
                   </span>
+                  {sinPareja.length > 0 && (
+                    <label className="ocda-check-linea" style={{ margin: 0 }}>
+                      <input type="checkbox" checked={soloSinPareja} onChange={(e) => setSoloSinPareja(e.target.checked)} />
+                      Solo sin pareja
+                    </label>
+                  )}
                 </div>
                 <p className="muted" role="status">
-                  {!q
-                    ? `${parejas.length} pareja(s) en ${recintos} recinto(s)`
-                    : visibles.length
-                      ? `${visibles.length} de ${parejas.length} pareja(s)`
-                      : `Ninguna pareja coincide con "${busqueda.trim()}".`}
+                  {resumenTabla()}
                 </p>
+                {isAdmin && disponibles && (
+                  <p className="muted">
+                    Disponibles este día: {disponibles.operadores.length} operador(es) · {disponibles.asistentes.length} asistente(s)
+                  </p>
+                )}
                 <div className="ocda-tabla" tabIndex={0} role="region" aria-label={`Parejas del ${dia}`}>
                   <table>
                     <caption className="sr-only">
-                      Parejas del {dia} agrupadas por recinto: operador, asistente, recinto, dispositivo y estado en la app
+                      Parejas del {dia} agrupadas por recinto: operador, asistente, recinto, dispositivo y estado en la app. Los recintos sin
+                      pareja van al final.
                     </caption>
                     <thead>
                       <tr>
@@ -484,6 +567,15 @@ export function ParejasPanel() {
                           )}
                         </tr>
                       ))}
+                      {sinParejaVisibles.map((r) => (
+                        <FilaRecintoSinPareja
+                          key={r.id}
+                          recinto={r}
+                          numero={numeroRecinto.size + sinPareja.indexOf(r) + 1}
+                          conAcciones={isAdmin}
+                          onAsignar={setAsignandoRecinto}
+                        />
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -523,6 +615,16 @@ export function ParejasPanel() {
       )}
       {agregando && (
         <ParejaFormModal dia={dia} pareja={null} congelado={congelado} onResultado={mostrarResultado} onClose={() => setAgregando(false)} />
+      )}
+      {asignandoRecinto && (
+        <ParejaFormModal
+          dia={dia}
+          pareja={null}
+          recintoInicial={asignandoRecinto}
+          congelado={congelado}
+          onResultado={mostrarResultado}
+          onClose={() => setAsignandoRecinto(null)}
+        />
       )}
       {cambiando && (
         <CambiarEnParejaModal

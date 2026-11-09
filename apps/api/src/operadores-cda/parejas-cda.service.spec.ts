@@ -213,6 +213,25 @@ describe('ParejasCdaService', () => {
       expect(r.evento).toBeNull();
       expect(r.parejas[0].estado).toBe('PENDIENTE_EVENTO');
     });
+
+    it('devuelve los CDA activos que no tienen pareja ese día, sin contar los que ya la tienen', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r9', codigoRecinto: '1126', nombre: 'UE VACÍA' }]);
+
+      const r = await service.listar(DIA);
+
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: [RECINTO.id] } });
+      expect(r.recintosSinPareja).toEqual([{ id: 'r9', codigo: '1126', nombre: 'UE VACÍA' }]);
+    });
+
+    it('un día sin parejas lista todos los CDA activos', async () => {
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA' }]);
+
+      const r = await service.listar(DIA);
+
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: [] } });
+      expect(r.recintosSinPareja).toHaveLength(1);
+    });
   });
 
   it('listar avisa si las asignaciones del evento de ese día ya están congeladas (jornada iniciada)', async () => {
@@ -2070,7 +2089,7 @@ describe('ParejasCdaService', () => {
           asistente: null,
         },
       ];
-      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [{ id: 'x' }] as never, reserva });
+      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [{ id: 'x' }] as never, reserva, recintosSinPareja: [] });
       const libres = jest.spyOn(service, 'disponibles');
       const generar = jest.spyOn(reporteParejasModulo, 'reporteParejas').mockReturnValue({
         titulo: 't', detalle: 'd', archivo: 'parejas_cda', desde: DIA, hasta: DIA, modo: 'GENERAL', tablas: [],
@@ -2087,7 +2106,7 @@ describe('ParejasCdaService', () => {
     });
 
     it('día sin parejas: 400', async () => {
-      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [], reserva: [] });
+      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [], reserva: [], recintosSinPareja: [] });
       await expect(service.reporte(DIA, 'pdf')).rejects.toThrow(BadRequestException);
     });
   });
