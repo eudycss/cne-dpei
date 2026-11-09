@@ -10,6 +10,8 @@ import type {
   DispositivoCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
+  CrearReservasParejaCdaRequest,
+  CrearReservasParejaCdaResult,
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
   EditarParejaCdaResult,
@@ -382,6 +384,35 @@ export class ParejasCdaService {
     }
     if (data.length) await this.guardar(hacia, () => this.prisma.parejaCda.createMany({ data }));
     return { copiadas: data.length, omitidas };
+  }
+
+  /** Pasa a reserva, cada una por su cuenta, a personas sin pareja ese día; luego se unen con "Completar". */
+  async crearReservas(datos: CrearReservasParejaCdaRequest, usuarioId: string): Promise<CrearReservasParejaCdaResult> {
+    const ids = [...datos.operadores, ...datos.asistentes];
+    const personas = new Map(
+      (await this.prisma.operadorCda.findMany({ where: { id: { in: ids } }, select: { id: true, grupo: true, activo: true } })).map(
+        (p) => [p.id, p] as const,
+      ),
+    );
+    const vigente = (grupo: GrupoPareja) => (id: string) => personas.get(id)?.activo === true && personas.get(id)?.grupo === grupo;
+    if (!datos.operadores.every(vigente('OPERADOR')) || !datos.asistentes.every(vigente('ASISTENTE'))) {
+      throw new BadRequestException('Alguna persona elegida ya no está disponible o cambió de cargo: actualice la lista');
+    }
+    const fecha = fechaDb(datos.fecha);
+    const ocupada = await this.prisma.parejaCda.findFirst({
+      where: { fecha, OR: [{ operadorCdaId: { in: ids } }, { asistenteCdaId: { in: ids } }] },
+      select: { id: true },
+    });
+    if (ocupada) throw new ConflictException(`Alguna persona elegida ya tiene pareja o reserva el ${datos.fecha}: actualice la lista`);
+
+    // El orden de creación es el orden en que salen en la pestaña Reserva.
+    const base = Date.now();
+    const data: Prisma.ParejaCdaCreateManyInput[] = [
+      ...datos.operadores.map((id) => ({ operadorCdaId: id, asistenteCdaId: null })),
+      ...datos.asistentes.map((id) => ({ operadorCdaId: null, asistenteCdaId: id })),
+    ].map((integrantes, i) => ({ ...integrantes, fecha, recintoId: null, creadoPorId: usuarioId, creadoEn: new Date(base + i) }));
+    await this.guardar(datos.fecha, () => this.prisma.parejaCda.createMany({ data }));
+    return { creadas: data.length };
   }
 
   /**

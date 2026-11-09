@@ -26,6 +26,7 @@ import {
   copiarParejasCdaSchema,
   crearKitConParejaCdaSchema,
   crearParejaCdaSchema,
+  crearReservasParejaCdaSchema,
   editarParejaCdaSchema,
   fechaParejaCdaSchema,
   intercambiarParejaCdaSchema,
@@ -38,6 +39,7 @@ import type {
   CopiarParejasCdaRequest,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
+  CrearReservasParejaCdaRequest,
   EditarParejaCdaRequest,
   IntercambiarParejaCdaRequest,
 } from '@cne/shared-types';
@@ -233,6 +235,16 @@ export class ParejasCdaController {
     @Body(new ZodValidationPipe(justificacionBodyParejaCdaSchema)) body: { justificacion?: string } = {},
   ) {
     return this.parejas.asignarKit(id, body?.justificacion);
+  }
+
+  @Post('reserva')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Pasa a reserva, cada una por su cuenta, a personas sin pareja ese día' })
+  crearReservas(
+    @Body(new ZodValidationPipe(crearReservasParejaCdaSchema)) body: CrearReservasParejaCdaRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.parejas.crearReservas(body, user.sub);
   }
 
   @Post('copiar')

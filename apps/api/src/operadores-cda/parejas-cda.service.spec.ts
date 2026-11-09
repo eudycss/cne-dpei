@@ -1607,6 +1607,51 @@ describe('ParejasCdaService', () => {
     expect(include.asistente.select.dispositivo).toBe(true);
   });
 
+  describe('pasar personal a reserva', () => {
+    const datos = { fecha: DIA, operadores: ['op1'], asistentes: ['as1'] };
+    const personas = [
+      { id: 'op1', grupo: 'OPERADOR', activo: true },
+      { id: 'as1', grupo: 'ASISTENTE', activo: true },
+    ];
+
+    it('crea una reserva por persona, sin recinto ni kit', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(personas);
+
+      await expect(service.crearReservas(datos, 'admin')).resolves.toEqual({ creadas: 2 });
+
+      const { data } = prisma.parejaCda.createMany.mock.calls[0][0];
+      expect(data).toEqual([
+        expect.objectContaining({ fecha: FECHA, operadorCdaId: 'op1', asistenteCdaId: null, recintoId: null, creadoPorId: 'admin' }),
+        expect.objectContaining({ fecha: FECHA, operadorCdaId: null, asistenteCdaId: 'as1', recintoId: null, creadoPorId: 'admin' }),
+      ]);
+      expect(data[0].creadoEn.getTime()).toBeLessThan(data[1].creadoEn.getTime());
+      expect(data[0]).not.toHaveProperty('kitId');
+    });
+
+    it.each([
+      ['oculta', [{ id: 'op1', grupo: 'OPERADOR', activo: false }, personas[1]]],
+      ['de otro cargo', [{ id: 'op1', grupo: 'ASISTENTE', activo: true }, personas[1]]],
+      ['inexistente', [personas[1]]],
+    ])('rechaza a una persona %s sin crear nada', async (_n, encontradas) => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(encontradas);
+
+      await expect(service.crearReservas(datos, 'admin')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si alguien ya tiene pareja o reserva ese día', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(personas);
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ id: 'p1' });
+
+      await expect(service.crearReservas(datos, 'admin')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
+        fecha: FECHA,
+        OR: [{ operadorCdaId: { in: ['op1', 'as1'] } }, { asistenteCdaId: { in: ['op1', 'as1'] } }],
+      });
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('copiar la lista a otro día', () => {
     const HACIA = '2026-11-04';
     const B = pareja({

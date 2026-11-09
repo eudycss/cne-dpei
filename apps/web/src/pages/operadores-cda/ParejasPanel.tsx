@@ -421,7 +421,7 @@ export function ParejasPanel() {
                   justificacionInicial={justificacion}
                   onResultado={mostrarResultado}
                 />
-                {isAdmin && <PersonalSinRecinto dia={dia} />}
+                {isAdmin && <PersonalSinRecinto key={dia} dia={dia} />}
               </>
             ) : parejas.length === 0 && sinPareja.length === 0 ? (
               <p className="muted">Ninguna pareja tiene recinto este día. Asígneselo a una de la pestaña Reserva.</p>

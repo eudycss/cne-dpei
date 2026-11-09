@@ -144,6 +144,75 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(screen.getByText('1 de 2 persona(s)')).toBeInTheDocument();
     });
 
+    it('pasa a reserva a las personas elegidas y limpia la selección', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      postMock.mockResolvedValueOnce({ data: { creadas: 2 } });
+      renderPagina(rutaReserva);
+      await region();
+
+      const boton = screen.getByRole('button', { name: 'Pasar a reserva (0)' });
+      expect(boton).toBeDisabled();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar RUIZ JUAN' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (2)' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/reserva', { fecha: DIA, operadores: ['op2'], asistentes: ['as1'] }));
+      await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: '2 persona(s) pasaron a reserva' }));
+      expect(await screen.findByRole('button', { name: 'Pasar a reserva (0)' })).toBeDisabled();
+    });
+
+    it('"seleccionar todas" toma solo a las personas que deja ver el buscador', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      postMock.mockResolvedValueOnce({ data: { creadas: 1 } });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar todas las personas visibles' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/reserva', { fecha: DIA, operadores: [], asistentes: ['as1'] }));
+    });
+
+    it('avisa si hay personas elegidas que el buscador oculta', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+
+      expect(screen.getByText('1 de 2 persona(s) · 1 elegida(s) oculta(s) por el buscador')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pasar a reserva (1)' })).toBeEnabled();
+    });
+
+    it('tras un rechazo limpia la selección y vuelve a pedir la lista', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [] });
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'Alguna persona elegida ya tiene pareja o reserva' } } });
+      renderPagina(rutaReserva);
+      await region();
+      const pedidas = () => getMock.mock.calls.filter(([url]) => String(url).startsWith('/parejas-cda/disponibles')).length;
+      const antes = pedidas();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      await waitFor(() => expect(pedidas()).toBeGreaterThan(antes));
+      expect(await screen.findByRole('button', { name: 'Pasar a reserva (0)' })).toBeDisabled();
+    });
+
+    it('muestra el motivo si el servidor rechaza', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [] });
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'Alguna persona elegida ya tiene pareja o reserva' } } });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('ya tiene pareja o reserva');
+    });
+
     it('avisa cuando no sobra nadie', async () => {
       mockApi({ reserva: [] }, { operadores: [], asistentes: [] });
       renderPagina(rutaReserva);
