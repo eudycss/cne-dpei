@@ -153,6 +153,7 @@ describe('EnlacesService', () => {
         new Set(['978']),
         undefined,
         expect.any(Map),
+        [],
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -191,6 +192,7 @@ describe('EnlacesService', () => {
         new Set(['978', '982']),
         undefined,
         expect.any(Map),
+        [],
       );
     });
 
@@ -214,6 +216,7 @@ describe('EnlacesService', () => {
         new Set(['222']),
         undefined,
         expect.any(Map),
+        [],
       );
     });
 
@@ -234,6 +237,8 @@ describe('EnlacesService', () => {
         new Set(['111']),
         undefined,
         expect.any(Map),
+        // Los activos van aparte (para el aviso de "casi todo caído").
+        [{ codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' }],
       );
       expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
         { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' },
@@ -345,6 +350,7 @@ describe('EnlacesService', () => {
         new Set(['978']),
         undefined,
         expect.any(Map),
+        [],
       );
     });
 
@@ -374,6 +380,7 @@ describe('EnlacesService', () => {
         new Set(['978']),
         undefined,
         expect.any(Map),
+        [],
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -836,6 +843,7 @@ describe('EnlacesService', () => {
         new Set(['982']),
         undefined,
         expect.any(Map),
+        [],
       );
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
@@ -1145,11 +1153,17 @@ describe('EnlacesService', () => {
 
       const result = await service.reenviarListaTelegram();
 
-      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: 'FALLO' } });
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-        { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
-      ]);
+      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: { in: ['FALLO', 'ACTIVO'] } } });
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+        ],
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
       expect(result).toEqual({ enviados: 2 });
     });
 
@@ -1160,9 +1174,33 @@ describe('EnlacesService', () => {
 
       await service.reenviarListaTelegram();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
-        { codigoRecinto: '1207', nombreRecinto: 'Escuela Guallupe', canton: 'Cotacachi' },
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '1207', nombreRecinto: 'Escuela Guallupe', canton: 'Cotacachi' },
+        ],
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
+    });
+
+    it('pasa también los activos, para el aviso de "casi todo caído"; enviados cuenta solo los caídos', async () => {
+      prisma.enlaceRecinto.findMany.mockResolvedValue([
+        { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Ibarra', estado: 'FALLO' },
+        { codigoRecinto: '1207', nombreRecinto: 'UE Ibarra', canton: 'Ibarra', estado: 'ACTIVO' },
       ]);
+
+      const result = await service.reenviarListaTelegram();
+
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: 'Ibarra' }],
+        undefined,
+        undefined,
+        undefined,
+        [{ codigoRecinto: '1207', nombreRecinto: 'UE Ibarra', canton: 'Ibarra' }],
+      );
+      expect(result).toEqual({ enviados: 1 });
     });
 
     it('sin recintos en FALLO igual llama al notifier (avisa "sin caídos") y devuelve 0', async () => {
@@ -1170,7 +1208,7 @@ describe('EnlacesService', () => {
 
       const result = await service.reenviarListaTelegram();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([]);
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith([], undefined, undefined, undefined, []);
       expect(result).toEqual({ enviados: 0 });
     });
   });
@@ -1192,10 +1230,16 @@ describe('EnlacesService', () => {
         message: { text: '/caidos', chat: { id: '-100200300' } },
       });
 
-      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: 'FALLO' } });
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-      ]);
+      expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: { in: ['FALLO', 'ACTIVO'] } } });
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+        ],
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
     });
 
     describe('grupo Jornada', () => {
@@ -1262,9 +1306,15 @@ describe('EnlacesService', () => {
         message: { text: TEXTO_BOTON_CAIDOS, chat: { id: '-100200300' } },
       });
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-      ]);
+      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
+        [
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+        ],
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
     });
 
     it.each([['/estadisticas'], ['/estadisticas@cne_bot'], [TEXTO_BOTON_ESTADISTICAS]])('"%s" responde con las estadísticas', async (texto) => {
