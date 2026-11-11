@@ -54,6 +54,8 @@ export interface ActasJornada {
 
 /** Un kit del evento con su recinto CDA y las personas que lo llevan. */
 export interface UnidadJornada {
+  /** Quien lleva el celular (los avisos se recuerdan por operador). */
+  operadorId: string;
   codigoRecinto: string;
   nombreRecinto: string;
   tecnico: TecnicoJornada;
@@ -66,6 +68,10 @@ export interface UnidadJornada {
   kitEscaneado: KitEscaneadoJornada | null;
   /** null = todavía no marca la salida del recinto (los reportes recién ahí quedan ligados a él). */
   actas: ActasJornada | null;
+  /** Minutos de viaje DPEI ↔ recinto (pestaña "Tiempos de viaje"); null = sin configurar. */
+  tiempoViajeMin: number | null;
+  /** Última posición GPS del día; null = no mandó ninguna. */
+  ultimoGps: Date | null;
 }
 
 export interface NoCdaJornada {
@@ -90,6 +96,7 @@ export interface SinKitJornada {
 }
 
 export interface Jornada {
+  eventoId: string;
   evento: string;
   unidades: UnidadJornada[];
   noCdas: NoCdaJornada[];
@@ -411,7 +418,7 @@ export function telefonoTelegram(telefono: string | null): string | null {
   return digitos;
 }
 
-function lineaPersonas(personas: PersonaJornada[], sangria = '   '): string {
+export function lineaPersonas(personas: PersonaJornada[], sangria = '   '): string {
   if (personas.length === 0) return `${sangria}<i>sin personas asignadas</i>`;
   return (
     sangria +

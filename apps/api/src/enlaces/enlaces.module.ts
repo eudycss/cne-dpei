@@ -8,6 +8,7 @@ import { EnlacesController } from './enlaces.controller';
 import { EnlacesEscalamientoService } from './enlaces-escalamiento.service';
 import { EnlacesEstadisticasService } from './enlaces-estadisticas.service';
 import { EnlacesService } from './enlaces.service';
+import { JornadaAvisosService } from './jornada/jornada-avisos.service';
 import { JornadaResumenService } from './jornada/jornada-resumen.service';
 import { JornadaService } from './jornada/jornada.service';
 import { SheetsEnlacesClient } from './sheets-enlaces.client';
@@ -26,6 +27,7 @@ import { TelegramNotifier } from './telegram-notifier';
     TelegramNotifier,
     JornadaService,
     JornadaResumenService,
+    JornadaAvisosService,
     AsistenteService,
     LlmClient,
   ],

@@ -11,6 +11,7 @@ const r = (en: Date) => ({ en, sinSenal: false });
 
 function unidad(codigo: string, extra: Partial<UnidadJornada> = {}): UnidadJornada {
   return {
+    operadorId: `op-${codigo}`,
     codigoRecinto: codigo,
     nombreRecinto: `Recinto ${codigo}`,
     tecnico: { numero: 1, nombre: 'Jairo' },
@@ -20,11 +21,13 @@ function unidad(codigo: string, extra: Partial<UnidadJornada> = {}): UnidadJorna
     kitRecibido: null,
     kitEscaneado: null,
     actas: null,
+    tiempoViajeMin: null,
+    ultimoGps: null,
     ...extra,
   };
 }
 
-const jornada = (unidades: UnidadJornada[]): Jornada => ({ evento: 'Prueba', unidades, noCdas: [], sinKit: [], sinDistributivo: false });
+const jornada = (unidades: UnidadJornada[]): Jornada => ({ eventoId: 'ev-1', evento: 'Prueba', unidades, noCdas: [], sinKit: [], sinDistributivo: false });
 
 describe('JornadaResumenService', () => {
   const cargar = jest.fn();
