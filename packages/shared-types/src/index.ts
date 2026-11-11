@@ -776,7 +776,7 @@ export interface OperadorEnRetorno {
   capturadoEn: string;
   kits: OperadorEnRetornoKit[];
   estado: EstadoOperadorCda;
-  /** Solo en retorno: qué parte del camino recinto → DPEI le falta (null sin datos para medirlo). */
+  /** Solo en retorno: tramo por los metros al DPEI (≤3 km MUY_CERCA, ≤10 km CERCA, resto LEJOS); null sin datos. */
   cercania: CercaniaRetorno | null;
   /** Metros en línea recta hasta el DPEI; null si el evento no tiene la coordenada de la Delegación. */
   faltaMetros: number | null;

@@ -256,6 +256,8 @@ describe('MonitoreoPage', () => {
     expect(punto(filaTransito).style.background).toBe('rgb(124, 58, 237)');
 
     expect(screen.getByText('En retorno, distancia al DPEI:')).toBeInTheDocument();
+    expect(screen.getByText('Lejos (más de 10 km)')).toBeInTheDocument();
+    expect(screen.getByText('Cerca (3 a 10 km)')).toBeInTheDocument();
     expect(screen.getByText('Muy cerca (3 km o menos)')).toBeInTheDocument();
   });
 
