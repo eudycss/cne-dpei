@@ -272,14 +272,14 @@ export function MonitoreoPage() {
             <p
               style={{ fontSize: 12, margin: '0 0 0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.75rem' }}
             >
-              <span style={{ opacity: 0.7 }}>En retorno, según el camino que le falta:</span>
+              <span style={{ opacity: 0.7 }}>En retorno, distancia al DPEI:</span>
               {ORDEN_CERCANIA.map((c) => (
                 <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                   <span
                     aria-hidden="true"
                     style={{ width: 8, height: 8, borderRadius: '50%', background: CERCANIA_INFO[c].color, display: 'inline-block' }}
                   />
-                  {CERCANIA_INFO[c].label}
+                  {`${CERCANIA_INFO[c].label} (${CERCANIA_INFO[c].rango})`}
                 </span>
               ))}
             </p>
