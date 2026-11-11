@@ -1615,6 +1615,52 @@ describe('TrackingService', () => {
       ]);
     });
 
+    it('en retorno indica qué tan cerca va del DPEI, medido desde el recinto de su kit', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorIdA, nombres: 'Ana', apellidos: 'Perez' },
+        { id: operadorIdB, nombres: 'Beto', apellidos: 'Gomez' },
+      ]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: 'k1', codigoUnico: 'K-01', nombre: 'Kit 1', operadorId: operadorIdB, recintoId: 'recinto-b' },
+      ]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ ...ultimaPosicion[0], falta_m: 30_000, total_m: 40_000 }])
+        .mockResolvedValueOnce([{ ...ultimaPosicion[0], falta_m: 5_000.4, total_m: 40_000 }]);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+
+      expect(result).toEqual([
+        // En la ida no se mide contra el DPEI ni se envía la distancia.
+        expect.objectContaining({ operadorId: operadorIdA, estado: 'EN_TRANSITO', cercania: null, faltaMetros: null }),
+        expect.objectContaining({ operadorId: operadorIdB, estado: 'EN_RETORNO', cercania: 'MUY_CERCA', faltaMetros: 5_000 }),
+      ]);
+      const consultaB = (prisma.$queryRaw as jest.Mock).mock.calls[1];
+      expect(consultaB.slice(1)).toContain('recinto-b');
+    });
+
+    it('sin coordenada de la Delegación no hay cercanía ni distancia', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
+        { operadorId: operadorIdB, tipo: 'LLEGADA_RECINTO' },
+        { operadorId: operadorIdB, tipo: 'SALIDA_RECINTO' },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorIdB, nombres: 'Beto', apellidos: 'Gomez' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([{ ...ultimaPosicion[0], falta_m: null, total_m: null }]);
+
+      const result = await service.operadoresEnRetorno(operadorId, ['ADMINISTRADOR']);
+
+      expect(result).toEqual([expect.objectContaining({ estado: 'EN_RETORNO', cercania: null, faltaMetros: null })]);
+    });
+
     it('un LECTOR ve operadores en ambos tramos igual que un admin (sin filtrar por asignación)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
