@@ -12,6 +12,7 @@ export const PERMISO_IDS = [
   'cda.carnets.emitir',
   'cda.carnets.reimprimir',
   'cda.convocatoria.gestionar',
+  'cda.evatics.revisar',
 ] as const;
 export type PermisoId = (typeof PERMISO_IDS)[number];
 
@@ -41,6 +42,8 @@ export const PERMISOS: readonly PermisoAccion[] = [
   { id: 'cda.carnets.reimprimir', modulo: 'operadores-cda', etiqueta: 'Reimprimir carnets QR vigentes (sin anularlos)', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
   // Decide quién tiene falta: de fábrica, solo el administrador.
   { id: 'cda.convocatoria.gestionar', modulo: 'operadores-cda', etiqueta: 'Gestionar la convocatoria del día (a quién se llamó)', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
+  // Ver la foto del certificado Evatics y aprobarlo o rechazarlo: de fábrica, los técnicos supervisores.
+  { id: 'cda.evatics.revisar', modulo: 'operadores-cda', etiqueta: 'Ver y aprobar o rechazar certificados Evatics', rolesPermitidos: TEC_AET, rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
 ];
 
 export function esPermisoId(v: unknown): v is PermisoId {

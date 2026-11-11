@@ -411,6 +411,44 @@ const AUDIT_TABLE: Array<{
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
     },
   },
+  // Certificados Evatics. La subida es pública: el certificado sale de
+  // req.certificadoEvaticsId (lo pone el controller), nunca la cédula; queda la
+  // versión del aviso LOPDP y la IP. La revisión: solo la decisión.
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/evatics\/subir$/,
+    accion: 'EVATICS_CERTIFICADO_SUBIR',
+    entidad: 'certificado_evatics',
+    entidadId: (req) => {
+      const id = (req as Request & { certificadoEvaticsId?: unknown }).certificadoEvaticsId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    resumen: (_res, req) => {
+      const v = (req.body as { version?: unknown } | undefined)?.version;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 40) : null };
+    },
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/evatics\/[^/]+\/revision$/,
+    accion: 'EVATICS_CERTIFICADO_REVISAR',
+    entidad: 'certificado_evatics',
+    resumen: (res) => {
+      const r = (res ?? {}) as { estado?: unknown };
+      return { decision: r.estado === 'APROBADO' || r.estado === 'RECHAZADO' ? r.estado : null };
+    },
+  },
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/evatics\/config$/,
+    accion: 'EVATICS_FECHA_LIMITE',
+    entidad: 'config_evatics',
+    entidadId: () => undefined,
+    resumen: (res) => {
+      const f = (res ?? {}) as { fechaLimite?: unknown };
+      return { fechaLimite: typeof f.fechaLimite === 'string' ? f.fechaLimite.slice(0, 10) : null };
+    },
+  },
   // Actas de entrega de indumentaria: conteos y estados de las prendas (sin nombres
   // ni cédulas de quien entrega). Las descargas llevan cédulas: queda el formato.
   {

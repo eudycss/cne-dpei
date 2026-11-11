@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -14,6 +14,7 @@ import { ActasCdaController } from '../operadores-cda/actas-cda.controller';
 import { FotoCdaController } from '../operadores-cda/foto-cda.controller';
 import { OperadoresCdaController } from '../operadores-cda/operadores-cda.controller';
 import { ConvocatoriaCdaController } from '../operadores-cda/convocatoria-cda.controller';
+import { EvaticsController } from '../evatics/evatics.controller';
 import { MODULO_KEY, ModuloGuard } from './modulo.guard';
 
 function contexto(roles: string[], permisos: PermisoId[] | undefined): ExecutionContext {
@@ -85,6 +86,8 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [FotoCdaController, 'crearEnlace', 'cda.fotos.enlace'],
   [ConvocatoriaCdaController, 'guardar', 'cda.convocatoria.gestionar'],
   [ConvocatoriaCdaController, 'cargar', 'cda.convocatoria.gestionar'],
+  [EvaticsController, 'foto', 'cda.evatics.revisar'],
+  [EvaticsController, 'revisar', 'cda.evatics.revisar'],
 ];
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -128,11 +131,16 @@ describe('Acciones de CDAs en los endpoints', () => {
     expect(PERMISO_IDS.filter((id) => !usadas.has(id))).toEqual([]);
   });
 
-  it('la migración precarga exactamente las acciones de fábrica del catálogo', () => {
+  it('las migraciones precargan exactamente las acciones de fábrica del catálogo', () => {
     const dir = join(__dirname, '../../prisma/migrations');
-    const carpeta = readdirSync(dir).find((d) => d.endsWith('_rol_permisos'));
-    expect(carpeta).toBeDefined();
-    const sql = readFileSync(join(dir, carpeta!, 'migration.sql'), 'utf8');
+    expect(readdirSync(dir).some((d) => d.endsWith('_rol_permisos'))).toBe(true);
+    // Las de fábrica de entonces, más las acciones que se agregaron después (cada una en su migración).
+    const sql = readdirSync(dir)
+      .map((d) => join(dir, d, 'migration.sql'))
+      .filter((f) => existsSync(f))
+      .map((f) => readFileSync(f, 'utf8'))
+      .filter((s) => s.includes('INSERT INTO "rol_permisos"'))
+      .join(' ');
     const delSql = [...sql.matchAll(/\('([A-Z_]+)',\s*'([a-z.]+)'\)/g)].map(([, rol, p]) => `${rol}:${p}`).sort();
     const deFabrica = PERMISOS.flatMap((p) => p.rolesPorDefecto.map((rol) => `${rol}:${p.id}`)).sort();
     expect(delSql).toEqual(deFabrica);
@@ -153,6 +161,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     ActasCdaController,
     FotoCdaController,
     ConvocatoriaCdaController,
+    EvaticsController,
   ];
   const metodos = CONTROLADORES.flatMap((c: any) =>
     Object.getOwnPropertyNames(c.prototype)

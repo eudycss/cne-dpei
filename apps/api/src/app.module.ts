@@ -28,6 +28,7 @@ import { EnlacesModule } from './enlaces/enlaces.module';
 import { CustodiaModule } from './custodia/custodia.module';
 import { PermisosModulosModule } from './permisos-modulos/permisos-modulos.module';
 import { SimuladorModule } from './simulador/simulador.module';
+import { EvaticsModule } from './evatics/evatics.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { SimuladorModule } from './simulador/simulador.module';
     CustodiaModule,
     PermisosModulosModule,
     SimuladorModule,
+    EvaticsModule,
   ],
   controllers: [AppController],
   providers: [
