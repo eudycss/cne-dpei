@@ -1,36 +1,33 @@
 import { cercaniaRetorno } from './cercania-retorno';
 
 describe('cercaniaRetorno', () => {
-  it('le falta más de la mitad del camino: lejos', () => {
-    expect(cercaniaRetorno(30_000, 40_000)).toBe('LEJOS');
+  it('a más de 10 km del DPEI: lejos', () => {
+    expect(cercaniaRetorno(10_001)).toBe('LEJOS');
+    expect(cercaniaRetorno(43_000)).toBe('LEJOS');
   });
 
-  it('se alejó del DPEI (más lejos que su recinto): lejos', () => {
-    expect(cercaniaRetorno(45_000, 40_000)).toBe('LEJOS');
+  it('entre 3 y 10 km (10 km incluido): cerca', () => {
+    expect(cercaniaRetorno(10_000)).toBe('CERCA');
+    expect(cercaniaRetorno(6_000)).toBe('CERCA');
+    expect(cercaniaRetorno(3_001)).toBe('CERCA');
   });
 
-  it('justo en la mitad o entre 50 % y 15 %: cerca', () => {
-    expect(cercaniaRetorno(20_000, 40_000)).toBe('CERCA');
-    expect(cercaniaRetorno(10_000, 40_000)).toBe('CERCA');
+  it('a 3 km o menos: muy cerca', () => {
+    expect(cercaniaRetorno(3_000)).toBe('MUY_CERCA');
+    expect(cercaniaRetorno(800)).toBe('MUY_CERCA');
+    expect(cercaniaRetorno(0)).toBe('MUY_CERCA');
   });
 
-  it('le falta 15 % o menos: muy cerca', () => {
-    expect(cercaniaRetorno(6_000, 40_000)).toBe('MUY_CERCA');
+  it('la misma distancia da el mismo color, sin importar el recinto de origen', () => {
+    // Antes, 6 km desde Atuntaqui salía "Lejos" y 15 km desde Apuela "Cerca".
+    expect(cercaniaRetorno(6_000)).toBe('CERCA');
+    expect(cercaniaRetorno(15_000)).toBe('LEJOS');
   });
 
-  it('a 2 km o menos del DPEI siempre es muy cerca, aunque el recinto esté al lado', () => {
-    expect(cercaniaRetorno(1_800, 2_500)).toBe('MUY_CERCA');
-    expect(cercaniaRetorno(2_000, null)).toBe('MUY_CERCA');
-  });
-
-  it('recinto a menos de 2 km: lejos de él cuenta por el umbral fijo', () => {
-    expect(cercaniaRetorno(3_000, 1_500)).toBe('LEJOS');
-  });
-
-  it('sin datos para medir devuelve null', () => {
-    expect(cercaniaRetorno(null, 40_000)).toBeNull();
-    expect(cercaniaRetorno(10_000, null)).toBeNull();
-    expect(cercaniaRetorno(10_000, 0)).toBeNull();
-    expect(cercaniaRetorno(Number.NaN, 40_000)).toBeNull();
+  it('sin una distancia válida devuelve null', () => {
+    expect(cercaniaRetorno(null)).toBeNull();
+    expect(cercaniaRetorno(Number.NaN)).toBeNull();
+    expect(cercaniaRetorno(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(cercaniaRetorno(-5)).toBeNull();
   });
 });

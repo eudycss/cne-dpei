@@ -1549,15 +1549,12 @@ export class TrackingService {
 
     const kitsRows = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
-      select: { id: true, codigoUnico: true, nombre: true, operadorId: true, recintoId: true },
+      select: { id: true, codigoUnico: true, nombre: true, operadorId: true },
       orderBy: { codigoUnico: 'asc' },
     });
     const kitsPorId = new Map<string, OperadorEnRetornoKit[]>();
-    // Recinto del que vuelve: el de su primer kit (por código), para medir el camino hasta el DPEI.
-    const recintoPorOperador = new Map<string, string>();
     for (const k of kitsRows) {
       if (!k.operadorId) continue;
-      if (k.recintoId && !recintoPorOperador.has(k.operadorId)) recintoPorOperador.set(k.operadorId, k.recintoId);
       const arr = kitsPorId.get(k.operadorId) ?? [];
       arr.push({ id: k.id, codigoUnico: k.codigoUnico, nombre: k.nombre });
       kitsPorId.set(k.operadorId, arr);
@@ -1565,18 +1562,16 @@ export class TrackingService {
 
     const resultado: OperadorEnRetorno[] = [];
     for (const id of operadorIds) {
-      // Distancias en línea recta (geography, metros); NULL si falta la Delegación o el recinto.
+      // Distancia en línea recta al DPEI (geography, metros); NULL si el evento no tiene la Delegación.
       const ultima = await this.prisma.$queryRaw<
-        { lat: number; lng: number; capturado_en: Date; falta_m: number | null; total_m: number | null }[]
+        { lat: number; lng: number; capturado_en: Date; falta_m: number | null }[]
       >`
         SELECT ST_Y(p.ubicacion::geometry) AS lat,
                ST_X(p.ubicacion::geometry) AS lng,
                p.capturado_en,
-               ST_Distance(p.ubicacion, c.delegacion_ubicacion) AS falta_m,
-               ST_Distance(r.ubicacion, c.delegacion_ubicacion) AS total_m
+               ST_Distance(p.ubicacion, c.delegacion_ubicacion) AS falta_m
         FROM posiciones_gps p
         LEFT JOIN config_alertas c ON c.evento_id = p.evento_id
-        LEFT JOIN recintos r ON r.id = ${recintoPorOperador.get(id) ?? null}::uuid
         WHERE p.operador_id = ${id}::uuid AND p.evento_id = ${evento.id}::uuid
         ORDER BY p.capturado_en DESC
         LIMIT 1;
@@ -1585,7 +1580,6 @@ export class TrackingService {
       const pos = ultima[0];
       const estado = this.deriveEstadoOperador(tiposPorOperador.get(id));
       const faltaMetros = pos.falta_m === null || pos.falta_m === undefined ? null : Math.round(Number(pos.falta_m));
-      const totalMetros = pos.total_m === null || pos.total_m === undefined ? null : Number(pos.total_m);
       resultado.push({
         operadorId: id,
         operadorNombre: nombrePorId.get(id) ?? 'Operador',
@@ -1595,7 +1589,7 @@ export class TrackingService {
         kits: kitsPorId.get(id) ?? [],
         estado,
         // Solo el retorno se mide contra el DPEI; en la ida no se envía la distancia.
-        cercania: estado === 'EN_RETORNO' ? cercaniaRetorno(faltaMetros, totalMetros) : null,
+        cercania: estado === 'EN_RETORNO' ? cercaniaRetorno(faltaMetros) : null,
         faltaMetros: estado === 'EN_RETORNO' ? faltaMetros : null,
       });
     }

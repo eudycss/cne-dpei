@@ -1,22 +1,18 @@
 import type { CercaniaRetorno } from '@cne/shared-types';
 
-/** Le falta más de esta parte del camino recinto → DPEI: "Lejos". */
-export const FRACCION_LEJOS = 0.5;
-/** Le falta esta parte del camino o menos: "Muy cerca". */
-export const FRACCION_MUY_CERCA = 0.15;
-/** A esta distancia del DPEI o menos siempre es "Muy cerca", aunque el recinto quede al lado. */
-export const METROS_MUY_CERCA = 2000;
+/** A esta distancia del DPEI o menos: "Muy cerca" (ya dentro de Ibarra). */
+export const METROS_MUY_CERCA = 3_000;
+/** A esta distancia del DPEI o menos: "Cerca" (entrando a Ibarra). Más lejos: "Lejos". */
+export const METROS_CERCA = 10_000;
 
 /**
- * Qué tan cerca del DPEI va un operador en retorno, según la parte del camino
- * (en línea recta, desde su recinto) que le falta. Sin la distancia actual no
- * se puede medir; sin la del recinto solo vale el umbral fijo de metros.
+ * Qué tan cerca del DPEI va un operador en retorno, por los metros que le faltan
+ * (en línea recta). Los tramos son los mismos para todos, venga del recinto que venga,
+ * para que el color diga quién llega pronto. Sin la distancia no se puede medir.
  */
-export function cercaniaRetorno(faltaMetros: number | null, totalMetros: number | null): CercaniaRetorno | null {
-  if (faltaMetros === null || !Number.isFinite(faltaMetros)) return null;
+export function cercaniaRetorno(faltaMetros: number | null): CercaniaRetorno | null {
+  if (faltaMetros === null || !Number.isFinite(faltaMetros) || faltaMetros < 0) return null;
   if (faltaMetros <= METROS_MUY_CERCA) return 'MUY_CERCA';
-  if (totalMetros === null || !Number.isFinite(totalMetros) || totalMetros <= 0) return null;
-  const fraccion = faltaMetros / totalMetros;
-  if (fraccion <= FRACCION_MUY_CERCA) return 'MUY_CERCA';
-  return fraccion > FRACCION_LEJOS ? 'LEJOS' : 'CERCA';
+  if (faltaMetros <= METROS_CERCA) return 'CERCA';
+  return 'LEJOS';
 }

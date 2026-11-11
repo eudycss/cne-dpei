@@ -255,8 +255,8 @@ describe('MonitoreoPage', () => {
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
     expect(punto(filaTransito).style.background).toBe('rgb(124, 58, 237)');
 
-    expect(screen.getByText('En retorno, según el camino que le falta:')).toBeInTheDocument();
-    expect(screen.getByText('Muy cerca')).toBeInTheDocument();
+    expect(screen.getByText('En retorno, distancia al DPEI:')).toBeInTheDocument();
+    expect(screen.getByText('Muy cerca (3 km o menos)')).toBeInTheDocument();
   });
 
   it('si nadie va en retorno no muestra la leyenda de cercanía', async () => {
@@ -266,7 +266,7 @@ describe('MonitoreoPage', () => {
     renderPage();
 
     await screen.findAllByText('Carla Suárez');
-    expect(screen.queryByText('En retorno, según el camino que le falta:')).not.toBeInTheDocument();
+    expect(screen.queryByText('En retorno, distancia al DPEI:')).not.toBeInTheDocument();
   });
 
   it('busca CDAs por código, por nombre del recinto o del operador, sin importar tildes', async () => {
