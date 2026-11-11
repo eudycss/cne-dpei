@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -88,8 +89,16 @@ export class EvaticsController {
   @ApiOperation({
     summary: 'Foto del certificado (descifrada; no se guarda en caché)',
   })
-  async foto(@Param('id', ParseUUIDPipe) id: string, @Query('anterior') anterior: unknown, @Res() res: Response) {
-    const buf = await this.evatics.foto(id, anterior === 'true');
+  async foto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('anterior') anterior: unknown,
+    @Query('v') v: unknown,
+    @Res() res: Response,
+  ) {
+    // ?v=<subidoEn ISO> de la foto que muestra la web: 409 si la persona subió otra entretanto.
+    const version = typeof v === 'string' && v ? new Date(v) : undefined;
+    if (version && Number.isNaN(version.getTime())) throw new BadRequestException('Versión de la foto inválida');
+    const buf = await this.evatics.foto(id, anterior === 'true', version);
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');

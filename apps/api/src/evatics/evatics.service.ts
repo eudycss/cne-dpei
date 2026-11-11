@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import type { Prisma } from '@prisma/client';
 import {
   SIN_CANTON_EVATICS,
   SIN_TECNICO_EVATICS,
@@ -37,7 +38,7 @@ import { StorageService } from '../storage/storage.service';
 import { DistributivoTecnicosClient, tecnicosPorRecinto } from '../enlaces/distributivo-tecnicos.client';
 import { limpiarJpeg } from '../operadores-cda/jpeg';
 import { diaDeFechaDb, diaEcuador, fechaDb } from '../operadores-cda/dia-ecuador';
-import { LectorTransitorio, type LecturaCertificado } from './lector-certificado';
+import { LectorNoConfigurado, LectorRespuestaInvalida, type LecturaCertificado } from './lector-certificado';
 import { LectorCertificadoService } from './lector-certificado.service';
 import { nombreCoincide, nombreCorto, nombreCortoDeApellidosNombres } from './nombre-evatics';
 
@@ -53,6 +54,7 @@ const YA_APROBADO = 'Su certificado ya fue aprobado: no hace falta subirlo de nu
 export const MAX_SUBIDAS_POR_DIA = 5;
 export const DEMASIADAS_SUBIDAS = `Ya se subieron ${MAX_SUBIDAS_POR_DIA} fotos con esta cédula hoy. Intente mañana o pida ayuda a la Delegación.`;
 export const FOTO_CAMBIO = 'La foto cambió: revísela de nuevo';
+const OTRA_SUBIDA = 'Se está subiendo otra foto con esta cédula: intente de nuevo';
 /** Errores pasajeros (cuota gratuita, red): se reintenta con espera creciente hasta este número. */
 export const MAX_INTENTOS_ANALISIS = 5;
 /** Por vuelta del cron. */
@@ -99,6 +101,7 @@ type CertificadoGuardado = {
   revisadoPor?: { nombres: string; apellidos: string } | null;
   reemplazos: number;
   fotoAnteriorKey: string | null;
+  fotoAnteriorSubidaEn: Date | null;
   analisisEstado: string;
   nombreLeido: string | null;
   nombreCoincide: boolean | null;
@@ -107,6 +110,14 @@ type CertificadoGuardado = {
   analizadoEn: Date | null;
   analisisProveedor: string | null;
 };
+
+interface SubidaGuardada {
+  id: string;
+  /** 0 = primera subida; 1, 2… = número de reemplazo (bitácora). */
+  reemplazo: number;
+  /** Foto que ya no se conserva y se borra de Storage. */
+  borrar: string | null;
+}
 
 /** Cualquiera que no sea administrador (supervisor o Asistente Transversal con el permiso) no revisa su propio certificado. */
 function aplicaReglaPropia(actor: ActorEvatics): boolean {
@@ -241,7 +252,7 @@ export class EvaticsService {
   /**
    * Guarda la foto (sin metadatos y cifrada) y la deja PENDIENTE. Reemplaza la
    * anterior mientras no esté aprobada, pero la conserva como "foto anterior"
-   * para que el supervisor vea el cambio (se borra la más vieja). Hasta
+   * para que el supervisor vea el cambio (ver guardarSubida). Hasta
    * MAX_SUBIDAS_POR_DIA por cédula y día. Con un lector configurado, la
    * analiza en el momento para avisar si no se lee; si no, queda en cola.
    */
@@ -296,55 +307,28 @@ export class EvaticsService {
       analizadoEn: null,
       analisisProveedor: null,
     };
-    let guardado: { id: string; reemplazo: number; borrar: string | null };
+    let guardado: SubidaGuardada | null = null;
     try {
-      guardado = await this.prisma.$transaction(async (tx) => {
-        const actual = await tx.certificadoEvatics.findUnique({
-          where: { cedula },
-          select: { id: true, fotoKey: true, fotoAnteriorKey: true, reemplazos: true, subidasDia: true, subidasHoy: true },
-        });
-        if (!actual) {
-          const nuevo = await tx.certificadoEvatics.create({
-            data: { cedula, ...reinicio, subidasDia: hoy, subidasHoy: 1 },
-            select: { id: true },
-          });
-          return { id: nuevo.id, reemplazo: 0, borrar: null };
-        }
-        const reemplazo = actual.reemplazos + 1;
-        // Condicionado: ni si un supervisor lo aprobó entretanto, ni pasado el límite del día (dos envíos a la vez).
-        const r = await tx.certificadoEvatics.updateMany({
-          where: {
-            id: actual.id,
-            estado: { not: 'APROBADO' },
-            OR: [{ subidasDia: { not: hoy } }, { subidasHoy: { lt: MAX_SUBIDAS_POR_DIA } }],
-          },
-          data: {
-            ...reinicio,
-            fotoAnteriorKey: actual.fotoKey,
-            fotoAnteriorSubidaEn: ahora,
-            reemplazos: reemplazo,
-            subidasDia: hoy,
-            subidasHoy: actual.subidasDia === hoy ? actual.subidasHoy + 1 : 1,
-          },
-        });
-        if (r.count === 0) {
-          const ahoraEs = await tx.certificadoEvatics.findUnique({ where: { id: actual.id }, select: { estado: true } });
-          if (ahoraEs?.estado === 'APROBADO') throw new ConflictException(YA_APROBADO);
-          throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
-        }
-        // Se conserva una sola foto anterior: la más vieja se borra.
-        return { id: actual.id, reemplazo, borrar: actual.fotoAnteriorKey };
-      });
+      // Bloqueo optimista: si otra subida cambió la fila entre la lectura y la escritura, se relee y se decide una vez más.
+      for (let vuelta = 0; vuelta < 2 && !guardado; vuelta++) {
+        guardado = await this.prisma.$transaction((tx) => this.guardarSubida(tx, cedula, hoy, reinicio));
+      }
+      if (!guardado) throw new ConflictException(OTRA_SUBIDA);
     } catch (e) {
+      // La foto nueva ya está en Storage: si no quedó guardada en la fila, se borra (sin huérfanos).
       await this.borrarArchivo(fotoKey);
-      if (esClaveDuplicada(e)) throw new ConflictException('Se está subiendo otra foto con esta cédula: intente de nuevo');
+      if (esClaveDuplicada(e)) throw new ConflictException(OTRA_SUBIDA);
       throw e;
     }
     if (guardado.borrar) await this.borrarArchivo(guardado.borrar);
 
+    // La foto ya quedó guardada: un fallo al leerla no cambia la respuesta (queda en cola).
     const lectura = this.lector.disponible()
       ? await conTope(
-          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.apellidosNombres),
+          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.apellidosNombres).catch((e) => {
+            this.log.warn(`Análisis Evatics al subir no disponible: ${nombreError(e)}`);
+            return null;
+          }),
           ESPERA_MAX_ANALISIS_AL_SUBIR_MS,
         )
       : null;
@@ -353,6 +337,69 @@ export class EvaticsService {
       reemplazo: guardado.reemplazo,
       resultado: { ok: true, estado: 'PENDIENTE', aviso: avisoParaLaPersona(lectura) },
     };
+  }
+
+  /**
+   * Escribe la subida sobre la fila tal como se leyó (instantánea en el where).
+   * Devuelve null si otra subida la cambió entretanto (se reintenta).
+   *
+   * Foto anterior: si la actual ya la revisó alguien (RECHAZADO), pasa a ser la
+   * anterior y se borra la anterior vieja. Si seguía PENDIENTE, la anterior se
+   * conserva tal cual y se borra la actual (una intermedia que nadie revisó): así
+   * la primera foto pendiente sobrevive a cualquier cantidad de reemplazos hasta
+   * que alguien revise. Si no había anterior, la actual pasa a serlo.
+   */
+  private async guardarSubida(
+    tx: Pick<PrismaService, 'certificadoEvatics'>,
+    cedula: string,
+    hoy: string,
+    reinicio: Omit<Prisma.CertificadoEvaticsUncheckedCreateInput, 'cedula'>,
+  ): Promise<SubidaGuardada | null> {
+    const actual = await tx.certificadoEvatics.findUnique({
+      where: { cedula },
+      select: {
+        id: true,
+        estado: true,
+        fotoKey: true,
+        subidoEn: true,
+        fotoAnteriorKey: true,
+        reemplazos: true,
+        subidasDia: true,
+        subidasHoy: true,
+      },
+    });
+    if (!actual) {
+      const nuevo = await tx.certificadoEvatics.create({
+        data: { cedula, ...reinicio, subidasDia: hoy, subidasHoy: 1 },
+        select: { id: true },
+      });
+      return { id: nuevo.id, reemplazo: 0, borrar: null };
+    }
+    if (actual.estado === 'APROBADO') throw new ConflictException(YA_APROBADO);
+    if (actual.subidasDia === hoy && actual.subidasHoy >= MAX_SUBIDAS_POR_DIA) {
+      throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const rotar = actual.estado === 'RECHAZADO' || !actual.fotoAnteriorKey;
+    const reemplazo = actual.reemplazos + 1;
+    const r = await tx.certificadoEvatics.updateMany({
+      where: {
+        id: actual.id,
+        estado: actual.estado,
+        fotoKey: actual.fotoKey,
+        reemplazos: actual.reemplazos,
+        subidasDia: actual.subidasDia,
+        subidasHoy: actual.subidasHoy,
+      },
+      data: {
+        ...reinicio,
+        ...(rotar ? { fotoAnteriorKey: actual.fotoKey, fotoAnteriorSubidaEn: actual.subidoEn } : {}),
+        reemplazos: reemplazo,
+        subidasDia: hoy,
+        subidasHoy: actual.subidasDia === hoy ? actual.subidasHoy + 1 : 1,
+      },
+    });
+    if (r.count === 0) return null;
+    return { id: actual.id, reemplazo, borrar: rotar ? actual.fotoAnteriorKey : actual.fotoKey };
   }
 
   // ---------- Supervisores ----------
@@ -384,6 +431,7 @@ export class EvaticsService {
         subidoEn: c?.subidoEn.toISOString() ?? null,
         reemplazos: c?.reemplazos ?? 0,
         tieneFotoAnterior: !!c?.fotoAnteriorKey,
+        fotoAnteriorSubidaEn: c?.fotoAnteriorKey ? (c.fotoAnteriorSubidaEn?.toISOString() ?? null) : null,
         revisadoPor: c?.revisadoPor ? `${c.revisadoPor.nombres} ${c.revisadoPor.apellidos}` : null,
         revisadoEn: c?.revisadoEn?.toISOString() ?? null,
         motivoRechazo: c?.motivoRechazo ?? null,
@@ -418,15 +466,20 @@ export class EvaticsService {
     };
   }
 
-  /** La foto descifrada (la actual o la anterior, para comparar un reemplazo). */
-  async foto(id: string, anterior = false): Promise<Buffer> {
+  /**
+   * La foto descifrada (la actual o la anterior, para comparar un reemplazo).
+   * Con `version` (subidoEn de la foto que muestra la web), 409 si ya no es esa.
+   */
+  async foto(id: string, anterior = false, version?: Date): Promise<Buffer> {
     const c = await this.prisma.certificadoEvatics.findUnique({
       where: { id },
-      select: { fotoKey: true, fotoAnteriorKey: true },
+      select: { fotoKey: true, subidoEn: true, fotoAnteriorKey: true, fotoAnteriorSubidaEn: true },
     });
     if (!c) throw new NotFoundException('Certificado no encontrado');
     const clave = anterior ? c.fotoAnteriorKey : c.fotoKey;
     if (!clave) throw new NotFoundException('Este certificado no tiene foto anterior');
+    const subidaEn = anterior ? c.fotoAnteriorSubidaEn : c.subidoEn;
+    if (version && subidaEn?.getTime() !== version.getTime()) throw new ConflictException(FOTO_CAMBIO);
     return this.storage.readDecrypted(clave);
   }
 
@@ -455,6 +508,8 @@ export class EvaticsService {
         motivoRechazo: decision === 'RECHAZADO' ? (motivo?.trim() ?? null) : null,
         revisadoPorId: actor.sub,
         revisadoEn,
+        // Rechazado: puede corregir hoy mismo aunque alguien haya gastado sus subidas del día.
+        ...(decision === 'RECHAZADO' ? { subidasHoy: 0 } : {}),
       },
     });
     if (r.count === 0) throw new ConflictException(FOTO_CAMBIO);
@@ -560,8 +615,9 @@ export class EvaticsService {
       });
       return lectura;
     } catch (e) {
-      // Solo los pasajeros se reintentan; si todos los proveedores fallaron sin remedio (400, 401, formato), a ojo.
-      const pasajero = e instanceof LectorTransitorio;
+      // Sin remedio solo si los proveedores lo dicen (400, 401, formato) o no hay llaves; lo demás
+      // (cuota, red, base de datos…) se reintenta en cola.
+      const pasajero = !(e instanceof LectorRespuestaInvalida || e instanceof LectorNoConfigurado);
       this.log.warn(`Análisis Evatics ${pasajero ? 'en cola' : 'no disponible'}: ${nombreError(e)}`);
       await this.registrarFallo(id, fotoKey, pasajero);
       return null;
@@ -570,26 +626,28 @@ export class EvaticsService {
 
   /** Suma un intento: vuelve a la cola con espera creciente, o queda NO_DISPONIBLE. */
   private async registrarFallo(id: string, fotoKey: string, pasajero: boolean): Promise<void> {
+    // Atómico: dos fallos a la vez suman dos intentos. Si la foto cambió, no se toca.
+    const r = await this.prisma.certificadoEvatics.updateMany({
+      where: { id, fotoKey },
+      data: { analisisIntentos: { increment: 1 } },
+    });
+    if (r.count === 0) return;
     const actual = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { analisisIntentos: true } });
-    const intentos = (actual?.analisisIntentos ?? 0) + 1;
+    const intentos = actual?.analisisIntentos ?? MAX_INTENTOS_ANALISIS;
     if (!pasajero || intentos >= MAX_INTENTOS_ANALISIS) {
-      await this.marcarNoDisponible(id, fotoKey, intentos);
+      await this.marcarNoDisponible(id, fotoKey);
       return;
     }
     await this.prisma.certificadoEvatics.updateMany({
       where: { id, fotoKey },
-      data: {
-        analisisEstado: 'EN_COLA',
-        analisisIntentos: intentos,
-        analisisSiguiente: new Date(Date.now() + esperaReintento(intentos)),
-      },
+      data: { analisisEstado: 'EN_COLA', analisisSiguiente: new Date(Date.now() + esperaReintento(intentos)) },
     });
   }
 
-  private async marcarNoDisponible(id: string, fotoKey: string, intentos?: number): Promise<void> {
+  private async marcarNoDisponible(id: string, fotoKey: string): Promise<void> {
     await this.prisma.certificadoEvatics.updateMany({
       where: { id, fotoKey },
-      data: { analisisEstado: 'NO_DISPONIBLE', analisisSiguiente: null, ...(intentos ? { analisisIntentos: intentos } : {}) },
+      data: { analisisEstado: 'NO_DISPONIBLE', analisisSiguiente: null },
     });
   }
 

@@ -42,6 +42,7 @@ const certificado = (over: Record<string, unknown> = {}) => ({
   cedula: CED_ANA,
   fotoKey: 'clave-foto',
   fotoAnteriorKey: null,
+  fotoAnteriorSubidaEn: null,
   reemplazos: 0,
   subidoEn: new Date(SUBIDO_EN),
   estado: 'PENDIENTE',
@@ -60,9 +61,12 @@ const certificado = (over: Record<string, unknown> = {}) => ({
 });
 
 /** Lo que lee subir() de la fila ya guardada (dentro de la transacción). */
+const SUBIDA_VIEJA = new Date('2026-11-12T13:00:00Z');
 const filaActual = (over: Record<string, unknown> = {}) => ({
   id: 'cert-ana',
+  estado: 'PENDIENTE',
   fotoKey: 'clave-vieja',
+  subidoEn: SUBIDA_VIEJA,
   fotoAnteriorKey: 'clave-mas-vieja',
   reemplazos: 2,
   subidasDia: HOY,
@@ -225,30 +229,70 @@ describe('EvaticsService', () => {
       expect(prisma.certificadoEvatics.updateMany.mock.calls[0][0].data).toMatchObject({ subidasDia: HOY, subidasHoy: 1 });
     });
 
-    it('dos subidas a la vez que pasan el límite: la que llega tarde da 429 y borra su foto', async () => {
+    it('bloqueo optimista: escribe solo si la fila sigue como se leyó (instantánea en el where)', async () => {
+      anaEnElPersonal();
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 1 })
+        .mockResolvedValueOnce(filaActual());
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(prisma.certificadoEvatics.updateMany.mock.calls[0][0].where).toEqual({
+        id: 'cert-ana',
+        estado: 'PENDIENTE',
+        fotoKey: 'clave-vieja',
+        reemplazos: 2,
+        subidasDia: HOY,
+        subidasHoy: 1,
+      });
+    });
+
+    it('dos subidas a la vez cerca del límite: la que llega tarde relee, da 429 y no deja huérfanos', async () => {
       anaEnElPersonal();
       prisma.certificadoEvatics.findUnique
         .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: MAX_SUBIDAS_POR_DIA - 1 })
         .mockResolvedValueOnce(filaActual({ subidasHoy: MAX_SUBIDAS_POR_DIA - 1 }))
-        .mockResolvedValueOnce({ estado: 'PENDIENTE' });
+        // Releída: la otra subida ya gastó el último cupo.
+        .mockResolvedValueOnce(filaActual({ fotoKey: 'clave-de-la-otra', subidasHoy: MAX_SUBIDAS_POR_DIA, reemplazos: 3 }));
       prisma.certificadoEvatics.updateMany.mockResolvedValueOnce({ count: 0 });
       await expect(service.subir(CED_ANA, ARCHIVO, 'v')).rejects.toThrow(DEMASIADAS_SUBIDAS);
-      expect(storage.remove).toHaveBeenCalledWith('clave-nueva');
-      expect(prisma.certificadoEvatics.updateMany.mock.calls[0][0].where).toMatchObject({
-        estado: { not: 'APROBADO' },
-        OR: [{ subidasDia: { not: HOY } }, { subidasHoy: { lt: MAX_SUBIDAS_POR_DIA } }],
-      });
+      expect(prisma.certificadoEvatics.updateMany).toHaveBeenCalledTimes(1);
+      // Solo se borra la foto propia que no quedó guardada; la de la otra y las anteriores quedan.
+      expect(storage.remove.mock.calls).toEqual([['clave-nueva']]);
     });
 
-    it('aprobado justo mientras subía: 409 y borra la foto nueva', async () => {
+    it('carrera perdida y releída sin conflicto: se aplica sobre la fila nueva', async () => {
+      anaEnElPersonal();
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 1 })
+        .mockResolvedValueOnce(filaActual())
+        .mockResolvedValueOnce(filaActual({ fotoKey: 'clave-de-la-otra', reemplazos: 3, subidasHoy: 2 }));
+      prisma.certificadoEvatics.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+      const r = await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(r.reemplazo).toBe(4);
+      expect(prisma.certificadoEvatics.updateMany.mock.calls[1][0].where).toMatchObject({ fotoKey: 'clave-de-la-otra', subidasHoy: 2 });
+      // La intermedia de la otra subida (pendiente) se borra; la anterior original queda.
+      expect(storage.remove.mock.calls).toEqual([['clave-de-la-otra']]);
+    });
+
+    it('carrera perdida dos veces: 409 y borra la foto nueva', async () => {
+      anaEnElPersonal();
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 1 })
+        .mockResolvedValue(filaActual());
+      prisma.certificadoEvatics.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.subir(CED_ANA, ARCHIVO, 'v')).rejects.toThrow(ConflictException);
+      expect(prisma.certificadoEvatics.updateMany).toHaveBeenCalledTimes(2);
+      expect(storage.remove.mock.calls).toEqual([['clave-nueva']]);
+    });
+
+    it('aprobado justo mientras subía: relee, 409 y borra la foto nueva', async () => {
       anaEnElPersonal();
       prisma.certificadoEvatics.findUnique
         .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: null, subidasHoy: 0 })
         .mockResolvedValueOnce(filaActual())
-        .mockResolvedValueOnce({ estado: 'APROBADO' });
+        .mockResolvedValueOnce(filaActual({ estado: 'APROBADO' }));
       prisma.certificadoEvatics.updateMany.mockResolvedValueOnce({ count: 0 });
       await expect(service.subir(CED_ANA, ARCHIVO, 'v')).rejects.toThrow(ConflictException);
-      expect(storage.remove).toHaveBeenCalledWith('clave-nueva');
+      expect(storage.remove.mock.calls).toEqual([['clave-nueva']]);
     });
 
     it('dos primeras subidas a la vez (clave única): 409 y borra la foto nueva', async () => {
@@ -288,21 +332,21 @@ describe('EvaticsService', () => {
       expect(lector.leer).not.toHaveBeenCalled();
     });
 
-    it('reemplazo: conserva la foto anterior para comparar, borra solo la más vieja y cuenta el reemplazo', async () => {
+    it('reemplazo de una foto RECHAZADA: la revisada pasa a ser la anterior y se borra la anterior vieja', async () => {
       anaEnElPersonal();
       prisma.certificadoEvatics.findUnique
         .mockResolvedValueOnce({ estado: 'RECHAZADO', subidasDia: HOY, subidasHoy: 1 })
-        .mockResolvedValueOnce(filaActual());
+        .mockResolvedValueOnce(filaActual({ estado: 'RECHAZADO' }));
 
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
 
       expect(r.reemplazo).toBe(3);
       const { where, data } = prisma.certificadoEvatics.updateMany.mock.calls[0][0];
-      expect(where).toMatchObject({ id: 'cert-ana', estado: { not: 'APROBADO' } });
+      expect(where).toMatchObject({ id: 'cert-ana', estado: 'RECHAZADO', fotoKey: 'clave-vieja' });
       expect(data).toMatchObject({
         fotoKey: 'clave-nueva',
         fotoAnteriorKey: 'clave-vieja',
-        fotoAnteriorSubidaEn: AHORA,
+        fotoAnteriorSubidaEn: SUBIDA_VIEJA,
         reemplazos: 3,
         subidasHoy: 2,
         estado: 'PENDIENTE',
@@ -311,8 +355,41 @@ describe('EvaticsService', () => {
         nombreLeido: null,
         analisisProveedor: null,
       });
-      expect(storage.remove).toHaveBeenCalledTimes(1);
-      expect(storage.remove).toHaveBeenCalledWith('clave-mas-vieja');
+      expect(storage.remove.mock.calls).toEqual([['clave-mas-vieja']]);
+    });
+
+    it('reemplazo de una foto PENDIENTE con anterior: la anterior se conserva y se borra la intermedia', async () => {
+      anaEnElPersonal();
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 1 })
+        .mockResolvedValueOnce(filaActual());
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+      const { data } = prisma.certificadoEvatics.updateMany.mock.calls[0][0];
+      expect(data).not.toHaveProperty('fotoAnteriorKey');
+      expect(data).toMatchObject({ fotoKey: 'clave-nueva', reemplazos: 3 });
+      expect(storage.remove.mock.calls).toEqual([['clave-vieja']]);
+    });
+
+    it('dos reemplazos seguidos sin revisar conservan la foto original como anterior', async () => {
+      anaEnElPersonal();
+      // 1.º reemplazo: la original (pendiente, sin anterior) pasa a ser la anterior; no se borra nada.
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 1 })
+        .mockResolvedValueOnce(filaActual({ fotoKey: 'original', fotoAnteriorKey: null, reemplazos: 0 }));
+      storage.saveEncrypted.mockResolvedValueOnce('segunda');
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(prisma.certificadoEvatics.updateMany.mock.calls[0][0].data).toMatchObject({ fotoKey: 'segunda', fotoAnteriorKey: 'original' });
+      expect(storage.remove).not.toHaveBeenCalled();
+
+      // 2.º reemplazo: la anterior sigue siendo la original; se borra la segunda (intermedia).
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'PENDIENTE', subidasDia: HOY, subidasHoy: 2 })
+        .mockResolvedValueOnce(filaActual({ fotoKey: 'segunda', fotoAnteriorKey: 'original', reemplazos: 1, subidasHoy: 2 }));
+      storage.saveEncrypted.mockResolvedValueOnce('tercera');
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(prisma.certificadoEvatics.updateMany.mock.calls[1][0].data).not.toHaveProperty('fotoAnteriorKey');
+      expect(storage.remove.mock.calls).toEqual([['segunda']]);
+      expect(storage.remove).not.toHaveBeenCalledWith('original');
     });
 
     it('con lector: analiza en el momento, guarda quién leyó y compara el nombre en el código', async () => {
@@ -371,15 +448,37 @@ describe('EvaticsService', () => {
       lector.disponible.mockReturnValue(true);
       lector.leer.mockRejectedValueOnce(new LectorTransitorio('Ningún proveedor pudo leer'));
       primeraSubida();
-      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ analisisIntentos: 0 });
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ analisisIntentos: 1 });
 
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
 
       expect(r.resultado).toEqual({ ok: true, estado: 'PENDIENTE', aviso: null });
-      expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toEqual({
+      const llamadas = prisma.certificadoEvatics.updateMany.mock.calls.map((c) => c[0].data);
+      expect(llamadas).toContainEqual({ analisisIntentos: { increment: 1 } });
+      expect(llamadas.at(-1)).toEqual({
         analisisEstado: 'EN_COLA',
-        analisisIntentos: 1,
         analisisSiguiente: new Date(AHORA.getTime() + esperaReintento(1)),
+      });
+    });
+
+    it('un error que no es del lector (p. ej. la base de datos) es pasajero: a la cola', async () => {
+      anaEnElPersonal();
+      lector.disponible.mockReturnValue(true);
+      lector.leer.mockRejectedValueOnce(new Error('connection reset'));
+      primeraSubida();
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ analisisIntentos: 1 });
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toMatchObject({ analisisEstado: 'EN_COLA' });
+    });
+
+    it('si hasta el registro del fallo revienta, la subida igual responde éxito (la foto ya quedó)', async () => {
+      anaEnElPersonal();
+      lector.disponible.mockReturnValue(true);
+      lector.leer.mockRejectedValueOnce(new LectorTransitorio('503'));
+      primeraSubida();
+      prisma.certificadoEvatics.updateMany.mockRejectedValueOnce(new Error('base caída'));
+      await expect(service.subir(CED_ANA, ARCHIVO, 'v')).resolves.toMatchObject({
+        resultado: { ok: true, estado: 'PENDIENTE', aviso: null },
       });
     });
 
@@ -388,11 +487,11 @@ describe('EvaticsService', () => {
       lector.disponible.mockReturnValue(true);
       lector.leer.mockRejectedValueOnce(new LectorRespuestaInvalida('Ningún proveedor pudo leer'));
       primeraSubida();
-      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ analisisIntentos: 0 });
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ analisisIntentos: 1 });
       await service.subir(CED_ANA, ARCHIVO, 'v');
-      expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toMatchObject({
+      expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toEqual({
         analisisEstado: 'NO_DISPONIBLE',
-        analisisIntentos: 1,
+        analisisSiguiente: null,
       });
     });
   });
@@ -446,14 +545,15 @@ describe('EvaticsService', () => {
       anaEnElPersonal();
       prisma.certificadoEvatics.findMany.mockResolvedValueOnce(enCola(2));
       storage.readDecrypted.mockRejectedValueOnce(new Error('Storage caído')).mockResolvedValueOnce(Buffer.from('img'));
-      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: 0 });
+      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: 1 });
       lector.leer.mockResolvedValueOnce({ lectura: LECTURA, proveedor: 'Gemini' });
 
       await expect(service.analizarPendientes(AHORA)).resolves.toBe(1);
       const datos = prisma.certificadoEvatics.updateMany.mock.calls.map((c) => c[0]);
+      expect(datos).toContainEqual({ where: { id: 'c1', fotoKey: 'k1' }, data: { analisisIntentos: { increment: 1 } } });
       expect(datos).toContainEqual({
         where: { id: 'c1', fotoKey: 'k1' },
-        data: { analisisEstado: 'EN_COLA', analisisIntentos: 1, analisisSiguiente: new Date(AHORA.getTime() + esperaReintento(1)) },
+        data: { analisisEstado: 'EN_COLA', analisisSiguiente: new Date(AHORA.getTime() + esperaReintento(1)) },
       });
       expect(lector.leer).toHaveBeenCalledTimes(1);
     });
@@ -475,13 +575,13 @@ describe('EvaticsService', () => {
       anaEnElPersonal();
       storage.readDecrypted.mockResolvedValue(Buffer.from('img'));
       prisma.certificadoEvatics.findMany.mockResolvedValueOnce(enCola(1));
-      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: MAX_INTENTOS_ANALISIS - 1 });
+      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: MAX_INTENTOS_ANALISIS });
       lector.leer.mockRejectedValueOnce(new LectorTransitorio('503'));
       await service.analizarPendientes(AHORA);
       expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toMatchObject({ analisisEstado: 'NO_DISPONIBLE' });
 
       prisma.certificadoEvatics.findMany.mockResolvedValueOnce(enCola(1));
-      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: 0 });
+      prisma.certificadoEvatics.findUnique.mockResolvedValue({ analisisIntentos: 1 });
       lector.leer.mockRejectedValueOnce(new LectorNoConfigurado('sin llaves'));
       await service.analizarPendientes(AHORA);
       expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data).toMatchObject({ analisisEstado: 'NO_DISPONIBLE' });
@@ -524,6 +624,7 @@ describe('EvaticsService', () => {
       const { where, data } = prisma.certificadoEvatics.updateMany.mock.calls[0][0];
       expect(where).toEqual({ id: 'cert-ana', subidoEn: new Date(SUBIDO_EN) });
       expect(data).toMatchObject({ estado: 'APROBADO', motivoRechazo: null, revisadoPorId: SUP });
+      expect(data).not.toHaveProperty('subidasHoy');
     });
 
     it('si la persona subió otra foto mientras la revisaba: 409 "La foto cambió"', async () => {
@@ -568,6 +669,8 @@ describe('EvaticsService', () => {
       expect(prisma.certificadoEvatics.updateMany.mock.calls[0][0].data).toMatchObject({
         estado: 'RECHAZADO',
         motivoRechazo: 'Foto borrosa',
+        // Puede corregir hoy mismo aunque un tercero haya gastado sus subidas.
+        subidasHoy: 0,
       });
     });
 
@@ -583,13 +686,30 @@ describe('EvaticsService', () => {
       await expect(service.revisar('x', 'APROBADO', undefined, SUBIDO_EN, SUPERVISOR)).rejects.toThrow(NotFoundException);
     });
 
+    const fotos = (over: Record<string, unknown> = {}) => ({
+      fotoKey: 'k-actual',
+      subidoEn: new Date(SUBIDO_EN),
+      fotoAnteriorKey: 'k-anterior',
+      fotoAnteriorSubidaEn: SUBIDA_VIEJA,
+      ...over,
+    });
+
     it('foto anterior: se descifra la anterior; sin anterior, 404', async () => {
-      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ fotoKey: 'k-actual', fotoAnteriorKey: 'k-anterior' });
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce(fotos());
       storage.readDecrypted.mockResolvedValueOnce(Buffer.from('anterior'));
       await expect(service.foto('cert-ana', true)).resolves.toEqual(Buffer.from('anterior'));
       expect(storage.readDecrypted).toHaveBeenCalledWith('k-anterior');
-      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ fotoKey: 'k-actual', fotoAnteriorKey: null });
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce(fotos({ fotoAnteriorKey: null }));
       await expect(service.foto('cert-ana', true)).rejects.toThrow(NotFoundException);
+    });
+
+    it('?v: si la foto que muestra la web ya no es la actual (o la anterior), 409', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValue(fotos());
+      storage.readDecrypted.mockResolvedValue(Buffer.from('img'));
+      await expect(service.foto('cert-ana', false, new Date(SUBIDO_EN))).resolves.toEqual(Buffer.from('img'));
+      await expect(service.foto('cert-ana', true, SUBIDA_VIEJA)).resolves.toEqual(Buffer.from('img'));
+      await expect(service.foto('cert-ana', false, SUBIDA_VIEJA)).rejects.toThrow(new ConflictException(FOTO_CAMBIO));
+      await expect(service.foto('cert-ana', true, new Date(SUBIDO_EN))).rejects.toThrow(ConflictException);
     });
   });
 
@@ -616,6 +736,7 @@ describe('EvaticsService', () => {
           estado: 'APROBADO',
           reemplazos: 2,
           fotoAnteriorKey: 'k-anterior',
+          fotoAnteriorSubidaEn: SUBIDA_VIEJA,
           revisadoPor: { nombres: 'Jazmín', apellidos: 'Ayala' },
           revisadoEn: new Date('2026-11-12T14:30:00Z'),
         }),
@@ -638,6 +759,7 @@ describe('EvaticsService', () => {
         estado: 'APROBADO',
         reemplazos: 2,
         tieneFotoAnterior: true,
+        fotoAnteriorSubidaEn: SUBIDA_VIEJA.toISOString(),
         subidoEn: SUBIDO_EN,
         revisadoPor: 'Jazmín Ayala',
         centro: 'CDA',

@@ -2283,9 +2283,14 @@ export interface FilaEvatics {
   tecnico: string;
   estado: EstadoCertificadoEvatics;
   subidoEn: string | null;
-  /** Veces que se reemplazó la foto; con foto anterior se puede comparar (ver ?anterior=true). */
+  /**
+   * Veces que se reemplazó la foto; con foto anterior se puede comparar. La foto se pide con
+   * GET .../evatics/:certificadoId/foto?v=<subidoEn>[&anterior=true]: 409 si cambió (volver a cargar el listado).
+   */
   reemplazos: number;
   tieneFotoAnterior: boolean;
+  /** subidoEn de la foto anterior (para ?v= con anterior=true), o null. */
+  fotoAnteriorSubidaEn: string | null;
   revisadoPor: string | null;
   revisadoEn: string | null;
   motivoRechazo: string | null;
