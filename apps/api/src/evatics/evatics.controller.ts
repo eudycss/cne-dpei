@@ -88,10 +88,11 @@ export class EvaticsController {
   @ApiOperation({
     summary: 'Foto del certificado (descifrada; no se guarda en caché)',
   })
-  async foto(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const buf = await this.evatics.foto(id);
+  async foto(@Param('id', ParseUUIDPipe) id: string, @Query('anterior') anterior: unknown, @Res() res: Response) {
+    const buf = await this.evatics.foto(id, anterior === 'true');
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.send(buf);
   }
 
@@ -107,7 +108,7 @@ export class EvaticsController {
     @Body(new ZodValidationPipe(revisarEvaticsSchema))
     body: RevisarEvaticsRequest,
   ) {
-    return this.evatics.revisar(id, body.decision, body.motivo, user);
+    return this.evatics.revisar(id, body.decision, body.motivo, body.subidoEn, user);
   }
 }
 
@@ -152,9 +153,11 @@ export class EvaticsPublicoController {
     @Body(new ZodValidationPipe(subirEvaticsSchema))
     body: { cedula: string; version: string },
   ) {
-    const { certificadoId, resultado } = await this.evatics.subir(body.cedula, file, body.version);
+    const { certificadoId, reemplazo, resultado } = await this.evatics.subir(body.cedula, file, body.version);
     // Para la bitácora (audit.interceptor), sin devolver el id a la página pública.
-    (req as Request & { certificadoEvaticsId?: string }).certificadoEvaticsId = certificadoId;
+    const r = req as Request & { certificadoEvaticsId?: string; reemplazoEvatics?: number };
+    r.certificadoEvaticsId = certificadoId;
+    r.reemplazoEvatics = reemplazo;
     return resultado;
   }
 }

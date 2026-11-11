@@ -423,10 +423,21 @@ const AUDIT_TABLE: Array<{
       const id = (req as Request & { certificadoEvaticsId?: unknown }).certificadoEvaticsId;
       return typeof id === 'string' ? id : undefined;
     },
+    // Reemplazo: si pisó una foto anterior y cuál (1, 2…), para detectar a quien sube con la cédula de otro.
     resumen: (_res, req) => {
       const v = (req.body as { version?: unknown } | undefined)?.version;
-      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 40) : null };
+      const n = (req as Request & { reemplazoEvatics?: unknown }).reemplazoEvatics;
+      const reemplazo = typeof n === 'number' && n > 0 ? n : 0;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 40) : null, reemplazo: reemplazo > 0, numeroReemplazo: reemplazo };
     },
+  },
+  // Quién vio la foto de un certificado (sin datos de la imagen).
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/evatics\/[^/]+\/foto$/,
+    accion: 'EVATICS_FOTO_VER',
+    entidad: 'certificado_evatics',
+    resumen: (_res, req) => ({ anterior: req.query?.anterior === 'true' }),
   },
   {
     method: 'POST',

@@ -1199,6 +1199,14 @@ model CertificadoEvatics {
   motivoRechazo         String?   @map("motivo_rechazo") @db.VarChar(300)
   revisadoPorId         String?   @map("revisado_por_id") @db.Uuid
   revisadoEn            DateTime? @map("revisado_en") @db.Timestamptz(6)
+  /// La foto que reemplazó la última subida (solo una): el supervisor ve que hubo un cambio y compara.
+  fotoAnteriorKey       String?   @map("foto_anterior_key") @db.VarChar(255)
+  fotoAnteriorSubidaEn  DateTime? @map("foto_anterior_subida_en") @db.Timestamptz(6)
+  /// Cuántas veces se reemplazó la foto (bitácora y listado).
+  reemplazos            Int       @default(0)
+  /// Límite por cédula: subidas del día subidasDia (AAAA-MM-DD, Ecuador).
+  subidasDia            String?   @map("subidas_dia") @db.VarChar(10)
+  subidasHoy            Int       @default(0) @map("subidas_hoy")
   /// EN_COLA, LISTO o NO_DISPONIBLE (lectura del nombre con Gemini).
   analisisEstado        String    @default("EN_COLA") @map("analisis_estado") @db.VarChar(14)
   analisisIntentos      Int       @default(0) @map("analisis_intentos")

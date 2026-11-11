@@ -51,30 +51,41 @@ function distancia(a: string, b: string): number {
   return fila[b.length];
 }
 
-/** Igual, o con una letra de diferencia en palabras largas (error de lectura). */
-function mismaPalabra(a: string, b: string): boolean {
-  return a === b || (a.length >= 5 && b.length >= 5 && distancia(a, b) <= 1);
+/** Una letra de diferencia (error de lectura), solo en palabras de 7 letras o más. */
+function casiIgual(a: string, b: string): boolean {
+  return a.length >= 7 && b.length >= 7 && distancia(a, b) <= 1;
 }
 
 /**
  * ¿El nombre del certificado es el de esta persona? Sin importar tildes,
- * mayúsculas ni el orden (nombres antes o después de los apellidos). Deben
- * coincidir al menos 2 palabras y las 3/4 partes de lo leído: un certificado
- * puede traer solo un nombre y un apellido.
+ * mayúsculas ni el orden (nombres antes o después de los apellidos). Exige al
+ * menos un apellido exacto (de las 2 primeras palabras, o la primera si solo
+ * hay 2) y al menos un nombre, y que coincidan las 3/4 partes de lo leído: un
+ * certificado puede traer solo un nombre y un apellido. La letra de diferencia
+ * se tolera en palabras largas, nunca en el primer nombre ni para el apellido
+ * exigido. Así "Juan Pérez" no pasa por otro Pérez ni "Mario" por "María".
  */
 export function nombreCoincide(leido: string | null | undefined, esperado: string): boolean {
   const deLeido = palabrasNombre(leido);
-  const libres = palabrasNombre(esperado);
-  if (deLeido.length < 2 || libres.length === 0) return false;
+  const todas = palabrasNombre(esperado);
+  if (deLeido.length < 2 || todas.length < 2) return false;
+  const apellidos = todas.length >= 3 ? 2 : 1;
+  const esperadas = todas.map((p, i) => ({ p, apellido: i < apellidos, primerNombre: i === apellidos, usada: false }));
+
   let iguales = 0;
+  let apellidoExacto = false;
+  let nombres = 0;
   for (const p of deLeido) {
-    const i = libres.findIndex((e) => mismaPalabra(p, e));
-    if (i >= 0) {
-      iguales++;
-      libres.splice(i, 1);
-    }
+    const e =
+      esperadas.find((x) => !x.usada && x.p === p) ??
+      esperadas.find((x) => !x.usada && !x.primerNombre && casiIgual(p, x.p));
+    if (!e) continue;
+    e.usada = true;
+    iguales++;
+    if (e.apellido && e.p === p) apellidoExacto = true;
+    if (!e.apellido) nombres++;
   }
-  return iguales >= 2 && iguales >= Math.ceil(deLeido.length * 0.75);
+  return apellidoExacto && nombres >= 1 && iguales >= Math.ceil(deLeido.length * 0.75);
 }
 
 const titulo = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();

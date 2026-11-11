@@ -1402,6 +1402,8 @@ export const revisarEvaticsSchema = z
   .object({
     decision: z.enum(['APROBADO', 'RECHAZADO'], { errorMap: () => ({ message: 'Decisión inválida' }) }),
     motivo: z.string().trim().max(300, 'El motivo no puede pasar de 300 caracteres').optional(),
+    /** La foto que vio quien revisa (subidoEn del listado). */
+    subidoEn: z.string().datetime({ message: 'Falta la fecha de la foto revisada' }),
   })
   .strict()
   .refine((d) => d.decision !== 'RECHAZADO' || (d.motivo?.length ?? 0) >= 5, {

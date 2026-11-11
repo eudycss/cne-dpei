@@ -83,10 +83,18 @@ describe('LectorCertificadoService: respaldo automático entre proveedores', () 
     });
   });
 
-  it('fallan los dos: error pasajero (el certificado queda en cola)', async () => {
+  it('fallan los dos y alguno por algo pasajero: error pasajero (el certificado queda en cola)', async () => {
     gemini.leer.mockRejectedValueOnce(new LectorTransitorio('Gemini respondió 503', 503));
     groq.leer.mockRejectedValueOnce(new LectorRespuestaInvalida('Groq respondió 400', 400));
     await expect(servicio.leer(IMAGEN, 'image/jpeg')).rejects.toBeInstanceOf(LectorTransitorio);
+  });
+
+  it('fallan los dos sin remedio (llave inválida, formato): error permanente, no se reintenta', async () => {
+    gemini.leer.mockRejectedValueOnce(new LectorRespuestaInvalida('Gemini respondió 401', 401));
+    groq.leer.mockRejectedValueOnce(new LectorRespuestaInvalida('La respuesta de Groq no es JSON'));
+    const e = await servicio.leer(IMAGEN, 'image/jpeg').catch((x) => x);
+    expect(e).toBeInstanceOf(LectorRespuestaInvalida);
+    expect(e).not.toBeInstanceOf(LectorTransitorio);
   });
 
   it('solo hay llave de uno: se usa ese; sin ninguna, no disponible', async () => {

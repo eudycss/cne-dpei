@@ -2283,6 +2283,9 @@ export interface FilaEvatics {
   tecnico: string;
   estado: EstadoCertificadoEvatics;
   subidoEn: string | null;
+  /** Veces que se reemplazó la foto; con foto anterior se puede comparar (ver ?anterior=true). */
+  reemplazos: number;
+  tieneFotoAnterior: boolean;
   revisadoPor: string | null;
   revisadoEn: string | null;
   motivoRechazo: string | null;
@@ -2327,4 +2330,6 @@ export interface ConfigEvatics {
 export interface RevisarEvaticsRequest {
   decision: DecisionEvatics;
   motivo?: string;
+  /** subidoEn (ISO) de la foto que vio quien revisa: si cambió, 409. */
+  subidoEn: string;
 }

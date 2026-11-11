@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -44,11 +46,23 @@ export const MAX_CERTIFICADO_BYTES = 2 * 1024 * 1024;
 const CATEGORIA = 'certificados-evatics';
 export const CEDULA_NO_REGISTRADA = 'Cédula no registrada en el personal CDA, CPE ni Asistentes Transversales';
 const YA_APROBADO = 'Su certificado ya fue aprobado: no hace falta subirlo de nuevo';
+/**
+ * Subidas por cédula y día (Ecuador). Con la cédula de otro se podría pisar su
+ * foto: el límite y la foto anterior guardada lo frenan y lo dejan a la vista.
+ */
+export const MAX_SUBIDAS_POR_DIA = 5;
+export const DEMASIADAS_SUBIDAS = `Ya se subieron ${MAX_SUBIDAS_POR_DIA} fotos con esta cédula hoy. Intente mañana o pida ayuda a la Delegación.`;
+export const FOTO_CAMBIO = 'La foto cambió: revísela de nuevo';
 /** Errores pasajeros (cuota gratuita, red): se reintenta con espera creciente hasta este número. */
 export const MAX_INTENTOS_ANALISIS = 5;
-/** Por vuelta del cron: la versión gratuita admite pocas peticiones por minuto. */
+/** Por vuelta del cron. */
 const ANALISIS_POR_VUELTA = 4;
-/** Mientras se analiza al subir, el cron no lo toma. */
+/**
+ * Tope de lecturas por minuto entre subidas y cron (en memoria): la llave
+ * gratuita la comparte el asistente del bot. Lo que pase el tope espera en cola.
+ */
+export const MAX_ANALISIS_POR_MINUTO = 10;
+/** Mientras se analiza (al subir o en el cron), nadie más lo toma. */
 const RESERVA_ANALISIS_MS = 3 * 60_000;
 /**
  * Lo más que espera la persona al subir (con dos proveedores, cada uno con su
@@ -78,12 +92,13 @@ export interface PersonaEvatics {
 type CertificadoGuardado = {
   id: string;
   cedula: string;
-  fotoKey: string;
   subidoEn: Date;
   estado: string;
   motivoRechazo: string | null;
   revisadoEn: Date | null;
   revisadoPor?: { nombres: string; apellidos: string } | null;
+  reemplazos: number;
+  fotoAnteriorKey: string | null;
   analisisEstado: string;
   nombreLeido: string | null;
   nombreCoincide: boolean | null;
@@ -93,9 +108,9 @@ type CertificadoGuardado = {
   analisisProveedor: string | null;
 };
 
-/** El técnico supervisor (salvo que también sea admin) no aprueba su propio certificado. */
+/** Cualquiera que no sea administrador (supervisor o Asistente Transversal con el permiso) no revisa su propio certificado. */
 function aplicaReglaPropia(actor: ActorEvatics): boolean {
-  return actor.roles.includes('TECNICO_SUPERVISOR') && !actor.roles.includes('ADMINISTRADOR');
+  return !actor.roles.includes('ADMINISTRADOR');
 }
 
 /** Espera antes del reintento n (1, 2, 3…): 2, 4, 8, 16 min. */
@@ -116,13 +131,16 @@ async function conTope<T>(promesa: Promise<T | null>, ms: number): Promise<T | n
   }
 }
 
-const vacio = (): ConteoEvatics => ({
-  total: 0,
-  sinSubir: 0,
-  pendientes: 0,
-  aprobados: 0,
-  rechazados: 0,
-});
+/** Error de clave única de Prisma (dos primeras subidas a la vez con la misma cédula). */
+const esClaveDuplicada = (e: unknown) => (e as { code?: unknown } | null)?.code === 'P2002';
+
+/** Para los logs: solo el tipo o el código del error, nunca su mensaje (el de Prisma puede traer datos). */
+const nombreError = (e: unknown) => {
+  const x = e as { code?: unknown; name?: unknown } | null;
+  return String(x?.code ?? x?.name ?? 'Error');
+};
+
+const vacio = (): ConteoEvatics => ({ total: 0, sinSubir: 0, pendientes: 0, aprobados: 0, rechazados: 0 });
 
 function sumar(c: ConteoEvatics, estado: EstadoCertificadoEvatics): void {
   c.total++;
@@ -179,14 +197,17 @@ export function avisoParaLaPersona(lectura: LecturaCertificado | null): string |
 
 /**
  * Certificados Evatics: la persona sube la foto desde la página pública
- * validando su cédula; un modelo de visión (Gemini o Groq) lee el nombre (solo sugiere) y el técnico
- * supervisor aprueba o rechaza. El listado se agrupa por cantón (del último
- * recinto asignado en Parejas) y por Asistente Transversal (distributivo).
+ * validando su cédula; un modelo de visión (Gemini o Groq) lee el nombre (solo
+ * sugiere) y el supervisor aprueba o rechaza. El listado se agrupa por cantón
+ * (del último recinto asignado en Parejas) y por Asistente Transversal
+ * (distributivo del Drive).
  */
 @Injectable()
 export class EvaticsService {
   private readonly log = new Logger(EvaticsService.name);
   private analizando = false;
+  /** Momentos de las últimas lecturas (ventana de un minuto) para MAX_ANALISIS_POR_MINUTO. */
+  private readonly lecturasRecientes: number[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -201,10 +222,7 @@ export class EvaticsService {
     const persona = await this.personaPorCedula(cedula);
     if (!persona) throw new NotFoundException(CEDULA_NO_REGISTRADA);
     const [certificado, plazo] = await Promise.all([
-      this.prisma.certificadoEvatics.findUnique({
-        where: { cedula },
-        select: { estado: true, motivoRechazo: true },
-      }),
+      this.prisma.certificadoEvatics.findUnique({ where: { cedula }, select: { estado: true, motivoRechazo: true } }),
       this.plazo(),
     ]);
     const estado = (certificado?.estado ?? 'SIN_SUBIR') as EstadoCertificadoEvatics;
@@ -212,6 +230,7 @@ export class EvaticsService {
       nombreCorto: persona.nombreCorto,
       cargo: persona.cargo,
       estado,
+      // Solo el motivo de un rechazo vigente: lo necesita para subir otra foto.
       motivoRechazo: estado === 'RECHAZADO' ? (certificado?.motivoRechazo ?? null) : null,
       fechaLimite: plazo.fechaLimite,
       plazoVencido: plazo.vencido,
@@ -221,14 +240,16 @@ export class EvaticsService {
 
   /**
    * Guarda la foto (sin metadatos y cifrada) y la deja PENDIENTE. Reemplaza la
-   * anterior mientras no esté aprobada. Con el lector configurado, la analiza en
-   * el momento para avisar si no se lee; si falla, queda en cola.
+   * anterior mientras no esté aprobada, pero la conserva como "foto anterior"
+   * para que el supervisor vea el cambio (se borra la más vieja). Hasta
+   * MAX_SUBIDAS_POR_DIA por cédula y día. Con un lector configurado, la
+   * analiza en el momento para avisar si no se lee; si no, queda en cola.
    */
   async subir(
     cedula: string,
     file: Express.Multer.File | undefined,
     version: string,
-  ): Promise<{ certificadoId: string; resultado: SubidaEvaticsResult }> {
+  ): Promise<{ certificadoId: string; reemplazo: number; resultado: SubidaEvaticsResult }> {
     const persona = await this.personaPorCedula(cedula);
     if (!persona) throw new NotFoundException(CEDULA_NO_REGISTRADA);
     const plazo = await this.plazo();
@@ -237,11 +258,15 @@ export class EvaticsService {
         `El plazo para subir el certificado terminó el ${plazo.fechaLimite!.split('-').reverse().join('/')}`,
       );
     }
+    const hoy = diaEcuador();
     const previo = await this.prisma.certificadoEvatics.findUnique({
       where: { cedula },
-      select: { estado: true },
+      select: { estado: true, subidasDia: true, subidasHoy: true },
     });
     if (previo?.estado === 'APROBADO') throw new ConflictException(YA_APROBADO);
+    if (previo && previo.subidasDia === hoy && previo.subidasHoy >= MAX_SUBIDAS_POR_DIA) {
+      throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
+    }
 
     const jpeg = file?.buffer && file.size <= MAX_CERTIFICADO_BYTES ? limpiarJpeg(file.buffer) : null;
     if (!jpeg) throw new BadRequestException('La foto debe ser una imagen JPG válida de hasta 2 MB. Intente de nuevo.');
@@ -271,33 +296,51 @@ export class EvaticsService {
       analizadoEn: null,
       analisisProveedor: null,
     };
-    let guardado: { id: string; anterior: string | null };
+    let guardado: { id: string; reemplazo: number; borrar: string | null };
     try {
       guardado = await this.prisma.$transaction(async (tx) => {
         const actual = await tx.certificadoEvatics.findUnique({
           where: { cedula },
-          select: { id: true, fotoKey: true },
+          select: { id: true, fotoKey: true, fotoAnteriorKey: true, reemplazos: true, subidasDia: true, subidasHoy: true },
         });
         if (!actual) {
           const nuevo = await tx.certificadoEvatics.create({
-            data: { cedula, ...reinicio },
+            data: { cedula, ...reinicio, subidasDia: hoy, subidasHoy: 1 },
             select: { id: true },
           });
-          return { id: nuevo.id, anterior: null };
+          return { id: nuevo.id, reemplazo: 0, borrar: null };
         }
-        // Condicionado: si un supervisor lo aprobó entretanto, no se reemplaza.
+        const reemplazo = actual.reemplazos + 1;
+        // Condicionado: ni si un supervisor lo aprobó entretanto, ni pasado el límite del día (dos envíos a la vez).
         const r = await tx.certificadoEvatics.updateMany({
-          where: { id: actual.id, estado: { not: 'APROBADO' } },
-          data: reinicio,
+          where: {
+            id: actual.id,
+            estado: { not: 'APROBADO' },
+            OR: [{ subidasDia: { not: hoy } }, { subidasHoy: { lt: MAX_SUBIDAS_POR_DIA } }],
+          },
+          data: {
+            ...reinicio,
+            fotoAnteriorKey: actual.fotoKey,
+            fotoAnteriorSubidaEn: ahora,
+            reemplazos: reemplazo,
+            subidasDia: hoy,
+            subidasHoy: actual.subidasDia === hoy ? actual.subidasHoy + 1 : 1,
+          },
         });
-        if (r.count === 0) throw new ConflictException(YA_APROBADO);
-        return { id: actual.id, anterior: actual.fotoKey };
+        if (r.count === 0) {
+          const ahoraEs = await tx.certificadoEvatics.findUnique({ where: { id: actual.id }, select: { estado: true } });
+          if (ahoraEs?.estado === 'APROBADO') throw new ConflictException(YA_APROBADO);
+          throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
+        }
+        // Se conserva una sola foto anterior: la más vieja se borra.
+        return { id: actual.id, reemplazo, borrar: actual.fotoAnteriorKey };
       });
     } catch (e) {
       await this.borrarArchivo(fotoKey);
+      if (esClaveDuplicada(e)) throw new ConflictException('Se está subiendo otra foto con esta cédula: intente de nuevo');
       throw e;
     }
-    if (guardado.anterior) await this.borrarArchivo(guardado.anterior);
+    if (guardado.borrar) await this.borrarArchivo(guardado.borrar);
 
     const lectura = this.lector.disponible()
       ? await conTope(
@@ -307,11 +350,8 @@ export class EvaticsService {
       : null;
     return {
       certificadoId: guardado.id,
-      resultado: {
-        ok: true,
-        estado: 'PENDIENTE',
-        aviso: avisoParaLaPersona(lectura),
-      },
+      reemplazo: guardado.reemplazo,
+      resultado: { ok: true, estado: 'PENDIENTE', aviso: avisoParaLaPersona(lectura) },
     };
   }
 
@@ -320,11 +360,7 @@ export class EvaticsService {
   async listado(filtros: FiltrosEvaticsInput, actor: ActorEvatics): Promise<ListadoEvatics> {
     const [personas, certificados, plazo, propia, tecnicos] = await Promise.all([
       this.personas(),
-      this.prisma.certificadoEvatics.findMany({
-        include: {
-          revisadoPor: { select: { nombres: true, apellidos: true } },
-        },
-      }),
+      this.prisma.certificadoEvatics.findMany({ include: { revisadoPor: { select: { nombres: true, apellidos: true } } } }),
       this.plazo(),
       this.cedulasPropias(actor),
       this.tecnicosPorRecinto(),
@@ -346,6 +382,8 @@ export class EvaticsService {
         tecnico: tecnico || SIN_TECNICO_EVATICS,
         estado: (c?.estado ?? 'SIN_SUBIR') as EstadoCertificadoEvatics,
         subidoEn: c?.subidoEn.toISOString() ?? null,
+        reemplazos: c?.reemplazos ?? 0,
+        tieneFotoAnterior: !!c?.fotoAnteriorKey,
         revisadoPor: c?.revisadoPor ? `${c.revisadoPor.nombres} ${c.revisadoPor.apellidos}` : null,
         revisadoEn: c?.revisadoEn?.toISOString() ?? null,
         motivoRechazo: c?.motivoRechazo ?? null,
@@ -380,34 +418,38 @@ export class EvaticsService {
     };
   }
 
-  /** La foto descifrada (no se guarda en caché). */
-  async foto(id: string): Promise<Buffer> {
+  /** La foto descifrada (la actual o la anterior, para comparar un reemplazo). */
+  async foto(id: string, anterior = false): Promise<Buffer> {
     const c = await this.prisma.certificadoEvatics.findUnique({
       where: { id },
-      select: { fotoKey: true },
+      select: { fotoKey: true, fotoAnteriorKey: true },
     });
     if (!c) throw new NotFoundException('Certificado no encontrado');
-    return this.storage.readDecrypted(c.fotoKey);
+    const clave = anterior ? c.fotoAnteriorKey : c.fotoKey;
+    if (!clave) throw new NotFoundException('Este certificado no tiene foto anterior');
+    return this.storage.readDecrypted(clave);
   }
 
-  /** Aprueba o rechaza (con motivo). Se puede cambiar la decisión; nunca sobre el propio certificado. */
+  /**
+   * Aprueba o rechaza (con motivo). Se puede cambiar la decisión; nunca sobre
+   * el propio certificado. `subidoEn` es la foto que vio quien revisa: si la
+   * persona subió otra entretanto, no se decide sobre una foto que no vio.
+   */
   async revisar(
     id: string,
     decision: DecisionEvatics,
     motivo: string | undefined,
+    subidoEn: string,
     actor: ActorEvatics,
   ): Promise<{ id: string; estado: DecisionEvatics; revisadoEn: string }> {
-    const c = await this.prisma.certificadoEvatics.findUnique({
-      where: { id },
-      select: { cedula: true },
-    });
+    const c = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { cedula: true } });
     if (!c) throw new NotFoundException('Certificado no encontrado');
     if ((await this.cedulasPropias(actor)).has(c.cedula)) {
       throw new ForbiddenException('No puede revisar su propio certificado: lo revisa otro supervisor');
     }
     const revisadoEn = new Date();
-    await this.prisma.certificadoEvatics.update({
-      where: { id },
+    const r = await this.prisma.certificadoEvatics.updateMany({
+      where: { id, subidoEn: new Date(subidoEn) },
       data: {
         estado: decision,
         motivoRechazo: decision === 'RECHAZADO' ? (motivo?.trim() ?? null) : null,
@@ -415,6 +457,7 @@ export class EvaticsService {
         revisadoEn,
       },
     });
+    if (r.count === 0) throw new ConflictException(FOTO_CAMBIO);
     return { id, estado: decision, revisadoEn: revisadoEn.toISOString() };
   }
 
@@ -436,43 +479,51 @@ export class EvaticsService {
 
   /**
    * Reintenta los análisis en cola (subidos sin llave, o que fallaron por la
-   * cuota gratuita o la red). Pocos por vuelta; ante un error pasajero se
-   * detiene para no gastar la cuota.
+   * cuota o la red). Cada uno se reclama antes de leerlo (otra instancia o la
+   * subida no lo toman a la vez) y un fallo en uno no frena a los demás; ante
+   * un fallo general de los proveedores se detiene para no gastar la cuota.
    */
-  @Cron('*/2 * * * *', {
-    name: 'analizar-certificados-evatics',
-    timeZone: 'America/Guayaquil',
-  })
+  @Cron('*/2 * * * *', { name: 'analizar-certificados-evatics', timeZone: 'America/Guayaquil' })
   async analizarPendientes(ahora = new Date()): Promise<number> {
     if (!this.lector.disponible() || this.analizando) return 0;
     this.analizando = true;
     let analizados = 0;
     try {
       const pendientes = await this.prisma.certificadoEvatics.findMany({
-        where: {
-          analisisEstado: 'EN_COLA',
-          OR: [{ analisisSiguiente: null }, { analisisSiguiente: { lte: ahora } }],
-        },
+        where: { analisisEstado: 'EN_COLA', OR: [{ analisisSiguiente: null }, { analisisSiguiente: { lte: ahora } }] },
         orderBy: { subidoEn: 'asc' },
         take: ANALISIS_POR_VUELTA,
         select: { id: true, cedula: true, fotoKey: true },
       });
       for (const p of pendientes) {
-        const persona = await this.personaPorCedula(p.cedula);
-        if (!persona) {
-          await this.prisma.certificadoEvatics.updateMany({
-            where: { id: p.id, fotoKey: p.fotoKey },
-            data: { analisisEstado: 'NO_DISPONIBLE', analisisSiguiente: null },
-          });
-          continue;
+        const reclamado = await this.prisma.certificadoEvatics.updateMany({
+          where: {
+            id: p.id,
+            fotoKey: p.fotoKey,
+            analisisEstado: 'EN_COLA',
+            OR: [{ analisisSiguiente: null }, { analisisSiguiente: { lte: ahora } }],
+          },
+          data: { analisisSiguiente: new Date(ahora.getTime() + RESERVA_ANALISIS_MS) },
+        });
+        if (reclamado.count !== 1) continue;
+        try {
+          const persona = await this.personaPorCedula(p.cedula);
+          if (!persona) {
+            await this.marcarNoDisponible(p.id, p.fotoKey);
+            continue;
+          }
+          const jpeg = await this.storage.readDecrypted(p.fotoKey);
+          const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.apellidosNombres);
+          if (!lectura) break; // proveedores sin respuesta o tope por minuto: la próxima vuelta
+          analizados++;
+        } catch (e) {
+          // P. ej. la foto no se pudo leer del Storage: cuenta como intento y se sigue con el siguiente.
+          this.log.warn(`Certificado Evatics ${p.id} no se pudo analizar: ${nombreError(e)}`);
+          await this.registrarFallo(p.id, p.fotoKey, true).catch(() => undefined);
         }
-        const jpeg = await this.storage.readDecrypted(p.fotoKey);
-        const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.apellidosNombres);
-        if (!lectura) break; // cuota o red: la próxima vuelta
-        analizados++;
       }
     } catch (e) {
-      this.log.error(`No se pudieron analizar los certificados Evatics: ${(e as Error).message}`);
+      this.log.error(`No se pudieron revisar los certificados Evatics en cola: ${nombreError(e)}`);
     } finally {
       this.analizando = false;
     }
@@ -483,12 +534,15 @@ export class EvaticsService {
    * Analiza una foto y guarda lo leído (solo si sigue siendo la misma foto).
    * Devuelve la lectura, o null si quedó en cola o sin análisis.
    */
-  private async analizar(
-    id: string,
-    fotoKey: string,
-    jpeg: Buffer,
-    esperado: string,
-  ): Promise<LecturaCertificado | null> {
+  private async analizar(id: string, fotoKey: string, jpeg: Buffer, esperado: string): Promise<LecturaCertificado | null> {
+    if (!this.tomarCupo()) {
+      // Tope por minuto: espera en cola sin llamar a la IA y sin gastar un intento.
+      await this.prisma.certificadoEvatics.updateMany({
+        where: { id, fotoKey },
+        data: { analisisEstado: 'EN_COLA', analisisSiguiente: new Date(Date.now() + 60_000) },
+      });
+      return null;
+    }
     try {
       const { lectura, proveedor } = await this.lector.leer(jpeg, 'image/jpeg');
       await this.prisma.certificadoEvatics.updateMany({
@@ -506,29 +560,45 @@ export class EvaticsService {
       });
       return lectura;
     } catch (e) {
-      const actual = await this.prisma.certificadoEvatics.findUnique({
-        where: { id },
-        select: { analisisIntentos: true },
-      });
-      const intentos = (actual?.analisisIntentos ?? 0) + 1;
-      const reintentar = e instanceof LectorTransitorio && intentos < MAX_INTENTOS_ANALISIS;
-      this.log.warn(`Análisis Evatics ${reintentar ? 'en cola' : 'no disponible'}: ${(e as Error).message}`);
-      await this.prisma.certificadoEvatics.updateMany({
-        where: { id, fotoKey },
-        data: reintentar
-          ? {
-              analisisEstado: 'EN_COLA',
-              analisisIntentos: intentos,
-              analisisSiguiente: new Date(Date.now() + esperaReintento(intentos)),
-            }
-          : {
-              analisisEstado: 'NO_DISPONIBLE',
-              analisisIntentos: intentos,
-              analisisSiguiente: null,
-            },
-      });
+      // Solo los pasajeros se reintentan; si todos los proveedores fallaron sin remedio (400, 401, formato), a ojo.
+      const pasajero = e instanceof LectorTransitorio;
+      this.log.warn(`Análisis Evatics ${pasajero ? 'en cola' : 'no disponible'}: ${nombreError(e)}`);
+      await this.registrarFallo(id, fotoKey, pasajero);
       return null;
     }
+  }
+
+  /** Suma un intento: vuelve a la cola con espera creciente, o queda NO_DISPONIBLE. */
+  private async registrarFallo(id: string, fotoKey: string, pasajero: boolean): Promise<void> {
+    const actual = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { analisisIntentos: true } });
+    const intentos = (actual?.analisisIntentos ?? 0) + 1;
+    if (!pasajero || intentos >= MAX_INTENTOS_ANALISIS) {
+      await this.marcarNoDisponible(id, fotoKey, intentos);
+      return;
+    }
+    await this.prisma.certificadoEvatics.updateMany({
+      where: { id, fotoKey },
+      data: {
+        analisisEstado: 'EN_COLA',
+        analisisIntentos: intentos,
+        analisisSiguiente: new Date(Date.now() + esperaReintento(intentos)),
+      },
+    });
+  }
+
+  private async marcarNoDisponible(id: string, fotoKey: string, intentos?: number): Promise<void> {
+    await this.prisma.certificadoEvatics.updateMany({
+      where: { id, fotoKey },
+      data: { analisisEstado: 'NO_DISPONIBLE', analisisSiguiente: null, ...(intentos ? { analisisIntentos: intentos } : {}) },
+    });
+  }
+
+  /** true y cuenta la lectura si no se pasó MAX_ANALISIS_POR_MINUTO en el último minuto. */
+  private tomarCupo(ahora = Date.now()): boolean {
+    while (this.lecturasRecientes.length && this.lecturasRecientes[0] <= ahora - 60_000) this.lecturasRecientes.shift();
+    if (this.lecturasRecientes.length >= MAX_ANALISIS_POR_MINUTO) return false;
+    this.lecturasRecientes.push(ahora);
+    return true;
   }
 
   // ---------- Personas ----------
@@ -571,11 +641,7 @@ export class EvaticsService {
     });
     if (o?.activo) return this.deOperador(o);
     const u = await this.prisma.usuario.findFirst({
-      where: {
-        cedula,
-        activo: true,
-        roles: { some: { rol: { nombre: ROL_AT } } },
-      },
+      where: { cedula, activo: true, roles: { some: { rol: { nombre: ROL_AT } } } },
       select: { id: true, cedula: true, nombres: true, apellidos: true },
     });
     return u ? this.deUsuario(u) : null;
@@ -612,20 +678,14 @@ export class EvaticsService {
   }
 
   /**
-   * Cédulas que el supervisor no puede revisar: la de su cuenta y la de la
-   * fila del personal vinculada a su cuenta. Vacío si la regla no le aplica.
+   * Cédulas que quien revisa no puede revisar: la de su cuenta y la de la fila
+   * del personal vinculada a su cuenta. Vacío para el administrador.
    */
   private async cedulasPropias(actor: ActorEvatics): Promise<Set<string>> {
     if (!aplicaReglaPropia(actor)) return new Set();
     const [usuario, vinculada] = await Promise.all([
-      this.prisma.usuario.findUnique({
-        where: { id: actor.sub },
-        select: { cedula: true },
-      }),
-      this.prisma.operadorCda.findFirst({
-        where: { usuarioId: actor.sub },
-        select: { cedula: true },
-      }),
+      this.prisma.usuario.findUnique({ where: { id: actor.sub }, select: { cedula: true } }),
+      this.prisma.operadorCda.findFirst({ where: { usuarioId: actor.sub }, select: { cedula: true } }),
     ]);
     return new Set([usuario?.cedula, vinculada?.cedula].filter((c): c is string => !!c));
   }
@@ -643,17 +703,12 @@ export class EvaticsService {
       select: {
         operadorCdaId: true,
         asistenteCdaId: true,
-        recinto: {
-          select: { codigoRecinto: true, canton: { select: { nombre: true } } },
-        },
+        recinto: { select: { codigoRecinto: true, canton: { select: { nombre: true } } } },
       },
     });
     for (const p of parejas) {
       if (!p.recinto) continue;
-      const lugar = {
-        canton: p.recinto.canton.nombre,
-        codigoRecinto: p.recinto.codigoRecinto,
-      };
+      const lugar = { canton: p.recinto.canton.nombre, codigoRecinto: p.recinto.codigoRecinto };
       for (const id of [p.operadorCdaId, p.asistenteCdaId]) {
         if (id && !resultado.has(id)) resultado.set(id, lugar);
       }
@@ -666,24 +721,15 @@ export class EvaticsService {
     try {
       return tecnicosPorRecinto(await this.distributivo.asignaciones());
     } catch (e) {
-      this.log.warn(`Evatics sin distributivo de técnicos: ${(e as Error).message}`);
+      this.log.warn(`Evatics sin distributivo de técnicos: ${nombreError(e)}`);
       return null;
     }
   }
 
-  private async plazo(): Promise<{
-    fechaLimite: string | null;
-    vencido: boolean;
-  }> {
-    const config = await this.prisma.configEvatics.findUnique({
-      where: { id: 1 },
-      select: { fechaLimite: true },
-    });
+  private async plazo(): Promise<{ fechaLimite: string | null; vencido: boolean }> {
+    const config = await this.prisma.configEvatics.findUnique({ where: { id: 1 }, select: { fechaLimite: true } });
     const fechaLimite = config?.fechaLimite ? diaDeFechaDb(config.fechaLimite) : null;
-    return {
-      fechaLimite,
-      vencido: !!fechaLimite && diaEcuador() > fechaLimite,
-    };
+    return { fechaLimite, vencido: !!fechaLimite && diaEcuador() > fechaLimite };
   }
 
   /** Un archivo huérfano no debe tumbar la respuesta: se registra y se sigue. */
@@ -691,7 +737,7 @@ export class EvaticsService {
     try {
       await this.storage.remove(fileId);
     } catch (e) {
-      this.log.warn(`No se pudo borrar ${fileId}: ${(e as Error).message}`);
+      this.log.warn(`No se pudo borrar una foto de certificado: ${nombreError(e)}`);
     }
   }
 }

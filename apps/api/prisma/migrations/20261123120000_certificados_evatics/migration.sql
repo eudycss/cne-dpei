@@ -13,6 +13,11 @@ CREATE TABLE "certificados_evatics" (
     "motivo_rechazo" VARCHAR(300),
     "revisado_por_id" UUID,
     "revisado_en" TIMESTAMPTZ(6),
+    "foto_anterior_key" VARCHAR(255),
+    "foto_anterior_subida_en" TIMESTAMPTZ(6),
+    "reemplazos" INTEGER NOT NULL DEFAULT 0,
+    "subidas_dia" VARCHAR(10),
+    "subidas_hoy" INTEGER NOT NULL DEFAULT 0,
     "analisis_estado" VARCHAR(14) NOT NULL DEFAULT 'EN_COLA',
     "analisis_intentos" INTEGER NOT NULL DEFAULT 0,
     "analisis_siguiente" TIMESTAMPTZ(6),
@@ -25,7 +30,9 @@ CREATE TABLE "certificados_evatics" (
     "creado_en" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "actualizado_en" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "certificados_evatics_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "certificados_evatics_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "ck_certificados_evatics_estado" CHECK ("estado" IN ('PENDIENTE', 'APROBADO', 'RECHAZADO')),
+    CONSTRAINT "ck_certificados_evatics_analisis" CHECK ("analisis_estado" IN ('EN_COLA', 'LISTO', 'NO_DISPONIBLE'))
 );
 
 -- CreateTable

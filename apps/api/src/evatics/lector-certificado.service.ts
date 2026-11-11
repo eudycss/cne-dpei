@@ -4,6 +4,7 @@ import { GroqCertificadoClient } from './groq-certificado.client';
 import {
   LectorError,
   LectorNoConfigurado,
+  LectorRespuestaInvalida,
   LectorTransitorio,
   type LecturaCertificado,
   type LectorCertificado,
@@ -32,7 +33,9 @@ export interface LecturaConProveedor {
  * Lee el certificado con el primer proveedor que tenga llave y responda bien;
  * si uno falla (429, 5xx, tiempo, red, respuesta fuera de formato, 400 o llave
  * inválida) pasa al siguiente. Un proveedor que dio 429 se salta unos minutos.
- * Solo si fallan todos lanza LectorTransitorio y el certificado queda en cola.
+ * Si fallan todos: LectorTransitorio si alguno falló por algo pasajero (se
+ * reintenta en cola) o LectorRespuestaInvalida si todos fallaron sin remedio
+ * (400, 401, formato: reintentar no sirve, se revisa a ojo).
  */
 @Injectable()
 export class LectorCertificadoService {
@@ -58,6 +61,7 @@ export class LectorCertificadoService {
     const aProbar = listos.length > 0 ? listos : lectores.slice(0, 1);
 
     const fallos: string[] = [];
+    let algunoPasajero = false;
     for (const lector of aProbar) {
       try {
         const lectura = await lector.leer(imagen, mime);
@@ -66,6 +70,7 @@ export class LectorCertificadoService {
       } catch (e) {
         const error = e as Error;
         fallos.push(error.message);
+        if (!(error instanceof LectorRespuestaInvalida)) algunoPasajero = true;
         if (error instanceof LectorError && error.status === 429) {
           this.enfriadoHasta.set(lector.nombre, ahora + (error.retryAfterMs ?? ENFRIAMIENTO_429_MS));
         }
@@ -79,7 +84,8 @@ export class LectorCertificadoService {
         }
       }
     }
-    throw new LectorTransitorio(`Ningún proveedor pudo leer el certificado (${fallos.join('; ')})`);
+    const mensaje = `Ningún proveedor pudo leer el certificado (${fallos.join('; ')})`;
+    throw algunoPasajero ? new LectorTransitorio(mensaje) : new LectorRespuestaInvalida(mensaje);
   }
 
   /** Los que tienen llave, en el orden de VISION_PROVEEDOR. */
