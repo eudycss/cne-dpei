@@ -195,6 +195,16 @@ export class ParejasCdaController {
     return this.parejas.intercambiar(id, body.conId, body.campo, body.justificacion);
   }
 
+  // Antes de ':id' para que "dia" no se tome como un id.
+  @Delete('dia')
+  @Roles('ADMINISTRADOR')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Borra la lista de ?fecha= (sin kits ni jornada real)' })
+  async borrarDia(@Query('fecha') fecha: unknown) {
+    // Con 204 la respuesta va vacía; lo devuelto (cómo estaba la lista) lo usa la bitácora.
+    return this.parejas.borrarDia(parsearFecha(fecha));
+  }
+
   @Delete(':id')
   @Roles('ADMINISTRADOR')
   @HttpCode(204)
@@ -252,6 +262,13 @@ export class ParejasCdaController {
   @ApiOperation({ summary: 'Copia la lista de un día a otro (solo la registra; no pasa a la app)' })
   copiar(@Body(new ZodValidationPipe(copiarParejasCdaSchema)) body: CopiarParejasCdaRequest, @CurrentUser() user: AuthenticatedUser) {
     return this.parejas.copiar(body.desde, body.hacia, user.sub);
+  }
+
+  @Post('dia/mover')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Cambia la fecha de toda la lista de un día (sin kits ni jornada real)' })
+  moverDia(@Body(new ZodValidationPipe(copiarParejasCdaSchema)) body: CopiarParejasCdaRequest) {
+    return this.parejas.moverDia(body.desde, body.hacia);
   }
 
   @Post('aplicar')

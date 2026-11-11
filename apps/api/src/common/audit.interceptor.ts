@@ -529,6 +529,22 @@ const AUDIT_TABLE: Array<{
       };
     },
   },
+  // Lista de un día: antes de la regla de una pareja, que también coincidiría con /dia.
+  { method: 'POST', pathRegex: /^\/parejas-cda\/dia\/mover$/, accion: 'PAREJA_CDA_MOVER_DIA', entidad: 'pareja_cda', campos: ['desde', 'hacia'] },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/parejas-cda\/dia$/,
+    accion: 'PAREJA_CDA_BORRAR_DIA',
+    entidad: 'pareja_cda',
+    resumen: (res) => {
+      const r = (res ?? {}) as { fecha?: unknown; eliminadas?: unknown; parejas?: unknown };
+      return {
+        fecha: typeof r.fecha === 'string' ? r.fecha.slice(0, 10) : null,
+        eliminadas: Number(r.eliminadas) || 0,
+        parejas: Array.isArray(r.parejas) ? r.parejas.slice(0, 200).map(integrantesAuditables) : [],
+      };
+    },
+  },
   {
     method: 'DELETE',
     pathRegex: /^\/parejas-cda\/[^/]+$/,

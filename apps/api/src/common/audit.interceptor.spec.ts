@@ -106,6 +106,29 @@ describe('AuditInterceptor', () => {
     expect(disp.data).toMatchObject({ accion: 'OPERADOR_CDA_DISPOSITIVO', entidad: 'operador_cda', entidadId: OTRO, datosDespues: { campos: ['dispositivo'], dispositivo: 'IPHONE' } });
   });
 
+  it('mover la lista de un día: de qué fecha a cuál', async () => {
+    const { data } = await auditar({
+      method: 'POST',
+      originalUrl: '/parejas-cda/dia/mover',
+      params: {},
+      body: { desde: '2026-11-13', hacia: '2026-11-20' },
+      user: ADMIN,
+    });
+    expect(data).toMatchObject({ accion: 'PAREJA_CDA_MOVER_DIA', datosDespues: { desde: '2026-11-13', hacia: '2026-11-20' } });
+  });
+
+  it('borrar la lista de un día: la fecha y qué parejas había, solo con ids', async () => {
+    const { data } = await auditar(
+      { method: 'DELETE', originalUrl: '/parejas-cda/dia?fecha=2026-11-13', params: {}, query: { fecha: '2026-11-13' }, body: {}, user: ADMIN },
+      { fecha: '2026-11-13', eliminadas: 1, parejas: [{ operadorCdaId: OTRO, asistenteCdaId: null, recintoId: OTRO, nombre: 'NO GUARDAR' }] },
+    );
+    expect(data).toMatchObject({
+      accion: 'PAREJA_CDA_BORRAR_DIA',
+      datosDespues: { fecha: '2026-11-13', eliminadas: 1, parejas: [{ operadorCdaId: OTRO, asistenteCdaId: null, recintoId: OTRO }] },
+    });
+    expect(JSON.stringify(data)).not.toContain('NO GUARDAR');
+  });
+
   it('pasar personal a reserva: el día, quiénes (solo ids) y cuántas', async () => {
     const { data } = await auditar(
       { method: 'POST', originalUrl: '/parejas-cda/reserva', params: {}, body: { fecha: '2026-11-15', operadores: [OTRO, 'no-uuid'], asistentes: [] }, user: ADMIN },

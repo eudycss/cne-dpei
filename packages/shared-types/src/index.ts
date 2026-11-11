@@ -1502,6 +1502,11 @@ export interface CopiarParejasCdaResult {
   omitidas: { pareja: string; motivo: string }[];
 }
 
+/** Resultado de mover toda la lista de un día a otro. */
+export interface MoverDiaParejasCdaResult {
+  movidas: number;
+}
+
 /** Intercambiar un campo con otra pareja del mismo día. */
 export interface IntercambiarParejaCdaRequest {
   conId: string;
