@@ -1,11 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
-import { diaAsistenciaSchema } from "@cne/shared-validation";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { diaAsistenciaSchema } from '@cne/shared-validation';
 import type {
   AsistenciaCdaDia,
   AsistenciaCdaFila,
@@ -17,20 +11,13 @@ import type {
   OrigenMarcaCda,
   RoleName,
   TipoMarcaAsistenciaCda,
-} from "@cne/shared-types";
-import { PrismaService } from "../db/prisma.service";
-import { textosGrupo } from "./grupo-cda";
-import { toOperadorCdaDto } from "./operadores-cda.service";
-import {
-  diaDeFechaDb,
-  diaEcuador,
-  diasEntre,
-  fechaDb,
-  horaEcuador,
-  momentoEcuador,
-} from "./dia-ecuador";
-import { enTramos, personalDelCargo } from "./periodos-cargo";
-import { convocadosEntre } from "./convocatoria";
+} from '@cne/shared-types';
+import { PrismaService } from '../db/prisma.service';
+import { textosGrupo } from './grupo-cda';
+import { toOperadorCdaDto } from './operadores-cda.service';
+import { diaDeFechaDb, diaEcuador, diasEntre, fechaDb, horaEcuador, momentoEcuador } from './dia-ecuador';
+import { enTramos, personalDelCargo } from './periodos-cargo';
+import { convocadosEntre } from './convocatoria';
 import {
   type ArchivoReporte,
   type Celda,
@@ -41,14 +28,12 @@ import {
   diaLargo,
   generarReporte,
   parsearModo,
-} from "./reporte-cda";
+} from './reporte-cda';
 
 const MAX_DIAS_EXPORTAR = 120;
-const MARCA_CAMBIO = "La marca cambió (otro técnico la modificó): no se quitó";
-export const ASISTENCIA_PROPIA =
-  "No puede registrar ni cambiar su propia asistencia: pídaselo a otro técnico";
-const CORRECCION_CRUZADA =
-  "La asistencia de ese día cambió mientras la corregía: vuelva a abrirla";
+const MARCA_CAMBIO = 'La marca cambió (otro técnico la modificó): no se quitó';
+export const ASISTENCIA_PROPIA = 'No puede registrar ni cambiar su propia asistencia: pídaselo a otro técnico';
+const CORRECCION_CRUZADA = 'La asistencia de ese día cambió mientras la corregía: vuelva a abrirla';
 
 /** Quien toma la asistencia: su cuenta y sus roles (del token). */
 export interface ActorAsistencia {
@@ -61,10 +46,7 @@ export interface ActorAsistencia {
  * consulta). El administrador queda fuera de la regla.
  */
 function sinAutoRegistro(actor: ActorAsistencia): boolean {
-  return (
-    actor.roles.includes("TECNICO_SUPERVISOR") &&
-    !actor.roles.includes("ADMINISTRADOR")
-  );
+  return actor.roles.includes('TECNICO_SUPERVISOR') && !actor.roles.includes('ADMINISTRADOR');
 }
 
 const CON_QUIEN_MARCO = {
@@ -72,38 +54,38 @@ const CON_QUIEN_MARCO = {
   salidaPor: { select: { nombres: true, apellidos: true } },
 } as const;
 
-const N: ColumnaReporte = { titulo: "N.º", ancho: 6 };
-const FECHA: ColumnaReporte = { titulo: "Fecha", ancho: 12 };
+const N: ColumnaReporte = { titulo: 'N.º', ancho: 6 };
+const FECHA: ColumnaReporte = { titulo: 'Fecha', ancho: 12 };
 
 /** Columnas del reporte; en el general va además "Fecha" al inicio. */
 const COLUMNAS: ColumnaReporte[] = [
   N,
   // Con las columnas de origen, la suma de anchos es la misma de antes (147): en el PDF la fecha y la cédula caben en una línea.
-  { titulo: "Apellidos y nombres", ancho: 36 },
-  { titulo: "Cédula", ancho: 13 },
-  { titulo: "Entrada", ancho: 9 },
-  { titulo: "Registró entrada", ancho: 20 },
-  { titulo: "Origen entrada", ancho: 10 },
-  { titulo: "Salida", ancho: 9 },
-  { titulo: "Registró salida", ancho: 20 },
-  { titulo: "Origen salida", ancho: 10 },
-  { titulo: "Estado", ancho: 14 },
+  { titulo: 'Apellidos y nombres', ancho: 36 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Entrada', ancho: 9 },
+  { titulo: 'Registró entrada', ancho: 20 },
+  { titulo: 'Origen entrada', ancho: 10 },
+  { titulo: 'Salida', ancho: 9 },
+  { titulo: 'Registró salida', ancho: 20 },
+  { titulo: 'Origen salida', ancho: 10 },
+  { titulo: 'Estado', ancho: 14 },
 ];
 
 /** Quienes no registraron entrada; el N.º es el de la tabla del día. */
 const COLUMNAS_FALTARON: ColumnaReporte[] = [
   N,
-  { titulo: "Apellidos y nombres", ancho: 40 },
-  { titulo: "Cédula", ancho: 13 },
-  { titulo: "Teléfono", ancho: 14 },
+  { titulo: 'Apellidos y nombres', ancho: 40 },
+  { titulo: 'Cédula', ancho: 13 },
+  { titulo: 'Teléfono', ancho: 14 },
 ];
 
 const columnasResumenDia = (grupo: GrupoCda): ColumnaReporte[] => [
   FECHA,
-  { titulo: "Día", ancho: 34 },
+  { titulo: 'Día', ancho: 34 },
   { titulo: textosGrupo(grupo).contador, ancho: 13 },
-  { titulo: "Entrada", ancho: 11 },
-  { titulo: "Salida", ancho: 11 },
+  { titulo: 'Entrada', ancho: 11 },
+  { titulo: 'Salida', ancho: 11 },
 ];
 
 type FilaExportada = {
@@ -122,9 +104,7 @@ type FilaExportada = {
  * Asistentes) cuenta a los que asistieron, es decir, los que registraron
  * entrada: por decisión del usuario coincide siempre con "Entrada".
  */
-export function contadoresDelDia(
-  filas: Pick<FilaExportada, "conEntrada" | "conSalida" | "convocado">[],
-): {
+export function contadoresDelDia(filas: Pick<FilaExportada, 'conEntrada' | 'conSalida' | 'convocado'>[]): {
   asistieron: string;
   entrada: string;
   salida: string;
@@ -135,12 +115,8 @@ export function contadoresDelDia(
   const total = convocados.length;
   const entrada = convocados.filter((f) => f.conEntrada).length;
   const salida = convocados.filter((f) => f.conSalida).length;
-  const aparte = extra > 0 ? ` (+${extra} no conv.)` : "";
-  return {
-    asistieron: `${entrada}/${total}${aparte}`,
-    entrada: `${entrada}/${total}`,
-    salida: `${salida}/${total}`,
-  };
+  const aparte = extra > 0 ? ` (+${extra} no conv.)` : '';
+  return { asistieron: `${entrada}/${total}${aparte}`, entrada: `${entrada}/${total}`, salida: `${salida}/${total}` };
 }
 
 function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
@@ -148,44 +124,24 @@ function textoContadores(filas: FilaExportada[], grupo: GrupoCda): string {
   return `${textosGrupo(grupo).contador} ${c.asistieron} · Entrada ${c.entrada} · Salida ${c.salida}`;
 }
 
-const tituloFaltaron = (n: number) =>
-  `Sin registro de entrada / Faltaron: ${n === 0 ? "ninguno" : n}`;
+const tituloFaltaron = (n: number) => `Sin registro de entrada / Faltaron: ${n === 0 ? 'ninguno' : n}`;
 
 /**
  * Hoy todavía pueden llegar: "Sin entrada"; un día pasado sin entrada es "Faltó".
  * Quien vino sin estar convocado lo dice (sin entrada no aparece: nunca falta).
  */
-function estado(
-  entrada: boolean,
-  salida: boolean,
-  esHoy: boolean,
-  convocado = true,
-): string {
-  const base = salida
-    ? "Completa"
-    : entrada
-      ? "Sin salida"
-      : esHoy
-        ? "Sin entrada"
-        : "Faltó";
+function estado(entrada: boolean, salida: boolean, esHoy: boolean, convocado = true): string {
+  const base = salida ? 'Completa' : entrada ? 'Sin salida' : esHoy ? 'Sin entrada' : 'Faltó';
   return convocado ? base : `${base} (no convocado)`;
 }
 
 /** Cómo se registró la marca. Por texto (no por tipo): así una corrección también se lee aunque el tipo cambie. */
-const ORIGENES: Record<string, string> = {
-  MANUAL: "Manual",
-  MASIVA: "Masiva",
-  QR: "QR",
-  CORRECCION: "Corrección",
-};
+const ORIGENES: Record<string, string> = { MANUAL: 'Manual', MASIVA: 'Masiva', QR: 'QR', CORRECCION: 'Corrección' };
 
 /** Vacío sin marca; "Sin dato" en las marcas de antes de que se guardara el origen. */
-export function textoOrigen(
-  marca: Date | null | undefined,
-  origen: string | null | undefined,
-): string {
-  if (!marca) return "";
-  return (origen && ORIGENES[origen]) || "Sin dato";
+export function textoOrigen(marca: Date | null | undefined, origen: string | null | undefined): string {
+  if (!marca) return '';
+  return (origen && ORIGENES[origen]) || 'Sin dato';
 }
 
 type Persona = { nombres: string; apellidos: string } | null;
@@ -206,10 +162,7 @@ export class AsistenciaCdaService {
    */
   async operadorPropioId(actor: ActorAsistencia): Promise<string | null> {
     if (!sinAutoRegistro(actor)) return null;
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { id: actor.sub },
-      select: { cedula: true },
-    });
+    const usuario = await this.prisma.usuario.findUnique({ where: { id: actor.sub }, select: { cedula: true } });
     if (!usuario) return null;
     const propio = await this.prisma.operadorCda.findFirst({
       where: { OR: [{ cedula: usuario.cedula }, { usuarioId: actor.sub }] },
@@ -218,44 +171,28 @@ export class AsistenciaCdaService {
     return propio?.id ?? null;
   }
 
-  /** 403 si alguno de los operadores es el propio supervisor (marcar, quitar, corregir o QR). */
-  async asegurarNoPropio(
-    actor: ActorAsistencia,
-    operadorId: string,
-  ): Promise<void> {
+  /** 403 si el operador es el propio supervisor (marcar, quitar, corregir o QR). */
+  async asegurarNoPropio(actor: ActorAsistencia, operadorId: string): Promise<void> {
     const propio = await this.operadorPropioId(actor);
-    if (propio && propio === operadorId)
-      throw new ForbiddenException(ASISTENCIA_PROPIA);
+    if (propio && propio === operadorId) throw new ForbiddenException(ASISTENCIA_PROPIA);
   }
 
-  async dia(
-    fecha?: string,
-    grupo: GrupoCda = "OPERADOR",
-    actor?: ActorAsistencia,
-  ): Promise<AsistenciaCdaDia> {
+  async dia(fecha?: string, grupo: GrupoCda = 'OPERADOR', actor?: ActorAsistencia): Promise<AsistenciaCdaDia> {
     const hoy = diaEcuador();
     const dia = fecha ? parsearDia(fecha) : hoy;
-    if (dia > hoy)
-      throw new BadRequestException(
-        "No se puede consultar la asistencia de un día futuro",
-      );
+    if (dia > hoy) throw new BadRequestException('No se puede consultar la asistencia de un día futuro');
     // Quien cambió de cargo sale en el cargo que tenía ese día.
     const operadores = (await personalDelCargo(this.prisma, grupo))
       .filter((p) => enTramos(p.tramos, dia))
       .map((p) => p.operador);
     const [asistencias, convocados] = await Promise.all([
       this.prisma.asistenciaCda.findMany({
-        where: {
-          fecha: fechaDb(dia),
-          operadorId: { in: operadores.map((o) => o.id) },
-        },
+        where: { fecha: fechaDb(dia), operadorId: { in: operadores.map((o) => o.id) } },
         include: CON_QUIEN_MARCO,
       }),
       convocadosEntre(this.prisma, dia, dia),
     ]);
-    const porOperador = new Map<string, (typeof asistencias)[number]>(
-      asistencias.map((a) => [a.operadorId, a]),
-    );
+    const porOperador = new Map<string, (typeof asistencias)[number]>(asistencias.map((a) => [a.operadorId, a]));
     const filas = operadores.map((o) => {
       const a = porOperador.get(o.id);
       return {
@@ -280,7 +217,7 @@ export class AsistenciaCdaService {
     operadorId: string,
     tipo: TipoMarcaAsistenciaCda,
     usuarioId: string,
-    origen: OrigenMarcaCda = "MANUAL",
+    origen: OrigenMarcaCda = 'MANUAL',
   ): Promise<AsistenciaCdaFila> {
     const operador = await this.operadorActivo(operadorId);
     // El día sale de la misma hora que se guarda (cerca de medianoche no deben diferir).
@@ -292,40 +229,24 @@ export class AsistenciaCdaService {
       update: {},
     });
     const { count } =
-      tipo === "ENTRADA"
+      tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: null },
-            data: {
-              entradaEn: ahora,
-              entradaPorId: usuarioId,
-              entradaOrigen: origen,
-            },
+            data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: origen },
           })
         : await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: { not: null }, salidaEn: null },
-            data: {
-              salidaEn: ahora,
-              salidaPorId: usuarioId,
-              salidaOrigen: origen,
-            },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: origen },
           });
 
-    const actual = await this.prisma.asistenciaCda.findUniqueOrThrow({
-      where: { id: fila.id },
-      include: CON_QUIEN_MARCO,
-    });
+    const actual = await this.prisma.asistenciaCda.findUniqueOrThrow({ where: { id: fila.id }, include: CON_QUIEN_MARCO });
     if (count === 0) {
-      if (tipo === "SALIDA" && !actual.entradaEn)
-        throw new ConflictException("Primero registre la entrada de hoy");
-      const marca = tipo === "ENTRADA" ? actual.entradaEn : actual.salidaEn;
-      const quien = nombre(
-        tipo === "ENTRADA" ? actual.entradaPor : actual.salidaPor,
-      );
+      if (tipo === 'SALIDA' && !actual.entradaEn) throw new ConflictException('Primero registre la entrada de hoy');
+      const marca = tipo === 'ENTRADA' ? actual.entradaEn : actual.salidaEn;
+      const quien = nombre(tipo === 'ENTRADA' ? actual.entradaPor : actual.salidaPor);
       throw new ConflictException(
-        `La ${tipo === "ENTRADA" ? "entrada" : "salida"} de hoy ya estaba registrada` +
-          (marca
-            ? ` a las ${horaEcuador(marca)}${quien ? ` por ${quien}` : ""}`
-            : ""),
+        `La ${tipo === 'ENTRADA' ? 'entrada' : 'salida'} de hoy ya estaba registrada` +
+          (marca ? ` a las ${horaEcuador(marca)}${quien ? ` por ${quien}` : ''}` : ''),
       );
     }
     const dia = diaEcuador(ahora);
@@ -335,10 +256,7 @@ export class AsistenciaCdaService {
       entradaPor: nombre(actual.entradaPor),
       salidaEn: actual.salidaEn?.toISOString() ?? null,
       salidaPor: nombre(actual.salidaPor),
-      convocado: (await convocadosEntre(this.prisma, dia, dia)).es(
-        dia,
-        operadorId,
-      ),
+      convocado: (await convocadosEntre(this.prisma, dia, dia)).es(dia, operadorId),
     };
   }
 
@@ -354,21 +272,14 @@ export class AsistenciaCdaService {
     soloSi?: string,
   ): Promise<{ deshecho: true; marcaEn: string; marcadaPorId: string | null }> {
     const fecha = fechaDb(diaEcuador());
-    const fila = await this.prisma.asistenciaCda.findUnique({
-      where: { operadorId_fecha: { operadorId, fecha } },
-    });
-    const marca = tipo === "ENTRADA" ? fila?.entradaEn : fila?.salidaEn;
-    const marcadaPorId =
-      (tipo === "ENTRADA" ? fila?.entradaPorId : fila?.salidaPorId) ?? null;
-    if (!fila || !marca)
-      throw new NotFoundException(
-        `No hay ${tipo === "ENTRADA" ? "entrada" : "salida"} registrada hoy`,
-      );
-    if (soloSi !== undefined && marca.toISOString() !== soloSi)
-      throw new ConflictException(MARCA_CAMBIO);
+    const fila = await this.prisma.asistenciaCda.findUnique({ where: { operadorId_fecha: { operadorId, fecha } } });
+    const marca = tipo === 'ENTRADA' ? fila?.entradaEn : fila?.salidaEn;
+    const marcadaPorId = (tipo === 'ENTRADA' ? fila?.entradaPorId : fila?.salidaPorId) ?? null;
+    if (!fila || !marca) throw new NotFoundException(`No hay ${tipo === 'ENTRADA' ? 'entrada' : 'salida'} registrada hoy`);
+    if (soloSi !== undefined && marca.toISOString() !== soloSi) throw new ConflictException(MARCA_CAMBIO);
 
     const { count } =
-      tipo === "ENTRADA"
+      tipo === 'ENTRADA'
         ? await this.prisma.asistenciaCda.updateMany({
             where: { id: fila.id, entradaEn: marca, salidaEn: null },
             data: { entradaEn: null, entradaPorId: null, entradaOrigen: null },
@@ -378,11 +289,7 @@ export class AsistenciaCdaService {
             data: { salidaEn: null, salidaPorId: null, salidaOrigen: null },
           });
     if (count === 0) {
-      throw new ConflictException(
-        tipo === "ENTRADA" && fila.salidaEn
-          ? "Primero quite la salida de hoy"
-          : MARCA_CAMBIO,
-      );
+      throw new ConflictException(tipo === 'ENTRADA' && fila.salidaEn ? 'Primero quite la salida de hoy' : MARCA_CAMBIO);
     }
     return { deshecho: true, marcaEn: marca.toISOString(), marcadaPorId };
   }
@@ -400,69 +307,49 @@ export class AsistenciaCdaService {
   ): Promise<CorregirAsistenciaCdaResult> {
     const dia = parsearDia(diaParam);
     if (dia >= diaEcuador()) {
-      throw new BadRequestException(
-        "Solo se corrigen días pasados: la asistencia de hoy se marca o se quita en la lista",
-      );
+      throw new BadRequestException('Solo se corrigen días pasados: la asistencia de hoy se marca o se quita en la lista');
     }
     // Solo personal activo: es lo que muestra la lista del día (a un oculto se le reactiva primero).
     const operador = await this.operadorActivo(operadorId);
     if (operador.fechaInicio && dia < diaDeFechaDb(operador.fechaInicio)) {
-      throw new BadRequestException(
-        "Ese día es anterior a su fecha de ingreso",
-      );
+      throw new BadRequestException('Ese día es anterior a su fecha de ingreso');
     }
 
     const fecha = fechaDb(dia);
     const entradaEn = body.entrada ? momentoEcuador(dia, body.entrada) : null;
     const salidaEn = body.salida ? momentoEcuador(dia, body.salida) : null;
-    const previa = await this.prisma.asistenciaCda.findUnique({
-      where: { operadorId_fecha: { operadorId, fecha } },
-    });
+    const previa = await this.prisma.asistenciaCda.findUnique({ where: { operadorId_fecha: { operadorId, fecha } } });
     // A minuto: las marcas reales llevan segundos y el formulario solo HH:MM; la que no se tocó no se reescribe.
-    const minuto = (d: Date | null | undefined) =>
-      d ? Math.floor(d.getTime() / 60_000) : null;
-    const igual = (a: Date | null | undefined, b: Date | null) =>
-      minuto(a) === minuto(b);
+    const minuto = (d: Date | null | undefined) => (d ? Math.floor(d.getTime() / 60_000) : null);
+    const igual = (a: Date | null | undefined, b: Date | null) => minuto(a) === minuto(b);
     const cambiaEntrada = !igual(previa?.entradaEn, entradaEn);
     const cambiaSalida = !igual(previa?.salidaEn, salidaEn);
-    if (!cambiaEntrada && !cambiaSalida)
-      throw new BadRequestException(
-        "No hay cambios: la asistencia ya está así",
-      );
+    if (!cambiaEntrada && !cambiaSalida) throw new BadRequestException('No hay cambios: la asistencia ya está así');
 
     const data = {
       ...(cambiaEntrada && {
         entradaEn,
         entradaPorId: entradaEn ? usuarioId : null,
-        entradaOrigen: entradaEn
-          ? ("CORRECCION" satisfies OrigenMarcaCda)
-          : null,
+        entradaOrigen: entradaEn ? ('CORRECCION' satisfies OrigenMarcaCda) : null,
       }),
       ...(cambiaSalida && {
         salidaEn,
         salidaPorId: salidaEn ? usuarioId : null,
-        salidaOrigen: salidaEn ? ("CORRECCION" satisfies OrigenMarcaCda) : null,
+        salidaOrigen: salidaEn ? ('CORRECCION' satisfies OrigenMarcaCda) : null,
       }),
     };
     // Control optimista: solo se escribe si la fila sigue como se leyó, así "antes" (bitácora) es exacto.
     if (previa) {
       const { count } = await this.prisma.asistenciaCda.updateMany({
-        where: {
-          id: previa.id,
-          entradaEn: previa.entradaEn,
-          salidaEn: previa.salidaEn,
-        },
+        where: { id: previa.id, entradaEn: previa.entradaEn, salidaEn: previa.salidaEn },
         data,
       });
       if (count === 0) throw new ConflictException(CORRECCION_CRUZADA);
     } else {
       try {
-        await this.prisma.asistenciaCda.create({
-          data: { operadorId, fecha, ...data },
-        });
+        await this.prisma.asistenciaCda.create({ data: { operadorId, fecha, ...data } });
       } catch (e) {
-        if ((e as { code?: string } | null)?.code === "P2002")
-          throw new ConflictException(CORRECCION_CRUZADA);
+        if ((e as { code?: string } | null)?.code === 'P2002') throw new ConflictException(CORRECCION_CRUZADA);
         throw e;
       }
     }
@@ -477,15 +364,9 @@ export class AsistenciaCdaService {
         entradaPor: nombre(fila.entradaPor),
         salidaEn: fila.salidaEn?.toISOString() ?? null,
         salidaPor: nombre(fila.salidaPor),
-        convocado: (await convocadosEntre(this.prisma, dia, dia)).es(
-          dia,
-          operadorId,
-        ),
+        convocado: (await convocadosEntre(this.prisma, dia, dia)).es(dia, operadorId),
       },
-      antes: {
-        entradaEn: previa?.entradaEn?.toISOString() ?? null,
-        salidaEn: previa?.salidaEn?.toISOString() ?? null,
-      },
+      antes: { entradaEn: previa?.entradaEn?.toISOString() ?? null, salidaEn: previa?.salidaEn?.toISOString() ?? null },
     };
   }
 
@@ -502,16 +383,13 @@ export class AsistenciaCdaService {
     const unicos = [...new Set(operadorIds)];
     const candidatos = unicos.filter((id) => id !== excluir);
     const activos = (
-      await this.prisma.operadorCda.findMany({
-        where: { id: { in: candidatos }, activo: true },
-        select: { id: true },
-      })
+      await this.prisma.operadorCda.findMany({ where: { id: { in: candidatos }, activo: true }, select: { id: true } })
     ).map((o) => o.id);
     const ahora = new Date();
     const fecha = fechaDb(diaEcuador(ahora));
 
     const { count } =
-      tipo === "ENTRADA"
+      tipo === 'ENTRADA'
         ? await this.prisma.$transaction(async (tx) => {
             await tx.asistenciaCda.createMany({
               data: activos.map((operadorId) => ({ operadorId, fecha })),
@@ -519,31 +397,14 @@ export class AsistenciaCdaService {
             });
             return tx.asistenciaCda.updateMany({
               where: { fecha, operadorId: { in: activos }, entradaEn: null },
-              data: {
-                entradaEn: ahora,
-                entradaPorId: usuarioId,
-                entradaOrigen: "MASIVA",
-              },
+              data: { entradaEn: ahora, entradaPorId: usuarioId, entradaOrigen: 'MASIVA' },
             });
           })
         : await this.prisma.asistenciaCda.updateMany({
-            where: {
-              fecha,
-              operadorId: { in: activos },
-              entradaEn: { not: null },
-              salidaEn: null,
-            },
-            data: {
-              salidaEn: ahora,
-              salidaPorId: usuarioId,
-              salidaOrigen: "MASIVA",
-            },
+            where: { fecha, operadorId: { in: activos }, entradaEn: { not: null }, salidaEn: null },
+            data: { salidaEn: ahora, salidaPorId: usuarioId, salidaOrigen: 'MASIVA' },
           });
-    return {
-      marcados: count,
-      omitidos: activos.length - count,
-      ignorados: unicos.length - activos.length,
-    };
+    return { marcados: count, omitidos: activos.length - count, ignorados: unicos.length - activos.length };
   }
 
   /**
@@ -555,13 +416,12 @@ export class AsistenciaCdaService {
     hastaParam: string | undefined,
     modoParam: unknown,
     formato: FormatoReporteCda,
-    grupo: GrupoCda = "OPERADOR",
+    grupo: GrupoCda = 'OPERADOR',
   ): Promise<ArchivoReporte> {
     const modo = parsearModo(modoParam);
     const hoy = diaEcuador();
     const hasta = hastaParam ? parsearDia(hastaParam) : hoy;
-    if (hasta > hoy)
-      throw new BadRequestException("La fecha final no puede ser futura");
+    if (hasta > hoy) throw new BadRequestException('La fecha final no puede ser futura');
     const personal = await personalDelCargo(this.prisma, grupo);
     const operadores = personal.map((p) => p.operador);
     const primerInicio = operadores
@@ -570,27 +430,17 @@ export class AsistenciaCdaService {
       .sort()[0];
     // Sin `desde`: desde el primer día de trabajo, pero como mucho los últimos
     // 120 días (si no, pasado ese tiempo el botón de la web siempre fallaría).
-    const minimo = diaDeFechaDb(
-      new Date(fechaDb(hasta).getTime() - (MAX_DIAS_EXPORTAR - 1) * 86_400_000),
-    );
-    const desde = desdeParam
-      ? parsearDia(desdeParam)
-      : [primerInicio ?? hasta, minimo].sort()[1];
-    if (desde > hasta)
-      throw new BadRequestException("La fecha inicial es posterior a la final");
+    const minimo = diaDeFechaDb(new Date(fechaDb(hasta).getTime() - (MAX_DIAS_EXPORTAR - 1) * 86_400_000));
+    const desde = desdeParam ? parsearDia(desdeParam) : [primerInicio ?? hasta, minimo].sort()[1];
+    if (desde > hasta) throw new BadRequestException('La fecha inicial es posterior a la final');
     const dias = diasEntre(desde, hasta);
     if (dias.length > MAX_DIAS_EXPORTAR) {
-      throw new BadRequestException(
-        `El rango es demasiado largo (máximo ${MAX_DIAS_EXPORTAR} días)`,
-      );
+      throw new BadRequestException(`El rango es demasiado largo (máximo ${MAX_DIAS_EXPORTAR} días)`);
     }
 
     const [asistencias, convocados] = await Promise.all([
       this.prisma.asistenciaCda.findMany({
-        where: {
-          fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) },
-          operadorId: { in: operadores.map((o) => o.id) },
-        },
+        where: { fecha: { gte: fechaDb(desde), lte: fechaDb(hasta) }, operadorId: { in: operadores.map((o) => o.id) } },
         include: CON_QUIEN_MARCO,
       }),
       convocadosEntre(this.prisma, desde, hasta),
@@ -623,17 +473,17 @@ export class AsistenciaCdaService {
             numero,
             o.apellidosNombres,
             o.cedula,
-            a?.entradaEn ? horaEcuador(a.entradaEn) : "",
-            nombre(a?.entradaPor ?? null) ?? "",
+            a?.entradaEn ? horaEcuador(a.entradaEn) : '',
+            nombre(a?.entradaPor ?? null) ?? '',
             textoOrigen(a?.entradaEn, a?.entradaOrigen),
-            a?.salidaEn ? horaEcuador(a.salidaEn) : "",
-            nombre(a?.salidaPor ?? null) ?? "",
+            a?.salidaEn ? horaEcuador(a.salidaEn) : '',
+            nombre(a?.salidaPor ?? null) ?? '',
             textoOrigen(a?.salidaEn, a?.salidaOrigen),
             estado(conEntrada, conSalida, dia === hoy, convocado),
           ],
           conEntrada,
           conSalida,
-          faltante: [numero, o.apellidosNombres, o.cedula, o.telefono ?? ""],
+          faltante: [numero, o.apellidosNombres, o.cedula, o.telefono ?? ''],
           convocado,
         });
       }
@@ -645,37 +495,30 @@ export class AsistenciaCdaService {
     const sinEntrada = filas.filter((f) => !f.conEntrada);
 
     const tablas: TablaReporte[] =
-      modo === "GENERAL"
+      modo === 'GENERAL'
         ? [
             {
-              hoja: "Resumen por día",
-              titulo: "Resumen por día",
+              hoja: 'Resumen por día',
+              titulo: 'Resumen por día',
               columnas: columnasResumenDia(grupo),
               filas: dias
                 .filter((dia) => porDia.has(dia) || conPersonal.has(dia))
                 .map((dia) => {
                   const delDia = porDia.get(dia);
-                  if (!delDia)
-                    return [dia, diaLargo(dia), "Sin convocatoria", "", ""];
+                  if (!delDia) return [dia, diaLargo(dia), 'Sin convocatoria', '', ''];
                   const c = contadoresDelDia(delDia);
-                  return [
-                    dia,
-                    diaLargo(dia),
-                    c.asistieron,
-                    c.entrada,
-                    c.salida,
-                  ];
+                  return [dia, diaLargo(dia), c.asistieron, c.entrada, c.salida];
                 }),
             },
             {
-              hoja: "Asistencia",
+              hoja: 'Asistencia',
               titulo: `Detalle por ${textosGrupo(grupo).singular} y día`,
               columnas: [FECHA, ...COLUMNAS],
               filas: filas.map((f) => [f.fecha, ...f.celdas]),
               resaltadas: indicesSinEntrada(filas),
             },
             {
-              hoja: "Faltaron",
+              hoja: 'Faltaron',
               titulo: tituloFaltaron(sinEntrada.length),
               columnas: [FECHA, ...COLUMNAS_FALTARON],
               filas: sinEntrada.map((f) => [f.fecha, ...f.faltante]),
@@ -712,20 +555,14 @@ export class AsistenciaCdaService {
   }
 
   private async operadorActivo(id: string) {
-    const operador = await this.prisma.operadorCda.findUnique({
-      where: { id },
-    });
-    if (!operador || !operador.activo)
-      throw new NotFoundException("Operador no encontrado");
+    const operador = await this.prisma.operadorCda.findUnique({ where: { id } });
+    if (!operador || !operador.activo) throw new NotFoundException('Operador no encontrado');
     return operador;
   }
 }
 
 function parsearDia(dia: unknown): string {
   const r = diaAsistenciaSchema.safeParse(dia);
-  if (!r.success)
-    throw new BadRequestException(
-      r.error.issues[0]?.message ?? "Fecha inválida",
-    );
+  if (!r.success) throw new BadRequestException(r.error.issues[0]?.message ?? 'Fecha inválida');
   return r.data;
 }

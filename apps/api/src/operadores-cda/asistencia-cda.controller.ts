@@ -1,187 +1,123 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Put,
-  Query,
-  Res,
-  UseGuards,
-} from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
-import { Response } from "express";
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { Response } from 'express';
 import {
   corregirAsistenciaCdaSchema,
   marcarAsistenciaCdaMasivaSchema,
   marcarAsistenciaCdaSchema,
   tipoMarcaAsistenciaCdaSchema,
-} from "@cne/shared-validation";
+} from '@cne/shared-validation';
 import type {
   CorregirAsistenciaCdaRequest,
   MarcarAsistenciaCdaMasivaRequest,
   MarcarAsistenciaCdaRequest,
   TipoMarcaAsistenciaCda,
-} from "@cne/shared-types";
+} from '@cne/shared-types';
 
-import { AsistenciaCdaService } from "./asistencia-cda.service";
-import { parsearGrupo } from "./grupo-cda";
-import { LIMITE_DESCARGA_REPORTE, enviarReporte } from "./reporte-cda";
-import { JwtAuthGuard } from "../common/jwt-auth.guard";
-import { RolesGuard } from "../common/roles.guard";
-import { Roles } from "../common/roles.decorator";
-import { ZodValidationPipe } from "../common/zod-body.pipe";
-import {
-  CurrentUser,
-  type AuthenticatedUser,
-} from "../common/current-user.decorator";
-import {
-  PermisoGuard,
-  RequierePermiso,
-} from "../permisos-modulos/permiso.guard";
-import { ModuloGuard, RequiereModulo } from "../permisos-modulos/modulo.guard";
+import { AsistenciaCdaService } from './asistencia-cda.service';
+import { parsearGrupo } from './grupo-cda';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
+import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
+import { ZodValidationPipe } from '../common/zod-body.pipe';
+import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
+import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 /** Solo texto: un parámetro repetido (?fecha=a&fecha=b) llega como arreglo. */
-const texto = (v: unknown) => (typeof v === "string" ? v : undefined);
+const texto = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
 // Toman asistencia el administrador, los técnicos supervisores y los técnicos
 // de enlaces (Asistente Electoral Transversal). La APK usará estos mismos endpoints.
-@ApiTags("operadores-cda")
+@ApiTags('operadores-cda')
 @ApiBearerAuth()
-@Controller("operadores-cda")
+@Controller('operadores-cda')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("ADMINISTRADOR", "TECNICO_SUPERVISOR", "ASISTENTE_TRANSVERSAL")
+@Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
 export class AsistenciaCdaController {
   constructor(private readonly asistencia: AsistenciaCdaService) {}
 
-  @Get("asistencia")
-  @RequiereModulo("operadores-cda")
+  @Get('asistencia')
+  @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)
   @ApiOperation({
-    summary:
-      "Asistencia de todos los operadores (o los del cargo de ?grupo=) en un día (por defecto hoy, hora de Ecuador)",
+    summary: 'Asistencia de todos los operadores (o los del cargo de ?grupo=) en un día (por defecto hoy, hora de Ecuador)',
   })
-  dia(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query("fecha") fecha?: unknown,
-    @Query("grupo") grupo?: unknown,
-  ) {
+  dia(@CurrentUser() user: AuthenticatedUser, @Query('fecha') fecha?: unknown, @Query('grupo') grupo?: unknown) {
     return this.asistencia.dia(texto(fecha), parsearGrupo(grupo), user);
   }
 
-  @Get("asistencia/exportar.xlsx")
-  @RequierePermiso("cda.asistencia.exportar")
+  @Get('asistencia/exportar.xlsx')
+  @RequierePermiso('cda.asistencia.exportar')
   @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
-  @ApiOperation({
-    summary:
-      "Excel de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)",
-  })
+  @ApiOperation({ summary: 'Excel de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una hoja por día)' })
   async exportar(@Res() res: Response, @Query() q: Record<string, unknown>) {
-    enviarReporte(
-      res,
-      await this.asistencia.exportar(
-        texto(q.desde),
-        texto(q.hasta),
-        q.modo,
-        "xlsx",
-        parsearGrupo(q.grupo),
-      ),
-    );
+    enviarReporte(res, await this.asistencia.exportar(texto(q.desde), texto(q.hasta), q.modo, 'xlsx', parsearGrupo(q.grupo)));
   }
 
-  @Get("asistencia/exportar.pdf")
-  @RequierePermiso("cda.asistencia.exportar")
+  @Get('asistencia/exportar.pdf')
+  @RequierePermiso('cda.asistencia.exportar')
   @UseGuards(PermisoGuard)
   @Throttle(LIMITE_DESCARGA_REPORTE)
-  @ApiOperation({
-    summary:
-      "PDF de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)",
-  })
+  @ApiOperation({ summary: 'PDF de asistencia (desde/hasta AAAA-MM-DD, modo GENERAL o POR_DIA: una sección por día)' })
   async exportarPdf(@Res() res: Response, @Query() q: Record<string, unknown>) {
-    enviarReporte(
-      res,
-      await this.asistencia.exportar(
-        texto(q.desde),
-        texto(q.hasta),
-        q.modo,
-        "pdf",
-        parsearGrupo(q.grupo),
-      ),
-    );
+    enviarReporte(res, await this.asistencia.exportar(texto(q.desde), texto(q.hasta), q.modo, 'pdf', parsearGrupo(q.grupo)));
   }
 
-  @Post("asistencia/masiva")
-  @RequierePermiso("cda.asistencia.marcar")
+  @Post('asistencia/masiva')
+  @RequierePermiso('cda.asistencia.marcar')
   @UseGuards(PermisoGuard)
-  @ApiOperation({
-    summary: "Marca entrada o salida de hoy a varios operadores",
-  })
+  @ApiOperation({ summary: 'Marca entrada o salida de hoy a varios operadores' })
   async masiva(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(new ZodValidationPipe(marcarAsistenciaCdaMasivaSchema))
-    body: MarcarAsistenciaCdaMasivaRequest,
+    @Body(new ZodValidationPipe(marcarAsistenciaCdaMasivaSchema)) body: MarcarAsistenciaCdaMasivaRequest,
   ) {
-    return this.asistencia.marcarMasiva(
-      body.tipo,
-      body.operadorIds,
-      user.sub,
-      await this.asistencia.operadorPropioId(user),
-    );
+    return this.asistencia.marcarMasiva(body.tipo, body.operadorIds, user.sub, await this.asistencia.operadorPropioId(user));
   }
 
-  @Post(":id/asistencia")
-  @RequierePermiso("cda.asistencia.marcar")
+  @Post(':id/asistencia')
+  @RequierePermiso('cda.asistencia.marcar')
   @UseGuards(PermisoGuard)
-  @ApiOperation({
-    summary: "Marca la entrada o la salida de hoy de un operador",
-  })
+  @ApiOperation({ summary: 'Marca la entrada o la salida de hoy de un operador' })
   async marcar(
     @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(marcarAsistenciaCdaSchema))
-    body: MarcarAsistenciaCdaRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(marcarAsistenciaCdaSchema)) body: MarcarAsistenciaCdaRequest,
   ) {
     await this.asistencia.asegurarNoPropio(user, id);
     return this.asistencia.marcar(id, body.tipo, user.sub);
   }
 
   // Días pasados: de fábrica solo el administrador (ver PERMISOS). El AET no pasa por @Roles.
-  @Put(":id/asistencia/:fecha")
-  @Roles("ADMINISTRADOR", "TECNICO_SUPERVISOR")
-  @RequierePermiso("cda.asistencia.corregir")
+  @Put(':id/asistencia/:fecha')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
+  @RequierePermiso('cda.asistencia.corregir')
   @UseGuards(PermisoGuard)
-  @ApiOperation({
-    summary:
-      "Corrige la entrada y la salida de un día pasado (horas HH:MM de Ecuador, motivo obligatorio)",
-  })
+  @ApiOperation({ summary: 'Corrige la entrada y la salida de un día pasado (horas HH:MM de Ecuador, motivo obligatorio)' })
   async corregir(
     @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Param("fecha") fecha: string,
-    @Body(new ZodValidationPipe(corregirAsistenciaCdaSchema))
-    body: CorregirAsistenciaCdaRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fecha') fecha: string,
+    @Body(new ZodValidationPipe(corregirAsistenciaCdaSchema)) body: CorregirAsistenciaCdaRequest,
   ) {
     await this.asistencia.asegurarNoPropio(user, id);
     return this.asistencia.corregir(id, fecha, body, user.sub);
   }
 
-  @Delete(":id/asistencia/:tipo")
-  @RequierePermiso("cda.asistencia.marcar")
+  @Delete(':id/asistencia/:tipo')
+  @RequierePermiso('cda.asistencia.marcar')
   @UseGuards(PermisoGuard)
   @ApiOperation({
-    summary:
-      "Quita la entrada o la salida de hoy (corrección). ?marcaEn=ISO: solo si sigue siendo esa marca",
+    summary: 'Quita la entrada o la salida de hoy (corrección). ?marcaEn=ISO: solo si sigue siendo esa marca',
   })
   async deshacer(
     @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Param("tipo", new ZodValidationPipe(tipoMarcaAsistenciaCdaSchema))
-    tipo: TipoMarcaAsistenciaCda,
-    @Query("marcaEn") marcaEn?: unknown,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tipo', new ZodValidationPipe(tipoMarcaAsistenciaCdaSchema)) tipo: TipoMarcaAsistenciaCda,
+    @Query('marcaEn') marcaEn?: unknown,
   ) {
     await this.asistencia.asegurarNoPropio(user, id);
     return this.asistencia.deshacer(id, tipo, texto(marcaEn));

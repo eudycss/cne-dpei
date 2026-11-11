@@ -1,9 +1,9 @@
 export type RoleName =
-  | "ADMINISTRADOR"
-  | "TECNICO_SUPERVISOR"
-  | "OPERADOR_CDA"
-  | "LECTOR"
-  | "ASISTENTE_TRANSVERSAL";
+  | 'ADMINISTRADOR'
+  | 'TECNICO_SUPERVISOR'
+  | 'OPERADOR_CDA'
+  | 'LECTOR'
+  | 'ASISTENTE_TRANSVERSAL';
 
 export interface Role {
   id: string;
@@ -131,7 +131,7 @@ export interface Paginated<T> {
 // FASE 2 — Catálogos y eventos
 // ===================================================================
 
-export type TipoRecinto = "CDA" | "NO_CDA";
+export type TipoRecinto = 'CDA' | 'NO_CDA';
 
 export interface Canton {
   id: number;
@@ -207,8 +207,7 @@ export interface UpdateRecintoRequest {
 
 // --- Sincronización de recintos desde el Google Sheet ---
 
-export type AccionSyncRecinto =
-  "CREAR" | "ACTUALIZAR" | "REACTIVAR" | "OCULTAR";
+export type AccionSyncRecinto = 'CREAR' | 'ACTUALIZAR' | 'REACTIVAR' | 'OCULTAR';
 
 export interface CambioCampoRecinto {
   campo: string;
@@ -292,7 +291,7 @@ export interface ItemKitCatalog {
   activo: boolean;
 }
 
-export type EstadoEvento = "BORRADOR" | "ACTIVO" | "CERRADO";
+export type EstadoEvento = 'BORRADOR' | 'ACTIVO' | 'CERRADO';
 
 export interface ConfigAlertas {
   umbralLlegadaRecintoMin: number;
@@ -360,14 +359,14 @@ export interface UpsertAsignacionRequest {
 // ===================================================================
 
 export type EstadoKit =
-  | "EN_BODEGA"
-  | "ASIGNADO"
-  | "ENTREGADO"
-  | "EN_RECINTO"
-  | "EN_RETORNO"
-  | "RETORNADO";
+  | 'EN_BODEGA'
+  | 'ASIGNADO'
+  | 'ENTREGADO'
+  | 'EN_RECINTO'
+  | 'EN_RETORNO'
+  | 'RETORNADO';
 
-export type EstadoItemKit = "BUENO" | "REGULAR" | "MALO";
+export type EstadoItemKit = 'BUENO' | 'REGULAR' | 'MALO';
 
 /** Un artículo del kit con su serie y estado (null = sin serie, "S/N"). */
 export interface KitItemDetalle {
@@ -428,7 +427,7 @@ export interface MochilaPorQr {
   recinto: { codigoRecinto: string; nombre: string } | null;
 }
 
-export type EstadoFilaMochila = "NUEVA" | "CAMBIA" | "IGUAL" | "ERROR";
+export type EstadoFilaMochila = 'NUEVA' | 'CAMBIA' | 'IGUAL' | 'ERROR';
 
 export interface FilaCargaMochila {
   /** Fila del archivo (la 1 es el encabezado). */
@@ -644,8 +643,7 @@ export interface KitsVerificadosRetornoResponse {
  * LLEGO_SIN_VERIFICAR = el operador marcó la llegada al DPEI pero falta la
  * verificación; FALTA_LLEGAR = todavía no llega.
  */
-export type EstadoRetornoKit =
-  "REGISTRADO" | "LLEGO_SIN_VERIFICAR" | "FALTA_LLEGAR";
+export type EstadoRetornoKit = 'REGISTRADO' | 'LLEGO_SIN_VERIFICAR' | 'FALTA_LLEGAR';
 
 export interface KitRetornoEstado {
   kitId: string;
@@ -784,11 +782,10 @@ export interface OperadorEnRetorno {
   faltaMetros: number | null;
 }
 
-export type CercaniaRetorno = "LEJOS" | "CERCA" | "MUY_CERCA";
+export type CercaniaRetorno = 'LEJOS' | 'CERCA' | 'MUY_CERCA';
 
 // Estado en vivo de los CDAs (pantalla de monitoreo)
-export type EstadoOperadorCda =
-  "EN_DPI" | "EN_TRANSITO" | "EN_RECINTO" | "EN_RETORNO" | "RETORNADO";
+export type EstadoOperadorCda = 'EN_DPI' | 'EN_TRANSITO' | 'EN_RECINTO' | 'EN_RETORNO' | 'RETORNADO';
 
 export interface CdaUbicacion {
   latitud: number;
@@ -891,7 +888,7 @@ export interface ResponsableInforme {
 // FASE 4 — Notificaciones in-app (HU2-CA3, base para HU19)
 // ===================================================================
 
-export type CanalNotificacion = "PUSH" | "EMAIL";
+export type CanalNotificacion = 'PUSH' | 'EMAIL';
 
 export interface NotificacionItem {
   id: string;
@@ -907,14 +904,14 @@ export interface NotificacionItem {
 // ===================================================================
 
 export type TipoIncidencia =
-  | "KIT_DANADO"
-  | "KIT_FALTANTE"
-  | "PROBLEMA_RECINTO"
-  | "RETRASO"
-  | "PROBLEMA_SEGURIDAD"
-  | "OTRO";
+  | 'KIT_DANADO'
+  | 'KIT_FALTANTE'
+  | 'PROBLEMA_RECINTO'
+  | 'RETRASO'
+  | 'PROBLEMA_SEGURIDAD'
+  | 'OTRO';
 
-export type EstadoIncidencia = "ABIERTA" | "ATENDIDA" | "CERRADA";
+export type EstadoIncidencia = 'ABIERTA' | 'ATENDIDA' | 'CERRADA';
 
 export interface Incidencia {
   id: string;
@@ -960,7 +957,7 @@ export interface CreateIncidenciaRequest {
 }
 
 export interface UpdateEstadoIncidenciaRequest {
-  estado: "ATENDIDA" | "CERRADA";
+  estado: 'ATENDIDA' | 'CERRADA';
   comentario?: string | null;
 }
 
@@ -969,15 +966,15 @@ export interface UpdateEstadoIncidenciaRequest {
 // ===================================================================
 
 export type TipoAlerta =
-  | "NO_LLEGO_RECINTO"
-  | "NO_LLEGO_DPI"
-  | "SIN_SINCRONIZAR"
-  | "KIT_NO_CORRESPONDE"
-  | "ENTREGA_MILITAR_NO_REGISTRADA"
-  | "LLEGADA_RECINTO_FUERA_DE_RANGO"
-  | "LLEGADA_DPI_FUERA_DE_RANGO";
+  | 'NO_LLEGO_RECINTO'
+  | 'NO_LLEGO_DPI'
+  | 'SIN_SINCRONIZAR'
+  | 'KIT_NO_CORRESPONDE'
+  | 'ENTREGA_MILITAR_NO_REGISTRADA'
+  | 'LLEGADA_RECINTO_FUERA_DE_RANGO'
+  | 'LLEGADA_DPI_FUERA_DE_RANGO';
 
-export type EstadoAlerta = "GENERADA" | "VISTA" | "ATENDIDA";
+export type EstadoAlerta = 'GENERADA' | 'VISTA' | 'ATENDIDA';
 
 export interface Alerta {
   id: string;
@@ -992,14 +989,14 @@ export interface Alerta {
 }
 
 export interface UpdateEstadoAlertaRequest {
-  estado: "VISTA" | "ATENDIDA";
+  estado: 'VISTA' | 'ATENDIDA';
 }
 
 // ===================================================================
 // Alertas de enlaces caídos (CDAs Imbabura)
 // ===================================================================
 
-export type EstadoEnlace = "ACTIVO" | "FALLO";
+export type EstadoEnlace = 'ACTIVO' | 'FALLO';
 
 export interface EnlaceRecinto {
   codigoRecinto: string;
@@ -1033,7 +1030,7 @@ export interface AddCorreoEnlaceRequest {
 }
 
 /** Período de calendario (hora de Ecuador): día, semana lunes-domingo o mes. */
-export type PeriodoEstadisticasEnlaces = "dia" | "semana" | "mes";
+export type PeriodoEstadisticasEnlaces = 'dia' | 'semana' | 'mes';
 
 export interface EstadisticaEnlace {
   codigoRecinto: string;
@@ -1161,7 +1158,7 @@ export interface FilaInformeCustodia {
  */
 export type GrupoCda = string;
 
-export type CentroCda = "CDA" | "CPE";
+export type CentroCda = 'CDA' | 'CPE';
 
 /** Un cargo del combo "Cargo" (gestión de cargos). */
 export interface CargoCda {
@@ -1215,10 +1212,10 @@ export interface OperadorCda {
  * SIN_KIT: todavía no tiene kit en el evento activo (falta "Aplicar a la app" o faltan artículos).
  * PENDIENTE_EVENTO: el evento activo no es de esa fecha; se aplica después.
  */
-export type EstadoParejaCda = "EN_APP" | "SIN_KIT" | "PENDIENTE_EVENTO";
+export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'PENDIENTE_EVENTO';
 
 /** Celular de la persona (la APK solo se instala en Android). */
-export type DispositivoCda = "ANDROID" | "IPHONE";
+export type DispositivoCda = 'ANDROID' | 'IPHONE';
 
 export interface PersonaParejaCda {
   id: string;
@@ -1256,7 +1253,7 @@ export interface ParejaCdaFila {
   /** El kit de esta pareja (del evento del día) ya salió de la Delegación: quien lo lleva y el recinto no se cambian. */
   kitSalio: boolean;
   /** Quién de la pareja tiene asignado su kit en el sistema; null si nadie de ella. */
-  quienLleva: "OPERADOR" | "ASISTENTE" | null;
+  quienLleva: 'OPERADOR' | 'ASISTENTE' | null;
 }
 
 export interface ParejasCdaDia {
@@ -1342,7 +1339,7 @@ export interface AsignacionPersonaCda {
   fecha: string;
   /** null = pareja de reserva (sin recinto). */
   recinto: { codigo: string; nombre: string } | null;
-  como: "OPERADOR" | "ASISTENTE";
+  como: 'OPERADOR' | 'ASISTENTE';
   /** Con quién fue; null si fue sin pareja. */
   pareja: string | null;
 }
@@ -1422,11 +1419,7 @@ export interface PropuestaParejasCdaRequest {
 
 /** La propuesta ya editada: pasa por las mismas validaciones que la plantilla. */
 export interface CargarPropuestaParejasCdaRequest {
-  filas: {
-    cedulaOperador: string;
-    cedulaAsistente?: string | null;
-    codigoRecinto: string;
-  }[];
+  filas: { cedulaOperador: string; cedulaAsistente?: string | null; codigoRecinto: string }[];
   justificacion?: string;
 }
 
@@ -1446,11 +1439,7 @@ export interface CrearKitConParejaCdaRequest {
   operadorCdaId: string;
   asistenteCdaId?: string | null;
   /** Sin artículos, el kit lleva todos los activos del catálogo. */
-  detalleItems?: {
-    itemId: string;
-    serie?: string | null;
-    estado?: EstadoItemKit;
-  }[];
+  detalleItems?: { itemId: string; serie?: string | null; estado?: EstadoItemKit }[];
   /** El recinto lleva otro dispositivo: acepta un segundo kit real en él. */
   otroDispositivo?: boolean;
   /** Obligatoria si la jornada ya inició (asignaciones congeladas). */
@@ -1494,7 +1483,7 @@ export interface EditarParejaCdaResult extends AplicarParejasCdaResult {
   };
 }
 
-export type CampoParejaCda = "OPERADOR" | "ASISTENTE" | "RECINTO";
+export type CampoParejaCda = 'OPERADOR' | 'ASISTENTE' | 'RECINTO';
 
 /** Copiar la lista de un día a otro. */
 export interface CopiarParejasCdaRequest {
@@ -1571,8 +1560,7 @@ export interface PersonaCdaEncontrada {
   activo: boolean;
 }
 
-export type EstadoCuentaCda =
-  "SIN_CUENTA" | "PENDIENTE_CAMBIO" | "ACTIVA" | "BLOQUEADA" | "INACTIVA";
+export type EstadoCuentaCda = 'SIN_CUENTA' | 'PENDIENTE_CAMBIO' | 'ACTIVA' | 'BLOQUEADA' | 'INACTIVA';
 
 /** Resultado de crear o vincular cuentas; `fallidas` se completan con el botón de la web. */
 export interface ResultadoSincronizarCuentasCda {
@@ -1602,7 +1590,7 @@ export interface OperadorCdaFila {
   unidad?: string;
   fechaInicio?: string;
   /** NUEVO si la cédula no existe; ACTUALIZAR si ya estaba registrada. */
-  accion: "NUEVO" | "ACTUALIZAR";
+  accion: 'NUEVO' | 'ACTUALIZAR';
 }
 
 /** Alta manual de un operador (los mismos campos que una fila del Excel). */
@@ -1622,10 +1610,7 @@ export interface CrearOperadorCdaRequest {
  * Edición: todo menos la cédula y el grupo. Un opcional ausente se guarda
  * vacío; la fecha de ingreso sigue opcional (hay registros antiguos sin ella).
  */
-export type EditarOperadorCdaRequest = Omit<
-  CrearOperadorCdaRequest,
-  "cedula" | "grupo" | "fechaInicio"
-> & {
+export type EditarOperadorCdaRequest = Omit<CrearOperadorCdaRequest, 'cedula' | 'grupo' | 'fechaInicio'> & {
   fechaInicio?: string;
 };
 
@@ -1659,13 +1644,13 @@ export interface ImportOperadoresCdaResult {
   cuentas?: ResultadoSincronizarCuentasCda;
 }
 
-export type TipoMarcaAsistenciaCda = "ENTRADA" | "SALIDA";
+export type TipoMarcaAsistenciaCda = 'ENTRADA' | 'SALIDA';
 
 /** Cómo se registró una marca: check individual, "marcar a pendientes", carnet QR o corrección de un día pasado. */
-export type OrigenMarcaCda = "MANUAL" | "MASIVA" | "QR" | "CORRECCION";
+export type OrigenMarcaCda = 'MANUAL' | 'MASIVA' | 'QR' | 'CORRECCION';
 
 /** Qué toca registrar al escanear el carnet hoy. */
-export type SiguienteMarcaQrCda = "ENTRADA" | "SALIDA" | "COMPLETO";
+export type SiguienteMarcaQrCda = 'ENTRADA' | 'SALIDA' | 'COMPLETO';
 
 /** Resultado de escanear un carnet (todavía sin marcar: se confirma viendo la foto). */
 export interface ConsultaQrCda {
@@ -1764,8 +1749,7 @@ export interface ConvocatoriaCdaDia {
 }
 
 /** Una fila del Excel de convocatoria y qué pasa con ella. */
-export type EstadoFilaConvocatoriaCda =
-  "NUEVA" | "YA_CONVOCADA" | "EN_PAREJAS" | "ERROR";
+export type EstadoFilaConvocatoriaCda = 'NUEVA' | 'YA_CONVOCADA' | 'EN_PAREJAS' | 'ERROR';
 
 export interface FilaCargaConvocatoriaCda {
   /** Fila del archivo (la 1 es el encabezado). */
@@ -1808,7 +1792,7 @@ export interface ConfigAsistenciaCda {
 }
 
 /** PENDIENTE: hoy, sin entrada y todavía dentro de la hora + gracia. */
-export type EstadoPuntualidad = "PUNTUAL" | "ATRASO" | "FALTA" | "PENDIENTE";
+export type EstadoPuntualidad = 'PUNTUAL' | 'ATRASO' | 'FALTA' | 'PENDIENTE';
 
 export interface FilaAtrasoCda {
   /** AAAA-MM-DD */
@@ -1840,20 +1824,14 @@ export interface ReporteAtrasosCda {
   desde: string;
   hasta: string;
   config: ConfigAsistenciaCda;
-  totales: {
-    puntuales: number;
-    atrasos: number;
-    faltas: number;
-    pendientes: number;
-    minutosAtraso: number;
-  };
+  totales: { puntuales: number; atrasos: number; faltas: number; pendientes: number; minutosAtraso: number };
   resumen: ResumenAtrasoOperadorCda[];
   filas: FilaAtrasoCda[];
 }
 
 /** Reportes de asistencia y atrasos: todo en una tabla o una hoja/sección por día. */
-export type ModoReporteCda = "GENERAL" | "POR_DIA";
-export type FormatoReporteCda = "xlsx" | "pdf";
+export type ModoReporteCda = 'GENERAL' | 'POR_DIA';
+export type FormatoReporteCda = 'xlsx' | 'pdf';
 
 export interface MarcarAsistenciaCdaRequest {
   tipo: TipoMarcaAsistenciaCda;
@@ -1884,7 +1862,7 @@ export interface EnlaceFotoCdaCreado {
 /** Lo que ve el operador al abrir su enlace. Datos enmascarados. */
 export type EnlaceFotoCdaPublico =
   | {
-      estado: "ACTIVO";
+      estado: 'ACTIVO';
       apellidosNombres: string;
       /** Cédula enmascarada (p. ej. 1050xxxx12). */
       cedula: string;
@@ -1894,13 +1872,13 @@ export type EnlaceFotoCdaPublico =
       expiraEn: string;
     }
   /** Caducó, ya se usó, se generó otro, superó los intentos o no existe. */
-  | { estado: "INACTIVO" };
+  | { estado: 'INACTIVO' };
 
 // Actas de entrega de indumentaria y credencial (peto, credencial y cordón).
 
-export type EstadoPrenda = "NUEVO" | "BUENO" | "REGULAR" | "MALO";
+export type EstadoPrenda = 'NUEVO' | 'BUENO' | 'REGULAR' | 'MALO';
 /** GENERADA se puede corregir; FIRMADA queda bloqueada (solo un administrador la reabre). */
-export type EstadoActaCda = "GENERADA" | "FIRMADA";
+export type EstadoActaCda = 'GENERADA' | 'FIRMADA';
 
 export interface ActaEntregaCda {
   id: string;
@@ -2078,7 +2056,7 @@ export interface EstadoIntentoSimulador {
   venceEn: string;
   terminado: boolean;
   /** Motivo del cierre, si terminó. */
-  motivo: "META" | "TIEMPO" | null;
+  motivo: 'META' | 'TIEMPO' | null;
   /** Tiempo usado (hasta cumplir la meta o el fin del plazo); null mientras sigue abierto. */
   segundosUsados: number | null;
   /** Actas que le faltaron para la meta (0 si la cumplió). */
@@ -2134,7 +2112,7 @@ export interface IntentoReporteSimulador {
   iniciadoEn: string;
   terminadoEn: string | null;
   /** META = cumplió la meta de actas; TIEMPO = se acabó el tiempo; null = en curso. */
-  motivo: "META" | "TIEMPO" | null;
+  motivo: 'META' | 'TIEMPO' | null;
   /** Minutos usados (hasta cumplir la meta, el fin del tiempo o ahora si sigue en curso). */
   minutos: number;
   /** Lo mismo en segundos enteros, para mostrarlo como "18:24". */
@@ -2152,8 +2130,7 @@ export interface IntentoReporteSimulador {
   cumplio: boolean;
 }
 
-export type EstadoPersonaReporteSimulador =
-  "NO_SE_PRESENTO" | "EN_CURSO" | "TERMINADO";
+export type EstadoPersonaReporteSimulador = 'NO_SE_PRESENTO' | 'EN_CURSO' | 'TERMINADO';
 
 export interface FilaReporteSimulador {
   operadorId: string;
@@ -2182,13 +2159,7 @@ export interface ReporteSimulador {
     fin: string;
   };
   generadoEn: string;
-  totales: {
-    personas: number;
-    presentaron: number;
-    cumplieron: number;
-    enCurso: number;
-    noSePresentaron: number;
-  };
+  totales: { personas: number; presentaron: number; cumplieron: number; enCurso: number; noSePresentaron: number };
   /** Ordenadas: primero quien cumplió y más registros correctos; al final quien no se presentó. */
   filas: FilaReporteSimulador[];
 }
@@ -2196,7 +2167,7 @@ export interface ReporteSimulador {
 // ─── Tiempos de viaje por recinto (bot Jornada: avisos de retraso) ───────────
 
 /** De dónde sale el tiempo sugerido: viajes medidos del recinto o promedio de su cantón. */
-export type OrigenTiempoViaje = "MEDIDO" | "CANTON";
+export type OrigenTiempoViaje = 'MEDIDO' | 'CANTON';
 
 /** Un CDA con su tiempo de viaje desde la Delegación (ida o vuelta). */
 export interface TiempoViajeRecinto {
