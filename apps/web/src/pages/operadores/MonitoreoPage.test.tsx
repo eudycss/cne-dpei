@@ -249,7 +249,7 @@ describe('MonitoreoPage', () => {
     expect(within(filaLejos).getByText(/En retorno · Lejos \(30 km del DPEI\)/)).toBeInTheDocument();
     expect(within(filaMuyCerca).getByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/)).toBeInTheDocument();
     expect(punto(filaLejos).style.background).toBe('rgb(30, 64, 175)');
-    expect(punto(filaMuyCerca).style.background).toBe('rgb(13, 148, 136)');
+    expect(punto(filaMuyCerca).style.background).toBe('rgb(101, 163, 13)');
     // La ida conserva su color y su texto.
     const filaTransito = await fila('Carla Suárez');
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();

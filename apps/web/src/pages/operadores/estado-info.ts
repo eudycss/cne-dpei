@@ -9,13 +9,14 @@ export const ESTADO_INFO: Record<EstadoOperadorCda, { label: string; color: stri
 };
 
 /**
- * En retorno, el color pasa del azul al verde de "Llegó al DPEI" a medida que se acerca.
+ * En retorno, el color pasa del azul al cian y al lima a medida que se acerca (tonos bien separados,
+ * también con daltonismo; quien ya llegó sale del mapa, así que el lima no se confunde con su verde).
  * Siempre va con su texto: el color nunca es la única pista (WCAG 1.4.1).
  */
 export const CERCANIA_INFO: Record<CercaniaRetorno, { label: string; color: string }> = {
   LEJOS: { label: 'Lejos', color: '#1e40af' },
   CERCA: { label: 'Cerca', color: '#0891b2' },
-  MUY_CERCA: { label: 'Muy cerca', color: '#0d9488' },
+  MUY_CERCA: { label: 'Muy cerca', color: '#65a30d' },
 };
 
 export const ORDEN_CERCANIA: CercaniaRetorno[] = ['LEJOS', 'CERCA', 'MUY_CERCA'];
