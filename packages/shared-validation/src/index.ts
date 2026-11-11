@@ -1174,6 +1174,18 @@ export const cargarPropuestaParejasCdaSchema = z
   })
   .strict();
 
+const idsPersonasReserva = z.array(z.string().uuid('Persona inválida')).max(300, 'Elija máximo 300 personas');
+
+/** Personas sin pareja ese día que pasan a reserva, cada una por su cuenta. */
+export const crearReservasParejaCdaSchema = z
+  .object({ fecha: fechaParejaCdaSchema, operadores: idsPersonasReserva, asistentes: idsPersonasReserva })
+  .strict()
+  .refine((d) => d.operadores.length + d.asistentes.length > 0, { message: 'Elija al menos una persona', path: ['operadores'] })
+  .refine((d) => new Set([...d.operadores, ...d.asistentes]).size === d.operadores.length + d.asistentes.length, {
+    message: 'Hay personas repetidas',
+    path: ['operadores'],
+  });
+
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 

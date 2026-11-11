@@ -1259,6 +1259,8 @@ export interface ParejasCdaDia {
   parejas: ParejaCdaFila[];
   /** Parejas de reserva del día: sin recinto, no reciben kit ni salen en la app. */
   reserva: ParejaReservaCda[];
+  /** CDA activos que aún no tienen pareja ese día, para completarlos desde la lista. */
+  recintosSinPareja: RecintoParejaCda[];
 }
 
 /** Pareja de reserva: registrada el día pero sin recinto hasta que se le asigna uno. */
@@ -1481,6 +1483,17 @@ export type CampoParejaCda = 'OPERADOR' | 'ASISTENTE' | 'RECINTO';
 export interface CopiarParejasCdaRequest {
   desde: string;
   hacia: string;
+}
+
+/** Personas sin pareja ese día que pasan a reserva, cada una por su cuenta. */
+export interface CrearReservasParejaCdaRequest {
+  fecha: string;
+  operadores: string[];
+  asistentes: string[];
+}
+
+export interface CrearReservasParejaCdaResult {
+  creadas: number;
 }
 
 export interface CopiarParejasCdaResult {

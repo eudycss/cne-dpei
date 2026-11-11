@@ -39,6 +39,7 @@ const dia = (parejas: ParejaCdaFila[], reserva: ParejaReservaCda[] = []): Pareja
   congelado: false,
   parejas,
   reserva,
+  recintosSinPareja: [],
 });
 
 const reservada = (id: string, operador: PersonaParejaCda, asistente: PersonaParejaCda | null): ParejaReservaCda => ({

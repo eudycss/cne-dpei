@@ -191,6 +191,226 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     });
   });
 
+  describe('Personal sin recinto (pestaña Reserva)', () => {
+    const rutaReserva = `/operadores-cda?tab=parejas&dia=${DIA}&vista=reserva`;
+    const region = () => screen.findByRole('region', { name: `Personal sin recinto del ${DIA}` });
+
+    it('lista a cada persona con su cédula y cargo, aunque no haya reservas', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+
+      const filas = within(await region()).getAllByRole('row').slice(1);
+      expect(filas).toHaveLength(2);
+      expect(filas[0]).toHaveTextContent('MORA LUIS');
+      expect(filas[0]).toHaveTextContent('1712345675');
+      expect(filas[0]).toHaveTextContent('Operador CDA');
+      expect(filas[1]).toHaveTextContent('RUIZ JUAN');
+      expect(filas[1]).toHaveTextContent('Asistente CDA');
+      expect(screen.getByText('2 persona(s): 1 operador(es) · 1 asistente(s)')).toBeInTheDocument();
+      expect(getMock).toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+    });
+
+    it('el buscador filtra por cargo', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+
+      const filas = within(await region()).getAllByRole('row').slice(1);
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toHaveTextContent('RUIZ JUAN');
+      expect(screen.getByText('1 de 2 persona(s)')).toBeInTheDocument();
+    });
+
+    it('pasa a reserva a las personas elegidas y limpia la selección', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      postMock.mockResolvedValueOnce({ data: { creadas: 2 } });
+      renderPagina(rutaReserva);
+      await region();
+
+      const boton = screen.getByRole('button', { name: 'Pasar a reserva (0)' });
+      expect(boton).toBeDisabled();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar RUIZ JUAN' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (2)' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/reserva', { fecha: DIA, operadores: ['op2'], asistentes: ['as1'] }));
+      await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: '2 persona(s) pasaron a reserva' }));
+      expect(await screen.findByRole('button', { name: 'Pasar a reserva (0)' })).toBeDisabled();
+    });
+
+    it('"seleccionar todas" toma solo a las personas que deja ver el buscador', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      postMock.mockResolvedValueOnce({ data: { creadas: 1 } });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar todas las personas visibles' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith('/parejas-cda/reserva', { fecha: DIA, operadores: [], asistentes: ['as1'] }));
+    });
+
+    it('avisa si hay personas elegidas que el buscador oculta', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [JUAN] });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar personal sin recinto/ }), 'asistente');
+
+      expect(screen.getByText('1 de 2 persona(s) · 1 elegida(s) oculta(s) por el buscador')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pasar a reserva (1)' })).toBeEnabled();
+    });
+
+    it('tras un rechazo limpia la selección y vuelve a pedir la lista', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [] });
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'Alguna persona elegida ya tiene pareja o reserva' } } });
+      renderPagina(rutaReserva);
+      await region();
+      const pedidas = () => getMock.mock.calls.filter(([url]) => String(url).startsWith('/parejas-cda/disponibles')).length;
+      const antes = pedidas();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      await waitFor(() => expect(pedidas()).toBeGreaterThan(antes));
+      expect(await screen.findByRole('button', { name: 'Pasar a reserva (0)' })).toBeDisabled();
+    });
+
+    it('muestra el motivo si el servidor rechaza', async () => {
+      mockApi({ reserva: [] }, { operadores: [LUIS], asistentes: [] });
+      postMock.mockRejectedValueOnce({ response: { data: { message: 'Alguna persona elegida ya tiene pareja o reserva' } } });
+      renderPagina(rutaReserva);
+      await region();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar MORA LUIS' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Pasar a reserva (1)' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('ya tiene pareja o reserva');
+    });
+
+    it('avisa cuando no sobra nadie', async () => {
+      mockApi({ reserva: [] }, { operadores: [], asistentes: [] });
+      renderPagina(rutaReserva);
+
+      expect(await screen.findByText('Todo el personal activo ya tiene pareja o reserva este día.')).toBeInTheDocument();
+    });
+
+    it('muestra el error si no se puede cargar', async () => {
+      mockApi({ reserva: [] });
+      const base = getMock.getMockImplementation()!;
+      getMock.mockImplementation((url: string) =>
+        url.startsWith('/parejas-cda/disponibles') ? Promise.reject(new Error('caída')) : base(url),
+      );
+      renderPagina(rutaReserva);
+
+      expect(await screen.findByText('No se pudo cargar el personal sin recinto')).toBeInTheDocument();
+    });
+
+    it('quien no es administrador no lo ve ni lo consulta', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ reserva: [] });
+      renderPagina(rutaReserva);
+
+      await screen.findByText(/No hay parejas de reserva este día/);
+      expect(screen.queryByText('Personal sin recinto este día')).not.toBeInTheDocument();
+      expect(getMock).not.toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+    });
+  });
+
+  describe('CDA sin pareja', () => {
+    const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE SIN GENTE' };
+    const R8320 = { id: 'r3', codigo: '8320', nombre: 'UE LEJANA' };
+    const filasDeTabla = async () => within(await screen.findByRole('region', { name: `Parejas del ${DIA}` })).getAllByRole('row').slice(1);
+
+    it('salen al final de la tabla, numerados, con el total de recintos', async () => {
+      mockApi({ recintosSinPareja: [R1126, R8320] });
+      renderPagina();
+
+      const filas = await filasDeTabla();
+      expect(filas).toHaveLength(3);
+      expect(filas[1]).toHaveTextContent('2');
+      expect(filas[1]).toHaveTextContent('1126 · UE SIN GENTE');
+      expect(filas[1]).toHaveTextContent('Sin pareja');
+      expect(filas[2]).toHaveTextContent('8320 · UE LEJANA');
+      expect(screen.getByText('1 pareja(s) en 1 de 3 recinto(s) · 2 sin pareja')).toBeInTheDocument();
+    });
+
+    it('un día sin ninguna pareja igual lista los CDA para completarlos', async () => {
+      mockApi({ parejas: [], reserva: [], recintosSinPareja: [R1126] });
+      renderPagina();
+
+      const filas = await filasDeTabla();
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toHaveTextContent('1126 · UE SIN GENTE');
+      expect(screen.queryByText(/Aún no hay parejas este día/)).not.toBeInTheDocument();
+    });
+
+    it('el filtro deja solo los vacíos y el buscador los encuentra por código', async () => {
+      mockApi({ recintosSinPareja: [R1126, R8320] });
+      renderPagina();
+      await filasDeTabla();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo sin pareja' }));
+      expect(await filasDeTabla()).toHaveLength(2);
+      expect(screen.getByText('2 recinto(s) sin pareja')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo sin pareja' }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar por persona/ }), '8320');
+      const filas = await filasDeTabla();
+      expect(filas).toHaveLength(1);
+      // Conserva su número aunque el buscador oculte los anteriores.
+      expect(filas[0]).toHaveTextContent('3');
+      expect(screen.getByText('0 de 1 pareja(s) · 1 sin pareja')).toBeInTheDocument();
+    });
+
+    it('con el filtro y el buscador a la vez, el resumen cuenta solo los vacíos que se ven', async () => {
+      mockApi({ recintosSinPareja: [R1126, R8320] });
+      renderPagina();
+      await filasDeTabla();
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo sin pareja' }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar por persona/ }), 'LEJANA');
+      expect(await filasDeTabla()).toHaveLength(1);
+      expect(screen.getByText('1 de 2 recinto(s) sin pareja')).toBeInTheDocument();
+    });
+
+    it('administrador: ve cuántos sobran y asigna la pareja con el recinto ya elegido', async () => {
+      mockApi({ recintosSinPareja: [R1126] }, { recintos: [R957, R1126], asistentes: [{ ...JUAN, id: 'as9' }] });
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 1, sinKit: 0, errores: [] } });
+      renderPagina();
+
+      expect(await screen.findByText('Disponibles este día: 1 operador(es) · 1 asistente(s)')).toBeInTheDocument();
+      expect(getMock).toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar pareja a 1126 UE SIN GENTE' }));
+      const dialogo = await screen.findByRole('dialog');
+      expect(within(dialogo).getByRole('checkbox', { name: /Usar todos/ })).toBeChecked();
+      expect(await within(dialogo).findByRole('combobox', { name: 'Recinto CDA' })).toHaveValue('r2');
+
+      await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Operador CDA' }), 'op2');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith('/parejas-cda', { fecha: DIA, operadorCdaId: 'op2', asistenteCdaId: null, recintoId: 'r2' }),
+      );
+    });
+
+    it('sin ser administrador los ve, pero sin asignar ni pedir disponibles', async () => {
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      mockApi({ recintosSinPareja: [R1126] });
+      renderPagina();
+
+      const filas = await filasDeTabla();
+      expect(filas[1]).toHaveTextContent('Sin pareja');
+      expect(screen.queryByRole('button', { name: /Asignar pareja/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Disponibles este día/)).not.toBeInTheDocument();
+      expect(getMock).not.toHaveBeenCalledWith(`/parejas-cda/disponibles?fecha=${DIA}&todos=true`);
+    });
+  });
+
   it('sin evento activo de ese día lo explica y no deja "Aplicar a la app"', async () => {
     mockApi({ evento: null, parejas: [fila({ estado: 'PENDIENTE_EVENTO', kitCodigo: null })] });
     renderPagina();

@@ -6,6 +6,8 @@ import type {
   DispositivoCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
+  CrearReservasParejaCdaRequest,
+  CrearReservasParejaCdaResult,
   DisponiblesParejasCda,
   BusquedaAsignacionesCda,
   HistorialParejasCda,
@@ -403,6 +405,12 @@ export async function asignarKitParejaCda(id: string, justificacion?: string): P
 /** Celular de una persona CDA (ANDROID, IPHONE o null). */
 export async function cambiarDispositivoOperadorCda(id: string, dispositivo: DispositivoCda | null): Promise<void> {
   await api.patch(`/operadores-cda/${id}/dispositivo`, { dispositivo });
+}
+
+/** Pasa a reserva a personas sin pareja ese día. */
+export async function crearReservasParejaCda(body: CrearReservasParejaCdaRequest): Promise<CrearReservasParejaCdaResult> {
+  const { data } = await api.post<CrearReservasParejaCdaResult>('/parejas-cda/reserva', body);
+  return data;
 }
 
 /** Copia la lista de un día a otro (solo la registra). */

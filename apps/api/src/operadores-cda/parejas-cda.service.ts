@@ -10,6 +10,8 @@ import type {
   DispositivoCda,
   CrearKitConParejaCdaRequest,
   CrearParejaCdaRequest,
+  CrearReservasParejaCdaRequest,
+  CrearReservasParejaCdaResult,
   DisponiblesParejasCda,
   EditarParejaCdaRequest,
   EditarParejaCdaResult,
@@ -130,6 +132,11 @@ export class ParejasCdaService {
   async listar(fecha: string): Promise<ParejasCdaDia> {
     const [evento, parejas, reserva] = await Promise.all([this.eventoDeFecha(fecha), this.parejasDelDia(fecha), this.reservaDelDia(fecha)]);
     const porRecinto = parejasPorRecinto(parejas);
+    const recintosSinPareja = await this.prisma.recinto.findMany({
+      where: { tipo: 'CDA', activo: true, id: { notIn: [...porRecinto.keys()] } },
+      select: { id: true, codigoRecinto: true, nombre: true },
+      orderBy: { nombre: 'asc' },
+    });
     return {
       fecha,
       evento,
@@ -138,6 +145,7 @@ export class ParejasCdaService {
         .map((p) => aFila(p, evento, portadorDe(p), porRecinto.get(p.recintoId) ?? 1))
         .sort((a, b) => a.recinto.nombre.localeCompare(b.recinto.nombre, 'es') || a.operador.apellidosNombres.localeCompare(b.operador.apellidosNombres, 'es')),
       reserva,
+      recintosSinPareja: recintosSinPareja.map(aRecinto),
     };
   }
 
@@ -456,6 +464,35 @@ export class ParejasCdaService {
       throw new ConflictException(`El ${fecha} tiene una jornada iniciada o cerrada: esa lista es historial y no se puede cambiar`);
     }
     return eventos.map((e) => e.id);
+  }
+
+  /** Pasa a reserva, cada una por su cuenta, a personas sin pareja ese día; luego se unen con "Completar". */
+  async crearReservas(datos: CrearReservasParejaCdaRequest, usuarioId: string): Promise<CrearReservasParejaCdaResult> {
+    const ids = [...datos.operadores, ...datos.asistentes];
+    const personas = new Map(
+      (await this.prisma.operadorCda.findMany({ where: { id: { in: ids } }, select: { id: true, grupo: true, activo: true } })).map(
+        (p) => [p.id, p] as const,
+      ),
+    );
+    const vigente = (grupo: GrupoPareja) => (id: string) => personas.get(id)?.activo === true && personas.get(id)?.grupo === grupo;
+    if (!datos.operadores.every(vigente('OPERADOR')) || !datos.asistentes.every(vigente('ASISTENTE'))) {
+      throw new BadRequestException('Alguna persona elegida ya no está disponible o cambió de cargo: actualice la lista');
+    }
+    const fecha = fechaDb(datos.fecha);
+    const ocupada = await this.prisma.parejaCda.findFirst({
+      where: { fecha, OR: [{ operadorCdaId: { in: ids } }, { asistenteCdaId: { in: ids } }] },
+      select: { id: true },
+    });
+    if (ocupada) throw new ConflictException(`Alguna persona elegida ya tiene pareja o reserva el ${datos.fecha}: actualice la lista`);
+
+    // El orden de creación es el orden en que salen en la pestaña Reserva.
+    const base = Date.now();
+    const data: Prisma.ParejaCdaCreateManyInput[] = [
+      ...datos.operadores.map((id) => ({ operadorCdaId: id, asistenteCdaId: null })),
+      ...datos.asistentes.map((id) => ({ operadorCdaId: null, asistenteCdaId: id })),
+    ].map((integrantes, i) => ({ ...integrantes, fecha, recintoId: null, creadoPorId: usuarioId, creadoEn: new Date(base + i) }));
+    await this.guardar(datos.fecha, () => this.prisma.parejaCda.createMany({ data }));
+    return { creadas: data.length };
   }
 
   /**

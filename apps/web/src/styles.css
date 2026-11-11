@@ -677,6 +677,8 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 /* Parejas: las del mismo recinto forman un bloque (N° combinado y línea punteada entre ellas). */
 .ocda-tabla th.ocda-n-recinto { border-right: 1px solid var(--f-border-subtle); font-weight: 600; }
 .ocda-tabla tr:has(+ tr.ocda-fila-bloque) td { border-bottom-style: dashed; }
+/* CDA sin pareja: franja de aviso para distinguirlo de un vistazo, además del texto "Sin pareja". */
+.ocda-tabla tr.ocda-fila-sin-pareja th.ocda-n-recinto { box-shadow: inset 3px 0 0 var(--f-aviso); }
 .ocda-dispositivo select { padding: 0.15rem 0.35rem; font-size: 0.85rem; min-height: 32px; }
 .ocda-tabla tbody th { background: transparent; }
 .ocda-tabla tbody tr { transition: background 150ms ease; }

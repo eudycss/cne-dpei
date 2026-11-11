@@ -221,6 +221,25 @@ describe('ParejasCdaService', () => {
       expect(r.evento).toBeNull();
       expect(r.parejas[0].estado).toBe('PENDIENTE_EVENTO');
     });
+
+    it('devuelve los CDA activos que no tienen pareja ese día, sin contar los que ya la tienen', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r9', codigoRecinto: '1126', nombre: 'UE VACÍA' }]);
+
+      const r = await service.listar(DIA);
+
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: [RECINTO.id] } });
+      expect(r.recintosSinPareja).toEqual([{ id: 'r9', codigo: '1126', nombre: 'UE VACÍA' }]);
+    });
+
+    it('un día sin parejas lista todos los CDA activos', async () => {
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: 'r1', codigoRecinto: '957', nombre: 'UE ATAHUALPA' }]);
+
+      const r = await service.listar(DIA);
+
+      expect(prisma.recinto.findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true, id: { notIn: [] } });
+      expect(r.recintosSinPareja).toHaveLength(1);
+    });
   });
 
   it('listar avisa si las asignaciones del evento de ese día ya están congeladas (jornada iniciada)', async () => {
@@ -1709,6 +1728,51 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  describe('pasar personal a reserva', () => {
+    const datos = { fecha: DIA, operadores: ['op1'], asistentes: ['as1'] };
+    const personas = [
+      { id: 'op1', grupo: 'OPERADOR', activo: true },
+      { id: 'as1', grupo: 'ASISTENTE', activo: true },
+    ];
+
+    it('crea una reserva por persona, sin recinto ni kit', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(personas);
+
+      await expect(service.crearReservas(datos, 'admin')).resolves.toEqual({ creadas: 2 });
+
+      const { data } = prisma.parejaCda.createMany.mock.calls[0][0];
+      expect(data).toEqual([
+        expect.objectContaining({ fecha: FECHA, operadorCdaId: 'op1', asistenteCdaId: null, recintoId: null, creadoPorId: 'admin' }),
+        expect.objectContaining({ fecha: FECHA, operadorCdaId: null, asistenteCdaId: 'as1', recintoId: null, creadoPorId: 'admin' }),
+      ]);
+      expect(data[0].creadoEn.getTime()).toBeLessThan(data[1].creadoEn.getTime());
+      expect(data[0]).not.toHaveProperty('kitId');
+    });
+
+    it.each([
+      ['oculta', [{ id: 'op1', grupo: 'OPERADOR', activo: false }, personas[1]]],
+      ['de otro cargo', [{ id: 'op1', grupo: 'ASISTENTE', activo: true }, personas[1]]],
+      ['inexistente', [personas[1]]],
+    ])('rechaza a una persona %s sin crear nada', async (_n, encontradas) => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(encontradas);
+
+      await expect(service.crearReservas(datos, 'admin')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si alguien ya tiene pareja o reserva ese día', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce(personas);
+      prisma.parejaCda.findFirst.mockResolvedValueOnce({ id: 'p1' });
+
+      await expect(service.crearReservas(datos, 'admin')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.parejaCda.findFirst.mock.calls[0][0].where).toEqual({
+        fecha: FECHA,
+        OR: [{ operadorCdaId: { in: ['op1', 'as1'] } }, { asistenteCdaId: { in: ['op1', 'as1'] } }],
+      });
+      expect(prisma.parejaCda.createMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('copiar la lista a otro día', () => {
     const HACIA = '2026-11-04';
     const B = pareja({
@@ -2191,7 +2255,7 @@ describe('ParejasCdaService', () => {
           asistente: null,
         },
       ];
-      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [{ id: 'x' }] as never, reserva });
+      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [{ id: 'x' }] as never, reserva, recintosSinPareja: [] });
       const libres = jest.spyOn(service, 'disponibles');
       const generar = jest.spyOn(reporteParejasModulo, 'reporteParejas').mockReturnValue({
         titulo: 't', detalle: 'd', archivo: 'parejas_cda', desde: DIA, hasta: DIA, modo: 'GENERAL', tablas: [],
@@ -2208,7 +2272,7 @@ describe('ParejasCdaService', () => {
     });
 
     it('día sin parejas: 400', async () => {
-      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [], reserva: [] });
+      jest.spyOn(service, 'listar').mockResolvedValue({ fecha: DIA, evento: null, congelado: false, parejas: [], reserva: [], recintosSinPareja: [] });
       await expect(service.reporte(DIA, 'pdf')).rejects.toThrow(BadRequestException);
     });
   });
