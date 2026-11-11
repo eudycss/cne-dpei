@@ -1156,8 +1156,8 @@ describe('EnlacesService', () => {
       expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: { in: ['FALLO', 'ACTIVO'] } } });
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
+          { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
         undefined,
         undefined,
@@ -1233,7 +1233,7 @@ describe('EnlacesService', () => {
       expect(prisma.enlaceRecinto.findMany).toHaveBeenCalledWith({ where: { estado: { in: ['FALLO', 'ACTIVO'] } } });
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
         ],
         undefined,
         undefined,
@@ -1308,7 +1308,7 @@ describe('EnlacesService', () => {
 
       expect(telegram.enviarListaActual).toHaveBeenCalledWith(
         [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
+          { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
         ],
         undefined,
         undefined,

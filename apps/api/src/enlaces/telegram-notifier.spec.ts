@@ -378,8 +378,29 @@ describe('formatearListaActual: agrupado por cantón y casi todo caído', () => 
 
     it('filtrada a un cantón: dice el cantón y no repite el conteo por cantón', () => {
       const [texto] = formatearListaActual(caidos, undefined, 'Ibarra', undefined, activos);
-      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 9 enlaces caídos en Ibarra</b>');
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 8 enlaces caídos en Ibarra</b>');
       expect(texto).not.toContain('Caídos por cantón');
+    });
+
+    it('justo 5 activos sí aplica (el límite es "5 o menos")', () => {
+      const cinco = Array.from({ length: 5 }, (_, i) => recinto(`30${i}`, 'Ibarra'));
+      const [texto] = formatearListaActual(caidos, undefined, undefined, undefined, cinco);
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 12 enlaces caídos</b>');
+    });
+
+    it('6 caídos (apenas más de 5) y 5 activos: aplica; 5 caídos: lista normal', () => {
+      const cinco = Array.from({ length: 5 }, (_, i) => recinto(`30${i}`, 'Ibarra'));
+      const [seis] = formatearListaActual(caidos.slice(0, 6), undefined, undefined, undefined, cinco);
+      expect(seis.split('\n')[0]).toBe('<b>🔴 6 de 11 enlaces caídos</b>');
+      const [cincoCaidos] = formatearListaActual(caidos.slice(0, 5), undefined, undefined, undefined, cinco);
+      expect(cincoCaidos).toMatch(/^🔴 Enlaces caídos ahora mismo \(5\):/);
+    });
+
+    it('filtrada a un cantón: solo cuentan los activos de ese cantón', () => {
+      const mezclados = [recinto('401', 'Ibarra'), recinto('402', 'Otavalo'), recinto('403', 'IBARRA')];
+      const [texto] = formatearListaActual(caidos, undefined, 'Ibarra', undefined, mezclados);
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 9 enlaces caídos en Ibarra</b>');
+      expect(texto).not.toContain('402');
     });
 
     it.each([

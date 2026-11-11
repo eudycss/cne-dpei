@@ -589,7 +589,8 @@ export class EnlacesService {
     const comoEnlace = (r: any): EnlaceCaido => ({
       codigoRecinto: r.codigoRecinto,
       nombreRecinto: r.nombreRecinto,
-      canton: r.canton,
+      // Igual que el ciclo: el título del cantón no depende de cómo vino escrito ("IBARRA" o "Ibarra").
+      canton: normalizarCanton(r.canton),
     });
     const caidas = recintos.filter((r: any) => r.estado === 'FALLO').map(comoEnlace);
     // Con los activos, si cae casi todo se listan los pocos que siguen arriba.

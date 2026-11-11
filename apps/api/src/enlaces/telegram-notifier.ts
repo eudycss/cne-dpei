@@ -489,12 +489,17 @@ export function formatearListaActual(
   if (enlaces.length === 0) return [`✅ No hay enlaces caídos${donde} en este momento.`];
 
   const cont = `🔴 Enlaces caídos${donde} (cont.):`;
-  const casiTodoCaido =
-    activos !== undefined &&
+  // Con la lista filtrada a un cantón, solo cuentan los activos de ese cantón (si no, "X de Y" sale mal).
+  const activosDeAqui =
+    canton && activos ? activos.filter((a) => normalizarClave(a.canton ?? '') === normalizarClave(canton)) : activos;
+  if (
+    activosDeAqui !== undefined &&
     enlaces.length > MAX_CAIDOS_SIN_AGRUPAR &&
-    activos.length <= MAX_ACTIVOS_PARA_LISTARLOS &&
-    enlaces.length > activos.length;
-  if (casiTodoCaido) return formatearCasiTodoCaido(enlaces, activos, donde, !canton, nuevosCodigos, contactos);
+    activosDeAqui.length <= MAX_ACTIVOS_PARA_LISTARLOS &&
+    enlaces.length > activosDeAqui.length
+  ) {
+    return formatearCasiTodoCaido(enlaces, activosDeAqui, donde, !canton, nuevosCodigos, contactos);
+  }
 
   const encabezado = `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):`;
   if (canton || enlaces.length <= MAX_CAIDOS_SIN_AGRUPAR) {
