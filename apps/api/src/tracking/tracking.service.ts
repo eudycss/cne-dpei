@@ -63,6 +63,7 @@ import { AlertasService } from '../alertas/alertas.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 import { horaEcuador } from '../operadores-cda/dia-ecuador';
+import { cercaniaRetorno } from './cercania-retorno';
 
 // HU3: margen para registrar la llegada al recinto. Es configurable por evento
 // (ConfigAlerta.margenLlegadaMetros, vía "Configurar alertas" en Eventos) para
@@ -1548,12 +1549,15 @@ export class TrackingService {
 
     const kitsRows = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, operadorId: { in: operadorIds } },
-      select: { id: true, codigoUnico: true, nombre: true, operadorId: true },
+      select: { id: true, codigoUnico: true, nombre: true, operadorId: true, recintoId: true },
       orderBy: { codigoUnico: 'asc' },
     });
     const kitsPorId = new Map<string, OperadorEnRetornoKit[]>();
+    // Recinto del que vuelve: el de su primer kit (por código), para medir el camino hasta el DPEI.
+    const recintoPorOperador = new Map<string, string>();
     for (const k of kitsRows) {
       if (!k.operadorId) continue;
+      if (k.recintoId && !recintoPorOperador.has(k.operadorId)) recintoPorOperador.set(k.operadorId, k.recintoId);
       const arr = kitsPorId.get(k.operadorId) ?? [];
       arr.push({ id: k.id, codigoUnico: k.codigoUnico, nombre: k.nombre });
       kitsPorId.set(k.operadorId, arr);
@@ -1561,19 +1565,27 @@ export class TrackingService {
 
     const resultado: OperadorEnRetorno[] = [];
     for (const id of operadorIds) {
+      // Distancias en línea recta (geography, metros); NULL si falta la Delegación o el recinto.
       const ultima = await this.prisma.$queryRaw<
-        { lat: number; lng: number; capturado_en: Date }[]
+        { lat: number; lng: number; capturado_en: Date; falta_m: number | null; total_m: number | null }[]
       >`
-        SELECT ST_Y(ubicacion::geometry) AS lat,
-               ST_X(ubicacion::geometry) AS lng,
-               capturado_en
-        FROM posiciones_gps
-        WHERE operador_id = ${id}::uuid AND evento_id = ${evento.id}::uuid
-        ORDER BY capturado_en DESC
+        SELECT ST_Y(p.ubicacion::geometry) AS lat,
+               ST_X(p.ubicacion::geometry) AS lng,
+               p.capturado_en,
+               ST_Distance(p.ubicacion, c.delegacion_ubicacion) AS falta_m,
+               ST_Distance(r.ubicacion, c.delegacion_ubicacion) AS total_m
+        FROM posiciones_gps p
+        LEFT JOIN config_alertas c ON c.evento_id = p.evento_id
+        LEFT JOIN recintos r ON r.id = ${recintoPorOperador.get(id) ?? null}::uuid
+        WHERE p.operador_id = ${id}::uuid AND p.evento_id = ${evento.id}::uuid
+        ORDER BY p.capturado_en DESC
         LIMIT 1;
       `;
       if (ultima.length === 0) continue; // sin posiciones todavía
       const pos = ultima[0];
+      const estado = this.deriveEstadoOperador(tiposPorOperador.get(id));
+      const faltaMetros = pos.falta_m === null || pos.falta_m === undefined ? null : Math.round(Number(pos.falta_m));
+      const totalMetros = pos.total_m === null || pos.total_m === undefined ? null : Number(pos.total_m);
       resultado.push({
         operadorId: id,
         operadorNombre: nombrePorId.get(id) ?? 'Operador',
@@ -1581,7 +1593,10 @@ export class TrackingService {
         longitud: pos.lng,
         capturadoEn: pos.capturado_en.toISOString(),
         kits: kitsPorId.get(id) ?? [],
-        estado: this.deriveEstadoOperador(tiposPorOperador.get(id)),
+        estado,
+        // Solo el retorno se mide contra el DPEI; en la ida no se envía la distancia.
+        cercania: estado === 'EN_RETORNO' ? cercaniaRetorno(faltaMetros, totalMetros) : null,
+        faltaMetros: estado === 'EN_RETORNO' ? faltaMetros : null,
       });
     }
 

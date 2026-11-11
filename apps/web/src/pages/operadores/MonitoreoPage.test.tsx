@@ -68,6 +68,8 @@ const operadorRetorno: OperadorEnRetorno = {
   capturadoEn: '2026-07-01T10:00:00.000Z',
   kits: [{ id: 'k1', codigoUnico: 'KIT-001', nombre: 'Kit A' }],
   estado: 'EN_RETORNO',
+  cercania: null,
+  faltaMetros: null,
 };
 
 const operadorTransito: OperadorEnRetorno = {
@@ -78,6 +80,8 @@ const operadorTransito: OperadorEnRetorno = {
   capturadoEn: '2026-07-01T09:30:00.000Z',
   kits: [],
   estado: 'EN_TRANSITO',
+  cercania: null,
+  faltaMetros: null,
 };
 
 const cdaConUbicacionYFoto: CdaEstadoDto = {
@@ -226,6 +230,45 @@ describe('MonitoreoPage', () => {
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
   });
 
+  it('en retorno pinta y nombra qué tan cerca va del DPEI, con leyenda', async () => {
+    // Posición reciente: con una vieja saldrían en gris por 'sin señal'.
+    const enVivo = { ...operadorRetorno, capturadoEn: new Date().toISOString() };
+    const lejos: OperadorEnRetorno = { ...enVivo, operadorId: 'l', operadorNombre: 'Luis Lejos', cercania: 'LEJOS', faltaMetros: 30_000 };
+    const muyCerca: OperadorEnRetorno = { ...enVivo, operadorId: 'm', operadorNombre: 'Mara Cerca', cercania: 'MUY_CERCA', faltaMetros: 1_250 };
+    getOperadoresMock.mockResolvedValue([lejos, muyCerca, { ...operadorTransito, capturadoEn: enVivo.capturadoEn }]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    const fila = async (nombre: string) =>
+      (await screen.findAllByText(nombre)).map((el) => el.closest('li')).find((li): li is HTMLLIElement => li !== null)!;
+    const punto = (li: HTMLElement) => li.querySelector('span[aria-hidden="true"]') as HTMLElement;
+
+    const filaLejos = await fila('Luis Lejos');
+    const filaMuyCerca = await fila('Mara Cerca');
+    expect(within(filaLejos).getByText(/En retorno · Lejos \(30 km del DPEI\)/)).toBeInTheDocument();
+    expect(within(filaMuyCerca).getByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/)).toBeInTheDocument();
+    expect(punto(filaLejos).style.background).toBe('rgb(30, 64, 175)');
+    expect(punto(filaMuyCerca).style.background).toBe('rgb(13, 148, 136)');
+    // La ida conserva su color y su texto.
+    const filaTransito = await fila('Carla Suárez');
+    expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
+    expect(punto(filaTransito).style.background).toBe('rgb(124, 58, 237)');
+
+    expect(screen.getByText('En retorno, según el camino que le falta:')).toBeInTheDocument();
+    expect(screen.getByText('Muy cerca')).toBeInTheDocument();
+  });
+
+  it('si nadie va en retorno no muestra la leyenda de cercanía', async () => {
+    getOperadoresMock.mockResolvedValue([operadorTransito]);
+    getEstadoCdasMock.mockResolvedValue([]);
+
+    renderPage();
+
+    await screen.findAllByText('Carla Suárez');
+    expect(screen.queryByText('En retorno, según el camino que le falta:')).not.toBeInTheDocument();
+  });
+
   it('busca CDAs por código, por nombre del recinto o del operador, sin importar tildes', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
@@ -317,6 +360,8 @@ describe('MonitoreoPage', () => {
       capturadoEn: '2026-10-01T16:48:00.000Z', // 27 min antes
       kits: [],
       estado: 'EN_TRANSITO',
+      cercania: null,
+      faltaMetros: null,
     };
     const willy: OperadorEnRetorno = {
       operadorId: 'willy',
@@ -326,6 +371,8 @@ describe('MonitoreoPage', () => {
       capturadoEn: '2026-10-01T17:14:30.000Z', // en vivo
       kits: [],
       estado: 'EN_RETORNO',
+      cercania: null,
+      faltaMetros: null,
     };
 
     beforeEach(() => {

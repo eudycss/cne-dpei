@@ -13,7 +13,7 @@ import { FotoActaModal } from './FotoActaModal';
 import { formatearFechaHora } from '../../lib/notifications';
 import { MapView, Marker, FitBounds, FlyTo } from '../../components/map';
 import { desplazamientosMarcadores, estaSinSenal, formatearDuracion, minutosDesde } from './monitoreo-mapa';
-import { ESTADO_INFO, type ConteoEstados } from './estado-info';
+import { CERCANIA_INFO, ESTADO_INFO, ORDEN_CERCANIA, colorOperador, etiquetaOperador, type ConteoEstados } from './estado-info';
 import { KpiEstados } from './KpiEstados';
 import { FiltroEstado, type FiltroEstadoValor } from './FiltroEstado';
 import { IndicadorSync } from './IndicadorSync';
@@ -222,14 +222,14 @@ export function MonitoreoPage() {
               <Marker
                 key={o.operadorId}
                 position={[o.latitud, o.longitud]}
-                color={sinSenal ? COLOR_SIN_SENAL : ESTADO_INFO[o.estado].color}
+                color={sinSenal ? COLOR_SIN_SENAL : colorOperador(o)}
                 pulse={!sinSenal}
                 offset={desplazamientos.get(o.operadorId)}
               >
                 <strong>{o.operadorNombre}</strong>
                 <br />
                 <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  {ESTADO_INFO[o.estado].label} · Última posición: {formatearFechaHora(o.capturadoEn)}
+                  {etiquetaOperador(o)} · Última posición: {formatearFechaHora(o.capturadoEn)}
                 </span>
                 {sinSenal ? (
                   <>
@@ -268,6 +268,22 @@ export function MonitoreoPage() {
               Seleccione un operador para centrarlo en el mapa.
             </p>
           ) : null}
+          {operadores.some((o) => o.estado === 'EN_RETORNO') ? (
+            <p
+              style={{ fontSize: 12, margin: '0 0 0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.75rem' }}
+            >
+              <span style={{ opacity: 0.7 }}>En retorno, según el camino que le falta:</span>
+              {ORDEN_CERCANIA.map((c) => (
+                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <span
+                    aria-hidden="true"
+                    style={{ width: 8, height: 8, borderRadius: '50%', background: CERCANIA_INFO[c].color, display: 'inline-block' }}
+                  />
+                  {CERCANIA_INFO[c].label}
+                </span>
+              ))}
+            </p>
+          ) : null}
           {isLoading ? (
             <Cargando texto="Cargando operadores en ruta…" />
           ) : isError ? (
@@ -303,11 +319,11 @@ export function MonitoreoPage() {
                           width: 8,
                           height: 8,
                           borderRadius: '50%',
-                          background: sinSenal ? COLOR_SIN_SENAL : ESTADO_INFO[o.estado].color,
+                          background: sinSenal ? COLOR_SIN_SENAL : colorOperador(o),
                           display: 'inline-block',
                         }}
                       />
-                      {ESTADO_INFO[o.estado].label} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
+                      {etiquetaOperador(o)} · {o.kits.length} kit{o.kits.length === 1 ? '' : 's'} ·{' '}
                       {formatearFechaHora(o.capturadoEn)}
                     </div>
                     {sinSenal ? (

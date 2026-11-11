@@ -776,7 +776,13 @@ export interface OperadorEnRetorno {
   capturadoEn: string;
   kits: OperadorEnRetornoKit[];
   estado: EstadoOperadorCda;
+  /** Solo en retorno: qué parte del camino recinto → DPEI le falta (null sin datos para medirlo). */
+  cercania: CercaniaRetorno | null;
+  /** Metros en línea recta hasta el DPEI; null si el evento no tiene la coordenada de la Delegación. */
+  faltaMetros: number | null;
 }
+
+export type CercaniaRetorno = 'LEJOS' | 'CERCA' | 'MUY_CERCA';
 
 // Estado en vivo de los CDAs (pantalla de monitoreo)
 export type EstadoOperadorCda = 'EN_DPI' | 'EN_TRANSITO' | 'EN_RECINTO' | 'EN_RETORNO' | 'RETORNADO';

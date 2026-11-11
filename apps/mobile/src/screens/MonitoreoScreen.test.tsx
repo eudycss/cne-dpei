@@ -37,6 +37,8 @@ const operadorTransito: OperadorEnRetorno = {
   capturadoEn: '2026-07-01T09:30:00.000Z',
   kits: [],
   estado: 'EN_TRANSITO',
+  cercania: null,
+  faltaMetros: null,
 };
 
 const operadorRetorno: OperadorEnRetorno = {
@@ -47,6 +49,8 @@ const operadorRetorno: OperadorEnRetorno = {
   capturadoEn: '2026-07-01T10:00:00.000Z',
   kits: [{ id: 'k1', codigoUnico: 'KIT-001', nombre: 'Kit A' }],
   estado: 'EN_RETORNO',
+  cercania: null,
+  faltaMetros: null,
 };
 
 function textoDe(t: TestInstance): string {
