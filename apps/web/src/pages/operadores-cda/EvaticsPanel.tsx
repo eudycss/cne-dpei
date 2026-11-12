@@ -62,6 +62,9 @@ function fechaHora(iso: string): string {
  * supervisor; la IA solo sugiere. Los filtros los aplica la API; los
  * conteos y el gráfico son siempre de todo el personal.
  */
+/** Cada cuánto se vuelve a pedir el avance mientras la pestaña está visible. */
+export const REFRESCO_EVATICS_MS = 20_000;
+
 export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
@@ -77,6 +80,8 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
     queryKey: ['evatics', consulta],
     queryFn: () => getEvatics(consulta),
     placeholderData: (previo) => previo,
+    // Otros supervisores aprueban a la vez: el avance y su orden se actualizan solos (en pausa con la pestaña oculta).
+    refetchInterval: REFRESCO_EVATICS_MS,
   });
   const cambiar = (c: Partial<typeof filtros>) => setFiltros((f) => ({ ...f, ...c }));
 

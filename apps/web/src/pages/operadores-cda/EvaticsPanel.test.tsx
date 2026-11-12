@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PERMISO_IDS } from '@cne/shared-validation';
 import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName } from '@cne/shared-types';
 
-import { EvaticsPanel } from './EvaticsPanel';
-import { ordenarGrupos } from './AvanceEvatics';
+import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
+import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
 import { sugerenciaIa } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
@@ -386,5 +386,47 @@ describe('ordenarGrupos', () => {
       'Urcuquí',
       'Vacío',
     ]);
+  });
+});
+
+describe('avance: orden automático', () => {
+  const g = (nombre: string, total: number, aprobados: number) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+  const nombresEnPantalla = () => screen.getAllByRole('button', { pressed: false }).filter((b) => b.className === 'evx-fila').map((b) => b.querySelector('.evx-nombre')?.textContent);
+  const props = { porCanton: [] as ReturnType<typeof g>[], seleccionado: { canton: '', tecnico: '' }, onElegir: () => {} };
+
+  it('al llegar datos nuevos, el que más avanzó sube y el que menos, baja (sin recargar)', () => {
+    const { rerender } = render(
+      <AvanceEvatics {...props} porTecnico={[g('Carlos', 10, 8), g('Sebastian', 10, 2)]} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Por asistente/ }));
+    expect(nombresEnPantalla()).toEqual(['Carlos', 'Sebastian']);
+
+    rerender(<AvanceEvatics {...props} porTecnico={[g('Carlos', 10, 8), g('Sebastian', 10, 9)]} />);
+    expect(nombresEnPantalla()).toEqual(['Sebastian', 'Carlos']);
+  });
+});
+
+describe('EvaticsPanel: refresco automático', () => {
+  it('vuelve a pedir el avance sola cada REFRESCO_EVATICS_MS', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      getMock.mockResolvedValue({ data: listado() });
+      renderPanel();
+      await screen.findByText(/Hechos/);
+      const antes = getMock.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESCO_EVATICS_MS + 100);
+      });
+      expect(getMock.mock.calls.length).toBeGreaterThan(antes);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

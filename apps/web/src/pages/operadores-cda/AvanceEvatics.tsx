@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ConteoEvatics, GrupoConteoEvatics } from '@cne/shared-types';
 
 /**
@@ -35,6 +35,39 @@ export function describirGrupo(g: GrupoConteoEvatics): string {
   return `${g.nombre}: ${g.aprobados} de ${g.total} aprobados (${pct(g.aprobados, g.total)} %), ${g.pendientes} en revisión, ${g.rechazados} rechazados, ${g.sinSubir} sin subir`;
 }
 
+const DURACION_REORDEN_MS = 450;
+
+/**
+ * Cuando una fila cambia de lugar (porque otro grupo avanzó más) se desliza a
+ * su nueva posición en vez de saltar. Respeta "reducir movimiento". Cada <li>
+ * lleva data-clave con su nombre.
+ */
+function useAnimarReorden(lista: RefObject<HTMLUListElement | null>) {
+  const antes = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const ul = lista.current;
+    if (!ul) {
+      antes.current = new Map();
+      return;
+    }
+    const sinMovimiento = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const ahora = new Map<string, number>();
+    for (const li of Array.from(ul.children) as HTMLElement[]) {
+      const clave = li.dataset.clave;
+      if (!clave) continue;
+      ahora.set(clave, li.offsetTop);
+      const previo = antes.current.get(clave);
+      if (previo !== undefined && previo !== li.offsetTop && !sinMovimiento && typeof li.animate === 'function') {
+        li.animate([{ transform: `translateY(${previo - li.offsetTop}px)` }, { transform: 'none' }], {
+          duration: DURACION_REORDEN_MS,
+          easing: 'ease-in-out',
+        });
+      }
+    }
+    antes.current = ahora;
+  });
+}
+
 /**
  * Avance por cantón o por Asistente Transversal: una barra apilada por grupo
  * (100 % = su personal). Cada fila es un botón que filtra la tabla. Con
@@ -55,6 +88,8 @@ export function AvanceEvatics({
   const [vista, setVista] = useState<Vista>('canton');
   const [comoTabla, setComoTabla] = useState(false);
   const grupos = ordenarGrupos(vista === 'canton' ? porCanton : porTecnico);
+  const lista = useRef<HTMLUListElement>(null);
+  useAnimarReorden(lista);
   const actual = vista === 'canton' ? seleccionado.canton : seleccionado.tecnico;
   const titulo = vista === 'canton' ? 'Avance por cantón' : 'Avance por Asistente Transversal';
 
@@ -117,11 +152,11 @@ export function AvanceEvatics({
           </table>
         </div>
       ) : (
-        <ul className="evx-barras">
+        <ul className="evx-barras" ref={lista}>
           {grupos.map((g) => {
             const elegido = actual === g.nombre;
             return (
-              <li key={g.nombre}>
+              <li key={g.nombre} data-clave={g.nombre}>
                 <button
                   type="button"
                   className="evx-fila"
