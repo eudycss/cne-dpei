@@ -931,7 +931,7 @@ describe('EvaticsService', () => {
     ['no es prueba de Evatics', { esCertificadoEvatics: false }, /no parece una prueba de Evatics/],
     ['ilegible', { legible: false }, /No se lee bien/],
     ['captura de calificaciones sin nombre', { nombreLeido: null }, /no se ve su nombre/],
-    ['nombre visto pero sin 100 %', { cursoCompleto: false }, /no se ve el "100 % completado"/],
+    ['nombre visto pero sin 100 %', { cursoCompleto: false }, /Enviado a revisión/],
   ])('aviso para la persona: %s', (_caso, cambio, texto) => {
     expect(avisoParaLaPersona({ ...LECTURA, ...cambio })).toMatch(texto);
   });
