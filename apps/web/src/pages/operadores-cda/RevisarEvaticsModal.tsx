@@ -5,6 +5,7 @@ import type { AnalisisCertificadoEvatics, DecisionEvatics, FilaEvatics } from '@
 import { revisarEvaticsSchema } from '@cne/shared-validation';
 import { Modal } from '../../components/Modal';
 import { getFotoEvatics, revisarEvatics } from '../../lib/queries/evatics';
+import { useModulos } from '../../lib/useModulos';
 import { mensajeError } from './utils';
 
 const estadoHttp = (e: unknown) => (e as { response?: { status?: number } })?.response?.status;
@@ -50,6 +51,9 @@ function useFotoUrl(fila: FilaEvatics, anterior: boolean) {
  */
 export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onClose: () => void }) {
   const qc = useQueryClient();
+  const { puede } = useModulos();
+  // Solo lectura: el propio, el de un Asistente o Analista (lo decide el administrador) o sin el permiso de decidir.
+  const soloLectura = fila.esPropio || fila.soloAdministrador || !puede('cda.evatics.revisar');
   const [anterior, setAnterior] = useState(false);
   const [rechazando, setRechazando] = useState(false);
   const [motivo, setMotivo] = useState('');
@@ -179,9 +183,13 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. Las notas de una captura se pueden alterar: no las tome como prueba.
         </p>
 
-        {fila.esPropio ? (
+        {soloLectura ? (
           <div className="banner" role="status">
-            Es su propio certificado: lo revisa otro supervisor.
+            {fila.esPropio
+              ? 'Es su propio certificado: lo revisa otro supervisor.'
+              : fila.soloAdministrador
+                ? 'El certificado de un Asistente Transversal o Analista lo aprueba o rechaza solo el administrador.'
+                : 'Usted puede ver este certificado, pero no aprobarlo ni rechazarlo.'}
           </div>
         ) : rechazando ? (
           <div className="ocda-form">
@@ -207,7 +215,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           </div>
         ) : null}
 
-        {!fila.esPropio && (
+        {!soloLectura && (
           <div className="ocda-modal-acciones">
             {rechazando ? (
               <>
@@ -250,7 +258,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
             )}
           </div>
         )}
-        {anterior && !fila.esPropio && (
+        {anterior && !soloLectura && (
           <p className="ocda-pie">Para decidir, vuelva a la foto actual.</p>
         )}
       </div>

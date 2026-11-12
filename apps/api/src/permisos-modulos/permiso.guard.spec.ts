@@ -86,7 +86,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [FotoCdaController, 'crearEnlace', 'cda.fotos.enlace'],
   [ConvocatoriaCdaController, 'guardar', 'cda.convocatoria.gestionar'],
   [ConvocatoriaCdaController, 'cargar', 'cda.convocatoria.gestionar'],
-  [EvaticsController, 'foto', 'cda.evatics.revisar'],
+  [EvaticsController, 'foto', 'cda.evatics.ver'], // también la deja pasar 'cda.evatics.revisar'
   [EvaticsController, 'revisar', 'cda.evatics.revisar'],
 ];
 
@@ -106,7 +106,7 @@ describe('Acciones de CDAs en los endpoints', () => {
     (_n, controlador, metodo, permiso) => {
       const handler = controlador.prototype[metodo];
       expect(handler).toBeDefined();
-      expect(Reflect.getMetadata(PERMISO_KEY, handler)).toEqual([permiso]);
+      expect(Reflect.getMetadata(PERMISO_KEY, handler)).toContain(permiso);
       expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(PermisoGuard);
     },
   );

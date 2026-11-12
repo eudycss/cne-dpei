@@ -84,6 +84,22 @@ const RESERVA_ANALISIS_MS = 3 * 60_000;
 export const ESPERA_MAX_ANALISIS_AL_SUBIR_MS = 25_000;
 const ROL_AT = 'ASISTENTE_TRANSVERSAL';
 
+/** Sin tildes, espacios de más ni mayúsculas: un cargo renombrado a mano no debe apagar la regla. */
+const normalizar = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase();
+
+/** Cargos del equipo (Analistas, de cualquier nivel): solo el administrador revisa su certificado. */
+export const esCargoAnalista = (cargo: string) => normalizar(cargo).startsWith('analista');
+
+/** Asistentes Transversales y Analistas: solo el administrador revisa su certificado. */
+function esDelEquipo(p: { centro: string; cargo: string }): boolean {
+  return p.centro === 'AT' || esCargoAnalista(p.cargo);
+}
+
 /** Quien consulta o revisa: su cuenta y sus roles (del token). */
 export interface ActorEvatics {
   sub: string;
@@ -454,6 +470,7 @@ export class EvaticsService {
         motivoRechazo: c?.motivoRechazo ?? null,
         analisis: c ? analisisDto(c) : null,
         esPropio: propia.has(p.cedula),
+        soloAdministrador: esDelEquipo(p) && aplicaReglaPropia(actor),
       };
     });
     todas.sort(
@@ -516,6 +533,9 @@ export class EvaticsService {
     if (!c) throw new NotFoundException('Certificado no encontrado');
     if ((await this.cedulasPropias(actor)).has(c.cedula)) {
       throw new ForbiddenException('No puede revisar su propio certificado: lo revisa otro supervisor');
+    }
+    if (aplicaReglaPropia(actor) && (await this.esDelEquipoPorCedula(c.cedula))) {
+      throw new ForbiddenException('El certificado de un Asistente Transversal o Analista lo revisa solo el administrador');
     }
     const revisadoEn = new Date();
     const r = await this.prisma.certificadoEvatics.updateMany({
@@ -707,6 +727,18 @@ export class EvaticsService {
     for (const o of operadores) porCedula.set(o.cedula, this.deOperador(o));
     for (const u of usuarios) if (!porCedula.has(u.cedula)) porCedula.set(u.cedula, this.deUsuario(u));
     return [...porCedula.values()];
+  }
+
+  /**
+   * Si la cédula es de un Asistente Transversal o un Analista, esté activo o no
+   * y tenga o no otra fila de personal: la regla no se apaga al desactivarlos.
+   */
+  private async esDelEquipoPorCedula(cedula: string): Promise<boolean> {
+    const [operador, usuarioAt] = await Promise.all([
+      this.prisma.operadorCda.findUnique({ where: { cedula }, select: { cargoCda: { select: { nombre: true } } } }),
+      this.prisma.usuario.findFirst({ where: { cedula, roles: { some: { rol: { nombre: ROL_AT } } } }, select: { id: true } }),
+    ]);
+    return !!usuarioAt || (!!operador && esCargoAnalista(operador.cargoCda.nombre));
   }
 
   async personaPorCedula(cedula: string): Promise<PersonaEvatics | null> {

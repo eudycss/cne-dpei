@@ -84,7 +84,7 @@ export class EvaticsController {
   }
 
   @Get(':id/foto')
-  @RequierePermiso('cda.evatics.revisar')
+  @RequierePermiso('cda.evatics.ver', 'cda.evatics.revisar')
   @UseGuards(PermisoGuard)
   @ApiOperation({
     summary: 'Foto del certificado (descifrada; no se guarda en caché)',
