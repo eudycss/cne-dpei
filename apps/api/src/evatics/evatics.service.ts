@@ -117,7 +117,7 @@ type CertificadoGuardado = {
   nombreCoincide: boolean | null;
   esCertificado: boolean | null;
   legible: boolean | null;
-  cursoCompleto: boolean | null;
+  notasAprobadas: boolean | null;
   analizadoEn: Date | null;
   analisisProveedor: string | null;
 };
@@ -195,15 +195,18 @@ function analisisDto(c: CertificadoGuardado): AnalisisCertificadoEvatics {
     nombreCoincide: c.nombreCoincide,
     esCertificado: c.esCertificado,
     legible: c.legible,
-    cursoCompleto: c.cursoCompleto,
+    notasAprobadas: c.notasAprobadas,
     analizadoEn: c.analizadoEn?.toISOString() ?? null,
     proveedor: c.analisisProveedor,
   };
 }
 
 /** Qué decirle a la persona justo después de subir, según lo que leyó la IA (nunca el nombre leído). */
+/** Nombre visible y todas las notas >= 7: el único aviso que no es una advertencia. */
+export const MENSAJE_ENVIADO = 'Enviado correctamente';
+
 export function avisoParaLaPersona(lectura: LecturaCertificado | null): string | null {
-  if (!lectura) return null;
+  if (!lectura) return 'Enviado a revisión.';
   if (!lectura.esCertificadoEvatics) {
     return 'La imagen no parece una prueba de Evatics (certificado o captura del curso). Revise que sea la correcta y vuelva a subirla.';
   }
@@ -213,10 +216,10 @@ export function avisoParaLaPersona(lectura: LecturaCertificado | null): string |
   if (!lectura.nombreLeido) {
     return 'Recibida, pero no se ve su nombre en la imagen. Un supervisor la revisará; si puede, suba una captura donde aparezca su nombre.';
   }
-  if (!lectura.cursoCompleto) {
+  if (!lectura.notasAprobadas) {
     return 'Enviado a revisión.';
   }
-  return null;
+  return MENSAJE_ENVIADO;
 }
 
 /**
@@ -317,7 +320,7 @@ export class EvaticsService {
       nombreCoincide: null,
       esCertificado: null,
       legible: null,
-      cursoCompleto: null,
+      notasAprobadas: null,
       analizadoEn: null,
       analisisProveedor: null,
     };
@@ -629,7 +632,7 @@ export class EvaticsService {
           nombreCoincide: lectura.nombreLeido ? nombreCoincide(lectura.nombreLeido, esperado) : null,
           esCertificado: lectura.esCertificadoEvatics,
           legible: lectura.legible,
-          cursoCompleto: lectura.cursoCompleto,
+          notasAprobadas: lectura.notasAprobadas,
           analizadoEn: new Date(),
           analisisProveedor: proveedor,
         },

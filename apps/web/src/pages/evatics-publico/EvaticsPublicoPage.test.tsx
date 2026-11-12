@@ -129,9 +129,9 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
 
   it('sube cédula, consentimiento, versión del aviso y la foto; luego confirma', async () => {
     const user = await hastaVistaPrevia();
-    postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: null } });
+    postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado correctamente' } });
     await user.click(screen.getByRole('button', { name: 'Subir esta foto' }));
-    await screen.findByRole('heading', { name: '¡Listo, certificado recibido!' });
+    await screen.findByRole('heading', { name: 'Enviado correctamente' });
     // También es lo que ve si la IA (Gemini o Groq) falló o no respondió: lo decide el supervisor.
     expect(screen.getByText(/Un supervisor revisará su imagen/)).toBeInTheDocument();
 

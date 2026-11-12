@@ -57,7 +57,7 @@ const certificado = (over: Record<string, unknown> = {}) => ({
   nombreCoincide: true,
   esCertificado: true,
   legible: true,
-  cursoCompleto: true,
+  notasAprobadas: true,
   analizadoEn: new Date('2026-11-12T14:00:05Z'),
   analisisProveedor: 'Gemini',
   ...over,
@@ -78,7 +78,7 @@ const filaActual = (over: Record<string, unknown> = {}) => ({
 });
 
 const ARCHIVO = { buffer: Buffer.from('foto'), size: 4 } as Express.Multer.File;
-const LECTURA = { nombreLeido: 'Ana María Pérez López', esCertificadoEvatics: true, legible: true, cursoCompleto: true };
+const LECTURA = { nombreLeido: 'Ana María Pérez López', esCertificadoEvatics: true, legible: true, notasAprobadas: true };
 
 describe('EvaticsService', () => {
   const prisma = {
@@ -314,13 +314,13 @@ describe('EvaticsService', () => {
       await expect(service.subir(CED_ANA, ARCHIVO, 'v')).rejects.toThrow(BadRequestException);
     });
 
-    it('primera subida sin lector: queda PENDIENTE en cola, sin aviso y sin reemplazo', async () => {
+    it('primera subida sin lector: queda PENDIENTE en cola, en revisión y sin reemplazo', async () => {
       anaEnElPersonal();
       primeraSubida();
 
       const r = await service.subir(CED_ANA, ARCHIVO, 'LOPDP-EVATICS-2026-11');
 
-      expect(r).toEqual({ certificadoId: 'cert-ana', reemplazo: 0, resultado: { ok: true, estado: 'PENDIENTE', aviso: null } });
+      expect(r).toEqual({ certificadoId: 'cert-ana', reemplazo: 0, resultado: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado a revisión.' } });
       expect(storage.saveEncrypted).toHaveBeenCalledWith(
         expect.objectContaining({ categoria: 'certificados-evatics', buffer: Buffer.from('limpia') }),
       );
@@ -330,7 +330,7 @@ describe('EvaticsService', () => {
         estado: 'PENDIENTE',
         analisisEstado: 'EN_COLA',
         // Foto nueva: ninguna lectura anterior se le queda pegada.
-        cursoCompleto: null,
+        notasAprobadas: null,
         nombreLeido: null,
         consentimientoVersion: 'LOPDP-EVATICS-2026-11',
         subidasDia: HOY,
@@ -407,22 +407,22 @@ describe('EvaticsService', () => {
 
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
 
-      expect(r.resultado.aviso).toBeNull();
+      expect(r.resultado.aviso).toBe('Enviado correctamente');
       expect(lector.leer).toHaveBeenCalledWith(Buffer.from('limpia'), 'image/jpeg');
       const guardado = prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0];
       expect(guardado.where).toEqual({ id: 'cert-ana', fotoKey: 'clave-nueva' });
-      expect(guardado.data).toMatchObject({ analisisEstado: 'LISTO', nombreCoincide: true, cursoCompleto: true, analisisProveedor: 'Groq' });
+      expect(guardado.data).toMatchObject({ analisisEstado: 'LISTO', nombreCoincide: true, notasAprobadas: true, analisisProveedor: 'Groq' });
     });
 
-    it('guarda cursoCompleto=false si la IA no vio el 100 % y la fila sigue PENDIENTE (nunca aprueba)', async () => {
+    it('guarda notasAprobadas=false si la IA no vio todas las notas >= 7 y la fila sigue PENDIENTE (nunca aprueba)', async () => {
       anaEnElPersonal();
       lector.disponible.mockReturnValue(true);
-      lector.leer.mockResolvedValueOnce({ lectura: { ...LECTURA, cursoCompleto: false }, proveedor: 'Gemini' });
+      lector.leer.mockResolvedValueOnce({ lectura: { ...LECTURA, notasAprobadas: false }, proveedor: 'Gemini' });
       primeraSubida();
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
       expect(r.resultado.estado).toBe('PENDIENTE');
       const data = prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data;
-      expect(data.cursoCompleto).toBe(false);
+      expect(data.notasAprobadas).toBe(false);
       expect(data.estado).toBeUndefined();
     });
 
@@ -432,7 +432,7 @@ describe('EvaticsService', () => {
       lector.leer.mockResolvedValueOnce({ lectura: { ...LECTURA, nombreLeido: 'Juan Carlos Vega Mora' }, proveedor: 'Gemini' });
       primeraSubida();
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
-      expect(r.resultado.aviso).toBeNull();
+      expect(r.resultado.aviso).toBe('Enviado correctamente');
       expect(prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data.nombreCoincide).toBe(false);
     });
 
@@ -440,7 +440,7 @@ describe('EvaticsService', () => {
       anaEnElPersonal();
       lector.disponible.mockReturnValue(true);
       lector.leer.mockResolvedValueOnce({
-        lectura: { nombreLeido: null, esCertificadoEvatics: true, legible: false, cursoCompleto: false },
+        lectura: { nombreLeido: null, esCertificadoEvatics: true, legible: false, notasAprobadas: false },
         proveedor: 'Gemini',
       });
       primeraSubida();
@@ -456,7 +456,7 @@ describe('EvaticsService', () => {
 
       const subida = service.subir(CED_ANA, ARCHIVO, 'v');
       await jest.advanceTimersByTimeAsync(ESPERA_MAX_ANALISIS_AL_SUBIR_MS + 10);
-      await expect(subida).resolves.toMatchObject({ resultado: { ok: true, estado: 'PENDIENTE', aviso: null } });
+      await expect(subida).resolves.toMatchObject({ resultado: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado a revisión.' } });
       expect(prisma.certificadoEvatics.create.mock.calls[0][0].data.analisisSiguiente).toEqual(
         new Date(AHORA.getTime() + 3 * 60_000),
       );
@@ -471,7 +471,7 @@ describe('EvaticsService', () => {
 
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
 
-      expect(r.resultado).toEqual({ ok: true, estado: 'PENDIENTE', aviso: null });
+      expect(r.resultado).toEqual({ ok: true, estado: 'PENDIENTE', aviso: 'Enviado a revisión.' });
       const llamadas = prisma.certificadoEvatics.updateMany.mock.calls.map((c) => c[0].data);
       expect(llamadas).toContainEqual({ analisisIntentos: { increment: 1 } });
       expect(llamadas.at(-1)).toEqual({
@@ -497,7 +497,7 @@ describe('EvaticsService', () => {
       primeraSubida();
       prisma.certificadoEvatics.updateMany.mockRejectedValueOnce(new Error('base caída'));
       await expect(service.subir(CED_ANA, ARCHIVO, 'v')).resolves.toMatchObject({
-        resultado: { ok: true, estado: 'PENDIENTE', aviso: null },
+        resultado: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado a revisión.' },
       });
     });
 
@@ -938,21 +938,21 @@ describe('EvaticsService', () => {
     expect(prisma.configEvatics.upsert.mock.calls[1][0].update).toEqual({ fechaLimite: null });
   });
 
-  it('aviso para la persona: sin lectura, nada; nombre y 100 % vistos, nada que corregir', () => {
-    expect(avisoParaLaPersona(null)).toBeNull();
-    expect(avisoParaLaPersona(LECTURA)).toBeNull();
+  it('aviso para la persona: sin lectura va a revisión; nombre visto y notas >= 7, "Enviado correctamente"', () => {
+    expect(avisoParaLaPersona(null)).toBe('Enviado a revisión.');
+    expect(avisoParaLaPersona(LECTURA)).toBe('Enviado correctamente');
   });
 
   it.each([
     ['no es prueba de Evatics', { esCertificadoEvatics: false }, /no parece una prueba de Evatics/],
     ['ilegible', { legible: false }, /No se lee bien/],
     ['captura de calificaciones sin nombre', { nombreLeido: null }, /no se ve su nombre/],
-    ['nombre visto pero sin 100 %', { cursoCompleto: false }, /Enviado a revisión/],
+    ['nombre visto pero alguna nota menor a 7 o sin notas', { notasAprobadas: false }, /Enviado a revisión/],
   ])('aviso para la persona: %s', (_caso, cambio, texto) => {
     expect(avisoParaLaPersona({ ...LECTURA, ...cambio })).toMatch(texto);
   });
 
-  it.each([{ cursoCompleto: false }, { nombreLeido: null }, { legible: false }, { esCertificadoEvatics: false }])(
+  it.each([{ notasAprobadas: false }, { nombreLeido: null }, { legible: false }, { esCertificadoEvatics: false }])(
     'aviso: el nombre leído nunca se muestra a la persona (%j)',
     (cambio) => {
       expect(avisoParaLaPersona({ ...LECTURA, ...cambio })).not.toMatch(/Ana|Pérez/);

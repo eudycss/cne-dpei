@@ -20,8 +20,8 @@ export function sugerenciaIa(a: AnalisisCertificadoEvatics | null): { texto: str
   return { texto: 'No se leyó el nombre', clase: 'aviso' };
 }
 
-/** "100 % completado" según la IA: solo informa, no decide. */
-export function textoCursoCompleto(v: boolean | null | undefined): string {
+/** Notas de cuestionario >= 7 según la IA: solo informa, no decide. */
+export function textoNotasAprobadas(v: boolean | null | undefined): string {
   if (v === true) return 'Visto por la IA';
   if (v === false) return 'No visto';
   return 'Sin dato';
@@ -164,8 +164,8 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           )}
           {a?.estado === 'LISTO' && (
             <div>
-              <dt>«100 % completado»</dt>
-              <dd>{textoCursoCompleto(a.cursoCompleto)}</dd>
+              <dt>Notas de cuestionarios ≥ 7</dt>
+              <dd>{textoNotasAprobadas(a.notasAprobadas)}</dd>
             </div>
           )}
           {a?.proveedor && (
@@ -176,7 +176,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           )}
         </dl>
         <p className="ocda-enlace-aviso">
-          La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. El «100 %» de una captura se puede alterar: no lo tome como prueba.
+          La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. Las notas de una captura se pueden alterar: no las tome como prueba.
         </p>
 
         {fila.esPropio ? (

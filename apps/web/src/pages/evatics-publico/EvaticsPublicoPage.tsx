@@ -16,6 +16,9 @@ type Paso =
   | { tipo: 'vista'; cedula: string; datos: ConsultaEvaticsPublica; foto: Blob; url: string }
   | { tipo: 'listo'; cedula: string; datos: ConsultaEvaticsPublica; resultado: SubidaEvaticsResult };
 
+/** Lo que responde la API cuando se ve el nombre y todas las notas son >= 7. */
+const MENSAJE_ENVIADO = 'Enviado correctamente';
+
 const ESTADO: Record<EstadoCertificadoEvatics, { etiqueta: string; clase: string }> = {
   SIN_SUBIR: { etiqueta: 'Aún no lo sube', clase: 'vacio' },
   PENDIENTE: { etiqueta: 'En revisión', clase: 'aviso' },
@@ -452,23 +455,24 @@ function Listo({
   onSalir: () => void;
   onOtra: () => void;
 }) {
+  const advertencia = resultado.aviso && resultado.aviso !== MENSAJE_ENVIADO ? resultado.aviso : null;
   return (
     <>
       <Cabecera paso={3} />
       <div className="fcda-centro">
-        <span className={`fcda-icono ${resultado.aviso ? 'aviso' : 'exito'}`} aria-hidden="true">
+        <span className={`fcda-icono ${advertencia ? 'aviso' : 'exito'}`} aria-hidden="true">
           <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.5">
-            {resultado.aviso ? (
+            {advertencia ? (
               <path d="M12 7v6M12 17h.01" strokeLinecap="round" />
             ) : (
               <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
             )}
           </svg>
         </span>
-        <Titulo centrado>{resultado.aviso ? 'Foto recibida, pero revísela' : '¡Listo, certificado recibido!'}</Titulo>
-        {resultado.aviso ? (
+        <Titulo centrado>{advertencia ? 'Foto recibida, pero revísela' : MENSAJE_ENVIADO}</Titulo>
+        {advertencia ? (
           <div className="banner error" role="status">
-            {resultado.aviso}
+            {advertencia}
           </div>
         ) : (
           <p className="fcda-texto">
@@ -477,7 +481,7 @@ function Listo({
         )}
       </div>
       <div className="fcda-acciones">
-        {resultado.aviso && (
+        {advertencia && (
           <button type="button" className="btn" onClick={onOtra}>
             Subir otra foto
           </button>
