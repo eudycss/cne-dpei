@@ -59,6 +59,16 @@ const OTRA_SUBIDA = 'Se está subiendo otra foto con esta cédula: intente de nu
 export const MAX_INTENTOS_ANALISIS = 5;
 /** Por vuelta del cron. */
 const ANALISIS_POR_VUELTA = 4;
+/** Días que se guardan fotos y datos tras la fecha límite: lo promete el aviso LOPDP de la página pública. */
+export const DIAS_RETENCION_EVATICS = 90;
+const LOTE_PURGA = 100;
+
+/** "2026-11-20" + 90 → "2027-02-18". */
+export function sumarDias(dia: string, dias: number): string {
+  const d = fechaDb(dia);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return diaDeFechaDb(d);
+}
 /**
  * Tope de lecturas por minuto entre subidas y cron (en memoria): la llave
  * gratuita la comparte el asistente del bot. Lo que pase el tope espera en cola.
@@ -782,6 +792,41 @@ export class EvaticsService {
       this.log.warn(`Evatics sin distributivo de técnicos: ${nombreError(e)}`);
       return null;
     }
+  }
+
+  /**
+   * Retención: pasados DIAS_RETENCION_EVATICS días de la fecha límite se
+   * borran las fotos cifradas (actual y anterior) y los registros. Primero los
+   * archivos: si falla el borrado de filas, la próxima vuelta lo reintenta; al
+   * revés quedaría un archivo sin fila para siempre. Sin fecha límite no se
+   * borra nada. La bitácora de auditoría conserva quién subió y quién revisó.
+   */
+  @Cron('30 3 * * *', { name: 'purgar-certificados-evatics', timeZone: 'America/Guayaquil' })
+  async purgarVencidos(ahora = new Date()): Promise<number> {
+    const { fechaLimite } = await this.plazo();
+    if (!fechaLimite || diaEcuador(ahora) <= sumarDias(fechaLimite, DIAS_RETENCION_EVATICS)) return 0;
+    let borrados = 0;
+    for (;;) {
+      const lote = await this.prisma.certificadoEvatics.findMany({
+        orderBy: { id: 'asc' },
+        take: LOTE_PURGA,
+        select: { id: true, fotoKey: true, fotoAnteriorKey: true },
+      });
+      if (lote.length === 0) break;
+      for (const c of lote) {
+        await this.borrarArchivo(c.fotoKey);
+        if (c.fotoAnteriorKey) await this.borrarArchivo(c.fotoAnteriorKey);
+      }
+      const r = await this.prisma.certificadoEvatics.deleteMany({ where: { id: { in: lote.map((c) => c.id) } } });
+      borrados += r.count;
+      if (r.count === 0) break; // nunca girar en vano
+    }
+    if (borrados > 0) {
+      this.log.log(
+        `Retención: ${borrados} certificado(s) Evatics borrados (fotos y datos), ${DIAS_RETENCION_EVATICS} días después de la fecha límite ${fechaLimite}`,
+      );
+    }
+    return borrados;
   }
 
   private async plazo(): Promise<{ fechaLimite: string | null; vencido: boolean }> {
