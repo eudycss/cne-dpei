@@ -57,6 +57,7 @@ const certificado = (over: Record<string, unknown> = {}) => ({
   nombreCoincide: true,
   esCertificado: true,
   legible: true,
+  cursoCompleto: true,
   analizadoEn: new Date('2026-11-12T14:00:05Z'),
   analisisProveedor: 'Gemini',
   ...over,
@@ -328,6 +329,9 @@ describe('EvaticsService', () => {
         fotoKey: 'clave-nueva',
         estado: 'PENDIENTE',
         analisisEstado: 'EN_COLA',
+        // Foto nueva: ninguna lectura anterior se le queda pegada.
+        cursoCompleto: null,
+        nombreLeido: null,
         consentimientoVersion: 'LOPDP-EVATICS-2026-11',
         subidasDia: HOY,
         subidasHoy: 1,
@@ -407,7 +411,19 @@ describe('EvaticsService', () => {
       expect(lector.leer).toHaveBeenCalledWith(Buffer.from('limpia'), 'image/jpeg');
       const guardado = prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0];
       expect(guardado.where).toEqual({ id: 'cert-ana', fotoKey: 'clave-nueva' });
-      expect(guardado.data).toMatchObject({ analisisEstado: 'LISTO', nombreCoincide: true, analisisProveedor: 'Groq' });
+      expect(guardado.data).toMatchObject({ analisisEstado: 'LISTO', nombreCoincide: true, cursoCompleto: true, analisisProveedor: 'Groq' });
+    });
+
+    it('guarda cursoCompleto=false si la IA no vio el 100 % y la fila sigue PENDIENTE (nunca aprueba)', async () => {
+      anaEnElPersonal();
+      lector.disponible.mockReturnValue(true);
+      lector.leer.mockResolvedValueOnce({ lectura: { ...LECTURA, cursoCompleto: false }, proveedor: 'Gemini' });
+      primeraSubida();
+      const r = await service.subir(CED_ANA, ARCHIVO, 'v');
+      expect(r.resultado.estado).toBe('PENDIENTE');
+      const data = prisma.certificadoEvatics.updateMany.mock.calls.at(-1)[0].data;
+      expect(data.cursoCompleto).toBe(false);
+      expect(data.estado).toBeUndefined();
     });
 
     it('el nombre no coincide: lo marca para el supervisor, pero a la persona no se lo dice', async () => {

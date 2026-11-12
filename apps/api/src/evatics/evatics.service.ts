@@ -117,6 +117,7 @@ type CertificadoGuardado = {
   nombreCoincide: boolean | null;
   esCertificado: boolean | null;
   legible: boolean | null;
+  cursoCompleto: boolean | null;
   analizadoEn: Date | null;
   analisisProveedor: string | null;
 };
@@ -194,6 +195,7 @@ function analisisDto(c: CertificadoGuardado): AnalisisCertificadoEvatics {
     nombreCoincide: c.nombreCoincide,
     esCertificado: c.esCertificado,
     legible: c.legible,
+    cursoCompleto: c.cursoCompleto,
     analizadoEn: c.analizadoEn?.toISOString() ?? null,
     proveedor: c.analisisProveedor,
   };
@@ -315,6 +317,7 @@ export class EvaticsService {
       nombreCoincide: null,
       esCertificado: null,
       legible: null,
+      cursoCompleto: null,
       analizadoEn: null,
       analisisProveedor: null,
     };
@@ -626,6 +629,7 @@ export class EvaticsService {
           nombreCoincide: lectura.nombreLeido ? nombreCoincide(lectura.nombreLeido, esperado) : null,
           esCertificado: lectura.esCertificadoEvatics,
           legible: lectura.legible,
+          cursoCompleto: lectura.cursoCompleto,
           analizadoEn: new Date(),
           analisisProveedor: proveedor,
         },

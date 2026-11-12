@@ -20,6 +20,13 @@ export function sugerenciaIa(a: AnalisisCertificadoEvatics | null): { texto: str
   return { texto: 'No se leyó el nombre', clase: 'aviso' };
 }
 
+/** "100 % completado" según la IA: solo informa, no decide. */
+export function textoCursoCompleto(v: boolean | null | undefined): string {
+  if (v === true) return 'Visto por la IA';
+  if (v === false) return 'No visto';
+  return 'Sin dato';
+}
+
 /** URL local (blob:) de la foto; se libera al cambiar o cerrar. */
 function useFotoUrl(fila: FilaEvatics, anterior: boolean) {
   const version = anterior ? fila.fotoAnteriorSubidaEn : fila.subidoEn;
@@ -155,6 +162,12 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
               <dd>{a.nombreLeido ?? '—'}</dd>
             </div>
           )}
+          {a?.estado === 'LISTO' && (
+            <div>
+              <dt>«100 % completado»</dt>
+              <dd>{textoCursoCompleto(a.cursoCompleto)}</dd>
+            </div>
+          )}
           {a?.proveedor && (
             <div>
               <dt>Leído por</dt>
@@ -163,7 +176,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           )}
         </dl>
         <p className="ocda-enlace-aviso">
-          La IA solo sugiere: compare usted el nombre del certificado con el de la persona antes de decidir.
+          La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. El «100 %» de una captura se puede alterar: no lo tome como prueba.
         </p>
 
         {fila.esPropio ? (

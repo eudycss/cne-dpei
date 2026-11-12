@@ -1221,6 +1221,8 @@ model CertificadoEvatics {
   nombreCoincide        Boolean?  @map("nombre_coincide")
   esCertificado         Boolean?  @map("es_certificado")
   legible               Boolean?
+  // La IA vio "100 % completado" (solo informativo; null = sin dato). Aprueba el supervisor.
+  cursoCompleto         Boolean?  @map("curso_completo")
   analizadoEn           DateTime? @map("analizado_en") @db.Timestamptz(6)
   /// Quién leyó la foto ("Gemini" o "Groq"): lo ve el supervisor y lo nombra el aviso LOPDP.
   analisisProveedor     String?   @map("analisis_proveedor") @db.VarChar(20)
