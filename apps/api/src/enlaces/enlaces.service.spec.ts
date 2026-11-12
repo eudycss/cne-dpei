@@ -68,6 +68,8 @@ describe('EnlacesService', () => {
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
     enviarAvisoCiclo: jest.fn().mockResolvedValue(undefined),
+    publicarTablero: jest.fn().mockResolvedValue(null),
+    enviarPendientesTecnico: jest.fn().mockResolvedValue(undefined),
     enviarTexto: jest.fn().mockResolvedValue(undefined),
     enviarHtml: jest.fn().mockResolvedValue(undefined),
     responderBoton: jest.fn().mockResolvedValue(undefined),
@@ -262,7 +264,7 @@ describe('EnlacesService', () => {
       );
     });
 
-    it('pasa a Telegram el técnico y a quién llamar de cada recinto recién caído', async () => {
+    it('con hasta 4 caídos pasa a Telegram el técnico y a quién llamar de cada uno (no solo de los nuevos)', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '111', nombreRecinto: 'Ya caído', estado: 'FALLO' },
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
@@ -283,7 +285,7 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       const contactos = telegram.enviarAvisoCiclo.mock.calls[0][0].contactos;
-      expect([...contactos.keys()]).toEqual(['222', '333']);
+      expect([...contactos.keys()]).toEqual(['111', '222', '333']);
       expect(contactos.get('222')).toEqual({
         tecnico: 'Ana Pérez',
         encargado: { nombre: 'Rector Juana Ejemplo 0990000000', telefono: '' },
@@ -418,6 +420,78 @@ describe('EnlacesService', () => {
         ['a@b.com'],
         [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
       );
+    });
+
+    describe('tablero fijado', () => {
+      const fila = { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' as const };
+
+      beforeEach(() => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila]);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'ACTIVO'));
+      });
+
+      it('cada ciclo lo actualiza aunque no haya cambios (la hora muestra que el bot sigue vivo)', async () => {
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], tableroMensajeId: 77 });
+        telegram.publicarTablero.mockResolvedValueOnce(77);
+
+        await service.revisarEnlaces();
+
+        expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
+        expect(telegram.publicarTablero).toHaveBeenCalledWith(
+          expect.stringContaining('✅ Todos los enlaces levantados (1/1)'),
+          undefined,
+          77,
+        );
+        expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
+      });
+
+      it('si publicó uno nuevo, guarda su id para editarlo en los siguientes ciclos', async () => {
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], tableroMensajeId: null });
+        telegram.publicarTablero.mockResolvedValueOnce(90);
+
+        await service.revisarEnlaces();
+
+        expect(telegram.publicarTablero).toHaveBeenCalledWith(expect.any(String), undefined, null);
+        expect(prisma.configEnlaces.upsert).toHaveBeenCalledWith({
+          where: { id: 1 },
+          create: { id: 1, tableroMensajeId: 90 },
+          update: { tableroMensajeId: 90 },
+        });
+      });
+
+      it('si no se pudo publicar, no guarda nada', async () => {
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], tableroMensajeId: null });
+
+        await service.revisarEnlaces();
+
+        expect(prisma.configEnlaces.upsert).not.toHaveBeenCalled();
+      });
+
+      it('un error del tablero no frena el ciclo', async () => {
+        telegram.publicarTablero.mockRejectedValueOnce(new Error('telegram caído'));
+
+        await expect(service.revisarEnlaces()).resolves.toBeUndefined();
+      });
+
+      it('con muchos caídos, el tablero va por técnico con el estado confirmado', async () => {
+        const filas = ['1', '2', '3', '4', '5'].map((c) => ({ codigoRecinto: c, nombreRecinto: `R${c}`, estado: 'FALLO' as const }));
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue(filas);
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [], tableroMensajeId: 77 });
+        distributivo.asignaciones.mockResolvedValue(
+          filas.map((f) => ({ codigoRecinto: f.codigoRecinto, localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo Leal' })),
+        );
+        // En la tabla la lectura del 5 ya volvió a ACTIVO, pero sigue confirmado en FALLO.
+        prisma.enlaceRecinto.findMany.mockResolvedValue(
+          filas.map((f) => ({ ...f, canton: null, estado: f.codigoRecinto === '5' ? 'ACTIVO' : 'FALLO', estadoConfirmado: 'FALLO' })),
+        );
+
+        await service.revisarEnlaces();
+
+        const [texto, teclado] = telegram.publicarTablero.mock.calls[0];
+        expect(texto).toContain('1. Jairo Leal: 5');
+        expect(teclado).toEqual({ inline_keyboard: [[{ text: '1. Jairo Leal · 5🔴', callback_data: 'pend:1' }]] });
+      });
     });
 
     describe('anti-parpadeo (varios ciclos sobre la misma tabla)', () => {
@@ -1680,6 +1754,58 @@ describe('EnlacesService', () => {
         delete process.env.TELEGRAM_CHAT_IDS_CONSULTA;
         delete process.env.TELEGRAM_BOT_TOKEN;
       }
+    });
+
+    describe('botón de un técnico (tablero o aviso)', () => {
+      const boton = (data: string) => ({
+        callback_query: { id: 'cb-p', data, message: { message_id: 77, chat: { id: '-100200300' } } },
+      });
+
+      beforeEach(() => {
+        process.env.TELEGRAM_WEBHOOK_SECRET = 'secreto123';
+        process.env.TELEGRAM_CHAT_ID = '-100200300';
+        distributivo.asignaciones.mockResolvedValue([
+          { codigoRecinto: '982', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo Leal' },
+          { codigoRecinto: '1', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo Leal' },
+        ]);
+        prisma.enlaceRecinto.findMany.mockResolvedValue([
+          // Lectura en ACTIVO pero confirmado en FALLO: cuenta como pendiente (no parpadea).
+          { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide', canton: 'Ibarra', estado: 'ACTIVO', estadoConfirmado: 'FALLO' },
+          { codigoRecinto: '1', nombreRecinto: 'Escuela', canton: 'Ibarra', estado: 'ACTIVO', estadoConfirmado: 'ACTIVO' },
+        ]);
+        encargados.encargados.mockResolvedValue(new Map([['982', { nombre: 'Danilo', telefono: '0968' }]]));
+      });
+
+      it('"pend:1" contesta el toque y manda los pendientes de ese técnico con su estado confirmado', async () => {
+        await service.procesarComandoTelegram('secreto123', boton('pend:1'));
+
+        expect(telegram.responderBoton).toHaveBeenCalledWith('cb-p');
+        const [grupo, contactos] = telegram.enviarPendientesTecnico.mock.calls[0];
+        expect(grupo.tecnico).toBe('Jairo Leal');
+        expect(grupo.recintos.find((r: { codigoRecinto: string }) => r.codigoRecinto === '982').estado).toBe('FALLO');
+        expect(contactos.get('982')).toEqual({ nombre: 'Danilo', telefono: '0968' });
+      });
+
+      it('un técnico que ya no está en el distributivo: lo dice', async () => {
+        await service.procesarComandoTelegram('secreto123', boton('pend:9'));
+
+        expect(telegram.enviarPendientesTecnico).not.toHaveBeenCalled();
+        expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('ya no figura'), expect.any(String));
+      });
+
+      it.each(['pend:0', 'pend:1 OR 1', 'pend:abc'])('un callback mal formado (%s) se ignora', async (data) => {
+        await service.procesarComandoTelegram('secreto123', boton(data));
+
+        expect(telegram.enviarPendientesTecnico).not.toHaveBeenCalled();
+      });
+
+      it('si Drive falla, avisa en vez de callar', async () => {
+        distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
+
+        await service.procesarComandoTelegram('secreto123', boton('pend:1'));
+
+        expect(telegram.enviarTexto).toHaveBeenCalledWith(expect.stringContaining('⚠️'), expect.any(String));
+      });
     });
 
     describe('botones Hoy/Semana/Mes de la tarjeta', () => {

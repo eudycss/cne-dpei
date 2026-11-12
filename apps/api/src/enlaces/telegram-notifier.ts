@@ -214,6 +214,15 @@ async function leerRetryAfter(res: Response): Promise<number> {
   }
 }
 
+/** `result` de una respuesta correcta de Telegram (p. ej. el mensaje enviado); undefined si no se puede leer. */
+async function leerResultado(res: Response): Promise<unknown> {
+  try {
+    return ((await res.json()) as { result?: unknown })?.result;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `description` de una respuesta de error de Telegram; '' si no se puede leer. */
 async function leerDescripcion(res: Response): Promise<string> {
   try {
@@ -653,7 +662,10 @@ export interface AvisoCiclo {
   activos: EnlaceCaido[];
   /** Caídas confirmadas en este ciclo (se destacan con técnico y a quién llamar). */
   nuevos: Set<string>;
+  /** Técnico y a quién llamar: de todos los caídos si son pocos; si no, de los nuevos. */
   contactos?: Map<string, ContactoRecinto>;
+  /** Recintos por técnico con su estado confirmado (botones con muchos caídos). */
+  grupos: GrupoAsignacion[];
   /** Recuperaciones confirmadas en este ciclo. */
   recuperados: EnlaceCaido[];
   minutosCaido?: Map<string, number>;
@@ -663,12 +675,10 @@ export interface AvisoCiclo {
   intermitentes: EnlaceCaido[];
 }
 
+/** Solo con caídos pendientes: si ya están todos arriba, lo dice el estado (sin la lista). */
 function seccionRecuperados(a: AvisoCiclo): string[] {
   const total = a.caidos.length + a.activos.length;
-  const encabezado =
-    a.caidos.length === 0
-      ? `<b>✅ Todos los enlaces levantados (${total}/${total})</b>\nRecién recuperados (${a.recuperados.length}):`
-      : `✅ Enlaces recuperados (${a.recuperados.length}):`;
+  const encabezado = `✅ Enlaces recuperados (${a.recuperados.length}):`;
   const unidades = a.recuperados.map((e) => {
     const minutos = a.minutosCaido?.get(e.codigoRecinto);
     const texto = formatearLinea(e) + (minutos === undefined ? '' : ` · volvió tras ${formatearDuracion(minutos)}`);
@@ -709,10 +719,26 @@ function empaquetar(secciones: string[][]): string[] {
  * recinto que llega por primera vez al escalamiento. Recuperaciones sueltas,
  * recordatorios e intermitentes llegan en silencio. Sin nada que avisar, [].
  */
-export function formatearAvisoCiclo(a: AvisoCiclo): { mensajes: string[]; sonar: boolean } {
+export function formatearAvisoCiclo(a: AvisoCiclo): { mensajes: string[]; sonar: boolean; teclado?: object } {
   const secciones: string[][] = [];
-  if (a.nuevos.size > 0) secciones.push(formatearListaActual(a.caidos, a.nuevos, undefined, a.contactos, a.activos));
-  if (a.recuperados.length > 0) secciones.push(seccionRecuperados(a));
+  const todoArriba = a.caidos.length === 0 && a.recuperados.length > 0;
+  let teclado: object | undefined;
+  if (a.nuevos.size > 0 || todoArriba) {
+    const estado = formatearEstadoEnlaces(a, a.nuevos);
+    teclado = estado.teclado;
+    secciones.push([estado.texto]);
+    // Con muchos caídos el estado va por técnico: los recién caídos, aparte y con a quién llamar.
+    if (a.caidos.length > MAX_CAIDOS_DETALLADOS && a.nuevos.size > 0) {
+      const nuevos = a.caidos.filter((e) => a.nuevos.has(e.codigoRecinto));
+      secciones.push(
+        partirEnMensajes(
+          `<b>🚨 Acaban de caer (${nuevos.length}):</b>`,
+          nuevos.map((e) => ({ texto: bloqueCaido(e, a.nuevos, a.contactos), cont: '<b>🚨 Acaban de caer (cont.)</b>' })),
+        ),
+      );
+    }
+  }
+  if (a.recuperados.length > 0 && !todoArriba) secciones.push(seccionRecuperados(a));
   const escalados = a.escalamiento.flatMap((g) => g.recintos);
   if (escalados.length > 0) {
     secciones.push(
@@ -727,7 +753,142 @@ export function formatearAvisoCiclo(a: AvisoCiclo): { mensajes: string[]; sonar:
     a.nuevos.size > 0 ||
     (a.recuperados.length > 0 && a.caidos.length === 0) ||
     escalados.some((r) => r.aviso === 1);
-  return { mensajes: empaquetar(secciones), sonar };
+  return { mensajes: empaquetar(secciones), sonar, ...(teclado ? { teclado } : {}) };
+}
+
+/** Hasta tantos caídos el estado los lista con técnico y a quién llamar; con más, va por técnico. */
+export const MAX_CAIDOS_DETALLADOS = 4;
+
+/** Errores de editMessageText que significan que el tablero ya no se puede editar (lo borraron). */
+const TABLERO_YA_NO_EXISTE = /message to edit not found|MESSAGE_ID_INVALID|message can't be edited/i;
+
+/** Telegram admite hasta 100 botones por teclado. */
+const MAX_BOTONES = 100;
+
+/** callback_data de los botones de técnico del tablero ("pend:3"; "pend:sin" = sin técnico). */
+export const PREFIJO_CALLBACK_PENDIENTES = 'pend:';
+
+/** Lo necesario para describir la situación de los enlaces (estado confirmado). */
+export interface EstadoEnlaces {
+  caidos: EnlaceCaido[];
+  activos: EnlaceCaido[];
+  /** Técnico y a quién llamar de cada caído (se usa con pocos caídos). */
+  contactos?: Map<string, ContactoRecinto>;
+  /** Recintos por técnico con su estado confirmado; [] si no se pudo leer el distributivo. */
+  grupos: GrupoAsignacion[];
+}
+
+function conteoPorCanton(enlaces: EnlaceCaido[]): string {
+  return agruparPorCanton(enlaces)
+    .map((g) => `📍 ${escapeHtml(g.canton)}: ${g.enlaces.length}`)
+    .join(' · ');
+}
+
+const caidosDe = (g: GrupoAsignacion) => g.recintos.filter((r) => r.estado === 'FALLO');
+
+function nombreTecnico(g: GrupoAsignacion): string {
+  return g.numeroTecnico === null ? 'Sin técnico' : `${g.numeroTecnico}. ${recortar(g.tecnico, 28)}`;
+}
+
+/** Un botón por técnico con recintos caídos (uno por fila, para que no se corten en el celular). */
+export function tecladoPendientes(grupos: GrupoAsignacion[]) {
+  const conCaidos = grupos.filter((g) => caidosDe(g).length > 0);
+  return {
+    inline_keyboard: conCaidos.slice(0, MAX_BOTONES).map((g) => [
+      {
+        text: `${nombreTecnico(g)} · ${caidosDe(g).length}🔴`,
+        callback_data: `${PREFIJO_CALLBACK_PENDIENTES}${claveGrupoAsignacion(g)}`,
+      },
+    ]),
+  };
+}
+
+/** Un caído con su técnico y a quién llamar; los recién caídos con 🚨 y negrita. */
+function bloqueCaidoConContacto(e: EnlaceCaido, nuevo: boolean, contacto: ContactoRecinto | undefined): string {
+  const linea = formatearLinea(e);
+  return (
+    (nuevo ? `🚨 <b>${linea}</b>` : `🔴 ${linea}`) +
+    `\n    👷 Técnico: ${formatearTecnico(contacto?.tecnico ?? null)}` +
+    `\n    📞 Llamar: ${formatearEncargado(contacto?.encargado ?? null)}`
+  );
+}
+
+/**
+ * La situación de los enlaces en un mensaje (HTML escapado), según cuántos hay caídos:
+ * - Ninguno: "✅ Todos los enlaces levantados" y cuántos hay por cantón.
+ * - Hasta MAX_CAIDOS_DETALLADOS: cada caído con su técnico y a quién llamar.
+ * - Más: caídos por cantón y pendientes por técnico, con un botón por técnico
+ *   (`teclado`) que muestra sus recintos caídos y a quién llamar.
+ */
+export function formatearEstadoEnlaces(e: EstadoEnlaces, nuevos: Set<string> = new Set()): { texto: string; teclado?: object } {
+  const total = e.caidos.length + e.activos.length;
+  if (e.caidos.length === 0) {
+    const porCanton = conteoPorCanton(e.activos);
+    return { texto: `<b>✅ Todos los enlaces levantados (${total}/${total})</b>${porCanton ? `\n${porCanton}` : ''}` };
+  }
+  if (e.caidos.length <= MAX_CAIDOS_DETALLADOS) {
+    const bloques = e.caidos.map((c) => bloqueCaidoConContacto(c, nuevos.has(c.codigoRecinto), e.contactos?.get(c.codigoRecinto)));
+    return {
+      texto:
+        `<b>🔴 ${e.caidos.length} de ${total} enlace${total === 1 ? '' : 's'} caído${e.caidos.length === 1 ? '' : 's'}</b>\n` +
+        `${bloques.join('\n')}\n✅ Levantados: ${e.activos.length}`,
+    };
+  }
+  const lineas = [
+    `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} levantados (de ${total})</b>`,
+    `Caídos por cantón: ${conteoPorCanton(e.caidos)}`,
+  ];
+  const pendientes = e.grupos.filter((g) => caidosDe(g).length > 0);
+  if (pendientes.length === 0) {
+    lineas.push(`<i>Sin distributivo de técnicos: toque ${TEXTO_BOTON_CAIDOS} para ver la lista.</i>`);
+    return { texto: lineas.join('\n') };
+  }
+  lineas.push('', '<b>👷 Pendientes por técnico:</b>');
+  lineas.push(...pendientes.map((g) => `${escapeHtml(nombreTecnico(g))}: ${caidosDe(g).length}`));
+  lineas.push('', '<i>Toque un técnico para ver sus recintos y a quién llamar.</i>');
+  return { texto: lineas.join('\n'), teclado: tecladoPendientes(pendientes) };
+}
+
+const HORA_ECUADOR = new Intl.DateTimeFormat('es-EC', {
+  timeZone: 'America/Guayaquil',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** El tablero fijado: el estado y a qué hora se actualizó (así se ve que el bot sigue vivo). */
+export function formatearTablero(e: EstadoEnlaces, ahora: Date): { texto: string; teclado?: object } {
+  const estado = formatearEstadoEnlaces(e);
+  const pie = `<i>🕒 Actualizado ${HORA_ECUADOR.format(ahora)} · se actualiza solo cada 5 min</i>`;
+  let cuerpo = estado.texto;
+  // El tablero es un solo mensaje (se edita, no se parte): si no cabe, quedan los
+  // totales y los botones de técnico, que llevan el detalle.
+  if (`📌 <b>Tablero de enlaces</b>\n\n${cuerpo}\n\n${pie}`.length > MAX_LARGO_MENSAJE) {
+    cuerpo =
+      `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} levantados</b>\n` +
+      `<i>Toque un técnico para ver sus recintos y a quién llamar.</i>`;
+  }
+  return {
+    texto: `📌 <b>Tablero de enlaces</b>\n\n${cuerpo}\n\n${pie}`,
+    ...(estado.teclado ? { teclado: estado.teclado } : {}),
+  };
+}
+
+/** Recintos caídos de un técnico, con a quién llamar en cada uno (HTML escapado). */
+export function formatearPendientesTecnico(g: GrupoAsignacion, encargados: Map<string, EncargadoRecinto>): string[] {
+  const nombre = escapeHtml(nombreTecnico(g));
+  const caidos = caidosDe(g);
+  if (caidos.length === 0) return [`✅ ${nombre}: no tiene recintos caídos ahora.`];
+  const encabezado = `<b>👷 ${nombre} · ${caidos.length} pendiente${caidos.length === 1 ? '' : 's'}</b>`;
+  return partirEnMensajes(
+    encabezado,
+    caidos.map((r) => ({
+      texto:
+        `🔴 ${formatearLinea({ codigoRecinto: r.codigoRecinto, nombreRecinto: r.nombreRecinto, canton: r.canton })}` +
+        `\n    📞 Llamar: ${formatearEncargado(encargados.get(r.codigoRecinto) ?? null)}`,
+      cont: `<b>👷 ${nombre} (cont.)</b>`,
+    })),
+  );
 }
 
 const EMOJI_ESTADO = { ACTIVO: '✅', FALLO: '🔴' } as const;
@@ -822,9 +983,52 @@ export class TelegramNotifier {
    * intermitentes juntos; ver formatearAvisoCiclo). Si se parte en varios
    * mensajes, solo el primero puede sonar. */
   async enviarAvisoCiclo(aviso: AvisoCiclo): Promise<void> {
-    const { mensajes, sonar } = formatearAvisoCiclo(aviso);
+    const { mensajes, sonar, teclado } = formatearAvisoCiclo(aviso);
     for (const [i, mensaje] of mensajes.entries()) {
-      await this.enviarMensaje(mensaje, 'el aviso de enlaces', 'HTML', tecladoFijo(), !sonar || i > 0);
+      // Los botones de técnico van en el último mensaje, debajo de todo el aviso.
+      const botones = teclado && i === mensajes.length - 1 ? teclado : tecladoFijo();
+      await this.enviarMensaje(mensaje, 'el aviso de enlaces', 'HTML', botones, !sonar || i > 0);
+    }
+  }
+
+  /**
+   * Publica o actualiza el tablero fijado y devuelve el id de su mensaje (null si no
+   * se pudo publicar). Con `mensajeId` lo edita; si Telegram dice que ese mensaje ya
+   * no existe (lo borraron), publica uno nuevo en silencio y lo fija. Un fallo de red
+   * no publica otro: se reintenta en el siguiente ciclo sobre el mismo mensaje.
+   */
+  async publicarTablero(texto: string, teclado: object | undefined, mensajeId: number | null): Promise<number | null> {
+    const botones = teclado ?? { inline_keyboard: [] };
+    if (mensajeId !== null) {
+      const editado = await this.llamarApi(
+        'editMessageText',
+        { message_id: mensajeId, text: texto, parse_mode: 'HTML', reply_markup: botones },
+        'el tablero de enlaces',
+      );
+      // Solo si el mensaje ya no existe (lo borraron) se publica otro: cualquier otro
+      // error (red, texto mal armado) repetiría un tablero nuevo y fijado en cada ciclo.
+      if (editado.ok || !TABLERO_YA_NO_EXISTE.test(editado.descripcion ?? '')) return mensajeId;
+    }
+    const enviado = await this.llamarApi(
+      'sendMessage',
+      { text: texto, parse_mode: 'HTML', disable_notification: true, reply_markup: botones },
+      'el tablero de enlaces',
+    );
+    const id = (enviado.resultado as { message_id?: unknown } | undefined)?.message_id;
+    if (!enviado.ok) return null;
+    if (typeof id !== 'number') {
+      this.log.error('Se publicó el tablero de enlaces pero Telegram no devolvió su id: el siguiente ciclo publicará otro');
+      return null;
+    }
+    // Fijar requiere que el bot sea administrador con permiso de fijar; si no, el tablero queda sin fijar.
+    await this.llamar('pinChatMessage', { message_id: id, disable_notification: true }, 'fijar el tablero de enlaces');
+    return id;
+  }
+
+  /** Respuesta (en silencio) al tocar un técnico en el tablero o en un aviso. */
+  async enviarPendientesTecnico(grupo: GrupoAsignacion, encargados: Map<string, EncargadoRecinto>): Promise<void> {
+    for (const mensaje of formatearPendientesTecnico(grupo, encargados)) {
+      await this.enviarMensaje(mensaje, 'los pendientes del técnico', 'HTML', tecladoFijo(), true);
     }
   }
 
@@ -985,13 +1189,24 @@ export class TelegramNotifier {
     descripcion: string,
     conChat = true,
   ): Promise<boolean> {
+    return (await this.llamarApi(metodo, payload, descripcion, conChat)).ok;
+  }
+
+  /** Como llamar, con el `result` de Telegram (p. ej. el mensaje enviado) y el
+   * código HTTP del último intento fallido. */
+  private async llamarApi(
+    metodo: string,
+    payload: Record<string, unknown>,
+    descripcion: string,
+    conChat = true,
+  ): Promise<{ ok: boolean; resultado?: unknown; status?: number; descripcion?: string }> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = this.destino.getStore() ?? process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) {
       this.log.warn(
         `TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID no configurados — se omite el envío de ${descripcion}`,
       );
-      return false;
+      return { ok: false };
     }
     const body = JSON.stringify(conChat ? { chat_id: chatId, ...payload } : payload);
 
@@ -1001,7 +1216,7 @@ export class TelegramNotifier {
     // puede duplicar el mensaje: preferible a que el grupo no reciba nada.
     for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
       const resultado = await this.intentarEnvio(token, metodo, body);
-      if (resultado.ok) return true;
+      if (resultado.ok) return { ok: true, resultado: resultado.resultado };
       const ultimo = intento === MAX_INTENTOS || resultado.esperaMs === null;
       const siguiente = ultimo
         ? resultado.esperaMs === null
@@ -1011,10 +1226,10 @@ export class TelegramNotifier {
       this.log.error(
         `No se pudo enviar ${descripcion} a Telegram (intento ${intento}/${MAX_INTENTOS}): ${resultado.causa}${siguiente}`,
       );
-      if (ultimo) return false;
+      if (ultimo) return { ok: false, status: resultado.status, descripcion: resultado.descripcion };
       await this.esperar(resultado.esperaMs!);
     }
-    return false;
+    return { ok: false };
   }
 
   /** Un intento de llamada a la Bot API con límite de tiempo. `esperaMs` es cuánto esperar
@@ -1023,7 +1238,10 @@ export class TelegramNotifier {
     token: string,
     metodo: string,
     body: string,
-  ): Promise<{ ok: true } | { ok: false; causa: string; esperaMs: number | null }> {
+  ): Promise<
+    | { ok: true; resultado?: unknown }
+    | { ok: false; causa: string; esperaMs: number | null; status?: number; descripcion?: string }
+  > {
     try {
       const res = await fetch(`https://api.telegram.org/bot${token}/${metodo}`, {
         method: 'POST',
@@ -1031,17 +1249,22 @@ export class TelegramNotifier {
         body,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      if (res.ok) return { ok: true };
+      if (res.ok) return { ok: true, resultado: await leerResultado(res) };
+      const descripcion = res.status === 400 ? await leerDescripcion(res) : '';
       // Tocar el período que ya se ve: Telegram no edita un texto idéntico. No es un error.
-      if (res.status === 400 && (await leerDescripcion(res)).includes('message is not modified')) {
-        return { ok: true };
-      }
+      if (descripcion.includes('message is not modified')) return { ok: true };
       if (res.status === 429) {
         // Si pide esperar más que el tope, reintentar antes solo traería otro 429.
         const esperaMs = (await leerRetryAfter(res)) * 1000;
-        return { ok: false, causa: 'HTTP 429', esperaMs: esperaMs <= MAX_ESPERA_429_MS ? esperaMs : null };
+        return { ok: false, causa: 'HTTP 429', esperaMs: esperaMs <= MAX_ESPERA_429_MS ? esperaMs : null, status: 429 };
       }
-      return { ok: false, causa: `HTTP ${res.status}`, esperaMs: res.status >= 500 ? ESPERA_REINTENTO_MS : null };
+      return {
+        ok: false,
+        causa: `HTTP ${res.status}`,
+        esperaMs: res.status >= 500 ? ESPERA_REINTENTO_MS : null,
+        status: res.status,
+        descripcion,
+      };
     } catch (e) {
       // Solo nombre y código: el texto completo del error podría traer la URL, que lleva el token.
       const err = e as Error & { cause?: { code?: string } };
