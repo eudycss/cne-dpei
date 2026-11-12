@@ -624,26 +624,34 @@ describe('EvaticsService', () => {
       expect(sumarDias('2026-08-01', 90)).toBe('2026-10-30');
     });
 
-    it('sin fecha límite, o antes de cumplirse los 90 días, no borra nada', async () => {
-      conFechaLimite(null);
-      expect(await service.purgarVencidos()).toBe(0);
+    it('antes de cumplirse los 90 días de la fecha límite no borra nada', async () => {
       conFechaLimite('2026-08-14'); // + 90 = 2026-11-12: hoy mismo todavía se guarda
+      expect(await service.purgarVencidos()).toBe(0);
+      conFechaLimite('2026-12-01'); // la fecha se movió al futuro
       expect(await service.purgarVencidos()).toBe(0);
       expect(prisma.certificadoEvatics.findMany).not.toHaveBeenCalled();
       expect(storage.remove).not.toHaveBeenCalled();
     });
 
-    it('pasados los 90 días borra primero las fotos (actual y anterior) y luego las filas, por lotes', async () => {
+    it('sin fecha límite borra solo lo subido hace más de 90 días', async () => {
+      conFechaLimite(null);
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([]);
+      expect(await service.purgarVencidos()).toBe(0);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[0][0].where).toEqual({
+        subidoEn: { lt: new Date(AHORA.getTime() - 90 * 24 * 60 * 60 * 1000) },
+      });
+    });
+
+    it('pasados los 90 días borra primero las fotos (actual y anterior) y luego las filas', async () => {
       conFechaLimite('2026-08-01');
-      prisma.certificadoEvatics.findMany
-        .mockResolvedValueOnce([
-          { id: 'c1', fotoKey: 'f1', fotoAnteriorKey: 'a1' },
-          { id: 'c2', fotoKey: 'f2', fotoAnteriorKey: null },
-        ])
-        .mockResolvedValueOnce([]);
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([
+        { id: 'c1', fotoKey: 'f1', fotoAnteriorKey: 'a1' },
+        { id: 'c2', fotoKey: 'f2', fotoAnteriorKey: null },
+      ]);
       prisma.certificadoEvatics.deleteMany.mockResolvedValueOnce({ count: 2 });
 
       expect(await service.purgarVencidos()).toBe(2);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[0][0].where).toEqual({});
       expect(storage.remove.mock.calls.map((c) => c[0])).toEqual(['f1', 'a1', 'f2']);
       expect(prisma.certificadoEvatics.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['c1', 'c2'] } } });
       expect(storage.remove.mock.invocationCallOrder[2]).toBeLessThan(
@@ -651,22 +659,38 @@ describe('EvaticsService', () => {
       );
     });
 
-    it('un archivo que no se puede borrar no frena la purga', async () => {
+    it('si una foto no se pudo borrar, su fila se conserva para reintentar (no queda foto sin fila)', async () => {
       conFechaLimite('2026-08-01');
-      prisma.certificadoEvatics.findMany
-        .mockResolvedValueOnce([{ id: 'c1', fotoKey: 'f1', fotoAnteriorKey: null }])
-        .mockResolvedValueOnce([]);
-      storage.remove.mockRejectedValueOnce(new Error('no existe'));
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([
+        { id: 'c1', fotoKey: 'f1', fotoAnteriorKey: 'a1' },
+        { id: 'c2', fotoKey: 'f2', fotoAnteriorKey: null },
+      ]);
+      storage.remove.mockImplementation((k: string) =>
+        k === 'a1' ? Promise.reject(new Error('red')) : Promise.resolve(),
+      );
       prisma.certificadoEvatics.deleteMany.mockResolvedValueOnce({ count: 1 });
       expect(await service.purgarVencidos()).toBe(1);
+      expect(prisma.certificadoEvatics.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['c2'] } } });
     });
 
-    it('si no se borró ninguna fila, se detiene (no gira en vano)', async () => {
+    it('recorre por lotes con cursor: las fallidas no se releen y no gira en vano', async () => {
       conFechaLimite('2026-08-01');
-      prisma.certificadoEvatics.findMany.mockResolvedValue([{ id: 'c1', fotoKey: 'f1', fotoAnteriorKey: null }]);
-      prisma.certificadoEvatics.deleteMany.mockResolvedValue({ count: 0 });
+      const id = (i: number) => `c${String(i).padStart(3, '0')}`;
+      const lote = Array.from({ length: 100 }, (_, i) => ({ id: id(i), fotoKey: 'f', fotoAnteriorKey: null }));
+      prisma.certificadoEvatics.findMany
+        .mockResolvedValueOnce(lote)
+        .mockResolvedValueOnce([{ id: 'd1', fotoKey: 'f', fotoAnteriorKey: null }]);
+      storage.remove.mockRejectedValue(new Error('caído'));
       expect(await service.purgarVencidos()).toBe(0);
-      expect(prisma.certificadoEvatics.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.certificadoEvatics.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.certificadoEvatics.findMany).toHaveBeenCalledTimes(2);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[1][0].where).toEqual({ AND: [{}, { id: { gt: 'c099' } }] });
+    });
+
+    it('la fecha límite no se puede poner tan atrás que la purga lo borre todo', async () => {
+      await expect(service.guardarConfig('2026-08-13')).rejects.toThrow(/Elija el 2026-08-14 o una fecha posterior/);
+      expect(prisma.configEvatics.upsert).not.toHaveBeenCalled();
+      await expect(service.guardarConfig('2026-08-14')).resolves.toEqual({ fechaLimite: '2026-08-14' });
     });
   });
 

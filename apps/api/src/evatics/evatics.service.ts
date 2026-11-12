@@ -530,7 +530,13 @@ export class EvaticsService {
     return { fechaLimite: (await this.plazo()).fechaLimite };
   }
 
+  /** Una fecha tan vieja que la purga de la madrugada lo borraría todo se rechaza (borrado irreversible). */
   async guardarConfig(fechaLimite: string | null): Promise<ConfigEvatics> {
+    if (fechaLimite && diaEcuador() > sumarDias(fechaLimite, DIAS_RETENCION_EVATICS)) {
+      throw new BadRequestException(
+        `Con esa fecha se borrarían esta madrugada todos los certificados (se guardan ${DIAS_RETENCION_EVATICS} días después de la fecha límite). Elija el ${sumarDias(diaEcuador(), -DIAS_RETENCION_EVATICS)} o una fecha posterior.`,
+      );
+    }
     const valor = fechaLimite ? fechaDb(fechaLimite) : null;
     await this.prisma.configEvatics.upsert({
       where: { id: 1 },
@@ -795,36 +801,57 @@ export class EvaticsService {
   }
 
   /**
-   * Retención: pasados DIAS_RETENCION_EVATICS días de la fecha límite se
-   * borran las fotos cifradas (actual y anterior) y los registros. Primero los
-   * archivos: si falla el borrado de filas, la próxima vuelta lo reintenta; al
-   * revés quedaría un archivo sin fila para siempre. Sin fecha límite no se
-   * borra nada. La bitácora de auditoría conserva quién subió y quién revisó.
+   * Qué certificados ya cumplieron la retención que promete el aviso LOPDP:
+   * todos, pasados DIAS_RETENCION_EVATICS días de la fecha límite; sin fecha
+   * límite, los subidos hace más de esos días. null = ninguno todavía.
+   */
+  private async vencidosPorRetencion(ahora: Date): Promise<Prisma.CertificadoEvaticsWhereInput | null> {
+    const { fechaLimite } = await this.plazo();
+    if (fechaLimite) return diaEcuador(ahora) > sumarDias(fechaLimite, DIAS_RETENCION_EVATICS) ? {} : null;
+    return { subidoEn: { lt: new Date(ahora.getTime() - DIAS_RETENCION_EVATICS * 24 * 60 * 60 * 1000) } };
+  }
+
+  /**
+   * Retención (cron diario): borra las fotos cifradas (actual y anterior) y
+   * luego la fila. Si una foto no se pudo borrar, la fila se conserva para que
+   * la próxima vuelta lo reintente (borrar un archivo que ya no está no falla);
+   * así nunca queda una foto sin fila que la apunte. Se recorre con cursor
+   * para no releer las que fallaron. La bitácora de auditoría (sin cédula ni
+   * foto) se conserva.
    */
   @Cron('30 3 * * *', { name: 'purgar-certificados-evatics', timeZone: 'America/Guayaquil' })
   async purgarVencidos(ahora = new Date()): Promise<number> {
-    const { fechaLimite } = await this.plazo();
-    if (!fechaLimite || diaEcuador(ahora) <= sumarDias(fechaLimite, DIAS_RETENCION_EVATICS)) return 0;
+    const vencidos = await this.vencidosPorRetencion(ahora);
+    if (!vencidos) return 0;
     let borrados = 0;
+    let fallidos = 0;
+    let ultimoId: string | undefined;
     for (;;) {
       const lote = await this.prisma.certificadoEvatics.findMany({
+        where: ultimoId ? { AND: [vencidos, { id: { gt: ultimoId } }] } : vencidos,
         orderBy: { id: 'asc' },
         take: LOTE_PURGA,
         select: { id: true, fotoKey: true, fotoAnteriorKey: true },
       });
       if (lote.length === 0) break;
+      ultimoId = lote[lote.length - 1].id;
+      const listos: string[] = [];
       for (const c of lote) {
-        await this.borrarArchivo(c.fotoKey);
-        if (c.fotoAnteriorKey) await this.borrarArchivo(c.fotoAnteriorKey);
+        const actual = await this.borrarArchivo(c.fotoKey);
+        const anterior = c.fotoAnteriorKey ? await this.borrarArchivo(c.fotoAnteriorKey) : true;
+        if (actual && anterior) listos.push(c.id);
+        else fallidos++;
       }
-      const r = await this.prisma.certificadoEvatics.deleteMany({ where: { id: { in: lote.map((c) => c.id) } } });
-      borrados += r.count;
-      if (r.count === 0) break; // nunca girar en vano
+      if (listos.length > 0) {
+        borrados += (await this.prisma.certificadoEvatics.deleteMany({ where: { id: { in: listos } } })).count;
+      }
+      if (lote.length < LOTE_PURGA) break;
     }
     if (borrados > 0) {
-      this.log.log(
-        `Retención: ${borrados} certificado(s) Evatics borrados (fotos y datos), ${DIAS_RETENCION_EVATICS} días después de la fecha límite ${fechaLimite}`,
-      );
+      this.log.log(`Retención: ${borrados} certificado(s) Evatics borrados (fotos y datos) tras ${DIAS_RETENCION_EVATICS} días`);
+    }
+    if (fallidos > 0) {
+      this.log.warn(`Retención: ${fallidos} certificado(s) Evatics con fotos sin borrar; se reintenta mañana`);
     }
     return borrados;
   }
@@ -835,12 +862,14 @@ export class EvaticsService {
     return { fechaLimite, vencido: !!fechaLimite && diaEcuador() > fechaLimite };
   }
 
-  /** Un archivo huérfano no debe tumbar la respuesta: se registra y se sigue. */
-  private async borrarArchivo(fileId: string): Promise<void> {
+  /** Un archivo huérfano no debe tumbar la respuesta: se registra y se sigue. true si se borró. */
+  private async borrarArchivo(fileId: string): Promise<boolean> {
     try {
       await this.storage.remove(fileId);
+      return true;
     } catch (e) {
       this.log.warn(`No se pudo borrar una foto de certificado: ${nombreError(e)}`);
+      return false;
     }
   }
 }

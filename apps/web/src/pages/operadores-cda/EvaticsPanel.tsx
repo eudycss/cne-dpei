@@ -9,13 +9,12 @@ import { Cargando } from '../../components/Cargando';
 import { Modal } from '../../components/Modal';
 import { SearchInput } from '../../components/SearchInput';
 import { getEvatics, guardarConfigEvatics } from '../../lib/queries/evatics';
-import { fechaLarga } from '../evatics-publico/EvaticsPublicoPage';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { AvanceEvatics, pct } from './AvanceEvatics';
 import { Campo } from './Campo';
 import { Kpi } from './Kpi';
 import { RevisarEvaticsModal, sugerenciaIa } from './RevisarEvaticsModal';
-import { mensajeError } from './utils';
+import { fechaLarga, mensajeError } from './utils';
 
 /** Pendiente en ámbar (no en cian): el mismo color que su tramo en el gráfico. */
 const ESTADO: Record<EstadoCertificadoEvatics, { etiqueta: string; clase: string }> = {
@@ -25,6 +24,9 @@ const ESTADO: Record<EstadoCertificadoEvatics, { etiqueta: string; clase: string
   RECHAZADO: { etiqueta: 'Rechazado', clase: 'error' },
 };
 
+type Filtros = Required<Omit<FiltrosEvaticsInput, 'estado'>> & { estado: EstadoCertificadoEvatics | '' };
+const SIN_FILTROS: Filtros = { canton: '', cargo: '', tecnico: '', estado: '', q: '' };
+
 const FILTROS_ESTADO: { id: EstadoCertificadoEvatics | ''; etiqueta: string }[] = [
   { id: '', etiqueta: 'Todos' },
   { id: 'PENDIENTE', etiqueta: 'En revisión' },
@@ -32,6 +34,14 @@ const FILTROS_ESTADO: { id: EstadoCertificadoEvatics | ''; etiqueta: string }[] 
   { id: 'RECHAZADO', etiqueta: 'Rechazados' },
   { id: 'APROBADO', etiqueta: 'Aprobados' },
 ];
+
+/** Igual que la API (DIAS_RETENCION_EVATICS): lo promete el aviso LOPDP de la página pública. */
+const DIAS_RETENCION = 90;
+const sumarDias = (dia: string, dias: number) => {
+  const d = new Date(`${dia}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+};
 
 export const rutaPublicaEvatics = () => `${window.location.origin}/evatics`;
 
@@ -57,9 +67,7 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const { puede } = useModulos();
   const puedeRevisar = puede('cda.evatics.revisar');
-  const [filtros, setFiltros] = useState<Required<Omit<FiltrosEvaticsInput, 'estado'>> & { estado: EstadoCertificadoEvatics | '' }>(
-    { canton: '', cargo: '', tecnico: '', estado: '', q: '' },
-  );
+  const [filtros, setFiltros] = useState<Filtros>(SIN_FILTROS);
   const q = useDeferredValue(filtros.q.trim());
   const [revisando, setRevisando] = useState<FilaEvatics | null>(null);
   const [fechaAbierta, setFechaAbierta] = useState(false);
@@ -220,7 +228,7 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
           <button
             type="button"
             className="ocda-btn-texto"
-            onClick={() => setFiltros({ canton: '', cargo: '', tecnico: '', estado: '', q: '' })}
+            onClick={() => setFiltros(SIN_FILTROS)}
           >
             Quitar filtros
           </button>
@@ -277,9 +285,18 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
   );
 }
 
-function Fila({ fila: f, puedeRevisar, onRevisar }: { fila: FilaEvatics; puedeRevisar: boolean; onRevisar: () => void }) {
+function Fila({
+  fila: f,
+  puedeRevisar,
+  onRevisar,
+}: {
+  fila: FilaEvatics;
+  puedeRevisar: boolean;
+  onRevisar: () => void;
+}) {
   const e = ESTADO[f.estado];
   const ia = f.certificadoId ? sugerenciaIa(f.analisis) : null;
+  const accion = f.estado === 'PENDIENTE' && !f.esPropio ? 'Revisar' : 'Ver';
   return (
     <tr>
       <th scope="row">
@@ -307,9 +324,9 @@ function Fila({ fila: f, puedeRevisar, onRevisar }: { fila: FilaEvatics; puedeRe
               type="button"
               className="ocda-btn-texto"
               onClick={onRevisar}
-              aria-label={`${f.estado === 'PENDIENTE' && !f.esPropio ? 'Revisar' : 'Ver'} certificado de ${f.apellidosNombres}`}
+              aria-label={`${accion} certificado de ${f.apellidosNombres}`}
             >
-              {f.estado === 'PENDIENTE' && !f.esPropio ? 'Revisar' : 'Ver'}
+              {accion}
             </button>
           ) : (
             '—'
@@ -371,7 +388,12 @@ function FechaLimiteModal({ actual, onClose }: { actual: string | null; onClose:
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </Campo>
         </div>
-        <p className="ocda-enlace-aviso">El cambio se aplica en seguida a la página pública y queda en la bitácora.</p>
+        <p className="ocda-enlace-aviso" aria-live="polite">
+          {fecha
+            ? `Las fotos y los datos se borrarán solos desde el ${fechaLarga(sumarDias(fecha, DIAS_RETENCION + 1))}.`
+            : `Sin plazo, cada foto se borra ${DIAS_RETENCION} días después de subirla.`}{' '}
+          El cambio se aplica en seguida a la página pública y queda en la bitácora.
+        </p>
         <div className="ocda-modal-acciones">
           <button type="button" className="btn secondary" onClick={onClose} disabled={guardar.isPending}>
             Cancelar

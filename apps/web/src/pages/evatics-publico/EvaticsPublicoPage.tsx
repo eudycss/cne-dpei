@@ -4,7 +4,7 @@ import { cedulaSchema } from '@cne/shared-validation';
 import type { ConsultaEvaticsPublica, EstadoCertificadoEvatics, SubidaEvaticsResult } from '@cne/shared-types';
 import { consultarEvatics, subirEvatics } from '../../lib/queries/evatics';
 import { reducirFoto } from '../foto-cda/reducirFoto';
-import { cargoCorto } from '../operadores-cda/utils';
+import { cargoCorto, fechaLarga } from '../operadores-cda/utils';
 
 /** El nombre del certificado debe leerse: más resolución que la foto de la credencial, bajo el tope de 2 MB de la API. */
 export const LADO_CERTIFICADO = 1600;
@@ -25,17 +25,6 @@ const ESTADO: Record<EstadoCertificadoEvatics, { etiqueta: string; clase: string
 
 function mensajeDe(e: unknown, porDefecto: string): string {
   return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
-}
-
-/** "2026-11-20" → "jueves, 20 de noviembre de 2026" */
-export function fechaLarga(dia: string): string {
-  return new Date(`${dia}T12:00:00-05:00`).toLocaleDateString('es-EC', {
-    timeZone: 'America/Guayaquil',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 }
 
 /** La página no debe filtrar la dirección a otros sitios ni aparecer en buscadores. */
@@ -279,10 +268,22 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
   const camara = useRef<HTMLInputElement>(null);
   const galeria = useRef<HTMLInputElement>(null);
   const aviso = useRef<HTMLParagraphElement>(null);
-  // Los botones se deshabilitan mientras se prepara la foto: el foco pasa al aviso.
+  const banner = useRef<HTMLDivElement>(null);
+  // Si sale (p. ej. "Escribir otra cédula") mientras se prepara, la foto no debe ir a la pantalla de otra persona.
+  const montado = useRef(true);
+  useEffect(
+    () => () => {
+      montado.current = false;
+    },
+    [],
+  );
+  // Los botones se deshabilitan mientras se prepara la foto: el foco pasa al aviso, y al error si falla.
   useEffect(() => {
     if (preparando) aviso.current?.focus();
   }, [preparando]);
+  useEffect(() => {
+    if (error) banner.current?.focus();
+  }, [error]);
 
   async function elegido(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
@@ -291,8 +292,10 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
     setError(null);
     setPreparando(true);
     try {
-      onFoto(await reducirFoto(archivo, { ladoMaximo: LADO_CERTIFICADO, bytesObjetivo: BYTES_CERTIFICADO }));
+      const foto = await reducirFoto(archivo, { ladoMaximo: LADO_CERTIFICADO, bytesObjetivo: BYTES_CERTIFICADO });
+      if (montado.current) onFoto(foto);
     } catch (err) {
+      if (!montado.current) return;
       setError((err as Error).message);
       setPreparando(false);
     }
@@ -335,7 +338,9 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
               <strong>Cómo se guarda:</strong> cifrada, sin la ubicación ni otros datos de su celular.
             </li>
             <li>
-              <strong>Hasta cuándo:</strong> se elimina 90 días después de la fecha límite.
+              <strong>Hasta cuándo:</strong> la foto y sus datos se eliminan 90 días después de la fecha límite
+              de entrega (si no hay fecha límite, 90 días después de subirla). Queda un registro de auditoría con la
+              fecha y la dirección IP, sin su cédula ni su foto.
             </li>
             <li>
               <strong>Sus derechos:</strong> puede pedir ver, corregir o eliminar sus datos en la Delegación.
@@ -345,7 +350,7 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
       </div>
 
       {error && (
-        <div className="banner error" role="alert">
+        <div ref={banner} tabIndex={-1} className="banner error" role="alert">
           {error}
         </div>
       )}

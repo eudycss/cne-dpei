@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { VERSION_AVISO_EVATICS } from '@cne/shared-validation';
 import type { ConsultaEvaticsPublica } from '@cne/shared-types';
 
-import { EvaticsPublicoPage, LADO_CERTIFICADO, BYTES_CERTIFICADO, fechaLarga } from './EvaticsPublicoPage';
+import { EvaticsPublicoPage, LADO_CERTIFICADO, BYTES_CERTIFICADO } from './EvaticsPublicoPage';
+import { fechaLarga } from '../operadores-cda/utils';
 import { api } from '../../lib/api';
 import { reducirFoto } from '../foto-cda/reducirFoto';
 
@@ -177,6 +178,44 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
     await entrar(consulta({ plazoVencido: true, puedeSubir: false }));
     expect(screen.getByText(/El plazo para subir el certificado terminó/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Tomar/ })).not.toBeInTheDocument();
+  });
+
+  it('si sale mientras se prepara la foto, esa foto no aparece en la pantalla de otra persona', async () => {
+    const user = await entrar();
+    let terminar: (b: Blob) => void = () => {};
+    reducirMock.mockReturnValue(new Promise<Blob>((r) => (terminar = r)));
+    await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+    await user.upload(screen.getByTestId('galeria'), new File(['x'], 'cert.png', { type: 'image/png' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Preparando la foto…');
+    await user.click(screen.getByRole('button', { name: 'Escribir otra cédula' }));
+    terminar(new Blob(['x'], { type: 'image/jpeg' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByLabelText('Número de cédula')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '¿Se lee su nombre?' })).not.toBeInTheDocument();
+  });
+
+  it('si la foto no se puede abrir, el foco va al error', async () => {
+    const user = await entrar();
+    reducirMock.mockRejectedValueOnce(new Error('No se pudo abrir la foto.'));
+    await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+    await user.upload(screen.getByTestId('galeria'), new File(['x'], 'cert.png', { type: 'image/png' }));
+    const alerta = await screen.findByRole('alert');
+    expect(alerta).toHaveTextContent('No se pudo abrir la foto.');
+    expect(alerta).toHaveFocus();
+  });
+
+  it('"Elegir otra" libera la vista previa anterior', async () => {
+    const user = await hastaVistaPrevia();
+    await user.click(screen.getByRole('button', { name: 'Elegir otra' }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:cert');
+  });
+
+  it('el aviso dice hasta cuándo se guarda y que la bitácora no lleva cédula ni foto', async () => {
+    await entrar();
+    expect(screen.getByText(/se eliminan 90 días después de la fecha límite/)).toHaveTextContent(
+      /si no hay fecha límite, 90 días después de subirla/,
+    );
+    expect(screen.getByText(/sin su cédula ni su foto/)).toBeInTheDocument();
   });
 
   it('"Escribir otra cédula" vuelve al inicio sin datos de la persona', async () => {

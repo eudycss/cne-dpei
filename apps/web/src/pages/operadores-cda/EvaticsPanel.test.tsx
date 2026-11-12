@@ -266,7 +266,34 @@ describe('EvaticsPanel', () => {
         }),
       );
       expect(within(dialogo).getByRole('button', { name: 'Aprobar' })).toBeDisabled();
+      expect(within(dialogo).getByRole('button', { name: 'Rechazar…' })).toBeDisabled();
       expect(within(dialogo).getByText('Para decidir, vuelva a la foto actual.')).toBeInTheDocument();
+    });
+
+    it('tampoco se rechaza si, ya escribiendo el motivo, pasa a la foto anterior', async () => {
+      const { user, dialogo } = await abrirRevision(
+        fila({ reemplazos: 1, tieneFotoAnterior: true, fotoAnteriorSubidaEn: '2026-11-11T10:00:00.000Z' }),
+      );
+      await user.click(within(dialogo).getByRole('button', { name: 'Rechazar…' }));
+      await user.type(within(dialogo).getByLabelText(/Motivo del rechazo/), 'No se lee el nombre');
+      await user.click(within(dialogo).getByRole('button', { name: 'Foto anterior' }));
+      expect(within(dialogo).getByRole('button', { name: 'Rechazar certificado' })).toBeDisabled();
+    });
+
+    it('si la foto no carga, no se puede aprobar ni rechazar', async () => {
+      datos = listado({ filas: [fila()] });
+      getMock.mockImplementation((url: string) =>
+        url.endsWith('/foto')
+          ? Promise.reject({ response: { status: 500, data: { message: 'Error del almacenamiento' } } })
+          : Promise.resolve({ data: datos }),
+      );
+      const user = userEvent.setup();
+      renderPanel();
+      await user.click(await screen.findByRole('button', { name: /certificado de ANDRADE/ }));
+      const dialogo = await screen.findByRole('dialog', { name: 'ANDRADE LÓPEZ ANA' });
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('Error del almacenamiento');
+      expect(within(dialogo).getByRole('button', { name: 'Aprobar' })).toBeDisabled();
+      expect(within(dialogo).getByRole('button', { name: 'Rechazar…' })).toBeDisabled();
     });
 
     it('su propio certificado: lo ve pero no puede decidir', async () => {
@@ -284,7 +311,10 @@ describe('EvaticsPanel', () => {
       const dialogo = screen.getByRole('dialog', { name: 'Fecha límite' });
       const campo = within(dialogo).getByLabelText('Último día para subir');
       expect(campo).toHaveValue('2026-11-20');
+      // 20-nov + 90 días = 18-feb: desde el 19-feb se borra.
+      expect(within(dialogo).getByText(/se borrarán solos desde el/)).toHaveTextContent('19 de febrero de 2027');
       await user.clear(campo);
+      expect(within(dialogo).getByText(/cada foto se borra 90 días después de subirla/)).toBeInTheDocument();
       putMock.mockResolvedValueOnce({ data: { fechaLimite: null } });
       await user.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
       expect(putMock).toHaveBeenCalledWith('/operadores-cda/evatics/config', { fechaLimite: null });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { AnalisisCertificadoEvatics, DecisionEvatics, FilaEvatics } from '@cne/shared-types';
@@ -30,13 +30,9 @@ function useFotoUrl(fila: FilaEvatics, anterior: boolean) {
     staleTime: Infinity,
     retry: false,
   });
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!q.data) return setUrl(null);
-    const u = URL.createObjectURL(q.data);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [q.data]);
+  // Derivada (no en estado): al alternar actual/anterior nunca se pinta una URL ya revocada.
+  const url = useMemo(() => (q.data ? URL.createObjectURL(q.data) : null), [q.data]);
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
   return { url, cargando: q.isLoading, error: q.error };
 }
 
@@ -53,6 +49,8 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
   const [errorMotivo, setErrorMotivo] = useState<string | null>(null);
   const foto = useFotoUrl(fila, anterior);
   const ia = sugerenciaIa(fila.analisis);
+  // Aprobar o rechazar solo con la foto actual en pantalla: nunca sobre una que no se vio.
+  const sinFotoActual = !foto.url || anterior;
 
   function fotoCambio() {
     sileo.error({ title: 'La persona subió otra foto: ábrala de nuevo para revisarla' });
@@ -200,10 +198,20 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           <div className="ocda-modal-acciones">
             {rechazando ? (
               <>
-                <button type="button" className="btn secondary" onClick={() => setRechazando(false)} disabled={revisar.isPending}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setRechazando(false)}
+                  disabled={revisar.isPending}
+                >
                   Volver
                 </button>
-                <button type="button" className="btn danger" onClick={rechazar} disabled={revisar.isPending}>
+                <button
+                  type="button"
+                  className="btn danger"
+                  onClick={rechazar}
+                  disabled={revisar.isPending || sinFotoActual}
+                >
                   {revisar.isPending ? 'Guardando…' : 'Rechazar certificado'}
                 </button>
               </>
@@ -213,7 +221,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
                   type="button"
                   className="btn secondary"
                   onClick={() => setRechazando(true)}
-                  disabled={revisar.isPending || anterior}
+                  disabled={revisar.isPending || sinFotoActual}
                 >
                   Rechazar…
                 </button>
@@ -221,7 +229,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
                   type="button"
                   className="btn"
                   onClick={() => revisar.mutate('APROBADO')}
-                  disabled={revisar.isPending || !foto.url || anterior}
+                  disabled={revisar.isPending || sinFotoActual}
                 >
                   {revisar.isPending ? 'Guardando…' : 'Aprobar'}
                 </button>
