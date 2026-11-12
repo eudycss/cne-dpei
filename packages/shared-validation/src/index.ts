@@ -1382,8 +1382,9 @@ export type GuardarTiemposViajeInput = z.infer<typeof guardarTiemposViajeSchema>
  */
 export const VERSION_AVISO_EVATICS = 'LOPDP-EVATICS-2026-11';
 export const ESTADOS_CERTIFICADO_EVATICS = ['SIN_SUBIR', 'PENDIENTE', 'APROBADO', 'RECHAZADO'] as const;
-export const SIN_CANTON_EVATICS = 'Sin cantón';
-export const SIN_TECNICO_EVATICS = 'Sin asistente';
+/** Quien no tiene cantón ni Asistente Transversal asignado pertenece a un CPE. */
+export const SIN_CANTON_EVATICS = 'CPE';
+export const SIN_TECNICO_EVATICS = 'CPE';
 
 export const consultarEvaticsSchema = z.object({ cedula: cedulaSchema }).strict();
 

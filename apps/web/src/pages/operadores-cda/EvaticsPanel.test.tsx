@@ -59,7 +59,7 @@ const SIN_SUBIR = fila({
   certificadoId: null,
   cedula: '1002003000',
   apellidosNombres: 'VEGA TAPIA LUIS',
-  canton: 'Sin cantón',
+  canton: 'CPE',
   estado: 'SIN_SUBIR',
   subidoEn: null,
   analisis: null,
@@ -72,7 +72,7 @@ const listado = (l: Partial<ListadoEvatics> = {}): ListadoEvatics => ({
   distributivoDisponible: true,
   totales: { total: 4, sinSubir: 1, pendientes: 1, aprobados: 2, rechazados: 0 },
   porCanton: [
-    { nombre: 'Sin cantón', total: 1, sinSubir: 1, pendientes: 0, aprobados: 0, rechazados: 0 },
+    { nombre: 'CPE', total: 1, sinSubir: 1, pendientes: 0, aprobados: 0, rechazados: 0 },
     { nombre: 'Ibarra', total: 3, sinSubir: 0, pendientes: 1, aprobados: 2, rechazados: 0 },
   ],
   porTecnico: [{ nombre: 'PÉREZ JUAN', total: 4, sinSubir: 1, pendientes: 1, aprobados: 2, rechazados: 0 }],
@@ -123,12 +123,12 @@ describe('EvaticsPanel', () => {
     expect(screen.getByText(/No se pudo leer el distributivo/)).toBeInTheDocument();
   });
 
-  it('gráfico por cantón: cada barra se describe en texto y filtra el listado; "Sin cantón" va al final', async () => {
+  it('gráfico por cantón: cada barra se describe en texto y filtra el listado; el grupo más grande va primero', async () => {
     const user = userEvent.setup();
     renderPanel();
     const avance = await screen.findByRole('region', { name: 'Avance por cantón' });
     const barras = within(avance).getAllByRole('button', { name: /aprobados \(/ });
-    expect(barras.map((b) => b.textContent?.split(/\d/)[0])).toEqual(['Ibarra', 'Sin cantón']);
+    expect(barras.map((b) => b.textContent?.split(/\d/)[0])).toEqual(['Ibarra', 'CPE']);
     expect(barras[0]).toHaveAccessibleName(
       'Ibarra: 2 de 3 aprobados (67 %), 1 en revisión, 0 rechazados, 0 sin subir. Filtrar el listado',
     );
@@ -354,13 +354,10 @@ describe('sugerenciaIa', () => {
 });
 
 describe('ordenarGrupos', () => {
-  it('por nombre con "Sin cantón" y "Sin asistente" al final', () => {
-    const g = (nombre: string) => ({ nombre, total: 1, sinSubir: 1, pendientes: 0, aprobados: 0, rechazados: 0 });
-    expect(ordenarGrupos([g('Sin asistente'), g('Urcuquí'), g('Sin cantón'), g('Antonio Ante')]).map((x) => x.nombre)).toEqual([
-      'Antonio Ante',
-      'Urcuquí',
-      'Sin asistente',
-      'Sin cantón',
-    ]);
+  it('de más a menos personas y, a igual cifra, por nombre; CPE ordena como cualquier grupo', () => {
+    const g = (nombre: string, total: number) => ({ nombre, total, sinSubir: total, pendientes: 0, aprobados: 0, rechazados: 0 });
+    expect(
+      ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Ibarra', 5), g('Antonio Ante', 2)]).map((x) => x.nombre),
+    ).toEqual(['CPE', 'Ibarra', 'Antonio Ante', 'Urcuquí']);
   });
 });

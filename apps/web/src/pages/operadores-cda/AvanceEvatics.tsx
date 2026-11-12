@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { ConteoEvatics, GrupoConteoEvatics } from '@cne/shared-types';
-import { SIN_CANTON_EVATICS, SIN_TECNICO_EVATICS } from '@cne/shared-validation';
 
 /**
  * Orden fijo de los tramos (de "hecho" a "falta"). Son colores de estado del
@@ -18,12 +17,9 @@ type Vista = 'canton' | 'tecnico';
 
 export const pct = (parte: number, total: number) => (total > 0 ? Math.round((parte / total) * 100) : 0);
 
-/** "Sin cantón" / "Sin asistente" al final; el resto por nombre. */
+/** De más a menos personas, así el cantón (o CPE) más grande queda primero; a igual cifra, por nombre. */
 export function ordenarGrupos(grupos: GrupoConteoEvatics[]): GrupoConteoEvatics[] {
-  const alFinal = (n: string) => n === SIN_CANTON_EVATICS || n === SIN_TECNICO_EVATICS;
-  return [...grupos].sort(
-    (a, b) => Number(alFinal(a.nombre)) - Number(alFinal(b.nombre)) || a.nombre.localeCompare(b.nombre, 'es'),
-  );
+  return [...grupos].sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
 }
 
 export function describirGrupo(g: GrupoConteoEvatics): string {
