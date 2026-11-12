@@ -1093,3 +1093,69 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .sim-totales > div { padding: 0.75rem 1rem; border: 1px solid var(--f-border-subtle); border-radius: 10px; background: var(--f-bg-surface); }
 .sim-totales dt { font-size: 0.75rem; color: var(--f-text-muted); }
 .sim-totales dd { margin: 0.15rem 0 0; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- Certificados Evatics ---- */
+.evx-avance {
+  margin-bottom: 1.5rem; padding: 1.25rem; border-radius: 16px;
+  background: var(--f-bg-surface); border: 1px solid var(--f-border-subtle);
+}
+.evx-avance-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.evx-avance-cabecera h3 { margin: 0; font-size: 1rem; }
+.evx-leyenda { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; margin: 0.9rem 0; padding: 0; list-style: none; font-size: 0.8rem; color: var(--f-text-muted); }
+.evx-leyenda li { display: inline-flex; align-items: center; gap: 0.4rem; }
+.evx-muestra { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+/* Colores de estado del tema (no de serie): verde y rojo nunca juntos. */
+.evx-muestra.aprobado, .evx-tramo.aprobado { background: var(--f-exito); }
+.evx-muestra.pendiente, .evx-tramo.pendiente { background: var(--f-aviso); }
+.evx-muestra.rechazado, .evx-tramo.rechazado { background: var(--f-error); }
+.evx-muestra.sin-subir, .evx-tramo.sin-subir { background: var(--f-border-strong); }
+.evx-barras { display: grid; gap: 0.15rem; margin: 0; padding: 0; list-style: none; }
+.evx-fila {
+  position: relative; width: 100%; min-height: 44px; display: grid; align-items: center; gap: 0.75rem;
+  grid-template-columns: minmax(7rem, 12rem) 1fr 7.5rem; padding: 0.35rem 0.5rem; border-radius: 10px;
+  background: none; border: 1px solid transparent; color: var(--f-text); font: inherit; text-align: left; cursor: pointer;
+}
+.evx-fila:hover, .evx-fila:focus-visible { background: var(--f-bg-elevated); }
+.evx-fila:focus-visible { outline: 2px solid var(--f-cian); outline-offset: 1px; }
+.evx-fila[aria-pressed='true'] { border-color: var(--f-cian); background: var(--f-cian-suave); }
+.evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
+.evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }
+.evx-tramo { min-width: 3px; flex-basis: 0; }
+.evx-cifra { font-size: 0.8rem; color: var(--f-text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.evx-tip {
+  position: absolute; z-index: 5; right: 0.5rem; bottom: calc(100% + 4px); display: none; gap: 0.3rem 0.9rem; flex-wrap: wrap;
+  max-width: min(26rem, 90%); padding: 0.55rem 0.75rem; border-radius: 10px; font-size: 0.78rem; color: var(--f-text);
+  background: var(--f-bg-base); border: 1px solid var(--f-border-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+.evx-tip > span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.evx-fila:hover .evx-tip, .evx-fila:focus-visible .evx-tip { display: flex; }
+@media (max-width: 560px) {
+  .evx-fila { grid-template-columns: 1fr auto; }
+  .evx-barra { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (forced-colors: active) {
+  .evx-tramo, .evx-muestra { forced-color-adjust: none; border: 1px solid CanvasText; }
+}
+.evx-cedula, .evx-motivo { display: block; font-size: 0.75rem; margin-top: 0.15rem; }
+.evx-motivo { color: var(--f-text-muted); max-width: 18rem; }
+.evx-foto { display: grid; place-items: center; min-height: 200px; border-radius: 14px; background: var(--f-bg-elevated); overflow: hidden; }
+.evx-foto img { display: block; max-width: 100%; max-height: 60vh; object-fit: contain; }
+.evx-ia { display: grid; gap: 0.5rem; margin: 0; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.evx-ia div { display: grid; gap: 0.2rem; }
+.evx-ia dt { font-size: 0.75rem; color: var(--f-text-muted); }
+.evx-ia dd { margin: 0; font-weight: 600; }
+/* Página pública */
+.fcda-form { display: contents; }
+.fcda-campo { display: grid; gap: 0.4rem; }
+.fcda-campo label { font-weight: 600; }
+.fcda-campo input {
+  min-height: 52px; padding: 0 1rem; border-radius: 12px; font: inherit; font-size: 1.15rem; letter-spacing: 0.08em;
+  color: var(--f-text); background: var(--f-bg-surface); border: 1px solid var(--f-borde-control); font-family: var(--f-mono);
+}
+.fcda-campo input:focus-visible { outline: 2px solid var(--f-cian); outline-offset: 2px; }
+.fcda-campo input[aria-invalid='true'] { border-color: var(--f-error); }
+.fcda-error { font-size: 0.85rem; color: var(--f-error); }
+.fcda-enlace { padding: 0; min-height: 44px; background: none; border: 0; font: inherit; color: var(--f-cian); text-decoration: underline; cursor: pointer; }
+.fcda-documento { border-radius: 14px; overflow: hidden; background: var(--f-bg-elevated); border: 1px solid var(--f-border-subtle); }
+.fcda-documento img { display: block; width: 100%; max-height: 55vh; object-fit: contain; }

@@ -1373,3 +1373,52 @@ export const guardarTiemposViajeSchema = z
     path: ['tiempos'],
   });
 export type GuardarTiemposViajeInput = z.infer<typeof guardarTiemposViajeSchema>;
+
+// ---- Certificados Evatics ----
+
+/**
+ * Versión del aviso LOPDP de la página de subida (dice que la foto se envía a
+ * un proveedor de IA, Google Gemini o Groq, para leer el nombre). Cambiarla si cambia el texto.
+ */
+export const VERSION_AVISO_EVATICS = 'LOPDP-EVATICS-2026-11';
+export const ESTADOS_CERTIFICADO_EVATICS = ['SIN_SUBIR', 'PENDIENTE', 'APROBADO', 'RECHAZADO'] as const;
+export const SIN_CANTON_EVATICS = 'Sin cantón';
+export const SIN_TECNICO_EVATICS = 'Sin asistente';
+
+export const consultarEvaticsSchema = z.object({ cedula: cedulaSchema }).strict();
+
+/** Campos de texto que acompañan a la foto (multipart). */
+export const subirEvaticsSchema = z.object({
+  cedula: cedulaSchema,
+  consentimiento: z.literal('true', {
+    errorMap: () => ({ message: 'Debe autorizar el tratamiento de la foto para continuar' }),
+  }),
+  version: z.literal(VERSION_AVISO_EVATICS, {
+    errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
+  }),
+});
+
+export const revisarEvaticsSchema = z
+  .object({
+    decision: z.enum(['APROBADO', 'RECHAZADO'], { errorMap: () => ({ message: 'Decisión inválida' }) }),
+    motivo: z.string().trim().max(300, 'El motivo no puede pasar de 300 caracteres').optional(),
+    /** La foto que vio quien revisa (subidoEn del listado). */
+    subidoEn: z.string().datetime({ message: 'Falta la fecha de la foto revisada' }),
+  })
+  .strict()
+  .refine((d) => d.decision !== 'RECHAZADO' || (d.motivo?.length ?? 0) >= 5, {
+    message: 'Escriba el motivo del rechazo (mínimo 5 caracteres): la persona lo verá para subir otra foto',
+    path: ['motivo'],
+  });
+
+export const configEvaticsSchema = z.object({ fechaLimite: diaAsistenciaSchema.nullable() }).strict();
+
+/** Filtros del listado (query). Vacío = sin filtro. */
+export const filtrosEvaticsSchema = z.object({
+  canton: z.string().trim().max(80).optional(),
+  cargo: z.string().trim().max(160).optional(),
+  tecnico: z.string().trim().max(160).optional(),
+  estado: z.enum(ESTADOS_CERTIFICADO_EVATICS).optional(),
+  q: z.string().trim().max(100).optional(),
+});
+export type FiltrosEvaticsInput = z.infer<typeof filtrosEvaticsSchema>;

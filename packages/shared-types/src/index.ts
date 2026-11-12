@@ -2198,3 +2198,114 @@ export interface GuardarTiemposViajeRequest {
 export interface GuardarTiemposViajeResult {
   actualizados: number;
 }
+
+// ---- Certificados Evatics ----
+
+/** SIN_SUBIR: aún no sube la foto. Los demás, del certificado subido. */
+export type EstadoCertificadoEvatics = "SIN_SUBIR" | "PENDIENTE" | "APROBADO" | "RECHAZADO";
+/** EN_COLA: aún no se analiza (o se reintenta); NO_DISPONIBLE: no se pudo analizar, lo revisa el supervisor a ojo. */
+export type EstadoAnalisisEvatics = "EN_COLA" | "LISTO" | "NO_DISPONIBLE";
+export type DecisionEvatics = "APROBADO" | "RECHAZADO";
+/** CDA o CPE (cargo del personal) o AT (usuario con rol Asistente Transversal). */
+export type CentroEvatics = "CDA" | "CPE" | "AT";
+
+/** Lo que sugirió la IA (nunca aprueba sola): solo el nombre, comparado en el servidor. */
+export interface AnalisisCertificadoEvatics {
+  estado: EstadoAnalisisEvatics;
+  nombreLeido: string | null;
+  /** null si no se leyó un nombre. */
+  nombreCoincide: boolean | null;
+  esCertificado: boolean | null;
+  legible: boolean | null;
+  analizadoEn: string | null;
+  /** Quién leyó la foto ("Gemini" o "Groq"), o null si aún no se analiza. */
+  proveedor: string | null;
+}
+
+/** Página pública: solo "Juan P." y el cargo, para que la persona confirme que es ella. */
+export interface ConsultaEvaticsPublica {
+  nombreCorto: string;
+  cargo: string;
+  estado: EstadoCertificadoEvatics;
+  motivoRechazo: string | null;
+  /** AAAA-MM-DD (último día para subir) o null sin plazo. */
+  fechaLimite: string | null;
+  plazoVencido: boolean;
+  puedeSubir: boolean;
+}
+
+export interface SubidaEvaticsResult {
+  ok: true;
+  estado: "PENDIENTE";
+  /** Si la foto no se lee o no parece un certificado: se le pide subir otra. */
+  aviso: string | null;
+}
+
+export interface FilaEvatics {
+  /** null mientras no suba la foto. */
+  certificadoId: string | null;
+  cedula: string;
+  apellidosNombres: string;
+  cargo: string;
+  centro: CentroEvatics;
+  /** Cantón de su última asignación a un recinto, o "Sin cantón". */
+  canton: string;
+  /** Asistente Transversal (técnico del distributivo) de ese recinto, o "Sin asistente". */
+  tecnico: string;
+  estado: EstadoCertificadoEvatics;
+  subidoEn: string | null;
+  /**
+   * Veces que se reemplazó la foto; con foto anterior se puede comparar. La foto se pide con
+   * GET .../evatics/:certificadoId/foto?v=<subidoEn>[&anterior=true]: 409 si cambió (volver a cargar el listado).
+   */
+  reemplazos: number;
+  tieneFotoAnterior: boolean;
+  /** subidoEn de la foto anterior (para ?v= con anterior=true), o null. */
+  fotoAnteriorSubidaEn: string | null;
+  revisadoPor: string | null;
+  revisadoEn: string | null;
+  motivoRechazo: string | null;
+  analisis: AnalisisCertificadoEvatics | null;
+  /** Es el propio supervisor que consulta: puede verse, no aprobarse. */
+  esPropio: boolean;
+}
+
+export interface ConteoEvatics {
+  total: number;
+  sinSubir: number;
+  pendientes: number;
+  aprobados: number;
+  rechazados: number;
+}
+
+export interface GrupoConteoEvatics extends ConteoEvatics {
+  nombre: string;
+}
+
+export interface ListadoEvatics {
+  fechaLimite: string | null;
+  plazoVencido: boolean;
+  /** false si ningún proveedor de visión tiene llave: los certificados se revisan a ojo. */
+  analisisDisponible: boolean;
+  /** false si no se pudo leer el distributivo del Drive (todos "Sin asistente"). */
+  distributivoDisponible: boolean;
+  /** Conteos de todo el personal (sin filtros). */
+  totales: ConteoEvatics;
+  porCanton: GrupoConteoEvatics[];
+  porTecnico: GrupoConteoEvatics[];
+  /** Cargos presentes, para el filtro. */
+  cargos: string[];
+  /** Filas que cumplen los filtros pedidos. */
+  filas: FilaEvatics[];
+}
+
+export interface ConfigEvatics {
+  fechaLimite: string | null;
+}
+
+export interface RevisarEvaticsRequest {
+  decision: DecisionEvatics;
+  motivo?: string;
+  /** subidoEn (ISO) de la foto que vio quien revisa: si cambió, 409. */
+  subidoEn: string;
+}

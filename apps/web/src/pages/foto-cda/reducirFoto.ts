@@ -53,15 +53,18 @@ export class FotoIlegibleError extends Error {
   }
 }
 
-/** Devuelve la foto reducida, como JPEG y sin metadatos. */
-export async function reducirFoto(archivo: Blob): Promise<Blob> {
+/** Devuelve la foto reducida, como JPEG y sin metadatos. Por defecto, la de la credencial. */
+export async function reducirFoto(
+  archivo: Blob,
+  { ladoMaximo = LADO_MAXIMO, bytesObjetivo = BYTES_OBJETIVO }: { ladoMaximo?: number; bytesObjetivo?: number } = {},
+): Promise<Blob> {
   let imagen: Awaited<ReturnType<typeof abrirImagen>>;
   try {
     imagen = await abrirImagen(archivo);
   } catch {
     throw new FotoIlegibleError();
   }
-  const { ancho, alto } = medidasReducidas(imagen.width, imagen.height);
+  const { ancho, alto } = medidasReducidas(imagen.width, imagen.height, ladoMaximo);
   const canvas = document.createElement('canvas');
   canvas.width = ancho;
   canvas.height = alto;
@@ -73,5 +76,6 @@ export async function reducirFoto(archivo: Blob): Promise<Blob> {
       new Promise<Blob>((resolve, reject) =>
         canvas.toBlob((b) => (b ? resolve(b) : reject(new FotoIlegibleError())), 'image/jpeg', calidad),
       ),
+    bytesObjetivo,
   );
 }

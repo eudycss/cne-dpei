@@ -411,6 +411,55 @@ const AUDIT_TABLE: Array<{
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
     },
   },
+  // Certificados Evatics. La subida es pública: el certificado sale de
+  // req.certificadoEvaticsId (lo pone el controller), nunca la cédula; queda la
+  // versión del aviso LOPDP y la IP. La revisión: solo la decisión.
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/evatics\/subir$/,
+    accion: 'EVATICS_CERTIFICADO_SUBIR',
+    entidad: 'certificado_evatics',
+    entidadId: (req) => {
+      const id = (req as Request & { certificadoEvaticsId?: unknown }).certificadoEvaticsId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    // Reemplazo: si pisó una foto anterior y cuál (1, 2…), para detectar a quien sube con la cédula de otro.
+    resumen: (_res, req) => {
+      const v = (req.body as { version?: unknown } | undefined)?.version;
+      const n = (req as Request & { reemplazoEvatics?: unknown }).reemplazoEvatics;
+      const reemplazo = typeof n === 'number' && n > 0 ? n : 0;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 40) : null, reemplazo: reemplazo > 0, numeroReemplazo: reemplazo };
+    },
+  },
+  // Quién vio la foto de un certificado (sin datos de la imagen).
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/evatics\/[^/]+\/foto$/,
+    accion: 'EVATICS_FOTO_VER',
+    entidad: 'certificado_evatics',
+    resumen: (_res, req) => ({ anterior: req.query?.anterior === 'true' }),
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/evatics\/[^/]+\/revision$/,
+    accion: 'EVATICS_CERTIFICADO_REVISAR',
+    entidad: 'certificado_evatics',
+    resumen: (res) => {
+      const r = (res ?? {}) as { estado?: unknown };
+      return { decision: r.estado === 'APROBADO' || r.estado === 'RECHAZADO' ? r.estado : null };
+    },
+  },
+  {
+    method: 'PUT',
+    pathRegex: /^\/operadores-cda\/evatics\/config$/,
+    accion: 'EVATICS_FECHA_LIMITE',
+    entidad: 'config_evatics',
+    entidadId: () => undefined,
+    resumen: (res) => {
+      const f = (res ?? {}) as { fechaLimite?: unknown };
+      return { fechaLimite: typeof f.fechaLimite === 'string' ? f.fechaLimite.slice(0, 10) : null };
+    },
+  },
   // Actas de entrega de indumentaria: conteos y estados de las prendas (sin nombres
   // ni cédulas de quien entrega). Las descargas llevan cédulas: queda el formato.
   {

@@ -26,6 +26,7 @@ import { PowerBiCdasPage } from './pages/reportes/PowerBiCdasPage';
 import { PermisosModulosPage } from './pages/permisos-modulos/PermisosModulosPage';
 import { SimuladorPage } from './pages/simulador/SimuladorPage';
 import { SimuladorPublicoPage } from './pages/simulador-publico/SimuladorPublicoPage';
+import { EvaticsPublicoPage } from './pages/evatics-publico/EvaticsPublicoPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export default function App() {
@@ -39,6 +40,8 @@ export default function App() {
       <Route path="/foto-cda" element={<FotoCdaPage />} />
       {/* Pública: práctica de digitación; se entra con la cédula. */}
       <Route path="/simulador" element={<SimuladorPublicoPage />} />
+      {/* Pública: subir el certificado Evatics con la cédula. */}
+      <Route path="/evatics" element={<EvaticsPublicoPage />} />
       <Route
         path="/change-password"
         element={

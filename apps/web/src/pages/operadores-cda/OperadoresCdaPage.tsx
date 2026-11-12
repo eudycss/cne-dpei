@@ -15,6 +15,7 @@ import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
 import { QuienFuePanel } from './QuienFuePanel';
 import { ConvocatoriaPanel } from './ConvocatoriaPanel';
+import { EvaticsPanel } from './EvaticsPanel';
 import { GestionarCargosModal } from './GestionarCargosModal';
 import { getCargosCda } from '../../lib/queries/operadores-cda';
 import { useAuth } from '../../auth/AuthContext';
@@ -28,6 +29,7 @@ const SECCIONES = [
   { id: 'parejas', etiqueta: 'Parejas' },
   { id: 'historial', etiqueta: 'Historial de parejas' },
   { id: 'quien-fue', etiqueta: '¿Quién fue a dónde?' },
+  { id: 'evatics', etiqueta: 'Certificados Evatics' },
 ] as const;
 
 /** Las parejas (operador + asistente por recinto), su historial y la búsqueda solo son de los dos cargos CDA. */
@@ -55,6 +57,8 @@ export function OperadoresCdaPage() {
   const cargos = data && data.length > 0 ? data : CARGOS_BASE;
   const grupo = grupoDeRuta(params.get('grupo'), cargos);
   const textos = textosDeCargo(grupo, cargos);
+  // Evatics es de todo el personal (CDA, CPE y Asistentes Transversales): el cargo no aplica.
+  const enEvatics = params.get('tab') === 'evatics';
 
   function elegirGrupo(g: GrupoCda) {
     // Conserva la sección; los filtros del listado eran del cargo anterior.
@@ -85,19 +89,21 @@ export function OperadoresCdaPage() {
           <div className="ocda-acciones" ref={setAcciones} />
         </div>
         <BuscadorGeneral />
-        <div className="ocda-cargo-fila">
-          <label className="ocda-cargo">
-            <span>Cargo</span>
-            <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>
-              <OpcionesCargo actual={grupo} />
-            </select>
-          </label>
-          {isAdmin && (
-            <button type="button" className="btn secondary ocda-btn-chico" onClick={() => setGestionando(true)}>
-              Gestionar cargos
-            </button>
-          )}
-        </div>
+        {!enEvatics && (
+          <div className="ocda-cargo-fila">
+            <label className="ocda-cargo">
+              <span>Cargo</span>
+              <select value={grupo} onChange={(e) => elegirGrupo(e.target.value as GrupoCda)}>
+                <OpcionesCargo actual={grupo} />
+              </select>
+            </label>
+            {isAdmin && (
+              <button type="button" className="btn secondary ocda-btn-chico" onClick={() => setGestionando(true)}>
+                Gestionar cargos
+              </button>
+            )}
+          </div>
+        )}
         {gestionando && <GestionarCargosModal onClose={() => setGestionando(false)} />}
         {/* key: al cambiar de cargo se montan de nuevo (sin fechas ni búsquedas del otro cargo). */}
         <GrupoCdaContext.Provider key={grupo} value={grupo}>
@@ -117,6 +123,8 @@ export function OperadoresCdaPage() {
                 <HistorialParejasPanel />
               ) : seccion === 'quien-fue' ? (
                 <QuienFuePanel />
+              ) : seccion === 'evatics' ? (
+                <EvaticsPanel acciones={acciones} />
               ) : (
                 <AsistenciaPanel acciones={acciones} />
               )

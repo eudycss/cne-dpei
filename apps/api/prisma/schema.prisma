@@ -159,6 +159,7 @@ model Usuario {
   operadorCda         OperadorCda?
   passwordResetTokens PasswordResetToken[]
   refreshTokens       RefreshToken[]
+  certificadosEvaticsRevisados CertificadoEvatics[] @relation("CertificadoEvaticsRevisadoPor")
   dispositivos        Dispositivo[]
   kitsAsignados       KitElectoral[]
   parejasCdaCreadas   ParejaCda[]     @relation("ParejaCdaCreadaPor")
@@ -1178,4 +1179,61 @@ model NovedadDigitacion {
   orden  Int
 
   @@map("novedades_digitacion")
+}
+
+// ---- Certificados Evatics ----
+
+/// Certificado de la evaluación Evatics: uno por persona (cédula del personal
+/// CDA/CPE o de un usuario Asistente Transversal). Lo sube la propia persona
+/// desde la página pública; la IA solo sugiere si el nombre coincide y el
+/// técnico supervisor lo aprueba o rechaza. Foto cifrada en Storage.
+model CertificadoEvatics {
+  id                    String    @id @default(uuid()) @db.Uuid
+  cedula                String    @unique @db.VarChar(10)
+  fotoKey               String    @map("foto_key") @db.VarChar(255)
+  subidoEn              DateTime  @map("subido_en") @db.Timestamptz(6)
+  /// Versión del aviso LOPDP que aceptó al subir.
+  consentimientoVersion String    @map("consentimiento_version") @db.VarChar(40)
+  /// PENDIENTE, APROBADO o RECHAZADO.
+  estado                String    @default("PENDIENTE") @db.VarChar(12)
+  motivoRechazo         String?   @map("motivo_rechazo") @db.VarChar(300)
+  revisadoPorId         String?   @map("revisado_por_id") @db.Uuid
+  revisadoEn            DateTime? @map("revisado_en") @db.Timestamptz(6)
+  /// La foto que reemplazó la última subida (solo una): el supervisor ve que hubo un cambio y compara.
+  fotoAnteriorKey       String?   @map("foto_anterior_key") @db.VarChar(255)
+  fotoAnteriorSubidaEn  DateTime? @map("foto_anterior_subida_en") @db.Timestamptz(6)
+  /// Cuántas veces se reemplazó la foto (bitácora y listado).
+  reemplazos            Int       @default(0)
+  /// Límite por cédula: subidas del día subidasDia (AAAA-MM-DD, Ecuador).
+  subidasDia            String?   @map("subidas_dia") @db.VarChar(10)
+  subidasHoy            Int       @default(0) @map("subidas_hoy")
+  /// EN_COLA, LISTO o NO_DISPONIBLE (lectura del nombre con Gemini).
+  analisisEstado        String    @default("EN_COLA") @map("analisis_estado") @db.VarChar(14)
+  analisisIntentos      Int       @default(0) @map("analisis_intentos")
+  /// Cuándo reintentar un análisis que falló por un error pasajero (429, red).
+  analisisSiguiente     DateTime? @map("analisis_siguiente") @db.Timestamptz(6)
+  nombreLeido           String?   @map("nombre_leido") @db.VarChar(200)
+  nombreCoincide        Boolean?  @map("nombre_coincide")
+  esCertificado         Boolean?  @map("es_certificado")
+  legible               Boolean?
+  analizadoEn           DateTime? @map("analizado_en") @db.Timestamptz(6)
+  /// Quién leyó la foto ("Gemini" o "Groq"): lo ve el supervisor y lo nombra el aviso LOPDP.
+  analisisProveedor     String?   @map("analisis_proveedor") @db.VarChar(20)
+  creadoEn              DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn         DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  revisadoPor Usuario? @relation("CertificadoEvaticsRevisadoPor", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([analisisEstado, analisisSiguiente], map: "idx_certificados_evatics_analisis")
+  @@map("certificados_evatics")
+}
+
+/// Configuración de los certificados Evatics (una sola fila): la fecha límite
+/// para subir, editable por el administrador (null = sin plazo).
+model ConfigEvatics {
+  id            Int       @id @default(1)
+  fechaLimite   DateTime? @map("fecha_limite") @db.Date
+  actualizadoEn DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("config_evatics")
 }
