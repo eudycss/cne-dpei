@@ -171,8 +171,8 @@ function sumar(c: ConteoEvatics, estado: EstadoCertificadoEvatics): void {
   else c.rechazados++;
 }
 
-/** Conteos por grupo, de más a menos personas; "Sin …" al final. */
-function agrupar(filas: FilaEvatics[], clave: (f: FilaEvatics) => string, sinGrupo: string): GrupoConteoEvatics[] {
+/** Conteos por grupo, de más a menos personas (a igual cifra, por nombre). */
+function agrupar(filas: FilaEvatics[], clave: (f: FilaEvatics) => string): GrupoConteoEvatics[] {
   const grupos = new Map<string, ConteoEvatics>();
   for (const f of filas) {
     const k = clave(f);
@@ -182,12 +182,7 @@ function agrupar(filas: FilaEvatics[], clave: (f: FilaEvatics) => string, sinGru
   }
   return [...grupos]
     .map(([nombre, c]) => ({ nombre, ...c }))
-    .sort(
-      (a, b) =>
-        Number(a.nombre === sinGrupo) - Number(b.nombre === sinGrupo) ||
-        b.total - a.total ||
-        a.nombre.localeCompare(b.nombre, 'es'),
-    );
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
 }
 
 const mismo = (a: string, b: string) => normalizarBusqueda(a.trim()) === normalizarBusqueda(b.trim());
@@ -469,8 +464,8 @@ export class EvaticsService {
       analisisDisponible: this.lector.disponible(),
       distributivoDisponible: tecnicos !== null,
       totales,
-      porCanton: agrupar(todas, (f) => f.canton, SIN_CANTON_EVATICS),
-      porTecnico: agrupar(todas, (f) => f.tecnico, SIN_TECNICO_EVATICS),
+      porCanton: agrupar(todas, (f) => f.canton),
+      porTecnico: agrupar(todas, (f) => f.tecnico),
       cargos: [...new Set(todas.map((f) => f.cargo))].sort((a, b) => a.localeCompare(b, 'es')),
       filas,
     };

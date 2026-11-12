@@ -2248,9 +2248,9 @@ export interface FilaEvatics {
   apellidosNombres: string;
   cargo: string;
   centro: CentroEvatics;
-  /** Cantón de su última asignación a un recinto, o "Sin cantón". */
+  /** Cantón de su última asignación a un recinto, o "CPE". */
   canton: string;
-  /** Asistente Transversal (técnico del distributivo) de ese recinto, o "Sin asistente". */
+  /** Asistente Transversal (técnico del distributivo) de ese recinto, o "CPE". */
   tecnico: string;
   estado: EstadoCertificadoEvatics;
   subidoEn: string | null;
@@ -2287,7 +2287,7 @@ export interface ListadoEvatics {
   plazoVencido: boolean;
   /** false si ningún proveedor de visión tiene llave: los certificados se revisan a ojo. */
   analisisDisponible: boolean;
-  /** false si no se pudo leer el distributivo del Drive (todos "Sin asistente"). */
+  /** false si no se pudo leer el distributivo del Drive (los asistentes aparecen como "CPE"). */
   distributivoDisponible: boolean;
   /** Conteos de todo el personal (sin filtros). */
   totales: ConteoEvatics;

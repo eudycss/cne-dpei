@@ -859,8 +859,8 @@ describe('EvaticsService', () => {
       });
       expect(r.filas.find((f) => f.cedula === '0912345678')).toMatchObject({ centro: 'AT', cargo: 'Asistente Transversal' });
       expect(r.totales).toEqual({ total: 3, sinSubir: 2, pendientes: 0, aprobados: 1, rechazados: 0 });
-      expect(r.porCanton[0]).toMatchObject({ nombre: 'Ibarra', total: 1, aprobados: 1 });
-      expect(r.porCanton.at(-1)).toMatchObject({ nombre: SIN_CANTON_EVATICS, total: 2 });
+      expect(r.porCanton[0]).toMatchObject({ nombre: SIN_CANTON_EVATICS, total: 2 });
+      expect(r.porCanton[1]).toMatchObject({ nombre: 'Ibarra', total: 1, aprobados: 1 });
       expect(r.porTecnico.find((g) => g.nombre === 'Jairo Leal')).toMatchObject({ total: 1, aprobados: 1 });
       expect(r.distributivoDisponible).toBe(true);
     });
@@ -876,11 +876,34 @@ describe('EvaticsService', () => {
       expect((await service.listado({ tecnico: 'Jairo Leal' }, ADMIN)).filas.map((f) => f.cedula)).toEqual([CED_ANA]);
     });
 
-    it('sin distributivo (Drive caído) el listado sale igual, todos "Sin asistente"', async () => {
+    it('sin distributivo (Drive caído) el listado sale igual, todos "CPE"', async () => {
       distributivo.asignaciones.mockRejectedValue(new Error('Drive no responde'));
       const r = await service.listado({}, ADMIN);
       expect(r.distributivoDisponible).toBe(false);
       expect(r.filas.every((f) => f.tecnico === SIN_TECNICO_EVATICS)).toBe(true);
+    });
+
+    it('con el mismo total, los cantones salen en orden alfabético', async () => {
+      prisma.operadorCda.findMany.mockResolvedValue([
+        operador({ id: 'op-a', cedula: CED_ANA }),
+        operador({ id: 'op-b', cedula: CED_LUIS, apellidosNombres: 'VEGA TAPIA LUIS' }),
+      ]);
+      prisma.usuario.findMany.mockResolvedValue([]);
+      prisma.parejaCda.findMany.mockResolvedValue([
+        { operadorCdaId: 'op-a', asistenteCdaId: null, recinto: { codigoRecinto: '1', canton: { nombre: 'Otavalo' } } },
+        { operadorCdaId: 'op-b', asistenteCdaId: null, recinto: { codigoRecinto: '2', canton: { nombre: 'Antonio Ante' } } },
+      ]);
+      const r = await service.listado({}, ADMIN);
+      expect(r.porCanton.map((g) => g.nombre)).toEqual(['Antonio Ante', 'Otavalo']);
+    });
+
+    it('un técnico llamado "CPE" en el distributivo se junta con quienes no tienen asistente', async () => {
+      distributivo.asignaciones.mockResolvedValue([
+        { codigoRecinto: '1207', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'CPE' },
+      ]);
+      const r = await service.listado({}, ADMIN);
+      expect(r.porTecnico.filter((g) => g.nombre === 'CPE')).toHaveLength(1);
+      expect(r.porTecnico.find((g) => g.nombre === 'CPE')?.total).toBe(3);
     });
 
     it('quien revisa ve su propia fila marcada', async () => {

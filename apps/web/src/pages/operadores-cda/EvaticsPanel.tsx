@@ -122,7 +122,7 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
       )}
       {data && !data.distributivoDisponible && (
         <div className="banner error" role="status">
-          No se pudo leer el distributivo del Drive: todos aparecen como “Sin asistente”.
+          No se pudo leer el distributivo del Drive: los asistentes aparecen como “CPE” hasta que se recupere.
         </div>
       )}
 
