@@ -2217,6 +2217,8 @@ export interface AnalisisCertificadoEvatics {
   nombreCoincide: boolean | null;
   esCertificado: boolean | null;
   legible: boolean | null;
+  /** La IA vio "100 % completado". Solo informa (una captura se puede falsificar): aprueba el supervisor. null = sin dato. */
+  cursoCompleto: boolean | null;
   analizadoEn: string | null;
   /** Quién leyó la foto ("Gemini" o "Groq"), o null si aún no se analiza. */
   proveedor: string | null;

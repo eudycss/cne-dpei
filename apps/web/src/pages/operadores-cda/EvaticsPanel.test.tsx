@@ -7,7 +7,7 @@ import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName 
 
 import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
 import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
-import { sugerenciaIa } from './RevisarEvaticsModal';
+import { sugerenciaIa, textoCursoCompleto } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -30,6 +30,7 @@ const LISTO: AnalisisCertificadoEvatics = {
   nombreCoincide: true,
   esCertificado: true,
   legible: true,
+  cursoCompleto: true,
   analizadoEn: '2026-11-12T15:00:00.000Z',
   proveedor: 'Groq',
 };
@@ -428,5 +429,51 @@ describe('EvaticsPanel: refresco automático', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('textoCursoCompleto', () => {
+  it('visto, no visto o sin dato (filas anteriores)', () => {
+    expect(textoCursoCompleto(true)).toBe('Visto por la IA');
+    expect(textoCursoCompleto(false)).toBe('No visto');
+    expect(textoCursoCompleto(null)).toBe('Sin dato');
+    expect(textoCursoCompleto(undefined)).toBe('Sin dato');
+  });
+});
+
+describe('modal de revisión: «100 % completado»', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    permisos.actuales = new Set(PERMISO_IDS);
+    roles = ['ADMINISTRADOR'];
+    URL.createObjectURL = vi.fn(() => 'blob:cert');
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  async function abrir(analisis: AnalisisCertificadoEvatics) {
+    getMock.mockImplementation((url: string) =>
+      url.endsWith('/foto')
+        ? Promise.resolve({ data: new Blob(['jpg'], { type: 'image/jpeg' }) })
+        : Promise.resolve({ data: listado({ filas: [fila({ analisis })] }) }),
+    );
+    renderPanel();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Revisar certificado de ANDRADE LÓPEZ ANA' }));
+  }
+
+  it.each([
+    [true, 'Visto por la IA'],
+    [false, 'No visto'],
+    [null, 'Sin dato'],
+  ])('lectura lista con cursoCompleto=%s → %s', async (valor, texto) => {
+    await abrir({ ...LISTO, cursoCompleto: valor });
+    expect(await screen.findByText('«100 % completado»')).toBeInTheDocument();
+    expect(screen.getByText(texto)).toBeInTheDocument();
+  });
+
+  it('sin lectura lista (en cola) no se muestra la fila', async () => {
+    await abrir({ ...LISTO, estado: 'EN_COLA', cursoCompleto: null });
+    await screen.findByText('Sugerencia de la IA');
+    expect(screen.queryByText('«100 % completado»')).not.toBeInTheDocument();
   });
 });
