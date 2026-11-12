@@ -33,12 +33,12 @@ const RESPONSE_SCHEMA = {
       type: 'BOOLEAN',
       description: 'true si el texto de la imagen se lee con claridad',
     },
-    cursoCompleto: {
+    notasAprobadas: {
       type: 'BOOLEAN',
-      description: 'true si se ve "100% completado" o un total del curso de 100 %',
+      description: 'true si se ven las notas de los cuestionarios y todas son de 7 o más sobre 10; false si alguna es menor, o no se ven',
     },
   },
-  required: ['nombreLeido', 'esCertificadoEvatics', 'legible', 'cursoCompleto'],
+  required: ['nombreLeido', 'esCertificadoEvatics', 'legible', 'notasAprobadas'],
 } as const;
 
 /**

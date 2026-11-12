@@ -8,7 +8,7 @@ const LECTURA = {
   nombreLeido: 'Ana Pérez',
   esCertificadoEvatics: true,
   legible: true,
-  cursoCompleto: true,
+  notasAprobadas: true,
 };
 
 const lector = (nombre: string) => ({

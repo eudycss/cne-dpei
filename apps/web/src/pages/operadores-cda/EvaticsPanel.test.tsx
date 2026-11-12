@@ -7,7 +7,7 @@ import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName 
 
 import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
 import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
-import { sugerenciaIa, textoCursoCompleto } from './RevisarEvaticsModal';
+import { sugerenciaIa, textoNotasAprobadas } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -30,7 +30,7 @@ const LISTO: AnalisisCertificadoEvatics = {
   nombreCoincide: true,
   esCertificado: true,
   legible: true,
-  cursoCompleto: true,
+  notasAprobadas: true,
   analizadoEn: '2026-11-12T15:00:00.000Z',
   proveedor: 'Groq',
 };
@@ -432,16 +432,16 @@ describe('EvaticsPanel: refresco automático', () => {
   });
 });
 
-describe('textoCursoCompleto', () => {
+describe('textoNotasAprobadas', () => {
   it('visto, no visto o sin dato (filas anteriores)', () => {
-    expect(textoCursoCompleto(true)).toBe('Visto por la IA');
-    expect(textoCursoCompleto(false)).toBe('No visto');
-    expect(textoCursoCompleto(null)).toBe('Sin dato');
-    expect(textoCursoCompleto(undefined)).toBe('Sin dato');
+    expect(textoNotasAprobadas(true)).toBe('Visto por la IA');
+    expect(textoNotasAprobadas(false)).toBe('No visto');
+    expect(textoNotasAprobadas(null)).toBe('Sin dato');
+    expect(textoNotasAprobadas(undefined)).toBe('Sin dato');
   });
 });
 
-describe('modal de revisión: «100 % completado»', () => {
+describe('modal de revisión: Notas de cuestionarios ≥ 7', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     permisos.actuales = new Set(PERMISO_IDS);
@@ -465,15 +465,15 @@ describe('modal de revisión: «100 % completado»', () => {
     [true, 'Visto por la IA'],
     [false, 'No visto'],
     [null, 'Sin dato'],
-  ])('lectura lista con cursoCompleto=%s → %s', async (valor, texto) => {
-    await abrir({ ...LISTO, cursoCompleto: valor });
-    expect(await screen.findByText('«100 % completado»')).toBeInTheDocument();
+  ])('lectura lista con notasAprobadas=%s → %s', async (valor, texto) => {
+    await abrir({ ...LISTO, notasAprobadas: valor });
+    expect(await screen.findByText('Notas de cuestionarios ≥ 7')).toBeInTheDocument();
     expect(screen.getByText(texto)).toBeInTheDocument();
   });
 
   it('sin lectura lista (en cola) no se muestra la fila', async () => {
-    await abrir({ ...LISTO, estado: 'EN_COLA', cursoCompleto: null });
+    await abrir({ ...LISTO, estado: 'EN_COLA', notasAprobadas: null });
     await screen.findByText('Sugerencia de la IA');
-    expect(screen.queryByText('«100 % completado»')).not.toBeInTheDocument();
+    expect(screen.queryByText('Notas de cuestionarios ≥ 7')).not.toBeInTheDocument();
   });
 });
