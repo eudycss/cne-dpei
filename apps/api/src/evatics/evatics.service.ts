@@ -203,10 +203,16 @@ function analisisDto(c: CertificadoGuardado): AnalisisCertificadoEvatics {
 export function avisoParaLaPersona(lectura: LecturaCertificado | null): string | null {
   if (!lectura) return null;
   if (!lectura.esCertificadoEvatics) {
-    return 'La foto no parece un certificado Evatics. Revise que sea el documento correcto y vuelva a subirla.';
+    return 'La imagen no parece una prueba de Evatics (certificado o captura del curso). Revise que sea la correcta y vuelva a subirla.';
   }
-  if (!lectura.legible || !lectura.nombreLeido) {
-    return 'No se lee bien el certificado. Tome otra foto con buena luz, sin reflejos y con el documento completo.';
+  if (!lectura.legible) {
+    return 'No se lee bien la imagen. Súbala otra vez con buena luz, sin reflejos y completa.';
+  }
+  if (!lectura.nombreLeido) {
+    return 'Recibida, pero no se ve su nombre en la imagen. Un supervisor la revisará; si puede, suba una captura donde aparezca su nombre.';
+  }
+  if (!lectura.cursoCompleto) {
+    return 'Recibida, pero no se ve el "100 % completado". Si ya terminó el curso, suba una captura donde se vea; de todos modos un supervisor la revisará.';
   }
   return null;
 }
