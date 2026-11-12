@@ -242,7 +242,7 @@ function EstadoCertificado({
       )}
       {datos.estado === 'APROBADO' && (
         <div className="banner" role="status">
-          Su certificado ya fue aprobado. No necesita hacer nada más.
+          Sus notas ya fueron recibidas. No necesita hacer nada más.
         </div>
       )}
       {datos.estado === 'PENDIENTE' && datos.puedeSubir && (
