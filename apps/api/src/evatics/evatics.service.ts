@@ -212,7 +212,7 @@ export function avisoParaLaPersona(lectura: LecturaCertificado | null): string |
     return 'Recibida, pero no se ve su nombre en la imagen. Un supervisor la revisará; si puede, suba una captura donde aparezca su nombre.';
   }
   if (!lectura.cursoCompleto) {
-    return 'Recibida, pero no se ve el "100 % completado". Si ya terminó el curso, suba una captura donde se vea; de todos modos un supervisor la revisará.';
+    return 'Enviado a revisión.';
   }
   return null;
 }
