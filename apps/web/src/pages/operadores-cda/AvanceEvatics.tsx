@@ -17,9 +17,18 @@ type Vista = 'canton' | 'tecnico';
 
 export const pct = (parte: number, total: number) => (total > 0 ? Math.round((parte / total) * 100) : 0);
 
-/** De más a menos personas, así el cantón (o CPE) más grande queda primero; a igual cifra, por nombre. */
+/**
+ * Del mayor al menor porcentaje de aprobados (el que más avanzó, primero). Se
+ * compara la fracción exacta, no la redondeada; a igual porcentaje, el grupo
+ * con más personas y, si sigue el empate, por nombre.
+ */
 export function ordenarGrupos(grupos: GrupoConteoEvatics[]): GrupoConteoEvatics[] {
-  return [...grupos].sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
+  return [...grupos].sort(
+    (a, b) =>
+      b.aprobados * a.total - a.aprobados * b.total || // a.total o b.total en 0 compara 0 con 0
+      b.total - a.total ||
+      a.nombre.localeCompare(b.nombre, 'es'),
+  );
 }
 
 export function describirGrupo(g: GrupoConteoEvatics): string {

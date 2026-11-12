@@ -354,10 +354,37 @@ describe('sugerenciaIa', () => {
 });
 
 describe('ordenarGrupos', () => {
-  it('de más a menos personas y, a igual cifra, por nombre; CPE ordena como cualquier grupo', () => {
-    const g = (nombre: string, total: number) => ({ nombre, total, sinSubir: total, pendientes: 0, aprobados: 0, rechazados: 0 });
+  const g = (nombre: string, total: number, aprobados = 0) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+
+  it('del mayor al menor porcentaje de aprobados, no por cantidad de personas', () => {
+    // CPE tiene más gente pero menos avance: 20 %. Sebastian: 60 %. Carlos: 50 %.
     expect(
-      ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Ibarra', 5), g('Antonio Ante', 2)]).map((x) => x.nombre),
-    ).toEqual(['CPE', 'Ibarra', 'Antonio Ante', 'Urcuquí']);
+      ordenarGrupos([g('CPE', 40, 8), g('Carlos', 10, 5), g('Sebastian', 10, 6)]).map((x) => x.nombre),
+    ).toEqual(['Sebastian', 'Carlos', 'CPE']);
+  });
+
+  it('compara la fracción exacta (1/3 > 33 de 100) y desempata por más personas y por nombre', () => {
+    expect(ordenarGrupos([g('B', 100, 33), g('A', 3, 1)]).map((x) => x.nombre)).toEqual(['A', 'B']);
+    expect(ordenarGrupos([g('Ibarra', 4, 2), g('Cotacachi', 2, 1), g('Antonio Ante', 2, 1)]).map((x) => x.nombre)).toEqual([
+      'Ibarra',
+      'Antonio Ante',
+      'Cotacachi',
+    ]);
+  });
+
+  it('con 0 aprobados todos empatan: más personas primero, luego nombre; un grupo vacío no rompe', () => {
+    expect(ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
+      'CPE',
+      'Ibarra',
+      'Urcuquí',
+      'Vacío',
+    ]);
   });
 });
