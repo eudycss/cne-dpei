@@ -56,16 +56,18 @@ const COLUMNAS = [
   'Recinto',
   'Operador',
   'Cédula operador',
+  'Teléfono operador',
   'Celular operador',
   'Asistente',
   'Cédula asistente',
+  'Teléfono asistente',
   'Celular asistente',
   'Lleva el kit',
   'Estado',
 ];
 
 describe('reporteParejas', () => {
-  it('una fila por pareja con recinto, nombres, cédula y celular de cada uno y quién lleva el kit; sin teléfonos', () => {
+  it('una fila por pareja con recinto, nombres, cédula, teléfono y celular de cada uno y quién lleva el kit', () => {
     const operador = { ...persona('BONILLA DAVID', null), cedula: '1002003004' };
     const asistente = { ...persona('AS 1198', 'IPHONE'), cedula: '1005006007' };
     const r = reporteParejas(dia([fila('1198', { operador, asistente, portador: persona('LEON MARIA') })]));
@@ -73,9 +75,8 @@ describe('reporteParejas', () => {
 
     expect(t.columnas.map((c) => c.titulo)).toEqual(COLUMNAS);
     expect(t.filas).toEqual([
-      [1, '1198', 'IBARRA', 'Recinto 1198', 'BONILLA DAVID', '1002003004', 'Sin registrar', 'AS 1198', '1005006007', 'iPhone', 'LEON MARIA', 'Con kit'],
+      [1, '1198', 'IBARRA', 'Recinto 1198', 'BONILLA DAVID', '1002003004', '0999999999', 'Sin registrar', 'AS 1198', '1005006007', '0999999999', 'iPhone', 'LEON MARIA', 'Con kit'],
     ]);
-    expect(JSON.stringify(r)).not.toContain('0999999999');
   });
 
   it('ordena por código de recinto como número y numera las filas', () => {
@@ -98,11 +99,11 @@ describe('reporteParejas', () => {
       ]),
     );
     const t = r.tablas[0];
-    const estados = t.filas.map((f) => f[11]);
+    const estados = t.filas.map((f) => f[13]);
 
     expect(estados).toEqual(['Sin kit', 'Con kit · sin asistente', 'Con kit · sin Android · sin asistente', 'Pendiente de evento', 'Con kit']);
-    expect(t.filas[1].slice(7, 10)).toEqual(['— (sin pareja)', '', '']);
-    expect(t.filas[0][10]).toBe('—');
+    expect(t.filas[1].slice(8, 12)).toEqual(['— (sin pareja)', '', '', '']);
+    expect(t.filas[0][12]).toBe('—');
     expect(t.resaltadas).toEqual([0, 1, 2]);
   });
 
@@ -140,7 +141,7 @@ describe('reporteParejas', () => {
     expect(r.detalle).toContain('sin evento activo de esa fecha');
   });
 
-  it('el Excel real lleva las cédulas pero no los teléfonos, y un nombre que empieza con "=" queda como texto', async () => {
+  it('el Excel real lleva cédulas y teléfonos, y un nombre que empieza con "=" queda como texto', async () => {
     const otro = (nombre: string, cedula: string, telefono: string, dispositivo: PersonaParejaCda['dispositivo']) => ({
       ...persona(nombre, dispositivo),
       cedula,
@@ -157,12 +158,17 @@ describe('reporteParejas', () => {
     await wb.xlsx.load((await generarReporte(r, 'xlsx')).contenido as never);
     const celdas: unknown[] = [];
     wb.eachSheet((ws) => ws.eachRow((row) => row.eachCell((c) => celdas.push(c.value))));
-    const texto = JSON.stringify(celdas);
 
     for (const cedula of ['1710034065', '1712345675', '1713175071', '1714444444']) expect(celdas).toContain(cedula);
-    for (const telefono of ['0991111111', '0987654321', '0992222222', '0993333333', '0999999999']) expect(texto).not.toContain(telefono);
+    for (const telefono of ['0991111111', '0987654321', '0992222222', '0993333333']) expect(celdas).toContain(telefono);
     expect(celdas).toContain('=HYPERLINK("x")');
     expect(celdas.some((v) => typeof v === 'object' && v !== null && 'formula' in v)).toBe(false);
+  });
+
+  it('si la persona no tiene teléfono registrado, la celda queda vacía', () => {
+    const sinTel = { ...persona('SIN TEL'), telefono: null };
+    const f = reporteParejas(dia([fila('28', { operador: sinTel, asistente: sinTel })])).tablas[0].filas[0];
+    expect([f[6], f[10]]).toEqual(['', '']);
   });
 
   it('la "\\" del nombre del recinto pasa a "/" (el PDF la borraría: "Bloque 1  Ex Escuela")', () => {
@@ -190,14 +196,16 @@ describe('reporteParejas', () => {
       'N°',
       'Operador',
       'Cédula operador',
+      'Teléfono operador',
       'Celular operador',
       'Asistente',
       'Cédula asistente',
+      'Teléfono asistente',
       'Celular asistente',
     ]);
     expect(t.filas).toEqual([
-      [1, 'SOLANO PEDRO', '1003003003', 'Android', '— (sin asistente)', '', ''],
-      [2, 'ZAMBRANO ANA', '1001001001', 'Sin registrar', 'ROSALES LUIS', '1002002002', 'Android'],
+      [1, 'SOLANO PEDRO', '1003003003', '0999999999', 'Android', '— (sin asistente)', '', '', ''],
+      [2, 'ZAMBRANO ANA', '1001001001', '0999999999', 'Sin registrar', 'ROSALES LUIS', '1002002002', '0999999999', 'Android'],
     ]);
     expect(r.tablas[0].anexo?.filas).toContainEqual(['Parejas de reserva', 2]);
   });
@@ -213,14 +221,14 @@ describe('reporteParejas', () => {
       ),
     );
     expect(r.tablas[1].filas).toEqual([
-      [1, '— (sin operador)', '', '', 'BRAVO ASIS', '1004004004', 'Android'],
-      [2, 'TORRES OP', '1003003003', 'Android', '— (sin asistente)', '', ''],
+      [1, '— (sin operador)', '', '', '', 'BRAVO ASIS', '1004004004', '0999999999', 'Android'],
+      [2, 'TORRES OP', '1003003003', '0999999999', 'Android', '— (sin asistente)', '', '', ''],
     ]);
   });
 
   it('sin parejas de reserva, la segunda hoja lo dice en vez de quedar vacía', () => {
     const t = reporteParejas(dia([fila('28')])).tablas[1];
-    expect(t.filas).toEqual([['', 'Este día no tiene parejas de reserva', '', '', '', '', '']]);
+    expect(t.filas).toEqual([['', 'Este día no tiene parejas de reserva', '', '', '', '', '', '', '']]);
   });
 
   it('un día con solo parejas de reserva también se puede imprimir', () => {

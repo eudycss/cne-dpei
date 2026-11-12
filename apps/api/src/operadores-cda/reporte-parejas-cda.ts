@@ -5,8 +5,8 @@ import { type Celda, type ReporteCda, type TablaReporte, diaCorto, diaLargo } fr
 
 /**
  * Reporte imprimible de las parejas de un día: recinto, operador y asistente
- * con su cédula y celular (la APK solo se instala en Android) y quién lleva
- * el kit; en otra hoja, las parejas de reserva cargadas para ese día. Sin teléfonos.
+ * con su cédula, número de teléfono y tipo de celular (la APK solo se instala en
+ * Android) y quién lleva el kit; en otra hoja, las parejas de reserva del día.
  */
 
 const CELULAR: Record<DispositivoCda, string> = { ANDROID: 'Android', IPHONE: 'iPhone' };
@@ -16,6 +16,8 @@ const ESTADO: Record<EstadoParejaCda, string> = {
   SIN_KIT: 'Sin kit',
   PENDIENTE_EVENTO: 'Pendiente de evento',
 };
+
+const telefono = (p: PersonaParejaCda) => p.telefono ?? '';
 
 const celular = (p: PersonaParejaCda) => (p.dispositivo ? CELULAR[p.dispositivo] : 'Sin registrar');
 
@@ -62,9 +64,11 @@ function tablaReserva(fecha: string, reserva: ParejaReservaCda[]): TablaReporte 
       i + 1,
       p.operador?.apellidosNombres ?? '— (sin operador)',
       p.operador?.cedula ?? '',
+      p.operador ? telefono(p.operador) : '',
       p.operador ? celular(p.operador) : '',
       p.asistente?.apellidosNombres ?? '— (sin asistente)',
       p.asistente?.cedula ?? '',
+      p.asistente ? telefono(p.asistente) : '',
       p.asistente ? celular(p.asistente) : '',
     ]);
   return {
@@ -74,12 +78,14 @@ function tablaReserva(fecha: string, reserva: ParejaReservaCda[]): TablaReporte 
       { titulo: 'N°', ancho: 5 },
       { titulo: 'Operador', ancho: 34 },
       { titulo: 'Cédula operador', ancho: 14.5 },
+      { titulo: 'Teléfono operador', ancho: 14 },
       { titulo: 'Celular operador', ancho: 12.5 },
       { titulo: 'Asistente', ancho: 34 },
       { titulo: 'Cédula asistente', ancho: 14.5 },
+      { titulo: 'Teléfono asistente', ancho: 14 },
       { titulo: 'Celular asistente', ancho: 12.5 },
     ],
-    filas: filas.length > 0 ? filas : [['', 'Este día no tiene parejas de reserva', '', '', '', '', '']],
+    filas: filas.length > 0 ? filas : [['', 'Este día no tiene parejas de reserva', '', '', '', '', '', '', '']],
   };
 }
 
@@ -109,9 +115,11 @@ export function reporteParejas(dia: ParejasCdaDia): ReporteCda {
           { titulo: 'Recinto', ancho: 25 },
           { titulo: 'Operador', ancho: 21 },
           { titulo: 'Cédula operador', ancho: 14.5 },
+          { titulo: 'Teléfono operador', ancho: 14 },
           { titulo: 'Celular operador', ancho: 12.5 },
           { titulo: 'Asistente', ancho: 21 },
           { titulo: 'Cédula asistente', ancho: 14.5 },
+          { titulo: 'Teléfono asistente', ancho: 14 },
           { titulo: 'Celular asistente', ancho: 12.5 },
           { titulo: 'Lleva el kit', ancho: 20 },
           { titulo: 'Estado', ancho: 20 },
@@ -123,9 +131,11 @@ export function reporteParejas(dia: ParejasCdaDia): ReporteCda {
           nombreRecinto(p.recinto.nombre),
           p.operador.apellidosNombres,
           p.operador.cedula,
+          telefono(p.operador),
           celular(p.operador),
           p.asistente?.apellidosNombres ?? '— (sin pareja)',
           p.asistente?.cedula ?? '',
+          p.asistente ? telefono(p.asistente) : '',
           p.asistente ? celular(p.asistente) : '',
           p.portador?.apellidosNombres ?? '—',
           estado(p),
