@@ -62,3 +62,14 @@ export function numeroWhatsApp(telefono: string | null): string | null {
 export function mensajeError(e: unknown, porDefecto: string): string {
   return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
 }
+
+/** "2026-11-20" → "jueves, 20 de noviembre de 2026" */
+export function fechaLarga(dia: string): string {
+  return new Date(`${dia}T12:00:00-05:00`).toLocaleDateString('es-EC', {
+    timeZone: 'America/Guayaquil',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}

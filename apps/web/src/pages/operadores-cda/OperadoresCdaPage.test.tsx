@@ -119,6 +119,15 @@ describe('OperadoresCdaPage', () => {
     expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=ASISTENTE');
   });
 
+  it('?tab=evatics: certificados de todo el personal, sin el combo de cargo', async () => {
+    renderPagina('/operadores-cda?grupo=asistentes&tab=evatics');
+    expect(screen.getByRole('tab', { name: 'Certificados Evatics' })).toHaveAttribute('aria-selected', 'true');
+    // Sin el combo de cargo de la página (el de Evatics es su propio filtro, en 'Todos').
+    expect(screen.queryByRole('button', { name: 'Gestionar cargos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Cargo' })).not.toHaveDisplayValue('Asistentes CDA');
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('/operadores-cda/evatics', { params: {} }));
+  });
+
   it('?grupo=asistentes&tab=atrasos abre directo los atrasos de los asistentes', async () => {
     renderPagina('/operadores-cda?grupo=asistentes&tab=atrasos');
     expect(screen.getByRole('combobox', { name: 'Cargo' })).toHaveDisplayValue('Asistentes CDA');

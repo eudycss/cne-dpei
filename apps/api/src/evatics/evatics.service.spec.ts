@@ -4,6 +4,7 @@ import { revisarEvaticsSchema, SIN_CANTON_EVATICS, SIN_TECNICO_EVATICS } from '@
 import {
   CEDULA_NO_REGISTRADA,
   DEMASIADAS_SUBIDAS,
+  DIAS_RETENCION_EVATICS,
   ESPERA_MAX_ANALISIS_AL_SUBIR_MS,
   EvaticsService,
   FOTO_CAMBIO,
@@ -12,6 +13,7 @@ import {
   MAX_SUBIDAS_POR_DIA,
   avisoParaLaPersona,
   esperaReintento,
+  sumarDias,
 } from './evatics.service';
 import { LectorNoConfigurado, LectorRespuestaInvalida, LectorTransitorio } from './lector-certificado';
 import { limpiarJpeg } from '../operadores-cda/jpeg';
@@ -87,6 +89,7 @@ describe('EvaticsService', () => {
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     configEvatics: { findUnique: jest.fn(), upsert: jest.fn() },
     parejaCda: { findMany: jest.fn() },
@@ -608,6 +611,86 @@ describe('EvaticsService', () => {
       prisma.certificadoEvatics.findMany.mockResolvedValueOnce(enCola(1));
       await service.analizarPendientes(new Date(AHORA.getTime() + 61_000));
       expect(lector.leer).toHaveBeenCalledTimes(MAX_ANALISIS_POR_MINUTO + 1);
+    });
+  });
+
+  describe('retención (cron diario)', () => {
+    // Fecha límite 2026-08-01 + 90 días = 2026-10-30: el 12-nov ya pasó.
+    const conFechaLimite = (dia: string | null) =>
+      prisma.configEvatics.findUnique.mockResolvedValue({ fechaLimite: dia ? new Date(`${dia}T00:00:00Z`) : null });
+
+    it('suma días de calendario (cambia de mes y de año)', () => {
+      expect(sumarDias('2026-11-20', DIAS_RETENCION_EVATICS)).toBe('2027-02-18');
+      expect(sumarDias('2026-08-01', 90)).toBe('2026-10-30');
+    });
+
+    it('antes de cumplirse los 90 días de la fecha límite no borra nada', async () => {
+      conFechaLimite('2026-08-14'); // + 90 = 2026-11-12: hoy mismo todavía se guarda
+      expect(await service.purgarVencidos()).toBe(0);
+      conFechaLimite('2026-12-01'); // la fecha se movió al futuro
+      expect(await service.purgarVencidos()).toBe(0);
+      expect(prisma.certificadoEvatics.findMany).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('sin fecha límite borra solo lo subido hace más de 90 días', async () => {
+      conFechaLimite(null);
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([]);
+      expect(await service.purgarVencidos()).toBe(0);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[0][0].where).toEqual({
+        subidoEn: { lt: new Date(AHORA.getTime() - 90 * 24 * 60 * 60 * 1000) },
+      });
+    });
+
+    it('pasados los 90 días borra primero las fotos (actual y anterior) y luego las filas', async () => {
+      conFechaLimite('2026-08-01');
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([
+        { id: 'c1', fotoKey: 'f1', fotoAnteriorKey: 'a1' },
+        { id: 'c2', fotoKey: 'f2', fotoAnteriorKey: null },
+      ]);
+      prisma.certificadoEvatics.deleteMany.mockResolvedValueOnce({ count: 2 });
+
+      expect(await service.purgarVencidos()).toBe(2);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[0][0].where).toEqual({});
+      expect(storage.remove.mock.calls.map((c) => c[0])).toEqual(['f1', 'a1', 'f2']);
+      expect(prisma.certificadoEvatics.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['c1', 'c2'] } } });
+      expect(storage.remove.mock.invocationCallOrder[2]).toBeLessThan(
+        prisma.certificadoEvatics.deleteMany.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si una foto no se pudo borrar, su fila se conserva para reintentar (no queda foto sin fila)', async () => {
+      conFechaLimite('2026-08-01');
+      prisma.certificadoEvatics.findMany.mockResolvedValueOnce([
+        { id: 'c1', fotoKey: 'f1', fotoAnteriorKey: 'a1' },
+        { id: 'c2', fotoKey: 'f2', fotoAnteriorKey: null },
+      ]);
+      storage.remove.mockImplementation((k: string) =>
+        k === 'a1' ? Promise.reject(new Error('red')) : Promise.resolve(),
+      );
+      prisma.certificadoEvatics.deleteMany.mockResolvedValueOnce({ count: 1 });
+      expect(await service.purgarVencidos()).toBe(1);
+      expect(prisma.certificadoEvatics.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['c2'] } } });
+    });
+
+    it('recorre por lotes con cursor: las fallidas no se releen y no gira en vano', async () => {
+      conFechaLimite('2026-08-01');
+      const id = (i: number) => `c${String(i).padStart(3, '0')}`;
+      const lote = Array.from({ length: 100 }, (_, i) => ({ id: id(i), fotoKey: 'f', fotoAnteriorKey: null }));
+      prisma.certificadoEvatics.findMany
+        .mockResolvedValueOnce(lote)
+        .mockResolvedValueOnce([{ id: 'd1', fotoKey: 'f', fotoAnteriorKey: null }]);
+      storage.remove.mockRejectedValue(new Error('caído'));
+      expect(await service.purgarVencidos()).toBe(0);
+      expect(prisma.certificadoEvatics.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.certificadoEvatics.findMany).toHaveBeenCalledTimes(2);
+      expect(prisma.certificadoEvatics.findMany.mock.calls[1][0].where).toEqual({ AND: [{}, { id: { gt: 'c099' } }] });
+    });
+
+    it('la fecha límite no se puede poner tan atrás que la purga lo borre todo', async () => {
+      await expect(service.guardarConfig('2026-08-13')).rejects.toThrow(/Elija el 2026-08-14 o una fecha posterior/);
+      expect(prisma.configEvatics.upsert).not.toHaveBeenCalled();
+      await expect(service.guardarConfig('2026-08-14')).resolves.toEqual({ fechaLimite: '2026-08-14' });
     });
   });
 
