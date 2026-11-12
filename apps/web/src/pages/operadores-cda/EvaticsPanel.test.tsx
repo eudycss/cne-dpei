@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PERMISO_IDS } from '@cne/shared-validation';
 import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName } from '@cne/shared-types';
 
-import { EvaticsPanel } from './EvaticsPanel';
-import { ordenarGrupos } from './AvanceEvatics';
+import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
+import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
 import { sugerenciaIa } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
@@ -354,10 +354,79 @@ describe('sugerenciaIa', () => {
 });
 
 describe('ordenarGrupos', () => {
-  it('de más a menos personas y, a igual cifra, por nombre; CPE ordena como cualquier grupo', () => {
-    const g = (nombre: string, total: number) => ({ nombre, total, sinSubir: total, pendientes: 0, aprobados: 0, rechazados: 0 });
+  const g = (nombre: string, total: number, aprobados = 0) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+
+  it('del mayor al menor porcentaje de aprobados, no por cantidad de personas', () => {
+    // CPE tiene más gente pero menos avance: 20 %. Sebastian: 60 %. Carlos: 50 %.
     expect(
-      ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Ibarra', 5), g('Antonio Ante', 2)]).map((x) => x.nombre),
-    ).toEqual(['CPE', 'Ibarra', 'Antonio Ante', 'Urcuquí']);
+      ordenarGrupos([g('CPE', 40, 8), g('Carlos', 10, 5), g('Sebastian', 10, 6)]).map((x) => x.nombre),
+    ).toEqual(['Sebastian', 'Carlos', 'CPE']);
+  });
+
+  it('compara la fracción exacta (1/3 > 33 de 100) y desempata por más personas y por nombre', () => {
+    expect(ordenarGrupos([g('B', 100, 33), g('A', 3, 1)]).map((x) => x.nombre)).toEqual(['A', 'B']);
+    expect(ordenarGrupos([g('Ibarra', 4, 2), g('Cotacachi', 2, 1), g('Antonio Ante', 2, 1)]).map((x) => x.nombre)).toEqual([
+      'Ibarra',
+      'Antonio Ante',
+      'Cotacachi',
+    ]);
+  });
+
+  it('con 0 aprobados todos empatan: más personas primero, luego nombre; un grupo vacío no rompe', () => {
+    expect(ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
+      'CPE',
+      'Ibarra',
+      'Urcuquí',
+      'Vacío',
+    ]);
+  });
+});
+
+describe('avance: orden automático', () => {
+  const g = (nombre: string, total: number, aprobados: number) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+  const nombresEnPantalla = () => screen.getAllByRole('button', { pressed: false }).filter((b) => b.className === 'evx-fila').map((b) => b.querySelector('.evx-nombre')?.textContent);
+  const props = { porCanton: [] as ReturnType<typeof g>[], seleccionado: { canton: '', tecnico: '' }, onElegir: () => {} };
+
+  it('al llegar datos nuevos, el que más avanzó sube y el que menos, baja (sin recargar)', () => {
+    const { rerender } = render(
+      <AvanceEvatics {...props} porTecnico={[g('Carlos', 10, 8), g('Sebastian', 10, 2)]} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Por asistente/ }));
+    expect(nombresEnPantalla()).toEqual(['Carlos', 'Sebastian']);
+
+    rerender(<AvanceEvatics {...props} porTecnico={[g('Carlos', 10, 8), g('Sebastian', 10, 9)]} />);
+    expect(nombresEnPantalla()).toEqual(['Sebastian', 'Carlos']);
+  });
+});
+
+describe('EvaticsPanel: refresco automático', () => {
+  it('vuelve a pedir el avance sola cada REFRESCO_EVATICS_MS', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      getMock.mockResolvedValue({ data: listado() });
+      renderPanel();
+      await screen.findByText(/Hechos/);
+      const antes = getMock.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESCO_EVATICS_MS + 100);
+      });
+      expect(getMock.mock.calls.length).toBeGreaterThan(antes);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
