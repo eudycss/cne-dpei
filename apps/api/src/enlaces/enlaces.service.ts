@@ -463,16 +463,17 @@ export class EnlacesService {
     if (nuevasCaidas.length === 0) return;
 
     try {
-      const todasCaidas: EnlaceCaido[] = filas
-        .filter((f) => f.estado === 'FALLO')
-        .map((f) => ({
-          codigoRecinto: f.codigoRecinto,
-          nombreRecinto: f.nombreRecinto,
-          canton: normalizarCanton(f.canton),
-        }));
+      const comoEnlace = (f: (typeof filas)[number]): EnlaceCaido => ({
+        codigoRecinto: f.codigoRecinto,
+        nombreRecinto: f.nombreRecinto,
+        canton: normalizarCanton(f.canton),
+      });
+      const todasCaidas = filas.filter((f) => f.estado === 'FALLO').map(comoEnlace);
+      // Los activos sirven para el aviso de "casi todo caído": se listan los pocos que siguen arriba.
+      const activos = filas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace);
       const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
       const contactos = await this.contactosDe(nuevosCodigos);
-      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos, undefined, contactos);
+      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos, undefined, contactos, activos);
     } catch (e) {
       const codigos = nuevasCaidas.map((c) => c.codigoRecinto).join(', ');
       this.log.error(`Error enviando Telegram de enlaces caídos (${codigos}): ${e}`);
@@ -584,13 +585,17 @@ export class EnlacesService {
    * que ponerlos al día (Telegram no tiene el catch-up automático que sí tiene el
    * correo al agregar un destinatario). */
   async reenviarListaTelegram(): Promise<{ enviados: number }> {
-    const recintosCaidos = await this.prisma.enlaceRecinto.findMany({ where: { estado: 'FALLO' } });
-    const caidas: EnlaceCaido[] = recintosCaidos.map((r: any) => ({
+    const recintos = await this.prisma.enlaceRecinto.findMany({ where: { estado: { in: ['FALLO', 'ACTIVO'] } } });
+    const comoEnlace = (r: any): EnlaceCaido => ({
       codigoRecinto: r.codigoRecinto,
       nombreRecinto: r.nombreRecinto,
-      canton: r.canton,
-    }));
-    await this.telegram.enviarListaActual(caidas);
+      // Igual que el ciclo: el título del cantón no depende de cómo vino escrito ("IBARRA" o "Ibarra").
+      canton: normalizarCanton(r.canton),
+    });
+    const caidas = recintos.filter((r: any) => r.estado === 'FALLO').map(comoEnlace);
+    // Con los activos, si cae casi todo se listan los pocos que siguen arriba.
+    const activos = recintos.filter((r: any) => r.estado === 'ACTIVO').map(comoEnlace);
+    await this.telegram.enviarListaActual(caidas, undefined, undefined, undefined, activos);
     return { enviados: caidas.length };
   }
 

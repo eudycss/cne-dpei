@@ -261,6 +261,174 @@ describe('formatearListaActual (técnico y a quién llamar)', () => {
   });
 });
 
+describe('formatearListaActual: agrupado por cantón y casi todo caído', () => {
+  const recinto = (codigo: string, canton: string | null, nombre = `Escuela ${codigo}`) => ({
+    codigoRecinto: codigo,
+    nombreRecinto: nombre,
+    canton,
+  });
+  const contactos = new Map<string, ContactoRecinto>([
+    ['1301', { tecnico: 'Ana Pérez', encargado: { nombre: 'Rector', telefono: '0990000000' } }],
+  ]);
+
+  it('con 5 caídos o menos sigue uno por uno, sin títulos de cantón', () => {
+    const cinco = ['1', '2', '3', '4', '5'].map((c) => recinto(c, 'Ibarra'));
+    const [texto] = formatearListaActual(cinco, new Set(['3']));
+    expect(texto.split('\n')[0]).toBe('🔴 Enlaces caídos ahora mismo (5):');
+    expect(texto).not.toContain('📍');
+    expect(texto).toContain('🚨 <b>3 (Iba) — Escuela 3</b>');
+  });
+
+  it('con 6 caídos agrupa por cantón: de más a menos, luego por nombre, y "Sin cantón" al final', () => {
+    const seis = [
+      recinto('1301', 'Otavalo'),
+      recinto('1101', 'Ibarra'),
+      recinto('9001', null),
+      recinto('1102', 'IBARRA'),
+      recinto('1201', 'Cotacachi'),
+      recinto('1302', 'Otavalo'),
+    ];
+
+    const [texto] = formatearListaActual(seis, new Set(['1301']), undefined, contactos);
+
+    expect(texto).toBe(
+      [
+        '🔴 Enlaces caídos ahora mismo (6):',
+        '',
+        '<b>📍 Ibarra (2)</b>',
+        '1101 (Iba) — Escuela 1101',
+        '1102 (Iba) — Escuela 1102',
+        '',
+        '<b>📍 Otavalo (2)</b>',
+        '🚨 <b>1301 (Ota) — Escuela 1301</b>',
+        '    👷 Técnico: Ana Pérez',
+        '    📞 Llamar: Rector · 0990000000',
+        '1302 (Ota) — Escuela 1302',
+        '',
+        '<b>📍 Cotacachi (1)</b>',
+        '1201 (Cot) — Escuela 1201',
+        '',
+        '<b>📍 Sin cantón (1)</b>',
+        '9001 — Escuela 9001',
+      ].join('\n'),
+    );
+  });
+
+  it('escapa el nombre del cantón (viene de una hoja editada a mano)', () => {
+    const seis = Array.from({ length: 6 }, (_, i) => recinto(`${i}`, '<b>Raro</b>'));
+    const [texto] = formatearListaActual(seis);
+    expect(texto).toContain('<b>📍 &lt;b&gt;Raro&lt;/b&gt; (6)</b>');
+  });
+
+  it('si un cantón no cabe en un mensaje, sigue en otro con su título "(cont.)"', () => {
+    const muchos = Array.from({ length: 60 }, (_, i) => recinto(`${1000 + i}`, 'Ibarra', 'x'.repeat(90)));
+    const mensajes = formatearListaActual(muchos, new Set(muchos.map((e) => e.codigoRecinto)), undefined, new Map());
+
+    expect(mensajes.length).toBeGreaterThan(1);
+    mensajes.forEach((m) => expect(m.length).toBeLessThanOrEqual(4000));
+    expect(mensajes[0]).toMatch(/^🔴 Enlaces caídos ahora mismo \(60\):\n\n<b>📍 Ibarra \(60\)<\/b>/);
+    expect(mensajes[1]).toMatch(/^🔴 Enlaces caídos \(cont\.\):\n<b>📍 Ibarra \(cont\.\)<\/b>\n🚨/);
+    expect(mensajes.join('\n').match(/🚨/g)).toHaveLength(60);
+  });
+
+  it('filtrada a un cantón (asistente) no agrupa aunque sean más de 5', () => {
+    const seis = Array.from({ length: 6 }, (_, i) => recinto(`${i}`, 'Cotacachi'));
+    const [texto] = formatearListaActual(seis, undefined, 'Cotacachi');
+    expect(texto.split('\n')[0]).toBe('🔴 Enlaces caídos en Cotacachi ahora mismo (6):');
+    expect(texto).not.toContain('📍');
+  });
+
+  describe('casi todo caído', () => {
+    const caidos = [
+      ...Array.from({ length: 4 }, (_, i) => recinto(`11${i}`, 'Ibarra')),
+      ...Array.from({ length: 3 }, (_, i) => recinto(`12${i}`, 'Cotacachi')),
+    ];
+    const activos = [recinto('1207', 'Ibarra', 'Unidad Educativa Ibarra'), recinto('1310', 'Otavalo', 'UE <Otavalo>')];
+
+    it('lista los pocos activos con su cantón y nombre, el conteo de caídos por cantón y aparte los nuevos', () => {
+      const [texto] = formatearListaActual(caidos, new Set(['120']), undefined, contactos, activos);
+
+      expect(texto).toBe(
+        [
+          '<b>🔴 7 de 9 enlaces caídos</b>',
+          '✅ Activos solo (2):',
+          '1207 (Iba) — Unidad Educativa Ibarra',
+          '1310 (Ota) — UE &lt;Otavalo&gt;',
+          '',
+          '🔴 Caídos por cantón: 📍 Ibarra: 4 · 📍 Cotacachi: 3',
+          '',
+          '<b>🚨 Acaban de caer (1):</b>',
+          '🚨 <b>120 (Cot) — Escuela 120</b>',
+          '    👷 Técnico: sin asignar',
+          '    📞 Llamar: sin registrar',
+        ].join('\n'),
+      );
+    });
+
+    it('sin nuevos (reenvío o /caidos) no agrega la sección "Acaban de caer"', () => {
+      const [texto] = formatearListaActual(caidos, undefined, undefined, undefined, activos);
+      expect(texto).not.toContain('Acaban de caer');
+      expect(texto).not.toContain('🚨');
+    });
+
+    it('con todo caído dice que no queda ningún activo', () => {
+      const [texto] = formatearListaActual(caidos, undefined, undefined, undefined, []);
+      expect(texto).toContain('<b>🔴 7 de 7 enlaces caídos</b>\n✅ Ningún enlace activo.');
+    });
+
+    it('filtrada a un cantón: dice el cantón y no repite el conteo por cantón', () => {
+      const [texto] = formatearListaActual(caidos, undefined, 'Ibarra', undefined, activos);
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 8 enlaces caídos en Ibarra</b>');
+      expect(texto).not.toContain('Caídos por cantón');
+    });
+
+    it('justo 5 activos sí aplica (el límite es "5 o menos")', () => {
+      const cinco = Array.from({ length: 5 }, (_, i) => recinto(`30${i}`, 'Ibarra'));
+      const [texto] = formatearListaActual(caidos, undefined, undefined, undefined, cinco);
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 12 enlaces caídos</b>');
+    });
+
+    it('6 caídos (apenas más de 5) y 5 activos: aplica; 5 caídos: lista normal', () => {
+      const cinco = Array.from({ length: 5 }, (_, i) => recinto(`30${i}`, 'Ibarra'));
+      const [seis] = formatearListaActual(caidos.slice(0, 6), undefined, undefined, undefined, cinco);
+      expect(seis.split('\n')[0]).toBe('<b>🔴 6 de 11 enlaces caídos</b>');
+      const [cincoCaidos] = formatearListaActual(caidos.slice(0, 5), undefined, undefined, undefined, cinco);
+      expect(cincoCaidos).toMatch(/^🔴 Enlaces caídos ahora mismo \(5\):/);
+    });
+
+    it('filtrada a un cantón: solo cuentan los activos de ese cantón', () => {
+      const mezclados = [recinto('401', 'Ibarra'), recinto('402', 'Otavalo'), recinto('403', 'IBARRA')];
+      const [texto] = formatearListaActual(caidos, undefined, 'Ibarra', undefined, mezclados);
+      expect(texto.split('\n')[0]).toBe('<b>🔴 7 de 9 enlaces caídos en Ibarra</b>');
+      expect(texto).not.toContain('402');
+    });
+
+    it.each([
+      ['6 activos (más de 5)', 6],
+      ['tantos activos como caídos', 7],
+    ])('no aplica con %s: vuelve a la lista agrupada', (_caso, n) => {
+      const muchosActivos = Array.from({ length: n }, (_, i) => recinto(`20${i}`, 'Ibarra'));
+      const [texto] = formatearListaActual(caidos, undefined, undefined, undefined, muchosActivos);
+      expect(texto).toMatch(/^🔴 Enlaces caídos ahora mismo \(7\):/);
+      expect(texto).toContain('📍 Ibarra (4)');
+    });
+
+    it('con 5 caídos o menos manda la lista normal aunque casi no haya activos', () => {
+      const [texto] = formatearListaActual(caidos.slice(0, 3), undefined, undefined, undefined, [activos[0]]);
+      expect(texto.split('\n')[0]).toBe('🔴 Enlaces caídos ahora mismo (3):');
+    });
+
+    it('con muchos nuevos se parte y repite "Acaban de caer (cont.)"', () => {
+      const todos = Array.from({ length: 50 }, (_, i) => recinto(`${3000 + i}`, 'Ibarra', 'y'.repeat(90)));
+      const mensajes = formatearListaActual(todos, new Set(todos.map((e) => e.codigoRecinto)), undefined, new Map(), []);
+      expect(mensajes.length).toBeGreaterThan(1);
+      mensajes.forEach((m) => expect(m.length).toBeLessThanOrEqual(4000));
+      expect(mensajes[1]).toMatch(/^🔴 Enlaces caídos \(cont\.\):\n<b>🚨 Acaban de caer \(cont\.\)<\/b>/);
+      expect(mensajes.join('\n').match(/🚨 <b>/g)).toHaveLength(50);
+    });
+  });
+});
+
 describe('TelegramNotifier', () => {
   const originalFetch = global.fetch;
   let esperar: jest.SpyInstance;

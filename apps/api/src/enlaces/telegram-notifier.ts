@@ -400,10 +400,81 @@ function formatearEncargado(encargado: EncargadoRecinto | null): string {
   return texto || 'sin registrar';
 }
 
+/** Hasta tantos caídos se listan uno por uno; con más, se agrupan por cantón. */
+export const MAX_CAIDOS_SIN_AGRUPAR = 5;
 /**
- * Lista completa de recintos caídos (HTML escapado), con 🚨 y negrita los que
- * acaban de caer. Con `contactos`, debajo de cada nuevo van su técnico y a quién
- * llamar en el recinto; los que ya venían caídos no, para no alargar el mensaje.
+ * Si quedan tan pocos activos (y hay más caídos que activos), se listan los
+ * activos en vez de los caídos: es la lista corta y la útil.
+ */
+export const MAX_ACTIVOS_PARA_LISTARLOS = 5;
+const SIN_CANTON = 'Sin cantón';
+
+/** Un trozo del aviso y lo que se repite arriba si cae al inicio de otro mensaje. */
+interface Unidad {
+  texto: string;
+  cont: string;
+}
+
+/** Une las unidades con saltos de línea y corta entre ellas antes del límite de Telegram. */
+function partirEnMensajes(encabezado: string, unidades: Unidad[]): string[] {
+  const mensajes: string[] = [];
+  let actual = encabezado;
+  for (const { texto, cont } of unidades) {
+    const unido = `${actual}\n${texto}`;
+    if (unido.length > MAX_LARGO_MENSAJE && actual !== encabezado) {
+      mensajes.push(actual);
+      actual = `${cont}\n${texto}`;
+    } else {
+      actual = unido;
+    }
+  }
+  mensajes.push(actual);
+  return mensajes;
+}
+
+/** Un recinto caído; si acaba de caer, con 🚨, negrita y (con `contactos`) técnico y a quién llamar. */
+function bloqueCaido(e: EnlaceCaido, nuevosCodigos?: Set<string>, contactos?: Map<string, ContactoRecinto>): string {
+  const linea = formatearLinea(e);
+  if (!nuevosCodigos?.has(e.codigoRecinto)) return linea;
+  let bloque = `🚨 <b>${linea}</b>`;
+  if (contactos) {
+    const c = contactos.get(e.codigoRecinto);
+    bloque +=
+      `\n    👷 Técnico: ${formatearTecnico(c?.tecnico ?? null)}` +
+      `\n    📞 Llamar: ${formatearEncargado(c?.encargado ?? null)}`;
+  }
+  return bloque;
+}
+
+/** Recintos por cantón: de más a menos caídos y luego por nombre; "Sin cantón" al final. */
+function agruparPorCanton(enlaces: EnlaceCaido[]): { canton: string; enlaces: EnlaceCaido[] }[] {
+  const grupos = new Map<string, { canton: string; enlaces: EnlaceCaido[] }>();
+  for (const e of enlaces) {
+    const nombre = e.canton?.trim() || SIN_CANTON;
+    // "URCUQUI" y "Urcuquí" (hoja editada a mano) son el mismo cantón; "" es "Sin cantón".
+    const clave = nombre === SIN_CANTON ? '' : normalizarClave(nombre);
+    const grupo = grupos.get(clave) ?? { canton: nombre, enlaces: [] };
+    grupo.enlaces.push(e);
+    grupos.set(clave, grupo);
+  }
+  return [...grupos.entries()]
+    .sort(([claveA, a], [claveB, b]) => {
+      if (!claveA !== !claveB) return claveA ? -1 : 1;
+      return b.enlaces.length - a.enlaces.length || a.canton.localeCompare(b.canton, 'es');
+    })
+    .map(([, g]) => g);
+}
+
+/**
+ * Lista de recintos caídos (HTML escapado), con 🚨 y negrita los que acaban de
+ * caer; con `contactos`, debajo de cada nuevo van su técnico y a quién llamar
+ * (los que ya venían caídos no, para no alargar el mensaje).
+ * - Hasta MAX_CAIDOS_SIN_AGRUPAR caídos: uno por uno.
+ * - Con más: agrupados por cantón ("📍 Ibarra (8)"), para que cada supervisor
+ *   vaya directo a los suyos. Si la lista ya viene filtrada a un cantón
+ *   (`canton`, asistente), no se agrupa.
+ * - Con `activos` y casi todo caído (pocos activos y más caídos que activos):
+ *   los pocos activos, el conteo de caídos por cantón y aparte los nuevos.
  * Si no cabe en un mensaje de Telegram, se parte entre recintos.
  */
 export function formatearListaActual(
@@ -411,35 +482,83 @@ export function formatearListaActual(
   nuevosCodigos?: Set<string>,
   canton?: string,
   contactos?: Map<string, ContactoRecinto>,
+  activos?: EnlaceCaido[],
 ): string[] {
   // `canton`: la lista viene filtrada (asistente), y el título tiene que decirlo.
   const donde = canton ? ` en ${escapeHtml(canton)}` : '';
   if (enlaces.length === 0) return [`✅ No hay enlaces caídos${donde} en este momento.`];
 
-  const encabezado = `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):`;
-  const mensajes: string[] = [];
-  let actual = encabezado;
-  for (const e of enlaces) {
-    let bloque = formatearLinea(e);
-    if (nuevosCodigos?.has(e.codigoRecinto)) {
-      bloque = `🚨 <b>${bloque}</b>`;
-      if (contactos) {
-        const c = contactos.get(e.codigoRecinto);
-        bloque +=
-          `\n    👷 Técnico: ${formatearTecnico(c?.tecnico ?? null)}` +
-          `\n    📞 Llamar: ${formatearEncargado(c?.encargado ?? null)}`;
-      }
-    }
-    const unido = `${actual}\n${bloque}`;
-    if (unido.length > MAX_LARGO_MENSAJE && actual !== encabezado) {
-      mensajes.push(actual);
-      actual = `🔴 Enlaces caídos${donde} (cont.):\n${bloque}`;
-    } else {
-      actual = unido;
-    }
+  const cont = `🔴 Enlaces caídos${donde} (cont.):`;
+  // Con la lista filtrada a un cantón, solo cuentan los activos de ese cantón (si no, "X de Y" sale mal).
+  const activosDeAqui =
+    canton && activos ? activos.filter((a) => normalizarClave(a.canton ?? '') === normalizarClave(canton)) : activos;
+  if (
+    activosDeAqui !== undefined &&
+    enlaces.length > MAX_CAIDOS_SIN_AGRUPAR &&
+    activosDeAqui.length <= MAX_ACTIVOS_PARA_LISTARLOS &&
+    enlaces.length > activosDeAqui.length
+  ) {
+    return formatearCasiTodoCaido(enlaces, activosDeAqui, donde, !canton, nuevosCodigos, contactos);
   }
-  mensajes.push(actual);
-  return mensajes;
+
+  const encabezado = `🔴 Enlaces caídos${donde} ahora mismo (${enlaces.length}):`;
+  if (canton || enlaces.length <= MAX_CAIDOS_SIN_AGRUPAR) {
+    return partirEnMensajes(
+      encabezado,
+      enlaces.map((e) => ({ texto: bloqueCaido(e, nuevosCodigos, contactos), cont })),
+    );
+  }
+  // El título del cantón va pegado a su primer recinto y, si el cantón no cabe
+  // en un mensaje, se repite con "(cont.)" en el siguiente.
+  const unidades = agruparPorCanton(enlaces).flatMap((g) => {
+    const nombre = escapeHtml(g.canton);
+    return g.enlaces.map((e, i) => {
+      const bloque = bloqueCaido(e, nuevosCodigos, contactos);
+      return i === 0
+        ? { texto: `\n<b>📍 ${nombre} (${g.enlaces.length})</b>\n${bloque}`, cont }
+        : { texto: bloque, cont: `${cont}\n<b>📍 ${nombre} (cont.)</b>` };
+    });
+  });
+  return partirEnMensajes(encabezado, unidades);
+}
+
+/** "🔴 52 de 55 enlaces caídos", los pocos activos, los caídos por cantón y aparte los nuevos. */
+function formatearCasiTodoCaido(
+  caidos: EnlaceCaido[],
+  activos: EnlaceCaido[],
+  donde: string,
+  porCanton: boolean,
+  nuevosCodigos?: Set<string>,
+  contactos?: Map<string, ContactoRecinto>,
+): string[] {
+  const total = caidos.length + activos.length;
+  const encabezado = `<b>🔴 ${caidos.length} de ${total} enlaces caídos${donde}</b>`;
+  const cont = `🔴 Enlaces caídos${donde} (cont.):`;
+  const unidades: Unidad[] = [
+    {
+      texto:
+        activos.length === 0
+          ? '✅ Ningún enlace activo.'
+          : `✅ Activos solo (${activos.length}):\n${activos.map(formatearLinea).join('\n')}`,
+      cont,
+    },
+  ];
+  if (porCanton) {
+    const conteo = agruparPorCanton(caidos)
+      .map((g) => `📍 ${escapeHtml(g.canton)}: ${g.enlaces.length}`)
+      .join(' · ');
+    unidades.push({ texto: `\n🔴 Caídos por cantón: ${conteo}`, cont });
+  }
+  const nuevos = caidos.filter((e) => nuevosCodigos?.has(e.codigoRecinto));
+  nuevos.forEach((e, i) => {
+    const bloque = bloqueCaido(e, nuevosCodigos, contactos);
+    unidades.push(
+      i === 0
+        ? { texto: `\n<b>🚨 Acaban de caer (${nuevos.length}):</b>\n${bloque}`, cont }
+        : { texto: bloque, cont: `${cont}\n<b>🚨 Acaban de caer (cont.)</b>` },
+    );
+  });
+  return partirEnMensajes(encabezado, unidades);
 }
 
 /** Respuesta a "Buscar recinto" (HTML escapado): el recinto, su estado, su
@@ -583,8 +702,9 @@ export class TelegramNotifier {
     nuevosCodigos?: Set<string>,
     canton?: string,
     contactos?: Map<string, ContactoRecinto>,
+    activos?: EnlaceCaido[],
   ): Promise<void> {
-    for (const mensaje of formatearListaActual(enlaces, nuevosCodigos, canton, contactos)) {
+    for (const mensaje of formatearListaActual(enlaces, nuevosCodigos, canton, contactos, activos)) {
       await this.enviarMensaje(mensaje, 'la lista de enlaces caídos', 'HTML');
     }
   }
