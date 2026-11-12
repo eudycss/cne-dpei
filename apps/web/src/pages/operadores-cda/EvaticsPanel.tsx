@@ -70,6 +70,8 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
   const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
   const { puede } = useModulos();
   const puedeRevisar = puede('cda.evatics.revisar');
+  // Ver la foto basta para abrir el certificado; decidir exige además "revisar".
+  const puedeVer = puedeRevisar || puede('cda.evatics.ver');
   const [filtros, setFiltros] = useState<Filtros>(SIN_FILTROS);
   const q = useDeferredValue(filtros.q.trim());
   const [revisando, setRevisando] = useState<FilaEvatics | null>(null);
@@ -268,12 +270,12 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
                 <th scope="col">Estado</th>
                 <th scope="col">IA sugiere</th>
                 <th scope="col">Subido</th>
-                {puedeRevisar && <th scope="col">Acción</th>}
+                {puedeVer && <th scope="col">Acción</th>}
               </tr>
             </thead>
             <tbody>
               {data.filas.map((f) => (
-                <Fila key={f.cedula} fila={f} puedeRevisar={puedeRevisar} onRevisar={() => setRevisando(f)} />
+                <Fila key={f.cedula} fila={f} puedeVer={puedeVer} puedeRevisar={puedeRevisar} onRevisar={() => setRevisando(f)} />
               ))}
             </tbody>
           </table>
@@ -292,16 +294,18 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
 
 function Fila({
   fila: f,
+  puedeVer,
   puedeRevisar,
   onRevisar,
 }: {
   fila: FilaEvatics;
+  puedeVer: boolean;
   puedeRevisar: boolean;
   onRevisar: () => void;
 }) {
   const e = ESTADO[f.estado];
   const ia = f.certificadoId ? sugerenciaIa(f.analisis) : null;
-  const accion = f.estado === 'PENDIENTE' && !f.esPropio ? 'Revisar' : 'Ver';
+  const accion = f.estado === 'PENDIENTE' && puedeRevisar && !f.esPropio && !f.soloAdministrador ? 'Revisar' : 'Ver';
   return (
     <tr>
       <th scope="row">
@@ -322,7 +326,7 @@ function Fila({
       </td>
       <td>{ia ? <span className={`ocda-estado ${ia.clase}`}>{ia.texto}</span> : '—'}</td>
       <td className="mono">{f.subidoEn ? fechaHora(f.subidoEn) : '—'}</td>
-      {puedeRevisar && (
+      {puedeVer && (
         <td>
           {f.certificadoId && f.subidoEn ? (
             <button

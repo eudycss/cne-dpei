@@ -53,6 +53,7 @@ const fila = (f: Partial<FilaEvatics> = {}): FilaEvatics => ({
   motivoRechazo: null,
   analisis: LISTO,
   esPropio: false,
+  soloAdministrador: false,
   ...f,
 });
 
@@ -301,6 +302,23 @@ describe('EvaticsPanel', () => {
       const { dialogo } = await abrirRevision(fila({ esPropio: true }));
       expect(within(dialogo).getByText(/Es su propio certificado/)).toBeInTheDocument();
       expect(within(dialogo).queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    });
+
+    it('un Asistente o Analista: lo ve, pero solo el administrador lo decide', async () => {
+      const { dialogo } = await abrirRevision(fila({ soloAdministrador: true }));
+      expect(within(dialogo).getByText(/lo aprueba o rechaza solo el administrador/)).toBeInTheDocument();
+      expect(within(dialogo).queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    });
+
+    it('con "ver" pero sin "aprobar": abre el certificado en solo lectura', async () => {
+      permisos.actuales = new Set(['cda.evatics.ver']);
+      try {
+        const { dialogo } = await abrirRevision(fila());
+        expect(within(dialogo).getByText(/puede ver este certificado, pero no aprobarlo/)).toBeInTheDocument();
+        expect(within(dialogo).queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+      } finally {
+        permisos.actuales = new Set<string>(PERMISO_IDS);
+      }
     });
   });
 

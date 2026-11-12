@@ -761,6 +761,56 @@ describe('EvaticsService', () => {
       expect(prisma.certificadoEvatics.updateMany).not.toHaveBeenCalled();
     });
 
+    it('un supervisor no revisa a un Analista: solo el administrador (403)', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_ANA });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ cedula: CED_SUP });
+      prisma.operadorCda.findFirst.mockResolvedValueOnce(null);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(
+        operador({
+          cargoCda: {
+            nombre: 'Analista Provincial de Seguridad Informática y Proyectos Tecnológicos Electorales 1',
+            centro: 'CDA',
+          },
+        }),
+      );
+      await expect(service.revisar('cert-ana', 'APROBADO', undefined, SUBIDO_EN, SUPERVISOR)).rejects.toThrow(
+        /solo el administrador/,
+      );
+      expect(prisma.certificadoEvatics.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('un Analista desactivado tampoco: la regla no depende de que esté activo ni de su fila de personal', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_ANA });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ cedula: CED_SUP });
+      prisma.operadorCda.findFirst.mockResolvedValueOnce(null);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(
+        operador({ activo: false, cargoCda: { nombre: ' ANALISTA provincial de Seguridad 1 ', centro: 'CDA' } }),
+      );
+      await expect(service.revisar('cert-ana', 'RECHAZADO', 'Borrosa', SUBIDO_EN, SUPERVISOR)).rejects.toThrow(
+        /solo el administrador/,
+      );
+    });
+
+    it('un supervisor no revisa a un Asistente Transversal: solo el administrador (403)', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_LUIS });
+      prisma.usuario.findUnique.mockResolvedValueOnce({ cedula: CED_SUP });
+      prisma.operadorCda.findFirst.mockResolvedValueOnce(null);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'u-at', cedula: CED_LUIS, nombres: 'LUIS', apellidos: 'VEGA TAPIA' });
+      await expect(service.revisar('cert-luis', 'APROBADO', undefined, SUBIDO_EN, SUPERVISOR)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.certificadoEvatics.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('el administrador sí revisa a un Analista', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_ANA });
+      await expect(
+        service.revisar('cert-ana', 'APROBADO', undefined, SUBIDO_EN, { sub: 'admin', roles: ['ADMINISTRADOR'] }),
+      ).resolves.toMatchObject({ estado: 'APROBADO' });
+      expect(prisma.certificadoEvatics.updateMany).toHaveBeenCalled();
+    });
+
     it('el administrador queda fuera de la regla (ni consulta su cédula)', async () => {
       prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_SUP });
       await service.revisar('cert-sup', 'RECHAZADO', 'Foto borrosa', SUBIDO_EN, { sub: 'admin', roles: ['ADMINISTRADOR'] });
@@ -920,6 +970,16 @@ describe('EvaticsService', () => {
       const r = await service.listado({}, ADMIN);
       expect(r.porTecnico.filter((g) => g.nombre === 'CPE')).toHaveLength(1);
       expect(r.porTecnico.find((g) => g.nombre === 'CPE')?.total).toBe(3);
+    });
+
+    it('soloAdministrador: true para un supervisor sobre un Asistente Transversal, false para el administrador', async () => {
+      prisma.usuario.findUnique.mockResolvedValue({ cedula: CED_SUP });
+      prisma.operadorCda.findFirst.mockResolvedValue(null);
+      const comoSupervisor = await service.listado({}, { sub: SUP, roles: ['TECNICO_SUPERVISOR'] });
+      expect(comoSupervisor.filas.find((f) => f.cargo === 'Asistente Transversal')?.soloAdministrador).toBe(true);
+      expect(comoSupervisor.filas.find((f) => f.cargo !== 'Asistente Transversal')?.soloAdministrador).toBe(false);
+      const comoAdmin = await service.listado({}, ADMIN);
+      expect(comoAdmin.filas.every((f) => !f.soloAdministrador)).toBe(true);
     });
 
     it('quien revisa ve su propia fila marcada', async () => {

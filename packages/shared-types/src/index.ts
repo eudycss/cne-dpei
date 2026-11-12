@@ -2270,6 +2270,8 @@ export interface FilaEvatics {
   analisis: AnalisisCertificadoEvatics | null;
   /** Es el propio supervisor que consulta: puede verse, no aprobarse. */
   esPropio: boolean;
+  /** Asistente Transversal o Analista: solo el administrador lo aprueba o rechaza (los demás lo ven). */
+  soloAdministrador: boolean;
 }
 
 export interface ConteoEvatics {
