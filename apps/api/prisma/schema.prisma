@@ -717,6 +717,8 @@ model ConfigEnlaces {
   minutosRepetirAviso Int @default(120) @map("minutos_repetir_aviso")
   /// Resumen automático del grupo Jornada: a lo más uno cada N min (web o bot).
   minutosResumenJornada Int @default(15) @map("minutos_resumen_jornada")
+  /// Tablero fijado del bot de enlaces: mensaje que se edita en cada ciclo; null = publicar uno nuevo.
+  tableroMensajeId Int? @map("tablero_mensaje_id")
 
   @@map("config_enlaces")
 }

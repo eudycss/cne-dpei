@@ -4,7 +4,11 @@ import {
   type AlertaRecinto,
   type ContactoRecinto,
   type AvisoCiclo,
+  type GrupoAsignacion,
   formatearAvisoCiclo,
+  formatearEstadoEnlaces,
+  formatearPendientesTecnico,
+  formatearTablero,
   formatearEscalamiento,
   formatearFichaRecinto,
   formatearListaActual,
@@ -51,10 +55,148 @@ describe('abreviarCanton', () => {
 
 type EnlaceCaidoPrueba = { codigoRecinto: string; nombreRecinto: string; canton?: string | null };
 
+/** Un técnico con sus recintos: los de `caidos` en FALLO, los demás ACTIVO. */
+const grupo = (n: number | null, tecnico: string, caidos: string[], activos: string[] = []): GrupoAsignacion => ({
+  numeroTecnico: n,
+  tecnico,
+  recintos: [
+    ...caidos.map((c) => ({ codigoRecinto: c, nombreRecinto: `R${c}`, canton: 'Ibarra', estado: 'FALLO' as const })),
+    ...activos.map((c) => ({ codigoRecinto: c, nombreRecinto: `R${c}`, canton: 'Ibarra', estado: 'ACTIVO' as const })),
+  ],
+});
+
+describe('formatearEstadoEnlaces', () => {
+  const r = (codigo: string, canton = 'Ibarra') => ({ codigoRecinto: codigo, nombreRecinto: `R${codigo}`, canton });
+
+  it('todo arriba: "Todos los enlaces levantados" y cuántos por cantón, sin botones', () => {
+    const { texto, teclado } = formatearEstadoEnlaces({
+      caidos: [],
+      activos: [r('1'), r('2'), r('3', 'Otavalo')],
+      grupos: [],
+    });
+
+    expect(texto).toBe('<b>✅ Todos los enlaces levantados (3/3)</b>\n📍 Ibarra: 2 · 📍 Otavalo: 1');
+    expect(teclado).toBeUndefined();
+  });
+
+  it('hasta 4 caídos: cada uno con su técnico y a quién llamar; los nuevos destacados', () => {
+    const contactos = new Map<string, ContactoRecinto>([
+      ['1', { tecnico: 'Jairo Leal', encargado: { nombre: 'Danilo', telefono: '0968' } }],
+    ]);
+    const { texto, teclado } = formatearEstadoEnlaces(
+      { caidos: [r('1'), r('2')], activos: [r('3')], contactos, grupos: [] },
+      new Set(['2']),
+    );
+
+    expect(texto).toContain('<b>🔴 2 de 3 enlaces caídos</b>');
+    expect(texto).toContain('🔴 1 (Iba) — R1\n    👷 Técnico: Jairo Leal\n    📞 Llamar: Danilo · 0968');
+    expect(texto).toContain('🚨 <b>2 (Iba) — R2</b>\n    👷 Técnico: sin asignar');
+    expect(texto).toContain('✅ Levantados: 1');
+    expect(teclado).toBeUndefined();
+  });
+
+  it('5 o más: por cantón y por técnico, con un botón por técnico que tenga caídos', () => {
+    const caidos = ['1', '2', '3', '4', '5'].map((c) => r(c));
+    const { texto, teclado } = formatearEstadoEnlaces({
+      caidos,
+      activos: [r('9')],
+      grupos: [grupo(1, 'Jairo Leal', ['1', '2', '3']), grupo(2, 'Ana <Pérez>', [], ['9']), grupo(null, '', ['4', '5'])],
+    });
+
+    expect(texto).toContain('<b>🔴 5 caídos · ✅ 1 levantados (de 6)</b>');
+    expect(texto).toContain('Caídos por cantón: 📍 Ibarra: 5');
+    expect(texto).toContain('1. Jairo Leal: 3');
+    expect(texto).toContain('Sin técnico: 2');
+    expect(texto).not.toContain('Pérez'); // sin caídos, no aparece
+    expect(teclado).toEqual({
+      inline_keyboard: [
+        [{ text: '1. Jairo Leal · 3🔴', callback_data: 'pend:1' }],
+        [{ text: 'Sin técnico · 2🔴', callback_data: 'pend:sin' }],
+      ],
+    });
+  });
+
+  it('5 o más sin distributivo: lo dice y remite a la lista de caídos', () => {
+    const { texto, teclado } = formatearEstadoEnlaces({
+      caidos: ['1', '2', '3', '4', '5'].map((c) => r(c)),
+      activos: [],
+      grupos: [],
+    });
+
+    expect(texto).toContain(TEXTO_BOTON_CAIDOS);
+    expect(teclado).toBeUndefined();
+  });
+
+  it('escapa el nombre del técnico', () => {
+    const { texto } = formatearEstadoEnlaces({
+      caidos: ['1', '2', '3', '4', '5'].map((c) => r(c)),
+      activos: [],
+      grupos: [grupo(1, 'A&B <x>', ['1'])],
+    });
+
+    expect(texto).toContain('1. A&amp;B &lt;x&gt;: 1');
+  });
+});
+
+describe('formatearEstadoEnlaces: umbral de 4 caídos', () => {
+  const r = (codigo: string) => ({ codigoRecinto: codigo, nombreRecinto: `R${codigo}` });
+
+  it('con 4 caídos los detalla; con 5 pasa a por técnico', () => {
+    const cuatro = formatearEstadoEnlaces({ caidos: ['1', '2', '3', '4'].map(r), activos: [], grupos: [] });
+    const cinco = formatearEstadoEnlaces({ caidos: ['1', '2', '3', '4', '5'].map(r), activos: [], grupos: [] });
+
+    expect(cuatro.texto).toContain('👷 Técnico:');
+    expect(cinco.texto).not.toContain('👷 Técnico:');
+    expect(cinco.texto).toContain('Caídos por cantón');
+  });
+});
+
+describe('formatearTablero', () => {
+  it('si no cabe en un mensaje, deja los totales y los botones (nunca pasa de 4096)', () => {
+    const caidos = Array.from({ length: 60 }, (_, i) => ({ codigoRecinto: String(i + 1), nombreRecinto: 'R' }));
+    const grupos = Array.from({ length: 150 }, (_, i) => grupo(i + 1, `Técnico con un nombre muy largo número ${i}`, [String(i + 1)]));
+
+    const { texto, teclado } = formatearTablero({ caidos, activos: [], grupos }, new Date());
+
+    expect(texto.length).toBeLessThanOrEqual(4096);
+    expect(texto).toContain('<b>🔴 60 caídos · ✅ 0 levantados</b>');
+    expect((teclado as { inline_keyboard: unknown[] }).inline_keyboard).toHaveLength(100);
+  });
+
+  it('lleva título, el estado y la hora de Ecuador de la última actualización', () => {
+    const { texto } = formatearTablero(
+      { caidos: [], activos: [{ codigoRecinto: '1', nombreRecinto: 'R1' }], grupos: [] },
+      new Date('2026-11-12T03:50:00Z'),
+    );
+
+    expect(texto).toMatch(/^📌 <b>Tablero de enlaces<\/b>/);
+    expect(texto).toContain('✅ Todos los enlaces levantados (1/1)');
+    expect(texto).toContain('🕒 Actualizado 22:50');
+  });
+});
+
+describe('formatearPendientesTecnico', () => {
+  it('los recintos caídos del técnico con a quién llamar (no los activos)', () => {
+    const [texto] = formatearPendientesTecnico(
+      grupo(1, 'Jairo Leal', ['982'], ['1']),
+      new Map([['982', { nombre: 'Danilo Solarte', telefono: '0968041854' }]]),
+    );
+
+    expect(texto).toBe('<b>👷 1. Jairo Leal · 1 pendiente</b>\n🔴 982 (Iba) — R982\n    📞 Llamar: Danilo Solarte · 0968041854');
+  });
+
+  it('sin caídos lo dice', () => {
+    expect(formatearPendientesTecnico(grupo(2, 'Ana', [], ['1']), new Map())).toEqual([
+      '✅ 2. Ana: no tiene recintos caídos ahora.',
+    ]);
+  });
+});
+
 const avisoVacio = (): AvisoCiclo => ({
   caidos: [],
   activos: [],
   nuevos: new Set(),
+  grupos: [],
   recuperados: [],
   escalamiento: [],
   intermitentes: [],
@@ -87,7 +229,32 @@ describe('formatearAvisoCiclo', () => {
     expect(formatearAvisoCiclo(avisoVacio())).toEqual({ mensajes: [], sonar: false });
   });
 
+  it('con muchos caídos y caídas nuevas: el estado por técnico, los nuevos aparte con a quién llamar y botones', () => {
+    const caidos = ['1', '2', '3', '4', '5'].map((c) => recinto(c));
+    const { mensajes, teclado } = formatearAvisoCiclo({
+      ...avisoVacio(),
+      caidos,
+      nuevos: new Set(['5']),
+      contactos: new Map([['5', { tecnico: 'Jairo Leal', encargado: null }]]),
+      grupos: [grupo(1, 'Jairo Leal', ['5'])],
+    });
+
+    expect(mensajes[0]).toContain('👷 Pendientes por técnico:');
+    expect(mensajes[0]).toContain('<b>🚨 Acaban de caer (1):</b>\n🚨 <b>5 — Recinto 5</b>\n    👷 Técnico: Jairo Leal');
+    expect(teclado).toBeDefined();
+  });
+
   describe('recuperados', () => {
+    it('todos levantados: solo lo dice, con el resumen por cantón (sin la lista de recuperados)', () => {
+      const { mensajes: [todo] } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        activos: [recinto('978', { canton: 'Ibarra' }), recinto('28', { canton: 'Ibarra' })],
+        recuperados: [recinto('978', { canton: 'Ibarra' })],
+      });
+
+      expect(todo).toBe('<b>✅ Todos los enlaces levantados (2/2)</b>\n📍 Ibarra: 2');
+    });
+
     it('todos levantados: lo dice arriba y suena', () => {
       const { mensajes, sonar } = formatearAvisoCiclo({
         ...avisoVacio(),
@@ -977,13 +1144,32 @@ describe('TelegramNotifier', () => {
         codigoRecinto: String(1000 + i),
         nombreRecinto: 'Unidad Educativa con un nombre bastante largo',
       }));
-      // Todos vuelven a la vez (suena): la lista de recuperados no se compacta.
-      await new TelegramNotifier().enviarAvisoCiclo({ ...avisoVacio(), activos: muchos, recuperados: muchos });
+      // Una caída nueva (suena) y muchos recuperados: la lista de recuperados no se compacta.
+      await new TelegramNotifier().enviarAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [{ codigoRecinto: '1', nombreRecinto: 'Escuela' }],
+        nuevos: new Set(['1']),
+        activos: muchos,
+        recuperados: muchos,
+      });
 
       const [primero, ...resto] = cuerpos();
       expect(resto.length).toBeGreaterThan(0);
       expect(primero).not.toHaveProperty('disable_notification');
       for (const b of resto) expect(b.disable_notification).toBe(true);
+    });
+
+    it('con muchos caídos, los botones de técnico van en el último mensaje', async () => {
+      const caidos = ['1', '2', '3', '4', '5'].map((c) => ({ codigoRecinto: c, nombreRecinto: `R${c}` }));
+      await new TelegramNotifier().enviarAvisoCiclo({
+        ...avisoVacio(),
+        caidos,
+        nuevos: new Set(['5']),
+        grupos: [grupo(1, 'Jairo Leal', ['1', '2'])],
+      });
+
+      const ultimo = cuerpos().at(-1);
+      expect(ultimo.reply_markup.inline_keyboard[0][0]).toEqual({ text: '1. Jairo Leal · 2🔴', callback_data: 'pend:1' });
     });
 
     it('no lanza si fetch rechaza (error de red)', async () => {
@@ -995,6 +1181,90 @@ describe('TelegramNotifier', () => {
           recuperados: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
         }),
       ).resolves.not.toThrow();
+    });
+  });
+
+  describe('publicarTablero', () => {
+    const respuesta = (status: number, cuerpo: object) => ({ ok: status < 300, status, json: async () => cuerpo });
+    beforeEach(() => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
+      process.env.TELEGRAM_CHAT_ID = '-100200300';
+    });
+    const metodos = () => (global.fetch as jest.Mock).mock.calls.map(([url]) => String(url).split('/').pop());
+
+    it('sin tablero: lo publica en silencio, lo fija y devuelve su id', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(200, { ok: true, result: { message_id: 77 } }));
+
+      const id = await new TelegramNotifier().publicarTablero('<b>t</b>', undefined, null);
+
+      expect(id).toBe(77);
+      expect(metodos()).toEqual(['sendMessage', 'pinChatMessage']);
+      const [envio, fijar] = (global.fetch as jest.Mock).mock.calls.map(([, o]) => JSON.parse(o.body));
+      expect(envio).toMatchObject({ disable_notification: true, parse_mode: 'HTML' });
+      expect(fijar).toEqual({ chat_id: '-100200300', message_id: 77, disable_notification: true });
+    });
+
+    it('con tablero: solo lo edita (sin botones, los quita)', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(200, { ok: true, result: true }));
+
+      const id = await new TelegramNotifier().publicarTablero('<b>t</b>', undefined, 77);
+
+      expect(id).toBe(77);
+      expect(metodos()).toEqual(['editMessageText']);
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body).toMatchObject({ message_id: 77, reply_markup: { inline_keyboard: [] } });
+    });
+
+    it('si lo borraron (400), publica y fija uno nuevo', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(respuesta(400, { ok: false, description: 'Bad Request: message to edit not found' }))
+        .mockResolvedValue(respuesta(200, { ok: true, result: { message_id: 90 } }));
+
+      await expect(new TelegramNotifier().publicarTablero('t', undefined, 77)).resolves.toBe(90);
+      expect(metodos()).toEqual(['editMessageText', 'sendMessage', 'pinChatMessage']);
+    });
+
+    it('otro 400 al editar (p. ej. texto mal armado) no publica otro tablero', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(respuesta(400, { ok: false, description: "Bad Request: can't parse entities" }));
+
+      await expect(new TelegramNotifier().publicarTablero('t', undefined, 77)).resolves.toBe(77);
+      expect(metodos()).toEqual(['editMessageText']);
+    });
+
+    it('si el bot no puede fijarlo (no es admin), devuelve igual el id: no publica otro', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(respuesta(200, { ok: true, result: { message_id: 77 } }))
+        .mockResolvedValueOnce(respuesta(400, { ok: false, description: 'Bad Request: not enough rights' }));
+
+      await expect(new TelegramNotifier().publicarTablero('t', undefined, null)).resolves.toBe(77);
+    });
+
+    it('publicado pero sin id legible: lo registra y devuelve null', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(200, { ok: true }));
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+      await expect(new TelegramNotifier().publicarTablero('t', undefined, null)).resolves.toBeNull();
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('no devolvió su id'));
+      error.mockRestore();
+    });
+
+    it('un fallo de red no publica otro tablero (se reintenta el mismo en el siguiente ciclo)', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      const notifier = new TelegramNotifier();
+      jest.spyOn(notifier as never, 'esperar').mockResolvedValue(undefined as never);
+
+      await expect(notifier.publicarTablero('t', undefined, 77)).resolves.toBe(77);
+      expect(metodos().every((m) => m === 'editMessageText')).toBe(true);
+    });
+
+    it('si no se puede publicar, devuelve null', async () => {
+      global.fetch = jest.fn().mockResolvedValue(respuesta(403, { ok: false }));
+
+      await expect(new TelegramNotifier().publicarTablero('t', undefined, null)).resolves.toBeNull();
     });
   });
 

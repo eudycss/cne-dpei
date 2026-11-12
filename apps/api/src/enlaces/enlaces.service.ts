@@ -29,7 +29,11 @@ import {
   TEXTO_BOTON_INGRESAR_CODIGO,
   TEXTO_BOTON_PREGUNTAR,
   type ContactoRecinto,
+  type EstadoEnlaces,
+  formatearTablero,
   type GrupoAlerta,
+  MAX_CAIDOS_DETALLADOS,
+  PREFIJO_CALLBACK_PENDIENTES,
 } from './telegram-notifier';
 import { clasificarIntermitencia, evaluarLectura, VENTANA_INTERMITENTE_MS } from './antiparpadeo';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
@@ -85,6 +89,8 @@ const MAX_BOTONES_BUSQUEDA = 8;
 const MAX_LARGO_BUSQUEDA = 60;
 const SELECT_FICHA = { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true } as const;
 /** Número de técnico (orden en el distributivo, desde 1), "sin" (recintos sin técnico) o "menu" (volver al resumen). */
+/** Botón de un técnico en el tablero o en un aviso: sus recintos caídos y a quién llamar. */
+const CALLBACK_PENDIENTES = new RegExp(`^${PREFIJO_CALLBACK_PENDIENTES}([1-9]\\d{0,2}|sin)$`);
 const CALLBACK_TECNICO = new RegExp(
   `^${PREFIJO_CALLBACK_ASIGNACIONES}([1-9]\\d{0,2}|sin|${CLAVE_RESUMEN_ASIGNACIONES})$`,
 );
@@ -296,15 +302,12 @@ export class EnlacesService {
     // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
     const escalados = historial.ok ? await this.escalamiento.escalar() : [];
 
+    const estado = await this.estadoEnlaces(filasConfirmadas, caidas);
+
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarRecuperadosPorCorreo(recuperados);
-    await this.notificarCicloPorTelegram({
-      caidas,
-      recuperados,
-      escalados,
-      filasConfirmadas,
-      minutosCaido: historial.minutosCaido,
-    });
+    await this.notificarCicloPorTelegram({ caidas, recuperados, escalados, estado, minutosCaido: historial.minutosCaido });
+    if (filas.length > 0) await this.actualizarTablero(estado);
   }
 
   /** La web, /caidos y la búsqueda por código leen esta tabla, no la hoja: si un
@@ -467,8 +470,8 @@ export class EnlacesService {
     caidas: EnlaceCaido[];
     recuperados: EnlaceCaido[];
     escalados: GrupoAlerta[];
-    /** Las filas con su estado confirmado: la lista del aviso no debe parpadear. */
-    filasConfirmadas: SheetEnlaceRow[];
+    /** La situación confirmada (no la lectura cruda, que parpadea). */
+    estado: EstadoEnlaces;
     minutosCaido: Map<string, number>;
   }): Promise<void> {
     if (c.caidas.length === 0 && c.recuperados.length === 0 && c.escalados.length === 0) return;
@@ -484,18 +487,9 @@ export class EnlacesService {
         return;
       }
 
-      const comoEnlace = (f: SheetEnlaceRow): EnlaceCaido => ({
-        codigoRecinto: f.codigoRecinto,
-        nombreRecinto: f.nombreRecinto,
-        canton: normalizarCanton(f.canton),
-      });
-      const nuevosCodigos = new Set(nuevas.map((e) => e.codigoRecinto));
       await this.telegram.enviarAvisoCiclo({
-        caidos: c.filasConfirmadas.filter((f) => f.estado === 'FALLO').map(comoEnlace),
-        // Los activos sirven para el aviso de "casi todo caído": se listan los pocos que siguen arriba.
-        activos: c.filasConfirmadas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace),
-        nuevos: nuevosCodigos,
-        contactos: nuevosCodigos.size > 0 ? await this.contactosDe(nuevosCodigos) : undefined,
+        ...c.estado,
+        nuevos: new Set(nuevas.map((e) => e.codigoRecinto)),
         recuperados,
         minutosCaido: c.minutosCaido,
         escalamiento: c.escalados,
@@ -505,6 +499,72 @@ export class EnlacesService {
       const codigos = [...c.caidas, ...c.recuperados].map((x) => x.codigoRecinto).join(', ');
       this.log.error(`Error enviando el aviso de enlaces por Telegram (${codigos || 'escalamiento'}): ${e}`);
     }
+  }
+
+  /**
+   * La situación confirmada para el aviso y el tablero. Con pocos caídos, el técnico y
+   * a quién llamar de cada uno; con muchos, los recintos por técnico (para sus botones)
+   * y los contactos de los que cayeron en este ciclo. Si Drive falla, sale sin eso.
+   */
+  private async estadoEnlaces(filasConfirmadas: SheetEnlaceRow[], caidasDelCiclo: EnlaceCaido[]): Promise<EstadoEnlaces> {
+    const comoEnlace = (f: SheetEnlaceRow): EnlaceCaido => ({
+      codigoRecinto: f.codigoRecinto,
+      nombreRecinto: f.nombreRecinto,
+      canton: normalizarCanton(f.canton),
+    });
+    const caidos = filasConfirmadas.filter((f) => f.estado === 'FALLO').map(comoEnlace);
+    const activos = filasConfirmadas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace);
+    const muchos = caidos.length > MAX_CAIDOS_DETALLADOS;
+    const codigos = new Set((muchos ? caidasDelCiclo : caidos).map((e) => e.codigoRecinto));
+    const [contactos, grupos] = await Promise.all([
+      codigos.size > 0 ? this.contactosDe(codigos) : Promise.resolve(undefined),
+      muchos
+        ? this.gruposAsignacion(true).catch((e) => {
+            this.log.warn(`No se pudieron armar los pendientes por técnico: ${(e as Error)?.message ?? e}`);
+            return [] as GrupoAsignacion[];
+          })
+        : Promise.resolve([] as GrupoAsignacion[]),
+    ]);
+    return { caidos, activos, contactos, grupos };
+  }
+
+  /** Edita el tablero fijado (o lo publica y fija si no hay uno) y guarda su mensaje. Nunca frena el ciclo. */
+  private async actualizarTablero(estado: EstadoEnlaces): Promise<void> {
+    try {
+      const config = await this.prisma.configEnlaces.findUnique({
+        where: { id: CONFIG_ID },
+        select: { tableroMensajeId: true },
+      });
+      const actual = config?.tableroMensajeId ?? null;
+      const { texto, teclado } = formatearTablero(estado, new Date());
+      const id = await this.telegram.publicarTablero(texto, teclado, actual);
+      if (id !== null && id !== actual) {
+        await this.prisma.configEnlaces.upsert({
+          where: { id: CONFIG_ID },
+          create: { id: CONFIG_ID, tableroMensajeId: id },
+          update: { tableroMensajeId: id },
+        });
+      }
+    } catch (e) {
+      this.log.error(`No se pudo actualizar el tablero de enlaces: ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** Botón de un técnico (tablero o aviso): manda aparte, en silencio, sus recintos caídos y a quién llamar. */
+  async mostrarPendientesTelegram(clave: string): Promise<void> {
+    const [grupos, encargados] = await Promise.all([
+      this.gruposAsignacion(true),
+      this.leerDeDrive(() => this.encargados.encargados(), 'los encargados de recintos'),
+    ]);
+    const grupo = grupos.find((g) => claveGrupoAsignacion(g) === clave);
+    if (!grupo) {
+      await this.telegram.enviarTexto(
+        `Ese técnico ya no figura en el distributivo. Toque de nuevo "${TEXTO_BOTON_ASIGNACIONES}".`,
+        'el aviso de técnico no encontrado',
+      );
+      return;
+    }
+    await this.telegram.enviarPendientesTecnico(grupo, encargados ?? new Map());
   }
 
   /** Caídas (del historial, ya con la de este ciclo) de la última hora por recinto. */
@@ -671,14 +731,17 @@ export class EnlacesService {
   /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
    * el estado actual del enlace de cada uno. Los recintos monitoreados que no
    * están en el distributivo van al final como "Sin técnico asignado". */
-  private async gruposAsignacion(): Promise<GrupoAsignacion[]> {
-    const [asignaciones, enlaces] = await Promise.all([
+  private async gruposAsignacion(confirmado = false): Promise<GrupoAsignacion[]> {
+    const [asignaciones, filas] = await Promise.all([
       this.distributivo.asignaciones(),
       this.prisma.enlaceRecinto.findMany({
-        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true, estadoConfirmado: true },
         orderBy: { codigoRecinto: 'asc' },
       }),
     ]);
+    // `confirmado`: el tablero y sus botones usan lo confirmado (no parpadea); un
+    // recinto aún sin confirmar cae a su última lectura.
+    const enlaces = filas.map((f) => ({ ...f, estado: confirmado ? (f.estadoConfirmado ?? f.estado) : f.estado }));
     // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
     const enlacePorCodigo = new Map<string, (typeof enlaces)[number]>(enlaces.map((e) => [e.codigoRecinto, e]));
 
@@ -912,6 +975,12 @@ export class EnlacesService {
       // Con el código en la clave: tocar dos recintos distintos del mismo mensaje no se descarta.
       if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${boton.message?.message_id}:${recinto}`)) return;
       await this.asistente.responderRecintoElegido(recinto);
+      return;
+    }
+    const pendientes = CALLBACK_PENDIENTES.exec(boton.data ?? '')?.[1];
+    if (pendientes) {
+      if (this.toqueDemasiadoSeguido(`${boton.message?.chat?.id}:${boton.message?.message_id}:pend:${pendientes}`)) return;
+      await this.conAvisoErrorAsignaciones(() => this.mostrarPendientesTelegram(pendientes));
       return;
     }
     const messageId = boton.message?.message_id;
