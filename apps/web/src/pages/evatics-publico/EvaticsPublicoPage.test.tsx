@@ -172,7 +172,7 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
 
   it('aprobado o con el plazo vencido: no ofrece subir', async () => {
     await entrar(consulta({ estado: 'APROBADO', puedeSubir: false }));
-    expect(screen.getByText(/ya fue aprobado/)).toBeInTheDocument();
+    expect(screen.getByText(/Sus notas ya fueron recibidas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Tomar/ })).not.toBeInTheDocument();
   });
 

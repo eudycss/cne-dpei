@@ -46,7 +46,7 @@ import { nombreCoincide, nombreCorto, nombreCortoDeApellidosNombres } from './no
 export const MAX_CERTIFICADO_BYTES = 2 * 1024 * 1024;
 const CATEGORIA = 'certificados-evatics';
 export const CEDULA_NO_REGISTRADA = 'Cédula no registrada en el personal CDA, CPE ni Asistentes Transversales';
-const YA_APROBADO = 'Su certificado ya fue aprobado: no hace falta subirlo de nuevo';
+const YA_APROBADO = 'Sus notas ya fueron recibidas: no hace falta subirlas de nuevo';
 /**
  * Subidas por cédula y día (Ecuador). Con la cédula de otro se podría pisar su
  * foto: el límite y la foto anterior guardada lo frenan y lo dejan a la vista.
