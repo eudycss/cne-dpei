@@ -621,6 +621,115 @@ export function formatearEscalamiento(grupos: GrupoAlerta[]): string[] {
   return mensajes;
 }
 
+/** Hasta tantos recintos el escalamiento va con el encargado de cada uno; con más, resumido. */
+export const MAX_ESCALAMIENTO_DETALLADO = 4;
+
+/** Escalamiento de muchos recintos en pocas líneas: los posibles cortes de zona y
+ * los códigos. A quién llamar se consulta con los botones, no en el aviso. */
+function formatearEscalamientoResumido(grupos: GrupoAlerta[]): string[] {
+  const recintos = grupos.flatMap((g) => g.recintos);
+  const masAntiguo = Math.max(0, ...recintos.map((a) => a.minutosCaido));
+  const lineas = [`<b>⏰ ${recintos.length} enlaces siguen caídos · el más antiguo hace ${formatearDuracion(masAntiguo)}</b>`];
+  const zonas = grupos.filter((g) => g.zona);
+  if (zonas.length > 0) {
+    lineas.push(`📍 Posible corte de zona: ${zonas.map((g) => `${escapeHtml(g.zona!)} (${g.recintos.length})`).join(' · ')}`);
+  }
+  lineas.push(
+    recintos
+      .map((a) => {
+        const abreviatura = abreviarCanton(a.canton);
+        return escapeHtml(a.codigoRecinto) + (abreviatura ? ` (${escapeHtml(abreviatura)})` : '');
+      })
+      .join(' · '),
+  );
+  lineas.push(`<i>A quién llamar: ${TEXTO_BOTON_ASIGNACIONES} o ${TEXTO_BOTON_BUSCAR_RECINTO}.</i>`);
+  return [lineas.join('\n')];
+}
+
+/** Todo lo que cambió en un ciclo del cron, para avisarlo en un solo mensaje. */
+export interface AvisoCiclo {
+  /** Estado confirmado de todos los recintos (no la lectura cruda, que parpadea). */
+  caidos: EnlaceCaido[];
+  activos: EnlaceCaido[];
+  /** Caídas confirmadas en este ciclo (se destacan con técnico y a quién llamar). */
+  nuevos: Set<string>;
+  contactos?: Map<string, ContactoRecinto>;
+  /** Recuperaciones confirmadas en este ciclo. */
+  recuperados: EnlaceCaido[];
+  minutosCaido?: Map<string, number>;
+  /** Caídas que pasaron el umbral del escalamiento (ver EnlacesEscalamientoService). */
+  escalamiento: GrupoAlerta[];
+  /** Recintos que en este ciclo pasan a intermitentes: sus cambios dejan de avisarse. */
+  intermitentes: EnlaceCaido[];
+}
+
+function seccionRecuperados(a: AvisoCiclo): string[] {
+  const total = a.caidos.length + a.activos.length;
+  const encabezado =
+    a.caidos.length === 0
+      ? `<b>✅ Todos los enlaces levantados (${total}/${total})</b>\nRecién recuperados (${a.recuperados.length}):`
+      : `✅ Enlaces recuperados (${a.recuperados.length}):`;
+  const unidades = a.recuperados.map((e) => {
+    const minutos = a.minutosCaido?.get(e.codigoRecinto);
+    const texto = formatearLinea(e) + (minutos === undefined ? '' : ` · volvió tras ${formatearDuracion(minutos)}`);
+    return { texto, cont: '✅ Enlaces recuperados (cont.):' };
+  });
+  // Sin la lista de caídos en el mismo aviso, el grupo igual sabe cuántos faltan.
+  if (a.caidos.length > 0 && a.nuevos.size === 0) {
+    unidades.push({ texto: `🔴 Siguen caídos: ${a.caidos.length} de ${total}`, cont: '✅ Enlaces recuperados (cont.):' });
+  }
+  return partirEnMensajes(encabezado, unidades);
+}
+
+function seccionIntermitentes(intermitentes: EnlaceCaido[]): string[] {
+  return partirEnMensajes(
+    `⚠️ Se caen y vuelven seguido (${intermitentes.length}) — se dejan de avisar sus caídas (su vuelta sí se avisa):`,
+    intermitentes.map((e) => ({ texto: formatearLinea(e), cont: '⚠️ Intermitentes (cont.):' })),
+  );
+}
+
+/** Junta las secciones en el menor número de mensajes, sin partir ninguna. */
+function empaquetar(secciones: string[][]): string[] {
+  const mensajes: string[] = [];
+  for (const parte of secciones.flat()) {
+    const ultimo = mensajes[mensajes.length - 1];
+    if (ultimo !== undefined && `${ultimo}\n\n${parte}`.length <= MAX_LARGO_MENSAJE) {
+      mensajes[mensajes.length - 1] = `${ultimo}\n\n${parte}`;
+    } else {
+      mensajes.push(parte);
+    }
+  }
+  return mensajes;
+}
+
+/**
+ * El aviso del ciclo (HTML escapado) y si debe sonar. Antes salían hasta tres
+ * mensajes por ciclo (caídas, recuperados y escalamiento), todos con sonido.
+ * Suena solo lo que pide actuar: caídas nuevas, todo levantado otra vez o un
+ * recinto que llega por primera vez al escalamiento. Recuperaciones sueltas,
+ * recordatorios e intermitentes llegan en silencio. Sin nada que avisar, [].
+ */
+export function formatearAvisoCiclo(a: AvisoCiclo): { mensajes: string[]; sonar: boolean } {
+  const secciones: string[][] = [];
+  if (a.nuevos.size > 0) secciones.push(formatearListaActual(a.caidos, a.nuevos, undefined, a.contactos, a.activos));
+  if (a.recuperados.length > 0) secciones.push(seccionRecuperados(a));
+  const escalados = a.escalamiento.flatMap((g) => g.recintos);
+  if (escalados.length > 0) {
+    secciones.push(
+      escalados.length <= MAX_ESCALAMIENTO_DETALLADO
+        ? formatearEscalamiento(a.escalamiento)
+        : formatearEscalamientoResumido(a.escalamiento),
+    );
+  }
+  if (a.intermitentes.length > 0) secciones.push(seccionIntermitentes(a.intermitentes));
+
+  const sonar =
+    a.nuevos.size > 0 ||
+    (a.recuperados.length > 0 && a.caidos.length === 0) ||
+    escalados.some((r) => r.aviso === 1);
+  return { mensajes: empaquetar(secciones), sonar };
+}
+
 const EMOJI_ESTADO = { ACTIVO: '✅', FALLO: '🔴' } as const;
 
 /**
@@ -709,27 +818,13 @@ export class TelegramNotifier {
     }
   }
 
-  /** Avisa qué recintos volvieron a ACTIVO tras haber estado en FALLO — sin esto,
-   * el grupo solo se entera de las caídas y tiene que revisar la web para saber
-   * cuándo se recupera un recinto. */
-  async enviarRecuperados(enlaces: EnlaceCaido[], minutosCaido?: Map<string, number>): Promise<void> {
-    if (enlaces.length === 0) return;
-    const texto =
-      `✅ Enlaces recuperados (${enlaces.length}):\n` +
-      enlaces
-        .map((e) => {
-          const minutos = minutosCaido?.get(e.codigoRecinto);
-          return formatearLinea(e) + (minutos === undefined ? '' : ` · volvió tras ${formatearDuracion(minutos)}`);
-        })
-        .join('\n');
-    await this.enviarMensaje(texto, 'la lista de enlaces recuperados', 'HTML');
-  }
-
-  /** Aviso de enlaces caídos (ya filtrados por el umbral del primer aviso); uno o más mensajes, en orden. */
-  async enviarEscalamiento(grupos: GrupoAlerta[]): Promise<void> {
-    if (grupos.length === 0) return;
-    for (const mensaje of formatearEscalamiento(grupos)) {
-      await this.enviarMensaje(mensaje, 'el aviso de enlaces caídos', 'HTML');
+  /** El aviso de un ciclo del cron (caídas, recuperados, escalamiento e
+   * intermitentes juntos; ver formatearAvisoCiclo). Si se parte en varios
+   * mensajes, solo el primero puede sonar. */
+  async enviarAvisoCiclo(aviso: AvisoCiclo): Promise<void> {
+    const { mensajes, sonar } = formatearAvisoCiclo(aviso);
+    for (const [i, mensaje] of mensajes.entries()) {
+      await this.enviarMensaje(mensaje, 'el aviso de enlaces', 'HTML', tecladoFijo(), !sonar || i > 0);
     }
   }
 
@@ -830,7 +925,7 @@ export class TelegramNotifier {
   }
 
   /** Mensaje de texto libre (prompt del flujo de "ingresar código" o el resultado
-   * de la búsqueda) — a diferencia de enviarListaActual/enviarRecuperados, no tiene
+   * de la búsqueda) — a diferencia de enviarListaActual/enviarAvisoCiclo, no tiene
    * un formato fijo, lo arma quien llama. */
   async enviarTexto(texto: string, descripcion: string): Promise<void> {
     await this.enviarMensaje(texto, descripcion);

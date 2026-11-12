@@ -30,7 +30,15 @@ import { JornadaService } from './jornada/jornada.service';
 describe('EnlacesService', () => {
   let service: EnlacesService;
 
-  const escalamiento = { escalar: jest.fn().mockResolvedValue(undefined) };
+  /** Lo guardado tras el ciclo anterior: `confirmado` (lo último avisado) y la lectura
+   * de ese ciclo. El anti-parpadeo avisa cuando la lectura de ahora repite la anterior
+   * y difiere de lo confirmado: antes('ACTIVO', 'FALLO') + hoja en FALLO = caída. */
+  const antes = (confirmado: 'ACTIVO' | 'FALLO' | null, lecturaPrevia: 'ACTIVO' | 'FALLO') => ({
+    estado: lecturaPrevia,
+    estadoConfirmado: confirmado,
+  });
+
+  const escalamiento = { escalar: jest.fn().mockResolvedValue([]) };
   const distributivo = { asignaciones: jest.fn() };
   const encargados = { encargados: jest.fn() };
 
@@ -59,7 +67,7 @@ describe('EnlacesService', () => {
   const sheetsClient = { leerEnlacesImbabura: jest.fn() };
   const telegram = {
     enviarListaActual: jest.fn().mockResolvedValue(undefined),
-    enviarRecuperados: jest.fn().mockResolvedValue(undefined),
+    enviarAvisoCiclo: jest.fn().mockResolvedValue(undefined),
     enviarTexto: jest.fn().mockResolvedValue(undefined),
     enviarHtml: jest.fn().mockResolvedValue(undefined),
     responderBoton: jest.fn().mockResolvedValue(undefined),
@@ -113,7 +121,7 @@ describe('EnlacesService', () => {
       expect(sheetsClient.leerEnlacesImbabura).not.toHaveBeenCalled();
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
-      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
       expect(escalamiento.escalar).not.toHaveBeenCalled();
     });
 
@@ -142,18 +150,19 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await service.revisarEnlaces();
 
       expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledTimes(1);
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
-        new Set(['978']),
-        undefined,
-        expect.any(Map),
-        [],
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
+          nuevos: new Set(['978']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -171,7 +180,7 @@ describe('EnlacesService', () => {
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
         { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await service.revisarEnlaces();
@@ -184,15 +193,16 @@ describe('EnlacesService', () => {
           { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
       );
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [
           { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
           { codigoRecinto: '982', nombreRecinto: 'Unidad Educativa Zaldumbide', canton: null },
         ],
-        new Set(['978', '982']),
-        undefined,
-        expect.any(Map),
-        [],
+          nuevos: new Set(['978', '982']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
     });
 
@@ -202,21 +212,22 @@ describe('EnlacesService', () => {
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
       ]);
       prisma.enlaceRecinto.findUnique
-        .mockResolvedValueOnce({ estado: 'FALLO' }) // 111 ya estaba caído
-        .mockResolvedValueOnce({ estado: 'ACTIVO' }); // 222 acaba de caer
+        .mockResolvedValueOnce(antes('FALLO', 'FALLO')) // 111 ya estaba caído
+        .mockResolvedValueOnce(antes('ACTIVO', 'FALLO')); // 222 acaba de caer
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [
           { codigoRecinto: '111', nombreRecinto: 'Ya caído', canton: null },
           { codigoRecinto: '222', nombreRecinto: 'Recién cae', canton: null },
         ],
-        new Set(['222']),
-        undefined,
-        expect.any(Map),
-        [],
+          nuevos: new Set(['222']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
     });
 
@@ -226,23 +237,29 @@ describe('EnlacesService', () => {
         { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'otavalo', estado: 'ACTIVO' },
       ]);
       prisma.enlaceRecinto.findUnique
-        .mockResolvedValueOnce({ estado: 'ACTIVO' })
-        .mockResolvedValueOnce({ estado: 'FALLO' });
+        .mockResolvedValueOnce(antes('ACTIVO', 'FALLO'))
+        .mockResolvedValueOnce(antes('FALLO', 'ACTIVO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '111', nombreRecinto: 'Cae', canton: 'Cotacachi' }],
-        new Set(['111']),
-        undefined,
-        expect.any(Map),
-        // Los activos van aparte (para el aviso de "casi todo caído").
-        [{ codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' }],
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [{ codigoRecinto: '111', nombreRecinto: 'Cae', canton: 'Cotacachi' }],
+          nuevos: new Set(['111']),
+          contactos: expect.any(Map),
+          // Los activos van aparte (para el aviso de "casi todo caído").
+          activos: [{ codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' }],
+        }),
       );
-      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recuperados: [
         { codigoRecinto: '222', nombreRecinto: 'Vuelve', canton: 'Otavalo' },
-      ], expect.any(Map));
+          ],
+          minutosCaido: expect.any(Map),
+        }),
+      );
     });
 
     it('pasa a Telegram el técnico y a quién llamar de cada recinto recién caído', async () => {
@@ -252,9 +269,9 @@ describe('EnlacesService', () => {
         { codigoRecinto: '333', nombreRecinto: 'Sin datos', estado: 'FALLO' },
       ]);
       prisma.enlaceRecinto.findUnique
-        .mockResolvedValueOnce({ estado: 'FALLO' })
-        .mockResolvedValueOnce({ estado: 'ACTIVO' })
-        .mockResolvedValueOnce({ estado: 'ACTIVO' });
+        .mockResolvedValueOnce(antes('FALLO', 'FALLO'))
+        .mockResolvedValueOnce(antes('ACTIVO', 'FALLO'))
+        .mockResolvedValueOnce(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
       distributivo.asignaciones.mockResolvedValue([
         { codigoRecinto: '222', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
@@ -265,7 +282,7 @@ describe('EnlacesService', () => {
 
       await service.revisarEnlaces();
 
-      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      const contactos = telegram.enviarAvisoCiclo.mock.calls[0][0].contactos;
       expect([...contactos.keys()]).toEqual(['222', '333']);
       expect(contactos.get('222')).toEqual({
         tecnico: 'Ana Pérez',
@@ -278,7 +295,7 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
       distributivo.asignaciones.mockResolvedValue([
         { codigoRecinto: '222', localidad: 'A', parroquia: '', numeroTecnico: 1, tecnico: 'Ana Pérez' },
@@ -288,7 +305,7 @@ describe('EnlacesService', () => {
 
       await service.revisarEnlaces();
 
-      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      const contactos = telegram.enviarAvisoCiclo.mock.calls[0][0].contactos;
       expect(contactos.get('222').tecnico).toBe('Ana Pérez, Luis Gómez');
     });
 
@@ -296,14 +313,14 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
       distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
       encargados.encargados.mockResolvedValue(new Map([['222', { nombre: 'Juana Ejemplo', telefono: '099' }]]));
 
       await service.revisarEnlaces();
 
-      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      const contactos = telegram.enviarAvisoCiclo.mock.calls[0][0].contactos;
       expect(contactos.get('222')).toEqual({ tecnico: null, encargado: { nombre: 'Juana Ejemplo', telefono: '099' } });
     });
 
@@ -311,14 +328,14 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
       distributivo.asignaciones.mockRejectedValue(new Error('Drive caído'));
       encargados.encargados.mockRejectedValue(new Error('Drive caído'));
 
       await service.revisarEnlaces();
 
-      const contactos = telegram.enviarListaActual.mock.calls[0][3];
+      const contactos = telegram.enviarAvisoCiclo.mock.calls[0][0].contactos;
       expect(contactos.get('222')).toEqual({ tecnico: null, encargado: null });
     });
 
@@ -326,12 +343,12 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
       sendEnlaceCaido.mockRejectedValueOnce(new Error('Brevo caído'));
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
-      expect(telegram.enviarListaActual).toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
     });
 
@@ -339,18 +356,19 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
 
       await service.revisarEnlaces();
 
       expect(sendEnlaceCaido).not.toHaveBeenCalled();
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
-        new Set(['978']),
-        undefined,
-        expect.any(Map),
-        [],
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
+          nuevos: new Set(['978']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
     });
 
@@ -358,29 +376,39 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'FALLO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
 
       await service.revisarEnlaces();
 
-      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
       expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
     });
 
-    it('SÍ notifica en la primera carga de un enlace ya FALLO (sin estado anterior) — evita quedar mudo si ya estaba caído', async () => {
+    it('un recinto nuevo que ya llega en FALLO se avisa al confirmarse (2.º ciclo) — no queda mudo', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue(null);
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
+      // Ciclo 1: primera vez que se ve; puede ser un parpadeo, se espera.
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      await service.revisarEnlaces();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
+      expect(prisma.enlaceRecinto.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ estadoConfirmado: null }) }),
+      );
+
+      // Ciclo 2: sigue en FALLO y nunca se confirmó nada → caída.
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(antes(null, 'FALLO'));
       await service.revisarEnlaces();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
-        new Set(['978']),
-        undefined,
-        expect.any(Map),
-        [],
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
+          nuevos: new Set(['978']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
       expect(notifications.encolarEnlaceCaido).toHaveBeenCalledWith({
         codigoRecinto: '978',
@@ -392,29 +420,143 @@ describe('EnlacesService', () => {
       );
     });
 
-    it('vuelve a notificar en una caída posterior a una recuperación (null→FALLO→ACTIVO→FALLO)', async () => {
-      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
-      const fila = { codigoRecinto: '978', nombreRecinto: 'Escuela Central' };
+    describe('anti-parpadeo (varios ciclos sobre la misma tabla)', () => {
+      const recinto = { codigoRecinto: '978', nombreRecinto: 'Escuela Central' };
+      /** enlaces_recinto en memoria: findUnique lee lo que dejó el upsert del ciclo anterior. */
+      const usarTablaEnMemoria = () => {
+        const tabla = new Map<string, Record<string, unknown>>();
+        prisma.enlaceRecinto.findUnique.mockImplementation(
+          async ({ where }: { where: { codigoRecinto: string } }) => tabla.get(where.codigoRecinto) ?? null,
+        );
+        prisma.enlaceRecinto.upsert.mockImplementation(
+          async ({ where, create, update }: { where: { codigoRecinto: string }; create: object; update: object }) => {
+            const actual = tabla.get(where.codigoRecinto);
+            tabla.set(where.codigoRecinto, actual ? { ...actual, ...update } : { ...create });
+          },
+        );
+      };
+      const ciclos = async (...estados: ('ACTIVO' | 'FALLO')[]) => {
+        for (const estado of estados) {
+          sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...recinto, estado }]);
+          await service.revisarEnlaces();
+        }
+      };
 
-      // Ciclo 1: primera vez que se ve, ya llega en FALLO → notifica.
-      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
-      await service.revisarEnlaces();
-      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
+      beforeEach(() => {
+        prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
+        usarTablaEnMemoria();
+      });
+      afterEach(() => {
+        prisma.enlaceRecinto.findUnique.mockReset();
+        prisma.enlaceRecinto.upsert.mockReset();
+        prisma.enlaceCaida.findMany.mockReset();
+        prisma.enlaceCaida.findMany.mockResolvedValue([]);
+      });
 
-      // Ciclo 2: se recupera a ACTIVO → no notifica.
-      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'ACTIVO' }]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'FALLO' });
-      await service.revisarEnlaces();
-      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
+      it('un recinto que parpadea (FALLO, ACTIVO, FALLO…) no genera ningún aviso — el caso del 11-nov', async () => {
+        await ciclos('ACTIVO', 'ACTIVO'); // confirmado ACTIVO, sin aviso
+        await ciclos('FALLO', 'ACTIVO', 'FALLO', 'ACTIVO', 'FALLO', 'ACTIVO');
 
-      // Ciclo 3: vuelve a caer (ACTIVO→FALLO) → notifica de nuevo.
-      sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([{ ...fila, estado: 'FALLO' }]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce({ estado: 'ACTIVO' });
-      await service.revisarEnlaces();
-      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(2);
+        expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
+        expect(sendEnlaceCaido).not.toHaveBeenCalled();
+        expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
+        expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
+      });
 
-      expect(sendEnlaceCaido).toHaveBeenCalledTimes(2);
+      it('caída y recuperación se avisan una vez cada una, al leerse igual dos ciclos seguidos', async () => {
+        await ciclos('ACTIVO', 'ACTIVO', 'FALLO');
+        expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
+
+        await ciclos('FALLO'); // 10 min en FALLO → caída
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+        expect(telegram.enviarAvisoCiclo.mock.calls[0][0].nuevos).toEqual(new Set(['978']));
+
+        await ciclos('FALLO', 'ACTIVO');
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+
+        await ciclos('ACTIVO'); // 10 min en ACTIVO → recuperado
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(2);
+        expect(telegram.enviarAvisoCiclo.mock.calls[1][0].recuperados).toEqual([{ ...recinto, canton: null }]);
+      });
+
+      it('vuelve a avisar una caída tras una recuperación confirmada (null→FALLO→ACTIVO→FALLO)', async () => {
+        await ciclos('FALLO', 'FALLO'); // nuevo y ya caído: se avisa al confirmarse
+        await ciclos('ACTIVO', 'ACTIVO'); // recuperado
+        await ciclos('FALLO', 'FALLO'); // cae otra vez
+
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(3);
+        expect(sendEnlaceCaido).toHaveBeenCalledTimes(2);
+        expect(sendEnlaceRecuperado).toHaveBeenCalledTimes(1);
+      });
+
+      describe('intermitentes', () => {
+        /** Caídas que el historial tiene del recinto en la última hora (ya con la de este ciclo). */
+        const caidasEnLaHora = (n: number) =>
+          prisma.enlaceCaida.findMany.mockImplementation(async ({ where }: { where: { inicio?: unknown } }) =>
+            where.inicio ? Array.from({ length: n }, () => ({ codigoRecinto: '978' })) : [],
+          );
+
+        it('a la 3.ª caída en una hora se avisa una vez, en silencio, como intermitente', async () => {
+          await ciclos('ACTIVO', 'ACTIVO', 'FALLO');
+          caidasEnLaHora(3);
+          await ciclos('FALLO');
+
+          expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+          const aviso = telegram.enviarAvisoCiclo.mock.calls[0][0];
+          expect(aviso.nuevos).toEqual(new Set());
+          expect(aviso.intermitentes).toEqual([{ ...recinto, canton: null }]);
+        });
+
+        it('después de eso, sus caídas ya no generan aviso; su vuelta sí', async () => {
+          await ciclos('ACTIVO', 'ACTIVO', 'FALLO');
+          caidasEnLaHora(4);
+          await ciclos('FALLO');
+
+          expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
+          // El correo y la web siguen registrando cada cambio confirmado.
+          expect(sendEnlaceCaido).toHaveBeenCalledTimes(1);
+
+          await ciclos('ACTIVO', 'ACTIVO');
+          expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+          expect(telegram.enviarAvisoCiclo.mock.calls[0][0].recuperados).toEqual([{ ...recinto, canton: null }]);
+        });
+
+        it('la lista del aviso usa el estado confirmado: un recinto que parpadea no aparece y desaparece', async () => {
+          const otro = { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide' };
+          // 978 confirmado caído; 982 confirmado ACTIVO pero esta lectura dice FALLO (parpadeo).
+          prisma.enlaceRecinto.findUnique.mockImplementation(async ({ where }: { where: { codigoRecinto: string } }) =>
+            where.codigoRecinto === '978' ? antes('ACTIVO', 'FALLO') : antes('ACTIVO', 'ACTIVO'),
+          );
+          sheetsClient.leerEnlacesImbabura.mockResolvedValueOnce([
+            { ...recinto, estado: 'FALLO' },
+            { ...otro, estado: 'FALLO' },
+          ]);
+          await service.revisarEnlaces();
+
+          const aviso = telegram.enviarAvisoCiclo.mock.calls[0][0];
+          expect(aviso.caidos).toEqual([{ ...recinto, canton: null }]);
+          expect(aviso.activos).toEqual([{ ...otro, canton: null }]);
+        });
+
+        it('con 2 caídas en la hora todavía es un aviso normal', async () => {
+          await ciclos('ACTIVO', 'ACTIVO', 'FALLO');
+          caidasEnLaHora(2);
+          await ciclos('FALLO');
+
+          expect(telegram.enviarAvisoCiclo.mock.calls[0][0].nuevos).toEqual(new Set(['978']));
+        });
+      });
+
+      it('el escalamiento sale en el mismo aviso aunque no haya cambios en el ciclo', async () => {
+        const grupos = [{ zona: null, recintos: [{ codigoRecinto: '1961', aviso: 2 }] }];
+        escalamiento.escalar.mockResolvedValueOnce(grupos);
+        await ciclos('FALLO');
+
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+          expect.objectContaining({ escalamiento: grupos, nuevos: new Set(), recuperados: [] }),
+        );
+      });
     });
 
     it('si falla la lectura de la hoja, no toca la tabla ni notifica', async () => {
@@ -424,7 +566,7 @@ describe('EnlacesService', () => {
 
       expect(prisma.enlaceRecinto.upsert).not.toHaveBeenCalled();
       expect(prisma.enlaceRecinto.deleteMany).not.toHaveBeenCalled();
-      expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
     });
 
     describe('bitácora de revisiones (análisis de datos)', () => {
@@ -458,7 +600,7 @@ describe('EnlacesService', () => {
 
       it('si el historial de caídas falla, lo deja anotado', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' }]);
-        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
         prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
         prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
 
@@ -504,14 +646,14 @@ describe('EnlacesService', () => {
 
       it('si no se puede registrar, el ciclo sigue: escala y avisa igual', async () => {
         sheetsClient.leerEnlacesImbabura.mockResolvedValue([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' }]);
-        prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
         prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
         prisma.enlaceRevision.create.mockRejectedValueOnce(new Error('tabla no existe'));
 
         await service.revisarEnlaces();
 
         expect(escalamiento.escalar).toHaveBeenCalled();
-        expect(telegram.enviarListaActual).toHaveBeenCalled();
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalled();
       });
 
       it('con ENLACES_CRON_ENABLED=false no registra nada (no hubo revisión)', async () => {
@@ -579,14 +721,25 @@ describe('EnlacesService', () => {
         estado,
       });
 
+      /** La hoja de este ciclo; cada recinto ya se leía igual y quedó confirmado así
+       * (el historial sigue el estado confirmado, ver evaluarLectura). */
+      const leer = (...filas: ReturnType<typeof fila>[]) => {
+        sheetsClient.leerEnlacesImbabura.mockResolvedValue(filas);
+        prisma.enlaceRecinto.findUnique.mockImplementation(async ({ where }: { where: { codigoRecinto: string } }) => {
+          const f = filas.find((x) => x.codigoRecinto === where.codigoRecinto);
+          return f ? antes(f.estado as 'ACTIVO' | 'FALLO', f.estado as 'ACTIVO' | 'FALLO') : null;
+        });
+      };
+
       beforeEach(() => {
         prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
-        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
         prisma.enlaceCaida.findMany.mockResolvedValue([]);
       });
 
+      afterEach(() => prisma.enlaceRecinto.findUnique.mockReset());
+
       it('abre una caída para cada recinto en FALLO que no tenga una abierta', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('982', 'FALLO'), fila('28', 'ACTIVO')]);
+        leer(fila('978', 'FALLO'), fila('982', 'FALLO'), fila('28', 'ACTIVO'));
         prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '982', inicio: new Date() }]);
 
         await service.revisarEnlaces();
@@ -599,7 +752,7 @@ describe('EnlacesService', () => {
       });
 
       it('cierra las caídas abiertas de los recintos que están ACTIVO', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO'), fila('28', 'ACTIVO')]);
+        leer(fila('978', 'ACTIVO'), fila('28', 'ACTIVO'));
         prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
@@ -612,20 +765,20 @@ describe('EnlacesService', () => {
       });
 
       it('al recuperarse, Telegram dice cuánto duró la caída', async () => {
-        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        leer(fila('978', 'ACTIVO'));
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'ACTIVO'));
         prisma.enlaceCaida.findMany.mockResolvedValue([
           { codigoRecinto: '978', inicio: new Date(Date.now() - 42 * 60_000) },
         ]);
 
         await service.revisarEnlaces();
 
-        const [, minutos] = telegram.enviarRecuperados.mock.calls[0];
+        const { minutosCaido: minutos } = telegram.enviarAvisoCiclo.mock.calls[0][0];
         expect(minutos.get('978')).toBe(42);
       });
 
       it('si el historial no se pudo actualizar, no escala (podría avisar de un enlace que ya volvió)', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        leer(fila('978', 'FALLO'));
         prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
 
         await service.revisarEnlaces();
@@ -634,7 +787,7 @@ describe('EnlacesService', () => {
       });
 
       it('cada ciclo revisa el escalamiento (avisos de 30 min), después del historial', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        leer(fila('978', 'FALLO'));
 
         await service.revisarEnlaces();
 
@@ -645,7 +798,7 @@ describe('EnlacesService', () => {
       });
 
       it('sin cambios no escribe nada (FALLO con caída abierta, ACTIVO sin abierta)', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO'), fila('28', 'ACTIVO')]);
+        leer(fila('978', 'FALLO'), fila('28', 'ACTIVO'));
         prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
@@ -654,8 +807,20 @@ describe('EnlacesService', () => {
         expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
       });
 
+      it('un parpadeo no abre ni cierra caídas: el historial sigue lo confirmado', async () => {
+        leer(fila('978', 'ACTIVO'));
+        // Confirmado en FALLO; esta lectura en ACTIVO todavía no se confirma.
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
+        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
+
+        await service.revisarEnlaces();
+
+        expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
+        expect(prisma.enlaceCaida.createMany).not.toHaveBeenCalled();
+      });
+
       it('si un ciclo no pudo cerrar la caída, el siguiente la cierra igual (ACTIVO→ACTIVO)', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        leer(fila('978', 'ACTIVO'));
         prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
 
         await service.revisarEnlaces();
@@ -664,27 +829,27 @@ describe('EnlacesService', () => {
       });
 
       it('si un ciclo no pudo abrirla, el siguiente la abre igual (FALLO→FALLO) sin volver a avisar', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
-        prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+        leer(fila('978', 'FALLO'));
 
         await service.revisarEnlaces();
 
         expect(prisma.enlaceCaida.createMany).toHaveBeenCalled();
-        expect(telegram.enviarListaActual).not.toHaveBeenCalled();
+        expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
       });
 
       it('un error de la base en el historial no frena los avisos del ciclo', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'FALLO')]);
+        leer(fila('978', 'FALLO'));
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
         prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('conexión perdida'));
 
         await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
-        expect(telegram.enviarListaActual).toHaveBeenCalled();
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalled();
         expect(notifications.encolarEnlaceCaido).toHaveBeenCalled();
       });
 
       it('los recintos que salen de la hoja cierran su caída abierta', async () => {
-        sheetsClient.leerEnlacesImbabura.mockResolvedValue([fila('978', 'ACTIVO')]);
+        leer(fila('978', 'ACTIVO'));
         prisma.enlaceRecinto.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
         prisma.enlaceRecinto.deleteMany.mockResolvedValueOnce({ count: 1 });
 
@@ -749,13 +914,13 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
       prisma.enlaceRecinto.count.mockRejectedValueOnce(new Error('timeout de base'));
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalled();
       expect(sendEnlaceCaido).toHaveBeenCalled();
     });
 
@@ -763,9 +928,9 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
-      telegram.enviarListaActual.mockRejectedValueOnce(new Error('telegram caído'));
+      telegram.enviarAvisoCiclo.mockRejectedValueOnce(new Error('telegram caído'));
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
@@ -827,23 +992,24 @@ describe('EnlacesService', () => {
         { codigoRecinto: '978', nombreRecinto: 'Escuela Rota', estado: 'FALLO' },
         { codigoRecinto: '982', nombreRecinto: 'Escuela Sana', estado: 'FALLO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(antes('ACTIVO', 'FALLO'));
       prisma.enlaceRecinto.upsert.mockRejectedValueOnce(new Error('violates constraint'));
-      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(null);
+      prisma.enlaceRecinto.findUnique.mockResolvedValueOnce(antes('ACTIVO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
 
-      expect(telegram.enviarListaActual).toHaveBeenCalledTimes(1);
-      expect(telegram.enviarListaActual).toHaveBeenCalledWith(
-        [
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          caidos: [
           { codigoRecinto: '978', nombreRecinto: 'Escuela Rota', canton: null },
           { codigoRecinto: '982', nombreRecinto: 'Escuela Sana', canton: null },
         ],
-        new Set(['982']),
-        undefined,
-        expect.any(Map),
-        [],
+          nuevos: new Set(['982']),
+          contactos: expect.any(Map),
+          activos: [],
+        }),
       );
       expect(sendEnlaceCaido).toHaveBeenCalledWith(
         ['a@b.com'],
@@ -855,7 +1021,7 @@ describe('EnlacesService', () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'FALLO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'ACTIVO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await service.revisarEnlaces();
@@ -864,21 +1030,26 @@ describe('EnlacesService', () => {
         ['a@b.com'],
         [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null }],
       );
-      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recuperados: [
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
-      ], expect.any(Map));
+          ],
+          minutosCaido: expect.any(Map),
+        }),
+      );
     });
 
     it('NO notifica recuperación si el enlace sigue ACTIVO (no venía de FALLO)', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ codigoRecinto: '978', estado: 'ACTIVO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'ACTIVO'));
 
       await service.revisarEnlaces();
 
       expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
-      expect(telegram.enviarRecuperados).not.toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
     });
 
     it('NO notifica recuperación en la primera carga de un enlace ya ACTIVO (sin estado anterior)', async () => {
@@ -890,32 +1061,37 @@ describe('EnlacesService', () => {
       await service.revisarEnlaces();
 
       expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
-      expect(telegram.enviarRecuperados).not.toHaveBeenCalled();
+      expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
     });
 
     it('no envía correo de recuperación si nadie está registrado, aunque sí notifica Telegram', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'ACTIVO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
 
       await service.revisarEnlaces();
 
       expect(sendEnlaceRecuperado).not.toHaveBeenCalled();
-      expect(telegram.enviarRecuperados).toHaveBeenCalledWith([
+      expect(telegram.enviarAvisoCiclo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recuperados: [
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', canton: null },
-      ], expect.any(Map));
+          ],
+          minutosCaido: expect.any(Map),
+        }),
+      );
     });
 
     it('un fallo en el correo o Telegram de recuperación no interrumpe el ciclo', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '978', nombreRecinto: 'Escuela Central', estado: 'ACTIVO' },
       ]);
-      prisma.enlaceRecinto.findUnique.mockResolvedValue({ estado: 'FALLO' });
+      prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'ACTIVO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
       sendEnlaceRecuperado.mockRejectedValueOnce(new Error('Brevo caído'));
-      telegram.enviarRecuperados.mockRejectedValueOnce(new Error('telegram caído'));
+      telegram.enviarAvisoCiclo.mockRejectedValueOnce(new Error('telegram caído'));
 
       await expect(service.revisarEnlaces()).resolves.toBeUndefined();
     });
@@ -926,8 +1102,8 @@ describe('EnlacesService', () => {
         { codigoRecinto: '222', nombreRecinto: 'Recién cae', estado: 'FALLO' },
       ]);
       prisma.enlaceRecinto.findUnique
-        .mockResolvedValueOnce({ estado: 'FALLO' }) // 111 se recupera
-        .mockResolvedValueOnce({ estado: 'ACTIVO' }); // 222 acaba de caer
+        .mockResolvedValueOnce(antes('FALLO', 'ACTIVO')) // 111 se recupera
+        .mockResolvedValueOnce(antes('ACTIVO', 'FALLO')); // 222 acaba de caer
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: ['a@b.com'] });
 
       await service.revisarEnlaces();

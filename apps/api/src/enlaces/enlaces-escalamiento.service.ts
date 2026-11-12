@@ -4,7 +4,7 @@ import { ArchivoDriveNoConfigurado } from './drive-excel';
 import { DistributivoTecnicosClient, tecnicosPorRecinto } from './distributivo-tecnicos.client';
 import { codigosExcluidos } from './codigos-excluidos';
 import { EncargadosRecintosClient, type EncargadoRecinto } from './encargados-recintos.client';
-import { TelegramNotifier, type AlertaRecinto, type GrupoAlerta } from './telegram-notifier';
+import type { AlertaRecinto, GrupoAlerta } from './telegram-notifier';
 
 const MS_MINUTO = 60_000;
 /**
@@ -81,9 +81,9 @@ export function agruparPorZona(alertas: AlertaRecinto[]): GrupoAlerta[] {
 /**
  * Escalamiento de enlaces caídos: en cada ciclo del cron busca las caídas
  * abiertas hace N min o más que no se avisaron en los últimos M min (N y M
- * configurables desde la web), y
- * manda un solo mensaje con el encargado de cada recinto (para llamarlo),
- * si es inestable y si parece un corte de zona.
+ * configurables desde la web) y las devuelve con el encargado de cada recinto
+ * (para llamarlo), si es inestable y si parece un corte de zona. No envía nada:
+ * el ciclo lo junta con el resto en un solo aviso (ver formatearAvisoCiclo).
  */
 @Injectable()
 export class EnlacesEscalamientoService {
@@ -93,15 +93,15 @@ export class EnlacesEscalamientoService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly telegram: TelegramNotifier,
     private readonly encargados: EncargadosRecintosClient,
     private readonly distributivo: DistributivoTecnicosClient,
   ) {}
 
-  async escalar(ahora = new Date()): Promise<void> {
+  /** Las caídas a avisar en este ciclo, ya marcadas como avisadas; [] si no hay o si falla. */
+  async escalar(ahora = new Date()): Promise<GrupoAlerta[]> {
     if (this.enCurso) {
       this.log.warn('El escalamiento anterior sigue en curso — se omite este ciclo');
-      return;
+      return [];
     }
     this.enCurso = true;
     try {
@@ -118,7 +118,7 @@ export class EnlacesEscalamientoService {
         select: { id: true, codigoRecinto: true, nombreRecinto: true, canton: true, inicio: true, avisos: true },
         orderBy: { inicio: 'asc' },
       });
-      if (pendientes.length === 0) return;
+      if (pendientes.length === 0) return [];
 
       const codigos = pendientes.map((p) => p.codigoRecinto);
       const hace24h = ahora.getTime() - 24 * 60 * MS_MINUTO;
@@ -157,10 +157,11 @@ export class EnlacesEscalamientoService {
         where: { id: { in: pendientes.map((p) => p.id) } },
         data: { ultimoAviso: ahora, avisos: { increment: 1 } },
       });
-      await this.telegram.enviarEscalamiento(agruparPorZona(alertas));
+      return agruparPorZona(alertas);
     } catch (e) {
       // El escalamiento nunca frena el resto del cron; el siguiente ciclo lo reintenta.
       this.log.error(`No se pudo escalar los enlaces caídos: ${(e as Error)?.message ?? e}`);
+      return [];
     } finally {
       this.enCurso = false;
     }

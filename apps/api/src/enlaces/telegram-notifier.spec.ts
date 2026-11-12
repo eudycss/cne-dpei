@@ -3,6 +3,8 @@ import {
   abreviarCanton,
   type AlertaRecinto,
   type ContactoRecinto,
+  type AvisoCiclo,
+  formatearAvisoCiclo,
   formatearEscalamiento,
   formatearFichaRecinto,
   formatearListaActual,
@@ -44,6 +46,179 @@ describe('abreviarCanton', () => {
     ['-', ''],
   ])('un valor raro de la hoja (%p) solo deja letras → %p', (canton, esperado) => {
     expect(abreviarCanton(canton)).toBe(esperado);
+  });
+});
+
+type EnlaceCaidoPrueba = { codigoRecinto: string; nombreRecinto: string; canton?: string | null };
+
+const avisoVacio = (): AvisoCiclo => ({
+  caidos: [],
+  activos: [],
+  nuevos: new Set(),
+  recuperados: [],
+  escalamiento: [],
+  intermitentes: [],
+});
+
+const alertaCiclo = (codigo: string, extra: Partial<AlertaRecinto> = {}): AlertaRecinto => ({
+  codigoRecinto: codigo,
+  nombreRecinto: `Recinto ${codigo}`,
+  canton: 'Ibarra',
+  parroquia: '',
+  inicio: new Date('2026-10-21T10:00:00Z'),
+  minutosCaido: 180,
+  aviso: 1,
+  caidas24h: 1,
+  caidas7d: 1,
+  inestable: false,
+  encargado: { nombre: 'Ana Pérez', telefono: '0999' },
+  tecnico: 'Luis Gómez',
+  ...extra,
+});
+
+describe('formatearAvisoCiclo', () => {
+  const recinto = (codigo: string, extra: Partial<EnlaceCaidoPrueba> = {}) => ({
+    codigoRecinto: codigo,
+    nombreRecinto: `Recinto ${codigo}`,
+    ...extra,
+  });
+
+  it('sin cambios ni escalamiento: ningún mensaje', () => {
+    expect(formatearAvisoCiclo(avisoVacio())).toEqual({ mensajes: [], sonar: false });
+  });
+
+  describe('recuperados', () => {
+    it('todos levantados: lo dice arriba y suena', () => {
+      const { mensajes, sonar } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        activos: [recinto('978'), recinto('28')],
+        recuperados: [recinto('978')],
+      });
+
+      expect(mensajes).toHaveLength(1);
+      expect(mensajes[0]).toMatch(/^<b>✅ Todos los enlaces levantados \(2\/2\)<\/b>/);
+      expect(sonar).toBe(true);
+    });
+
+    it('si quedan caídos, es silencioso y dice cuántos faltan', () => {
+      const { mensajes, sonar } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [recinto('1'), recinto('2')],
+        activos: [recinto('978')],
+        recuperados: [recinto('978')],
+      });
+
+      expect(mensajes[0]).toContain('✅ Enlaces recuperados (1):');
+      expect(mensajes[0]).toContain('🔴 Siguen caídos: 2 de 3');
+      expect(sonar).toBe(false);
+    });
+
+    it('si se conoce, dice cuánto duró la caída', () => {
+      const central = recinto('978', { nombreRecinto: 'Escuela Central' });
+      const ibarra = recinto('28', { nombreRecinto: 'UE Ibarra' });
+      const { mensajes } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [recinto('1')],
+        activos: [central, ibarra],
+        recuperados: [central, ibarra],
+        minutosCaido: new Map([['978', 72]]),
+      });
+
+      expect(mensajes[0]).toContain('978 — Escuela Central · volvió tras 1 h 12 min');
+      expect(mensajes[0]).toMatch(/28 — UE Ibarra$/m);
+    });
+
+    it('muestra el cantón abreviado y escapa el contenido (va con parse_mode HTML)', () => {
+      const { mensajes } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [recinto('5')],
+        recuperados: [
+          recinto('1221', { nombreRecinto: 'UE Otavalo & Anexo', canton: 'Otavalo' }),
+          recinto('1', { nombreRecinto: 'Escuela', canton: '<i&x' }),
+        ],
+      });
+
+      expect(mensajes[0]).toContain('1221 (Ota) — UE Otavalo &amp; Anexo');
+      expect(mensajes[0]).toContain('1 (Ix) — Escuela');
+    });
+
+    it('con la lista de caídos en el mismo aviso no repite "Siguen caídos"', () => {
+      const { mensajes } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [recinto('1')],
+        nuevos: new Set(['1']),
+        recuperados: [recinto('978')],
+      });
+
+      expect(mensajes[0]).not.toContain('Siguen caídos');
+    });
+  });
+
+  describe('escalamiento', () => {
+    it('hasta 4 recintos: detallado, con el encargado de cada uno', () => {
+      const { mensajes } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        escalamiento: ['1', '2', '3', '4'].map((c) => ({ zona: null, recintos: [alertaCiclo(c)] })),
+      });
+
+      expect(mensajes[0]).toContain('Ana Pérez');
+    });
+
+    it('con más de 4: resumido en pocas líneas, sin la lista de encargados', () => {
+      const { mensajes } = formatearAvisoCiclo({
+        ...avisoVacio(),
+        escalamiento: [
+          { zona: 'Lita', recintos: [alertaCiclo('10', { minutosCaido: 300 }), alertaCiclo('11')] },
+          ...['1', '2', '3'].map((c) => ({ zona: null, recintos: [alertaCiclo(c)] })),
+        ],
+      });
+
+      expect(mensajes).toHaveLength(1);
+      expect(mensajes[0]).toContain('<b>⏰ 5 enlaces siguen caídos · el más antiguo hace 5 h</b>');
+      expect(mensajes[0]).toContain('📍 Posible corte de zona: Lita (2)');
+      expect(mensajes[0]).toContain('10 (Iba) · 11 (Iba) · 1 (Iba) · 2 (Iba) · 3 (Iba)');
+      expect(mensajes[0]).toContain(TEXTO_BOTON_ASIGNACIONES);
+      expect(mensajes[0]).not.toContain('Ana Pérez');
+    });
+
+    it('suena solo si algún recinto llega por primera vez; los recordatorios van en silencio', () => {
+      const primera = formatearAvisoCiclo({
+        ...avisoVacio(),
+        escalamiento: [{ zona: null, recintos: [alertaCiclo('1', { aviso: 1 })] }],
+      });
+      const recordatorio = formatearAvisoCiclo({
+        ...avisoVacio(),
+        escalamiento: [{ zona: null, recintos: [alertaCiclo('1', { aviso: 3 })] }],
+      });
+
+      expect(primera.sonar).toBe(true);
+      expect(recordatorio.sonar).toBe(false);
+    });
+  });
+
+  it('caídas nuevas: la lista completa con los nuevos destacados, y suena', () => {
+    const { mensajes, sonar } = formatearAvisoCiclo({
+      ...avisoVacio(),
+      caidos: [recinto('1'), recinto('2')],
+      activos: [recinto('3')],
+      nuevos: new Set(['2']),
+    });
+
+    expect(mensajes[0]).toContain('1 — Recinto 1');
+    expect(mensajes[0]).toContain('🚨 <b>2 — Recinto 2</b>');
+    expect(sonar).toBe(true);
+  });
+
+  it('intermitentes: se avisan una vez, en silencio, con sus códigos', () => {
+    const { mensajes, sonar } = formatearAvisoCiclo({
+      ...avisoVacio(),
+      caidos: [recinto('1320')],
+      intermitentes: [recinto('1320', { nombreRecinto: 'UE Daniel Reyes', canton: 'Ibarra' })],
+    });
+
+    expect(mensajes[0]).toContain('⚠️ Se caen y vuelven seguido (1)');
+    expect(mensajes[0]).toContain('1320 (Iba) — UE Daniel Reyes');
+    expect(sonar).toBe(false);
   });
 });
 
@@ -765,92 +940,60 @@ describe('TelegramNotifier', () => {
     });
   });
 
-  describe('enviarRecuperados', () => {
-    it('no llama a fetch si la lista de recuperados está vacía', async () => {
+  describe('enviarAvisoCiclo', () => {
+    beforeEach(() => {
       process.env.TELEGRAM_BOT_TOKEN = 'tok123';
       process.env.TELEGRAM_CHAT_ID = '-100200300';
-      global.fetch = jest.fn();
-      const notifier = new TelegramNotifier();
+      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    });
+    const cuerpos = () => (global.fetch as jest.Mock).mock.calls.map(([, opts]) => JSON.parse(opts.body));
 
-      await notifier.enviarRecuperados([]);
+    it('sin nada que avisar no manda nada', async () => {
+      await new TelegramNotifier().enviarAvisoCiclo(avisoVacio());
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('manda un mensaje con los recintos que volvieron a ACTIVO', async () => {
-      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
-      process.env.TELEGRAM_CHAT_ID = '-100200300';
-      global.fetch = jest.fn().mockResolvedValue({ ok: true });
-      const notifier = new TelegramNotifier();
+    it('caídas, recuperados y escalamiento del mismo ciclo van en UN mensaje (antes eran tres)', async () => {
+      await new TelegramNotifier().enviarAvisoCiclo({
+        ...avisoVacio(),
+        caidos: [{ codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide' }],
+        activos: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        nuevos: new Set(['982']),
+        recuperados: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        escalamiento: [{ zona: null, recintos: [alertaCiclo('1961', { aviso: 2 })] }],
+      });
 
-      await notifier.enviarRecuperados([
-        { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-      ]);
-
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(opts.body);
-      expect(body.text).toContain('✅');
-      expect(body.text).toContain('978');
-      expect(body.text).toContain('Escuela Central');
+      const [body, ...resto] = cuerpos();
+      expect(resto).toHaveLength(0);
+      expect(body.text).toContain('982 — UE Zaldumbide');
+      expect(body.text).toContain('✅ Enlaces recuperados (1):');
+      expect(body.text).toContain('1961');
+      expect(body).not.toHaveProperty('disable_notification');
     });
 
-    it('si se conoce, dice cuánto duró la caída', async () => {
-      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
-      process.env.TELEGRAM_CHAT_ID = '-100200300';
-      global.fetch = jest.fn().mockResolvedValue({ ok: true });
+    it('si se parte en varios mensajes, solo el primero suena', async () => {
+      const muchos = Array.from({ length: 120 }, (_, i) => ({
+        codigoRecinto: String(1000 + i),
+        nombreRecinto: 'Unidad Educativa con un nombre bastante largo',
+      }));
+      // Todos vuelven a la vez (suena): la lista de recuperados no se compacta.
+      await new TelegramNotifier().enviarAvisoCiclo({ ...avisoVacio(), activos: muchos, recuperados: muchos });
 
-      await new TelegramNotifier().enviarRecuperados(
-        [
-          { codigoRecinto: '978', nombreRecinto: 'Escuela Central' },
-          { codigoRecinto: '28', nombreRecinto: 'UE Ibarra' },
-        ],
-        new Map([['978', 72]]),
-      );
-
-      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
-      expect(body.text).toContain('978 — Escuela Central · volvió tras 1 h 12 min');
-      expect(body.text).toMatch(/28 — UE Ibarra$/m);
-    });
-
-    it('muestra el cantón abreviado y escapa el contenido (va con parse_mode HTML)', async () => {
-      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
-      process.env.TELEGRAM_CHAT_ID = '-100200300';
-      global.fetch = jest.fn().mockResolvedValue({ ok: true });
-      const notifier = new TelegramNotifier();
-
-      await notifier.enviarRecuperados([
-        { codigoRecinto: '1221', nombreRecinto: 'UE Otavalo & Anexo', canton: 'Otavalo' },
-      ]);
-
-      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(opts.body);
-      expect(body.parse_mode).toBe('HTML');
-      expect(body.text).toContain('1221 (Ota) — UE Otavalo &amp; Anexo');
-    });
-
-    it('un cantón fuera del mapa con símbolos HTML no rompe el mensaje', async () => {
-      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
-      process.env.TELEGRAM_CHAT_ID = '-100200300';
-      global.fetch = jest.fn().mockResolvedValue({ ok: true });
-      const notifier = new TelegramNotifier();
-
-      await notifier.enviarRecuperados([{ codigoRecinto: '1', nombreRecinto: 'Escuela', canton: '<i&x' }]);
-
-      const [, opts] = (global.fetch as jest.Mock).mock.calls[0];
-      const body = JSON.parse(opts.body);
-      expect(body.text).toContain('1 (Ix) — Escuela');
-      expect(body.text).not.toMatch(/[<&]/);
+      const [primero, ...resto] = cuerpos();
+      expect(resto.length).toBeGreaterThan(0);
+      expect(primero).not.toHaveProperty('disable_notification');
+      for (const b of resto) expect(b.disable_notification).toBe(true);
     });
 
     it('no lanza si fetch rechaza (error de red)', async () => {
-      process.env.TELEGRAM_BOT_TOKEN = 'tok123';
-      process.env.TELEGRAM_CHAT_ID = '-100200300';
       global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
-      const notifier = new TelegramNotifier();
 
       await expect(
-        notifier.enviarRecuperados([{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }]),
+        new TelegramNotifier().enviarAvisoCiclo({
+          ...avisoVacio(),
+          recuperados: [{ codigoRecinto: '978', nombreRecinto: 'Escuela Central' }],
+        }),
       ).resolves.not.toThrow();
     });
   });
