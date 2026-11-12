@@ -77,7 +77,7 @@ const filaActual = (over: Record<string, unknown> = {}) => ({
 });
 
 const ARCHIVO = { buffer: Buffer.from('foto'), size: 4 } as Express.Multer.File;
-const LECTURA = { nombreLeido: 'Ana María Pérez López', esCertificadoEvatics: true, legible: true };
+const LECTURA = { nombreLeido: 'Ana María Pérez López', esCertificadoEvatics: true, legible: true, cursoCompleto: true };
 
 describe('EvaticsService', () => {
   const prisma = {
@@ -424,12 +424,12 @@ describe('EvaticsService', () => {
       anaEnElPersonal();
       lector.disponible.mockReturnValue(true);
       lector.leer.mockResolvedValueOnce({
-        lectura: { nombreLeido: null, esCertificadoEvatics: true, legible: false },
+        lectura: { nombreLeido: null, esCertificadoEvatics: true, legible: false, cursoCompleto: false },
         proveedor: 'Gemini',
       });
       primeraSubida();
       const r = await service.subir(CED_ANA, ARCHIVO, 'v');
-      expect(r.resultado.aviso).toMatch(/Tome otra foto/);
+      expect(r.resultado.aviso).toMatch(/No se lee bien/);
     });
 
     it('si la lectura tarda demasiado, responde sin esperarla (queda reservada en cola)', async () => {
@@ -922,9 +922,30 @@ describe('EvaticsService', () => {
     expect(prisma.configEvatics.upsert.mock.calls[1][0].update).toEqual({ fechaLimite: null });
   });
 
-  it('aviso para la persona: certificado equivocado o ilegible; sin lectura, nada', () => {
+  it('aviso para la persona: sin lectura, nada; nombre y 100 % vistos, nada que corregir', () => {
     expect(avisoParaLaPersona(null)).toBeNull();
     expect(avisoParaLaPersona(LECTURA)).toBeNull();
-    expect(avisoParaLaPersona({ ...LECTURA, esCertificadoEvatics: false })).toMatch(/no parece un certificado/);
+  });
+
+  it.each([
+    ['no es prueba de Evatics', { esCertificadoEvatics: false }, /no parece una prueba de Evatics/],
+    ['ilegible', { legible: false }, /No se lee bien/],
+    ['captura de calificaciones sin nombre', { nombreLeido: null }, /no se ve su nombre/],
+    ['nombre visto pero sin 100 %', { cursoCompleto: false }, /no se ve el "100 % completado"/],
+  ])('aviso para la persona: %s', (_caso, cambio, texto) => {
+    expect(avisoParaLaPersona({ ...LECTURA, ...cambio })).toMatch(texto);
+  });
+
+  it.each([{ cursoCompleto: false }, { nombreLeido: null }, { legible: false }, { esCertificadoEvatics: false }])(
+    'aviso: el nombre leído nunca se muestra a la persona (%j)',
+    (cambio) => {
+      expect(avisoParaLaPersona({ ...LECTURA, ...cambio })).not.toMatch(/Ana|Pérez/);
+    },
+  );
+
+  it('aviso: si no es prueba de Evatics y además no se lee, manda el de "no es prueba"', () => {
+    expect(avisoParaLaPersona({ ...LECTURA, esCertificadoEvatics: false, legible: false })).toMatch(
+      /no parece una prueba/,
+    );
   });
 });

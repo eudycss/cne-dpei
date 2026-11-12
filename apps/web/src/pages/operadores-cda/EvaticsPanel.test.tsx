@@ -342,7 +342,7 @@ describe('sugerenciaIa', () => {
   it.each([
     [null, 'Aún sin leer'],
     [{ ...LISTO, estado: 'EN_COLA' as const }, 'Aún sin leer'],
-    [{ ...LISTO, estado: 'NO_DISPONIBLE' as const }, 'Revisar a ojo'],
+    [{ ...LISTO, estado: 'NO_DISPONIBLE' as const }, 'Sin IA'],
     [{ ...LISTO, esCertificado: false }, 'No parece un certificado'],
     [{ ...LISTO, legible: false }, 'No se lee bien'],
     [LISTO, 'El nombre coincide'],

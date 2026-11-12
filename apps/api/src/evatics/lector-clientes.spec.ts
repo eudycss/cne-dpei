@@ -12,6 +12,7 @@ const LECTURA = {
   nombreLeido: 'Ana María Pérez López',
   esCertificadoEvatics: true,
   legible: true,
+  cursoCompleto: true,
 };
 
 const respuesta = (status: number, cuerpo: unknown, headers: Record<string, string> = {}) =>
@@ -60,6 +61,12 @@ describe.each(CASOS)('cliente $nombre del certificado', ({ variable, crear, exit
     await expect(crear().leer(IMAGEN, 'image/jpeg')).resolves.toEqual(LECTURA);
   });
 
+  it('si el modelo omite cursoCompleto, cuenta como false (no se da por completo)', async () => {
+    const { cursoCompleto: _omitido, ...sinCampo } = LECTURA;
+    fetchMock.mockResolvedValueOnce(respuesta(200, exito(JSON.stringify(sinCampo))));
+    expect((await crear().leer(IMAGEN, 'image/jpeg')).cursoCompleto).toBe(false);
+  });
+
   it('limpia el nombre: solo letras, sin etiquetas ni código', async () => {
     const raro = {
       ...LECTURA,
@@ -99,6 +106,7 @@ describe.each(CASOS)('cliente $nombre del certificado', ({ variable, crear, exit
     ['texto que no es JSON', 'Claro, la persona es Ana'],
     ['JSON sin las claves pedidas', JSON.stringify({ aprobado: true })],
     ['tipos equivocados', JSON.stringify({ ...LECTURA, legible: 'sí' })],
+    ['cursoCompleto como texto', JSON.stringify({ ...LECTURA, cursoCompleto: 'true' })],
   ])('respuesta inválida: %s', async (_caso, texto) => {
     fetchMock.mockResolvedValueOnce(respuesta(200, exito(texto)));
     await expect(crear().leer(IMAGEN, 'image/jpeg')).rejects.toBeInstanceOf(LectorRespuestaInvalida);

@@ -132,6 +132,8 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
     postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: null } });
     await user.click(screen.getByRole('button', { name: 'Subir esta foto' }));
     await screen.findByRole('heading', { name: '¡Listo, certificado recibido!' });
+    // También es lo que ve si la IA (Gemini o Groq) falló o no respondió: lo decide el supervisor.
+    expect(screen.getByText(/Un supervisor revisará su imagen/)).toBeInTheDocument();
 
     const [url, fd] = postMock.mock.calls[1];
     expect(url).toBe('/publico/evatics/subir');

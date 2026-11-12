@@ -12,7 +12,7 @@ const estadoHttp = (e: unknown) => (e as { response?: { status?: number } })?.re
 /** Lo que sugirió la IA, en palabras. Nunca decide: lo dice la propia pantalla. */
 export function sugerenciaIa(a: AnalisisCertificadoEvatics | null): { texto: string; clase: string } {
   if (!a || a.estado === 'EN_COLA') return { texto: 'Aún sin leer', clase: 'vacio' };
-  if (a.estado === 'NO_DISPONIBLE') return { texto: 'Revisar a ojo', clase: 'vacio' };
+  if (a.estado === 'NO_DISPONIBLE') return { texto: 'Sin IA', clase: 'vacio' };
   if (a.esCertificado === false) return { texto: 'No parece un certificado', clase: 'error' };
   if (a.legible === false) return { texto: 'No se lee bien', clase: 'aviso' };
   if (a.nombreCoincide === true) return { texto: 'El nombre coincide', clase: 'ok' };

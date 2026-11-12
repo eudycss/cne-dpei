@@ -62,3 +62,14 @@ describe('nombre del certificado Evatics', () => {
     expect(nombreCorto('carlos andrés', 'Pozo Ruiz')).toBe('Carlos P.');
   });
 });
+
+describe('nombreCoincide con la captura del Área personal', () => {
+  it('"Usted se ha identificado como…" (nombres primero) coincide con el personal (apellidos primero)', () => {
+    expect(nombreCoincide('JORGE ALEXANDER VASQUEZ CADENA', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(true);
+  });
+
+  it('un nombre de pila suelto (el saludo "¡Hola, JORGE!") nunca coincide', () => {
+    expect(nombreCoincide('JORGE', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(false);
+    expect(nombreCoincide('JORGE ALEXANDER', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(false);
+  });
+});

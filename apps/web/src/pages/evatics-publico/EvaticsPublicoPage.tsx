@@ -472,7 +472,7 @@ function Listo({
           </div>
         ) : (
           <p className="fcda-texto">
-            Un técnico supervisor lo revisará. Puede volver a esta página con su cédula para ver si fue aprobado.
+            Un supervisor revisará su imagen. Puede volver a esta página con su cédula para ver si fue aprobado.
           </p>
         )}
       </div>
