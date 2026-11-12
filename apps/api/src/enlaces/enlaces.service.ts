@@ -29,7 +29,9 @@ import {
   TEXTO_BOTON_INGRESAR_CODIGO,
   TEXTO_BOTON_PREGUNTAR,
   type ContactoRecinto,
+  type GrupoAlerta,
 } from './telegram-notifier';
+import { clasificarIntermitencia, evaluarLectura, VENTANA_INTERMITENTE_MS } from './antiparpadeo';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
 import { EncargadosRecintosClient } from './encargados-recintos.client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -226,12 +228,19 @@ export class EnlacesService {
 
     const caidas: EnlaceCaido[] = [];
     const recuperados: EnlaceCaido[] = [];
+    /** Estado confirmado de cada recinto tras este ciclo (ver evaluarLectura). */
+    const confirmados = new Map<string, SheetEnlaceRow['estado']>();
 
     for (const fila of filas) {
       try {
         const anterior = await this.prisma.enlaceRecinto.findUnique({
           where: { codigoRecinto: fila.codigoRecinto },
         });
+        // Un cambio solo se avisa si se lee igual dos ciclos seguidos: la hoja
+        // parpadea (FALLO, ACTIVO, FALLO…) y cada parpadeo eran dos avisos.
+        const { confirmado, cambio } = evaluarLectura(fila.estado, anterior);
+        // Antes del upsert: si este falla, el recinto igual figura en la lista del aviso.
+        if (confirmado) confirmados.set(fila.codigoRecinto, confirmado);
 
         const canton = normalizarCanton(fila.canton);
         await this.prisma.enlaceRecinto.upsert({
@@ -242,26 +251,22 @@ export class EnlacesService {
             canton,
             estado: fila.estado,
             estadoAnterior: null,
+            estadoConfirmado: null,
           },
           update: {
             nombreRecinto: fila.nombreRecinto,
             canton,
             estado: fila.estado,
             estadoAnterior: anterior?.estado ?? null,
+            estadoConfirmado: confirmado,
           },
         });
 
-        // anterior === null (primera vez que se ve este recinto) cuenta como caída:
-        // si no se notifica aquí, un enlace ya caído antes de que arranque el
-        // monitoreo (o tras un reset de base) queda mudo para siempre.
-        const cayoAhora = fila.estado === 'FALLO' && anterior?.estado !== 'FALLO';
-        if (cayoAhora) {
+        if (cambio === 'CAIDA') {
           caidas.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto, canton });
           await this.encolarAvisoInApp(fila.codigoRecinto, fila.nombreRecinto);
         }
-
-        const seRecuperoAhora = fila.estado === 'ACTIVO' && anterior?.estado === 'FALLO';
-        if (seRecuperoAhora) {
+        if (cambio === 'RECUPERACION') {
           recuperados.push({ codigoRecinto: fila.codigoRecinto, nombreRecinto: fila.nombreRecinto, canton });
         }
       } catch (e) {
@@ -271,7 +276,14 @@ export class EnlacesService {
       }
     }
 
-    const historial = await this.reconciliarCaidas(filas);
+    // El historial sigue el estado confirmado, no la lectura cruda: así una caída
+    // se cierra en el mismo ciclo en que se avisa la recuperación ("volvió tras 42
+    // min") y un parpadeo no reinicia el reloj del escalamiento.
+    const filasConfirmadas = filas.flatMap((f) => {
+      const estado = confirmados.get(f.codigoRecinto);
+      return estado ? [{ ...f, estado }] : [];
+    });
+    const historial = await this.reconciliarCaidas(filasConfirmadas);
     await this.registrarRevision({
       hojaOk: true,
       historialOk: historial.ok,
@@ -282,12 +294,17 @@ export class EnlacesService {
     });
     await this.eliminarRecintosFueraDeLaHoja(filas);
     // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
-    if (historial.ok) await this.escalamiento.escalar();
+    const escalados = historial.ok ? await this.escalamiento.escalar() : [];
 
     await this.notificarCaidasPorCorreo(caidas);
-    await this.notificarCaidasPorTelegram(caidas, filas);
     await this.notificarRecuperadosPorCorreo(recuperados);
-    await this.notificarRecuperadosPorTelegram(recuperados, historial.minutosCaido);
+    await this.notificarCicloPorTelegram({
+      caidas,
+      recuperados,
+      escalados,
+      filasConfirmadas,
+      minutosCaido: historial.minutosCaido,
+    });
   }
 
   /** La web, /caidos y la búsqueda por código leen esta tabla, no la hoja: si un
@@ -431,20 +448,6 @@ export class EnlacesService {
     }
   }
 
-  private async notificarRecuperadosPorTelegram(
-    recuperados: EnlaceCaido[],
-    minutosCaido: Map<string, number>,
-  ): Promise<void> {
-    if (recuperados.length === 0) return;
-
-    try {
-      await this.telegram.enviarRecuperados(recuperados, minutosCaido);
-    } catch (e) {
-      const codigos = recuperados.map((c) => c.codigoRecinto).join(', ');
-      this.log.error(`Error enviando Telegram de enlaces recuperados (${codigos}): ${e}`);
-    }
-  }
-
   private async encolarAvisoInApp(codigoRecinto: string, nombreRecinto: string): Promise<void> {
     try {
       await this.notifications.encolarEnlaceCaido({ codigoRecinto, nombreRecinto });
@@ -453,31 +456,67 @@ export class EnlacesService {
     }
   }
 
-  /** Manda a Telegram la lista COMPLETA de recintos caídos en este momento (no solo los
-   * nuevos), marcando los que acaban de caer — un mensaje con solo el/los nuevo(s) haría
-   * pensar al grupo que el resto ya se recuperó, cuando en realidad sigue caído. */
-  private async notificarCaidasPorTelegram(
-    nuevasCaidas: EnlaceCaido[],
-    filas: { codigoRecinto: string; nombreRecinto: string; canton: string; estado: string }[],
-  ): Promise<void> {
-    if (nuevasCaidas.length === 0) return;
+  /**
+   * Un solo aviso de Telegram por ciclo con todo lo que cambió: caídas nuevas (con la
+   * lista COMPLETA de caídos, para que el grupo no crea que el resto ya volvió),
+   * recuperaciones, escalamiento e intermitentes (ver formatearAvisoCiclo). Los
+   * cambios de un recinto que se cae y vuelve seguido dejan de avisarse: se marca
+   * una vez y, si se queda caído, el escalamiento lo recuerda igual.
+   */
+  private async notificarCicloPorTelegram(c: {
+    caidas: EnlaceCaido[];
+    recuperados: EnlaceCaido[];
+    escalados: GrupoAlerta[];
+    /** Las filas con su estado confirmado: la lista del aviso no debe parpadear. */
+    filasConfirmadas: SheetEnlaceRow[];
+    minutosCaido: Map<string, number>;
+  }): Promise<void> {
+    if (c.caidas.length === 0 && c.recuperados.length === 0 && c.escalados.length === 0) return;
 
     try {
-      const comoEnlace = (f: (typeof filas)[number]): EnlaceCaido => ({
+      const caidasHora = await this.caidasUltimaHora([...c.caidas, ...c.recuperados].map((e) => e.codigoRecinto));
+      const clase = (e: EnlaceCaido, cambio: 'CAIDA' | 'RECUPERACION') =>
+        clasificarIntermitencia(cambio, caidasHora.get(e.codigoRecinto) ?? 0);
+      const nuevas = c.caidas.filter((e) => clase(e, 'CAIDA') === 'avisar');
+      const intermitentes = c.caidas.filter((e) => clase(e, 'CAIDA') === 'marcar');
+      const recuperados = c.recuperados.filter((e) => clase(e, 'RECUPERACION') === 'avisar');
+      if (nuevas.length === 0 && recuperados.length === 0 && intermitentes.length === 0 && c.escalados.length === 0) {
+        return;
+      }
+
+      const comoEnlace = (f: SheetEnlaceRow): EnlaceCaido => ({
         codigoRecinto: f.codigoRecinto,
         nombreRecinto: f.nombreRecinto,
         canton: normalizarCanton(f.canton),
       });
-      const todasCaidas = filas.filter((f) => f.estado === 'FALLO').map(comoEnlace);
-      // Los activos sirven para el aviso de "casi todo caído": se listan los pocos que siguen arriba.
-      const activos = filas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace);
-      const nuevosCodigos = new Set(nuevasCaidas.map((c) => c.codigoRecinto));
-      const contactos = await this.contactosDe(nuevosCodigos);
-      await this.telegram.enviarListaActual(todasCaidas, nuevosCodigos, undefined, contactos, activos);
+      const nuevosCodigos = new Set(nuevas.map((e) => e.codigoRecinto));
+      await this.telegram.enviarAvisoCiclo({
+        caidos: c.filasConfirmadas.filter((f) => f.estado === 'FALLO').map(comoEnlace),
+        // Los activos sirven para el aviso de "casi todo caído": se listan los pocos que siguen arriba.
+        activos: c.filasConfirmadas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace),
+        nuevos: nuevosCodigos,
+        contactos: nuevosCodigos.size > 0 ? await this.contactosDe(nuevosCodigos) : undefined,
+        recuperados,
+        minutosCaido: c.minutosCaido,
+        escalamiento: c.escalados,
+        intermitentes,
+      });
     } catch (e) {
-      const codigos = nuevasCaidas.map((c) => c.codigoRecinto).join(', ');
-      this.log.error(`Error enviando Telegram de enlaces caídos (${codigos}): ${e}`);
+      const codigos = [...c.caidas, ...c.recuperados].map((x) => x.codigoRecinto).join(', ');
+      this.log.error(`Error enviando el aviso de enlaces por Telegram (${codigos || 'escalamiento'}): ${e}`);
     }
+  }
+
+  /** Caídas (del historial, ya con la de este ciclo) de la última hora por recinto. */
+  private async caidasUltimaHora(codigos: string[]): Promise<Map<string, number>> {
+    const conteo = new Map<string, number>();
+    if (codigos.length === 0) return conteo;
+    const filas = await this.prisma.enlaceCaida.findMany({
+      where: { codigoRecinto: { in: codigos }, inicio: { gte: new Date(Date.now() - VENTANA_INTERMITENTE_MS) } },
+      select: { codigoRecinto: true },
+    });
+    for (const f of filas) conteo.set(f.codigoRecinto, (conteo.get(f.codigoRecinto) ?? 0) + 1);
+    return conteo;
   }
 
   /** Técnico (distributivo) y persona a quien llamar (hoja de contactos) de cada

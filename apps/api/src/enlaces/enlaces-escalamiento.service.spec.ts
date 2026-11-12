@@ -105,12 +105,10 @@ describe('EnlacesEscalamientoService', () => {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
-  const telegram = { enviarEscalamiento: jest.fn().mockResolvedValue(undefined) };
   const encargados = { encargados: jest.fn() };
   const distributivo = { asignaciones: jest.fn() };
   const service = new EnlacesEscalamientoService(
     prisma as never,
-    telegram as never,
     encargados as never,
     distributivo as never,
   );
@@ -137,7 +135,7 @@ describe('EnlacesEscalamientoService', () => {
   it('busca las caídas abiertas hace 30 min o más que no se avisaron en los últimos 30 min (1 min de margen por el cron)', async () => {
     prisma.enlaceCaida.findMany.mockResolvedValueOnce([]);
 
-    await service.escalar(AHORA);
+    const grupos = await service.escalar(AHORA);
 
     const limite = iso('2026-10-21T14:31:00Z');
     expect(prisma.enlaceCaida.findMany).toHaveBeenCalledWith(
@@ -145,7 +143,7 @@ describe('EnlacesEscalamientoService', () => {
         where: { fin: null, codigoRecinto: { notIn: ['CPE'] }, inicio: { lte: limite }, OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }] },
       }),
     );
-    expect(telegram.enviarEscalamiento).not.toHaveBeenCalled();
+    expect(grupos).toEqual([]);
     expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
   });
 
@@ -188,7 +186,7 @@ describe('EnlacesEscalamientoService', () => {
     prisma.configEnlaces.findUnique.mockResolvedValue(null);
     prisma.enlaceCaida.findMany.mockResolvedValueOnce([caida('c1', '1961', '2026-10-21T12:00:00Z')]).mockResolvedValueOnce([]);
 
-    await service.escalar(AHORA);
+    const grupos = await service.escalar(AHORA);
 
     const limite = iso('2026-10-21T13:01:00Z');
     expect(prisma.enlaceCaida.findMany.mock.calls[0][0].where).toEqual({
@@ -197,7 +195,7 @@ describe('EnlacesEscalamientoService', () => {
       inicio: { lte: limite },
       OR: [{ ultimoAviso: null }, { ultimoAviso: { lte: limite } }],
     });
-    expect(telegram.enviarEscalamiento).toHaveBeenCalledWith(expect.any(Array));
+    expect(grupos).toHaveLength(1);
   });
 
   it('avisa con el encargado, la parroquia, cuántas veces se cayó y marca el aviso', async () => {
@@ -210,9 +208,8 @@ describe('EnlacesEscalamientoService', () => {
         { codigoRecinto: '1961', inicio: iso('2026-10-17T08:00:00Z') },
       ]);
 
-    await service.escalar(AHORA);
+    const grupos = await service.escalar(AHORA);
 
-    const [grupos] = telegram.enviarEscalamiento.mock.calls[0];
     expect(grupos).toEqual([
       {
         zona: null,
@@ -242,19 +239,17 @@ describe('EnlacesEscalamientoService', () => {
     distributivo.asignaciones.mockRejectedValueOnce(new Error('Drive caído'));
     prisma.enlaceCaida.findMany.mockResolvedValueOnce([caida('c1', '1961', '2026-10-21T14:00:00Z')]).mockResolvedValueOnce([]);
 
-    await service.escalar(AHORA);
+    const grupos = await service.escalar(AHORA);
 
-    const [grupos] = telegram.enviarEscalamiento.mock.calls[0];
     expect(grupos[0].recintos[0]).toEqual(expect.objectContaining({ encargado: null, tecnico: null, parroquia: '' }));
     expect(prisma.enlaceCaida.updateMany).toHaveBeenCalled();
   });
 
-  it('marca el aviso antes de enviarlo: si la base falla, no sale nada (no se repite cada 5 min)', async () => {
+  it('marca el aviso antes de devolverlo: si la base falla, no devuelve nada (no se repite cada 5 min)', async () => {
     prisma.enlaceCaida.findMany.mockResolvedValueOnce([caida('c1', '1961', '2026-10-21T14:00:00Z')]).mockResolvedValueOnce([]);
     prisma.enlaceCaida.updateMany.mockRejectedValueOnce(new Error('base caída'));
 
-    await expect(service.escalar(AHORA)).resolves.toBeUndefined();
-    expect(telegram.enviarEscalamiento).not.toHaveBeenCalled();
+    await expect(service.escalar(AHORA)).resolves.toEqual([]);
   });
 
   it('si el ciclo anterior sigue en curso, no se solapa (evita avisos duplicados) y luego sigue normal', async () => {
@@ -278,8 +273,7 @@ describe('EnlacesEscalamientoService', () => {
   it('un error de la base no lanza (no frena el resto del cron) ni marca avisos', async () => {
     prisma.enlaceCaida.findMany.mockRejectedValueOnce(new Error('base caída'));
 
-    await expect(service.escalar(AHORA)).resolves.toBeUndefined();
-    expect(telegram.enviarEscalamiento).not.toHaveBeenCalled();
+    await expect(service.escalar(AHORA)).resolves.toEqual([]);
     expect(prisma.enlaceCaida.updateMany).not.toHaveBeenCalled();
   });
 });

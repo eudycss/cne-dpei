@@ -698,6 +698,9 @@ model EnlaceRecinto {
   canton         String?       @db.VarChar(100)
   estado         EstadoEnlace  @default(ACTIVO)
   estadoAnterior EstadoEnlace? @map("estado_anterior")
+  /// Anti-parpadeo del bot: último estado leído igual dos ciclos seguidos (el que
+  /// ya se avisó). null = recinto recién visto, aún sin confirmar.
+  estadoConfirmado EstadoEnlace? @map("estado_confirmado")
   actualizadoEn  DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   @@map("enlaces_recinto")
