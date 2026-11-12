@@ -1,40 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  render,
-  screen,
-  within,
-  waitFor,
-  fireEvent,
-} from "@testing-library/react";
-import { PERMISO_IDS } from "@cne/shared-validation";
-import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type {
-  AsistenciaCdaDia,
-  AsistenciaCdaFila,
-  OperadorCda,
-} from "@cne/shared-types";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
+import { PERMISO_IDS } from '@cne/shared-validation';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { AsistenciaCdaDia, AsistenciaCdaFila, OperadorCda } from '@cne/shared-types';
 
-import { AsistenciaPanel } from "./AsistenciaPanel";
-import { api } from "../../lib/api";
-import { sileo } from "sileo";
+import { AsistenciaPanel } from './AsistenciaPanel';
+import { api } from '../../lib/api';
+import { sileo } from 'sileo';
 
-vi.mock("../../lib/api", () => ({
-  api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
-}));
-vi.mock("sileo", () => ({
-  sileo: { error: vi.fn(), success: vi.fn(), action: vi.fn() },
-}));
+vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
+vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn(), action: vi.fn() } }));
 
 // Las acciones por rol se prueban en useModulos.test; aquí se fijan a mano.
 const permisos = { actuales: new Set<string>(PERMISO_IDS) };
-vi.mock("../../lib/useModulos", () => ({
-  useModulos: () => ({
-    cargando: false,
-    visibles: new Set(),
-    puedeVer: () => true,
-    puede: (id: string) => permisos.actuales.has(id),
-  }),
+vi.mock('../../lib/useModulos', () => ({
+  useModulos: () => ({ cargando: false, visibles: new Set(), puedeVer: () => true, puede: (id: string) => permisos.actuales.has(id) }),
 }));
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -42,33 +23,26 @@ const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const deleteMock = api.delete as unknown as ReturnType<typeof vi.fn>;
 const putMock = api.put as unknown as ReturnType<typeof vi.fn>;
 
-const operador = (
-  id: string,
-  apellidosNombres: string,
-  cedula: string,
-): OperadorCda => ({
+const operador = (id: string, apellidosNombres: string, cedula: string): OperadorCda => ({
   id,
   numero: null,
   apellidosNombres,
   cedula,
-  telefono: "0987923273",
-  cargo: "OPERADOR CDA",
+  telefono: '0987923273',
+  cargo: 'OPERADOR CDA',
   unidad: null,
-  fechaInicio: "2026-10-20",
+  fechaInicio: '2026-10-20',
   tieneFoto: false,
   activo: true,
-  creadoEn: "2026-10-20T10:00:00.000Z",
+  creadoEn: '2026-10-20T10:00:00.000Z',
 });
 
-const ANA = operador("a", "ANDRADE LÓPEZ ANA MARÍA", "1710034065");
-const LUIS = operador("l", "VEGA TAPIA LUIS ALBERTO", "1002003000");
-const MARIA = operador("m", "CHÁVEZ MORA MARÍA JOSÉ", "0102030400");
+const ANA = operador('a', 'ANDRADE LÓPEZ ANA MARÍA', '1710034065');
+const LUIS = operador('l', 'VEGA TAPIA LUIS ALBERTO', '1002003000');
+const MARIA = operador('m', 'CHÁVEZ MORA MARÍA JOSÉ', '0102030400');
 
 // 13:05 UTC = 08:05 en Ecuador.
-const fila = (
-  o: OperadorCda,
-  over: Partial<AsistenciaCdaFila> = {},
-): AsistenciaCdaFila => ({
+const fila = (o: OperadorCda, over: Partial<AsistenciaCdaFila> = {}): AsistenciaCdaFila => ({
   operador: o,
   entradaEn: null,
   entradaPor: null,
@@ -80,19 +54,16 @@ const fila = (
 
 function dia(over: Partial<AsistenciaCdaDia> = {}): AsistenciaCdaDia {
   return {
-    fecha: "2026-10-22",
+    fecha: '2026-10-22',
     esHoy: true,
     filas: [
-      fila(ANA, {
-        entradaEn: "2026-10-22T13:05:00.000Z",
-        entradaPor: "Técnico Uno",
-      }),
+      fila(ANA, { entradaEn: '2026-10-22T13:05:00.000Z', entradaPor: 'Técnico Uno' }),
       fila(LUIS),
       fila(MARIA, {
-        entradaEn: "2026-10-22T13:00:00.000Z",
-        entradaPor: "Técnico Uno",
-        salidaEn: "2026-10-22T22:45:00.000Z",
-        salidaPor: "Técnico Dos",
+        entradaEn: '2026-10-22T13:00:00.000Z',
+        entradaPor: 'Técnico Uno',
+        salidaEn: '2026-10-22T22:45:00.000Z',
+        salidaPor: 'Técnico Dos',
       }),
     ],
     convocados: 3,
@@ -102,717 +73,395 @@ function dia(over: Partial<AsistenciaCdaDia> = {}): AsistenciaCdaDia {
 
 function renderPanel() {
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <AsistenciaPanel />
     </QueryClientProvider>,
   );
 }
 
-const filaDe = (nombre: string) =>
-  screen.getByRole("rowheader", { name: new RegExp(nombre) }).closest("tr")!;
+const filaDe = (nombre: string) => screen.getByRole('rowheader', { name: new RegExp(nombre) }).closest('tr')!;
 
-describe("AsistenciaPanel", () => {
+describe('AsistenciaPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     permisos.actuales = new Set(PERMISO_IDS);
     getMock.mockResolvedValue({ data: dia() });
   });
 
-  it("resume el día y muestra cada marca con su hora en Ecuador", async () => {
+  it('resume el día y muestra cada marca con su hora en Ecuador', async () => {
     renderPanel();
 
-    const resumen = await screen.findByRole("group", {
-      name: "Resumen del día",
-    });
-    expect(within(resumen).getByText("2 / 3")).toBeInTheDocument();
-    expect(
-      within(resumen).getByText("Pendientes de salida").nextSibling,
-    ).toHaveTextContent("1");
+    const resumen = await screen.findByRole('group', { name: 'Resumen del día' });
+    expect(within(resumen).getByText('2 / 3')).toBeInTheDocument();
+    expect(within(resumen).getByText('Pendientes de salida').nextSibling).toHaveTextContent('1');
 
-    const entradaAna = within(filaDe("ANDRADE")).getByRole("button", {
-      name: "Entrada de ANDRADE LÓPEZ ANA MARÍA",
-    });
-    expect(entradaAna).toHaveAttribute("aria-pressed", "true");
-    expect(entradaAna).toHaveAccessibleDescription(
-      "Registrada a las 08:05 por Técnico Uno. Pulse para quitarla.",
-    );
-    expect(
-      within(filaDe("CHÁVEZ")).getByRole("button", { name: /^Salida de/ }),
-    ).toHaveAccessibleDescription(/17:45 por Técnico Dos/);
-    expect(
-      within(filaDe("VEGA")).getByRole("button", { name: /^Entrada de/ }),
-    ).toHaveAttribute("aria-pressed", "false");
+    const entradaAna = within(filaDe('ANDRADE')).getByRole('button', { name: 'Entrada de ANDRADE LÓPEZ ANA MARÍA' });
+    expect(entradaAna).toHaveAttribute('aria-pressed', 'true');
+    expect(entradaAna).toHaveAccessibleDescription('Registrada a las 08:05 por Técnico Uno. Pulse para quitarla.');
+    expect(within(filaDe('CHÁVEZ')).getByRole('button', { name: /^Salida de/ })).toHaveAccessibleDescription(/17:45 por Técnico Dos/);
+    expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de/ })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it("la salida queda inactiva sin entrada, pero se puede enfocar y explica por qué", async () => {
+  it('la salida queda inactiva sin entrada, pero se puede enfocar y explica por qué', async () => {
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
-    const salida = within(filaDe("VEGA")).getByRole("button", {
-      name: "Salida de VEGA TAPIA LUIS ALBERTO",
-    });
-    expect(salida).toHaveAttribute("aria-disabled", "true");
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    const salida = within(filaDe('VEGA')).getByRole('button', { name: 'Salida de VEGA TAPIA LUIS ALBERTO' });
+    expect(salida).toHaveAttribute('aria-disabled', 'true');
     expect(salida).not.toBeDisabled();
-    expect(salida).toHaveAccessibleDescription(
-      "Pendiente. Primero marque la entrada",
-    );
+    expect(salida).toHaveAccessibleDescription('Pendiente. Primero marque la entrada');
 
     await userEvent.click(salida);
     expect(postMock).not.toHaveBeenCalled();
   });
 
-  it("marcar la entrada actualiza la fila y ofrece deshacer durante 5 s", async () => {
+  it('marcar la entrada actualiza la fila y ofrece deshacer durante 5 s', async () => {
     postMock.mockResolvedValueOnce({
-      data: fila(LUIS, {
-        entradaEn: "2026-10-22T13:30:00.000Z",
-        entradaPor: "Yo Mismo",
-      }),
+      data: fila(LUIS, { entradaEn: '2026-10-22T13:30:00.000Z', entradaPor: 'Yo Mismo' }),
     });
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
+    await screen.findByRole('group', { name: 'Resumen del día' });
 
-    await userEvent.click(
-      within(filaDe("VEGA")).getByRole("button", { name: /^Entrada de VEGA/ }),
-    );
+    await userEvent.click(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ }));
 
-    expect(postMock).toHaveBeenCalledWith("/operadores-cda/l/asistencia", {
-      tipo: "ENTRADA",
-    });
+    expect(postMock).toHaveBeenCalledWith('/operadores-cda/l/asistencia', { tipo: 'ENTRADA' });
     await waitFor(() =>
-      expect(
-        within(filaDe("VEGA")).getByRole("button", {
-          name: /^Entrada de VEGA/,
-        }),
-      ).toHaveAttribute("aria-pressed", "true"),
+      expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAttribute('aria-pressed', 'true'),
     );
-    expect(
-      within(filaDe("VEGA")).getByRole("button", { name: /^Entrada de VEGA/ }),
-    ).toHaveAccessibleDescription(/08:30 por Yo Mismo/);
+    expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAccessibleDescription(/08:30 por Yo Mismo/);
 
     const aviso = (sileo.action as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(aviso).toMatchObject({
-      title: "Entrada registrada",
-      duration: 5000,
-      button: { title: "Deshacer" },
-    });
+    expect(aviso).toMatchObject({ title: 'Entrada registrada', duration: 5000, button: { title: 'Deshacer' } });
     deleteMock.mockResolvedValueOnce({});
     aviso.button.onClick();
     // Solo quita la marca que se acaba de poner (si otro técnico la cambió, la API responde 409).
     await waitFor(() =>
       expect(deleteMock).toHaveBeenCalledWith(
-        `/operadores-cda/l/asistencia/ENTRADA?marcaEn=${encodeURIComponent("2026-10-22T13:30:00.000Z")}`,
+        `/operadores-cda/l/asistencia/ENTRADA?marcaEn=${encodeURIComponent('2026-10-22T13:30:00.000Z')}`,
       ),
     );
   });
 
-  it("si otro técnico ya marcó, muestra el mensaje de la API y recarga", async () => {
-    postMock.mockRejectedValueOnce({
-      response: {
-        data: {
-          message:
-            "La entrada de hoy ya estaba registrada a las 08:01 por Técnico Dos",
-        },
-      },
-    });
+  it('si otro técnico ya marcó, muestra el mensaje de la API y recarga', async () => {
+    postMock.mockRejectedValueOnce({ response: { data: { message: 'La entrada de hoy ya estaba registrada a las 08:01 por Técnico Dos' } } });
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
+    await screen.findByRole('group', { name: 'Resumen del día' });
 
-    await userEvent.click(
-      within(filaDe("VEGA")).getByRole("button", { name: /^Entrada de VEGA/ }),
-    );
+    await userEvent.click(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ }));
 
     await waitFor(() =>
-      expect(sileo.error).toHaveBeenCalledWith({
-        title:
-          "La entrada de hoy ya estaba registrada a las 08:01 por Técnico Dos",
-      }),
+      expect(sileo.error).toHaveBeenCalledWith({ title: 'La entrada de hoy ya estaba registrada a las 08:01 por Técnico Dos' }),
     );
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
   });
 
-  it("pulsar una marca pide confirmación antes de quitarla", async () => {
-    const confirmar = vi
-      .spyOn(window, "confirm")
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
+  it('pulsar una marca pide confirmación antes de quitarla', async () => {
+    const confirmar = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     deleteMock.mockResolvedValueOnce({});
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
-    const entradaAna = within(filaDe("ANDRADE")).getByRole("button", {
-      name: /^Entrada de ANDRADE/,
-    });
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    const entradaAna = within(filaDe('ANDRADE')).getByRole('button', { name: /^Entrada de ANDRADE/ });
 
     await userEvent.click(entradaAna);
     expect(deleteMock).not.toHaveBeenCalled();
     await userEvent.click(entradaAna);
 
-    expect(confirmar).toHaveBeenLastCalledWith(
-      "¿Quitar la entrada de hoy de ANDRADE LÓPEZ ANA MARÍA?",
-    );
+    expect(confirmar).toHaveBeenLastCalledWith('¿Quitar la entrada de hoy de ANDRADE LÓPEZ ANA MARÍA?');
     await waitFor(() =>
       expect(deleteMock).toHaveBeenCalledWith(
-        `/operadores-cda/a/asistencia/ENTRADA?marcaEn=${encodeURIComponent("2026-10-22T13:05:00.000Z")}`,
+        `/operadores-cda/a/asistencia/ENTRADA?marcaEn=${encodeURIComponent('2026-10-22T13:05:00.000Z')}`,
       ),
     );
   });
 
-  it("filtra por estado y busca sin tildes", async () => {
+  it('filtra por estado y busca sin tildes', async () => {
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
+    await screen.findByRole('group', { name: 'Resumen del día' });
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Sin entrada · 1" }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Sin entrada · 1" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getAllByRole("rowheader")).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Sin entrada · 1' }));
+    expect(screen.getByRole('button', { name: 'Sin entrada · 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('rowheader')).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole("button", { name: "Todos · 3" }));
-    await userEvent.type(
-      screen.getByRole("textbox", {
-        name: "Buscar operador por nombre o cédula",
-      }),
-      "chavez",
-    );
-    const filas = screen.getAllByRole("rowheader");
+    await userEvent.click(screen.getByRole('button', { name: 'Todos · 3' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Buscar operador por nombre o cédula' }), 'chavez');
+    const filas = screen.getAllByRole('rowheader');
     expect(filas).toHaveLength(1);
-    expect(filas[0]).toHaveTextContent("CHÁVEZ MORA MARÍA JOSÉ");
+    expect(filas[0]).toHaveTextContent('CHÁVEZ MORA MARÍA JOSÉ');
     // Bajo el nombre va el cargo abreviado, como en Figma.
-    expect(filas[0]).toHaveTextContent("Operador CDA");
+    expect(filas[0]).toHaveTextContent('Operador CDA');
 
     // Nombre y apellido en otro orden, saltando el segundo apellido.
-    const buscador = screen.getByRole("textbox", {
-      name: "Buscar operador por nombre o cédula",
-    });
+    const buscador = screen.getByRole('textbox', { name: 'Buscar operador por nombre o cédula' });
     await userEvent.clear(buscador);
-    await userEvent.type(buscador, "maría chavez");
-    expect(screen.getAllByRole("rowheader")).toHaveLength(1);
-    expect(screen.getAllByRole("rowheader")[0]).toHaveTextContent(
-      "CHÁVEZ MORA MARÍA JOSÉ",
-    );
+    await userEvent.type(buscador, 'maría chavez');
+    expect(screen.getAllByRole('rowheader')).toHaveLength(1);
+    expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('CHÁVEZ MORA MARÍA JOSÉ');
   });
 
-  it("el marcado masivo confirma y envía solo a los pendientes visibles", async () => {
-    postMock.mockResolvedValueOnce({
-      data: { marcados: 1, omitidos: 0, ignorados: 0 },
-    });
+  it('el marcado masivo confirma y envía solo a los pendientes visibles', async () => {
+    postMock.mockResolvedValueOnce({ data: { marcados: 1, omitidos: 0, ignorados: 0 } });
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
+    await screen.findByRole('group', { name: 'Resumen del día' });
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Marcar entrada a pendientes (1)" }),
-    );
-    const dialogo = screen.getByRole("dialog", {
-      name: "Marcar entrada a 1 operador(es)",
-    });
-    await userEvent.click(
-      within(dialogo).getByRole("button", { name: "Marcar entrada" }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Marcar entrada a pendientes (1)' }));
+    const dialogo = screen.getByRole('dialog', { name: 'Marcar entrada a 1 operador(es)' });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Marcar entrada' }));
 
-    expect(postMock).toHaveBeenCalledWith("/operadores-cda/asistencia/masiva", {
-      tipo: "ENTRADA",
-      operadorIds: ["l"],
-    });
-    await waitFor(() =>
-      expect(sileo.success).toHaveBeenCalledWith({
-        title: "1 entrada(s) registrada(s)",
-        description: undefined,
-      }),
-    );
+    expect(postMock).toHaveBeenCalledWith('/operadores-cda/asistencia/masiva', { tipo: 'ENTRADA', operadorIds: ['l'] });
+    await waitFor(() => expect(sileo.success).toHaveBeenCalledWith({ title: '1 entrada(s) registrada(s)', description: undefined }));
   });
 
-  describe("el técnico supervisor y su propia fila", () => {
-    it("ve su fila como solo consulta: sus checks no marcan y explica por qué", async () => {
-      getMock.mockResolvedValue({ data: dia({ operadorPropioId: "l" }) });
+  describe('el técnico supervisor y su propia fila', () => {
+    it('ve su fila como solo consulta: sus checks no marcan y explica por qué', async () => {
+      getMock.mockResolvedValue({ data: dia({ operadorPropioId: 'l' }) });
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
+      await screen.findByRole('group', { name: 'Resumen del día' });
 
-      const propia = filaDe("VEGA");
-      expect(
-        within(propia).getByText("Usted (solo consulta)", { exact: false }),
-      ).toBeInTheDocument();
-      const entrada = within(propia).getByRole("button", {
-        name: "Entrada de VEGA TAPIA LUIS ALBERTO",
-      });
-      expect(entrada).toHaveAttribute("aria-disabled", "true");
-      expect(entrada).toHaveAccessibleDescription(
-        "Pendiente. Es su propia asistencia: la registra otro técnico",
-      );
+      const propia = filaDe('VEGA');
+      expect(within(propia).getByText('Usted (solo consulta)', { exact: false })).toBeInTheDocument();
+      const entrada = within(propia).getByRole('button', { name: 'Entrada de VEGA TAPIA LUIS ALBERTO' });
+      expect(entrada).toHaveAttribute('aria-disabled', 'true');
+      expect(entrada).toHaveAccessibleDescription('Pendiente. Es su propia asistencia: la registra otro técnico');
       await userEvent.click(entrada);
       expect(postMock).not.toHaveBeenCalled();
     });
 
-    it("tampoco puede quitarse una marca que ya tiene", async () => {
-      getMock.mockResolvedValue({ data: dia({ operadorPropioId: "a" }) });
-      const confirmar = vi.spyOn(window, "confirm");
+    it('tampoco puede quitarse una marca que ya tiene', async () => {
+      getMock.mockResolvedValue({ data: dia({ operadorPropioId: 'a' }) });
+      const confirmar = vi.spyOn(window, 'confirm');
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
+      await screen.findByRole('group', { name: 'Resumen del día' });
 
-      await userEvent.click(
-        within(filaDe("ANDRADE")).getByRole("button", {
-          name: /^Entrada de ANDRADE/,
-        }),
-      );
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Entrada de ANDRADE/ }));
       expect(confirmar).not.toHaveBeenCalled();
       expect(deleteMock).not.toHaveBeenCalled();
       confirmar.mockRestore();
     });
 
-    it("el marcado masivo lo deja fuera", async () => {
-      getMock.mockResolvedValue({ data: dia({ operadorPropioId: "l" }) });
+    it('el marcado masivo lo deja fuera', async () => {
+      getMock.mockResolvedValue({ data: dia({ operadorPropioId: 'l' }) });
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
+      await screen.findByRole('group', { name: 'Resumen del día' });
       // VEGA era el único pendiente de entrada: sin él no queda nadie a quien marcar.
-      expect(
-        screen.getByRole("button", { name: "Marcar entrada a pendientes (0)" }),
-      ).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Marcar entrada a pendientes (0)' })).toBeDisabled();
     });
 
     it('un día pasado: su fila no tiene "Corregir", las demás sí', async () => {
-      const pasado = dia({
-        fecha: "2026-10-21",
-        esHoy: false,
-        operadorPropioId: "a",
-        filas: [fila(ANA), fila(LUIS)],
-      });
-      getMock
-        .mockResolvedValueOnce({ data: dia() })
-        .mockResolvedValue({ data: pasado });
+      const pasado = dia({ fecha: '2026-10-21', esHoy: false, operadorPropioId: 'a', filas: [fila(ANA), fila(LUIS)] });
+      getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValue({ data: pasado });
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
-      fireEvent.change(screen.getByLabelText("Día"), {
-        target: { value: "2026-10-21" },
-      });
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
       await screen.findByText(/Para cambiar una marca use “Corregir”/);
 
-      expect(
-        within(filaDe("ANDRADE")).queryByRole("button", { name: /^Corregir/ }),
-      ).not.toBeInTheDocument();
-      expect(
-        within(filaDe("ANDRADE")).getByText(
-          "Es su propia asistencia: la registra otro técnico",
-        ),
-      ).toBeInTheDocument();
-      expect(
-        within(filaDe("VEGA")).getByRole("button", {
-          name: /^Corregir asistencia de VEGA/,
-        }),
-      ).toBeInTheDocument();
+      expect(within(filaDe('ANDRADE')).queryByRole('button', { name: /^Corregir/ })).not.toBeInTheDocument();
+      expect(within(filaDe('ANDRADE')).getByText('Es su propia asistencia: la registra otro técnico')).toBeInTheDocument();
+      expect(within(filaDe('VEGA')).getByRole('button', { name: /^Corregir asistencia de VEGA/ })).toBeInTheDocument();
     });
   });
 
-  it("un día pasado es solo consulta: sin marcado masivo y con los checks deshabilitados", async () => {
-    getMock
-      .mockResolvedValueOnce({ data: dia() })
-      .mockResolvedValueOnce({
-        data: dia({ fecha: "2026-10-21", esHoy: false }),
-      });
+  it('un día pasado es solo consulta: sin marcado masivo y con los checks deshabilitados', async () => {
+    getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValueOnce({ data: dia({ fecha: '2026-10-21', esHoy: false }) });
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
+    await screen.findByRole('group', { name: 'Resumen del día' });
 
-    fireEvent.change(screen.getByLabelText("Día"), {
-      target: { value: "2026-10-21" },
-    });
+    fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
 
-    expect(
-      await screen.findByText(/Está viendo un día pasado/),
-    ).toBeInTheDocument();
-    expect(getMock).toHaveBeenLastCalledWith(
-      "/operadores-cda/asistencia?fecha=2026-10-21&grupo=OPERADOR",
-    );
-    expect(
-      screen.queryByRole("button", { name: /pendientes/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(filaDe("VEGA")).getByRole("button", { name: /^Entrada de VEGA/ }),
-    ).toHaveAttribute("aria-disabled", "true");
+    expect(await screen.findByText(/Está viendo un día pasado/)).toBeInTheDocument();
+    expect(getMock).toHaveBeenLastCalledWith('/operadores-cda/asistencia?fecha=2026-10-21&grupo=OPERADOR');
+    expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
+    expect(within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ })).toHaveAttribute('aria-disabled', 'true');
   });
 
-  describe("corregir un día pasado", () => {
+  describe('corregir un día pasado', () => {
     const PASADO = dia({
-      fecha: "2026-10-21",
+      fecha: '2026-10-21',
       esHoy: false,
-      filas: [
-        fila(ANA, {
-          entradaEn: "2026-10-21T13:05:00.000Z",
-          entradaPor: "Técnico Uno",
-        }),
-        fila(LUIS),
-      ],
+      filas: [fila(ANA, { entradaEn: '2026-10-21T13:05:00.000Z', entradaPor: 'Técnico Uno' }), fila(LUIS)],
     });
 
     async function irAlDiaPasado() {
-      getMock
-        .mockResolvedValueOnce({ data: dia() })
-        .mockResolvedValue({ data: PASADO });
+      getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValue({ data: PASADO });
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
-      fireEvent.change(screen.getByLabelText("Día"), {
-        target: { value: "2026-10-21" },
-      });
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
       await screen.findByText(/Para cambiar una marca use “Corregir”/);
     }
 
-    it("hoy no hay botón Corregir (hoy se marca en la lista)", async () => {
+    it('hoy no hay botón Corregir (hoy se marca en la lista)', async () => {
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
-      expect(
-        screen.queryByRole("button", { name: /^Corregir asistencia/ }),
-      ).not.toBeInTheDocument();
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      expect(screen.queryByRole('button', { name: /^Corregir asistencia/ })).not.toBeInTheDocument();
     });
 
-    it("sin la acción, el día pasado sigue siendo solo consulta", async () => {
-      permisos.actuales = new Set(["cda.asistencia.marcar"]);
-      getMock
-        .mockResolvedValueOnce({ data: dia() })
-        .mockResolvedValue({ data: PASADO });
+    it('sin la acción, el día pasado sigue siendo solo consulta', async () => {
+      permisos.actuales = new Set(['cda.asistencia.marcar']);
+      getMock.mockResolvedValueOnce({ data: dia() }).mockResolvedValue({ data: PASADO });
       renderPanel();
-      await screen.findByRole("group", { name: "Resumen del día" });
-      fireEvent.change(screen.getByLabelText("Día"), {
-        target: { value: "2026-10-21" },
-      });
-      expect(
-        await screen.findByText(/día pasado: solo consulta/),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /^Corregir asistencia/ }),
-      ).not.toBeInTheDocument();
+      await screen.findByRole('group', { name: 'Resumen del día' });
+      fireEvent.change(screen.getByLabelText('Día'), { target: { value: '2026-10-21' } });
+      expect(await screen.findByText(/día pasado: solo consulta/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Corregir asistencia/ })).not.toBeInTheDocument();
     });
 
-    it("trae las horas que había, exige el motivo y no llama a la API si falta", async () => {
+    it('trae las horas que había, exige el motivo y no llama a la API si falta', async () => {
       await irAlDiaPasado();
-      await userEvent.click(
-        within(filaDe("ANDRADE")).getByRole("button", {
-          name: "Corregir asistencia de ANDRADE LÓPEZ ANA MARÍA",
-        }),
-      );
-      const dialogo = await screen.findByRole("dialog", {
-        name: "Corregir asistencia del 21/10/2026",
-      });
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: 'Corregir asistencia de ANDRADE LÓPEZ ANA MARÍA' }));
+      const dialogo = await screen.findByRole('dialog', { name: 'Corregir asistencia del 21/10/2026' });
 
-      expect(within(dialogo).getByLabelText("Entrada")).toHaveValue("08:05");
-      expect(
-        within(dialogo).getByLabelText("Entrada"),
-      ).toHaveAccessibleDescription("Antes: 08:05");
-      expect(within(dialogo).getByLabelText("Salida")).toHaveValue("");
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveValue('08:05');
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveAccessibleDescription('Antes: 08:05');
+      expect(within(dialogo).getByLabelText('Salida')).toHaveValue('');
 
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Guardar corrección" }),
-      );
-      const motivo = within(dialogo).getByLabelText("Motivo de la corrección");
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      const motivo = within(dialogo).getByLabelText('Motivo de la corrección');
       expect(motivo).toHaveFocus();
-      expect(motivo).toHaveAttribute("aria-invalid", "true");
-      expect(motivo).toHaveAccessibleDescription(
-        /no incluya cédulas.*Explique el motivo \(mínimo 10 caracteres\)/,
-      );
+      expect(motivo).toHaveAttribute('aria-invalid', 'true');
+      expect(motivo).toHaveAccessibleDescription(/no incluya cédulas.*Explique el motivo \(mínimo 10 caracteres\)/);
       expect(putMock).not.toHaveBeenCalled();
     });
 
     it('"Sin entrada" vacía la hora y se manda null', async () => {
-      putMock.mockResolvedValueOnce({
-        data: {
-          fila: PASADO.filas[1],
-          antes: { entradaEn: null, salidaEn: null },
-        },
-      });
+      putMock.mockResolvedValueOnce({ data: { fila: PASADO.filas[1], antes: { entradaEn: null, salidaEn: null } } });
       await irAlDiaPasado();
-      await userEvent.click(
-        within(filaDe("ANDRADE")).getByRole("button", {
-          name: /^Corregir asistencia/,
-        }),
-      );
-      const dialogo = await screen.findByRole("dialog", {
-        name: /Corregir asistencia/,
-      });
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Sin entrada" }),
-      );
-      expect(within(dialogo).getByLabelText("Entrada")).toHaveValue("");
-      await userEvent.type(
-        within(dialogo).getByLabelText("Motivo de la corrección"),
-        "No asistió, se marcó por error",
-      );
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Guardar corrección" }),
-      );
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sin entrada' }));
+      expect(within(dialogo).getByLabelText('Entrada')).toHaveValue('');
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'No asistió, se marcó por error');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
       await waitFor(() =>
-        expect(putMock).toHaveBeenCalledWith(
-          "/operadores-cda/a/asistencia/2026-10-21",
-          {
-            entrada: null,
-            salida: null,
-            motivo: "No asistió, se marcó por error",
-          },
-        ),
+        expect(putMock).toHaveBeenCalledWith('/operadores-cda/a/asistencia/2026-10-21', {
+          entrada: null,
+          salida: null,
+          motivo: 'No asistió, se marcó por error',
+        }),
       );
     });
 
-    it("salida antes de la entrada: error en Salida", async () => {
+    it('salida antes de la entrada: error en Salida', async () => {
       await irAlDiaPasado();
-      await userEvent.click(
-        within(filaDe("ANDRADE")).getByRole("button", {
-          name: /^Corregir asistencia/,
-        }),
-      );
-      const dialogo = await screen.findByRole("dialog", {
-        name: /Corregir asistencia/,
-      });
-      fireEvent.change(within(dialogo).getByLabelText("Salida"), {
-        target: { value: "07:00" },
-      });
-      await userEvent.type(
-        within(dialogo).getByLabelText("Motivo de la corrección"),
-        "Error de digitación del técnico",
-      );
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Guardar corrección" }),
-      );
-      expect(within(dialogo).getByLabelText("Salida")).toHaveFocus();
-      expect(
-        within(dialogo).getByText("La salida debe ser posterior a la entrada"),
-      ).toBeInTheDocument();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      fireEvent.change(within(dialogo).getByLabelText('Salida'), { target: { value: '07:00' } });
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'Error de digitación del técnico');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      expect(within(dialogo).getByLabelText('Salida')).toHaveFocus();
+      expect(within(dialogo).getByText('La salida debe ser posterior a la entrada')).toBeInTheDocument();
       expect(putMock).not.toHaveBeenCalled();
     });
 
-    it("guarda la corrección (vacío = sin marca), avisa, cierra y refresca el día", async () => {
-      putMock.mockResolvedValueOnce({
-        data: {
-          fila: PASADO.filas[1],
-          antes: { entradaEn: null, salidaEn: null },
-        },
-      });
+    it('guarda la corrección (vacío = sin marca), avisa, cierra y refresca el día', async () => {
+      putMock.mockResolvedValueOnce({ data: { fila: PASADO.filas[1], antes: { entradaEn: null, salidaEn: null } } });
       await irAlDiaPasado();
-      await userEvent.click(
-        within(filaDe("VEGA")).getByRole("button", {
-          name: "Corregir asistencia de VEGA TAPIA LUIS ALBERTO",
-        }),
-      );
-      const dialogo = await screen.findByRole("dialog", {
-        name: /Corregir asistencia/,
-      });
-      expect(
-        within(dialogo).getByRole("button", { name: "Sin entrada" }),
-      ).toHaveAttribute("aria-pressed", "true");
-      fireEvent.change(within(dialogo).getByLabelText("Entrada"), {
-        target: { value: "08:10" },
-      });
-      expect(
-        within(dialogo).getByRole("button", { name: "Sin entrada" }),
-      ).toHaveAttribute("aria-pressed", "false");
-      await userEvent.type(
-        within(dialogo).getByLabelText("Motivo de la corrección"),
-        "  Vino, pero no se registró su entrada  ",
-      );
+      await userEvent.click(within(filaDe('VEGA')).getByRole('button', { name: 'Corregir asistencia de VEGA TAPIA LUIS ALBERTO' }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      expect(within(dialogo).getByRole('button', { name: 'Sin entrada' })).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.change(within(dialogo).getByLabelText('Entrada'), { target: { value: '08:10' } });
+      expect(within(dialogo).getByRole('button', { name: 'Sin entrada' })).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), '  Vino, pero no se registró su entrada  ');
       const pedidosAntes = getMock.mock.calls.length;
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Guardar corrección" }),
-      );
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
 
       await waitFor(() =>
-        expect(putMock).toHaveBeenCalledWith(
-          "/operadores-cda/l/asistencia/2026-10-21",
-          {
-            entrada: "08:10",
-            salida: null,
-            motivo: "Vino, pero no se registró su entrada",
-          },
-        ),
+        expect(putMock).toHaveBeenCalledWith('/operadores-cda/l/asistencia/2026-10-21', {
+          entrada: '08:10',
+          salida: null,
+          motivo: 'Vino, pero no se registró su entrada',
+        }),
       );
-      await waitFor(() =>
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-      );
-      expect(sileo.success).toHaveBeenCalledWith({
-        title: "Asistencia corregida",
-        description: "VEGA TAPIA LUIS ALBERTO · 21/10/2026",
-      });
-      await waitFor(() =>
-        expect(getMock.mock.calls.length).toBeGreaterThan(pedidosAntes),
-      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(sileo.success).toHaveBeenCalledWith({ title: 'Asistencia corregida', description: 'VEGA TAPIA LUIS ALBERTO · 21/10/2026' });
+      await waitFor(() => expect(getMock.mock.calls.length).toBeGreaterThan(pedidosAntes));
     });
 
-    it("si la API rechaza, muestra su mensaje y no cierra", async () => {
-      putMock.mockRejectedValueOnce({
-        response: {
-          data: { message: "No hay cambios: la asistencia ya está así" },
-        },
-      });
+    it('si la API rechaza, muestra su mensaje y no cierra', async () => {
+      putMock.mockRejectedValueOnce({ response: { data: { message: 'No hay cambios: la asistencia ya está así' } } });
       await irAlDiaPasado();
-      await userEvent.click(
-        within(filaDe("ANDRADE")).getByRole("button", {
-          name: /^Corregir asistencia/,
-        }),
-      );
-      const dialogo = await screen.findByRole("dialog", {
-        name: /Corregir asistencia/,
-      });
-      await userEvent.type(
-        within(dialogo).getByLabelText("Motivo de la corrección"),
-        "Revisión del reporte semanal",
-      );
-      await userEvent.click(
-        within(dialogo).getByRole("button", { name: "Guardar corrección" }),
-      );
-      await waitFor(() =>
-        expect(sileo.error).toHaveBeenCalledWith({
-          title: "No hay cambios: la asistencia ya está así",
-        }),
-      );
-      expect(
-        screen.getByRole("dialog", { name: /Corregir asistencia/ }),
-      ).toBeInTheDocument();
+      await userEvent.click(within(filaDe('ANDRADE')).getByRole('button', { name: /^Corregir asistencia/ }));
+      const dialogo = await screen.findByRole('dialog', { name: /Corregir asistencia/ });
+      await userEvent.type(within(dialogo).getByLabelText('Motivo de la corrección'), 'Revisión del reporte semanal');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar corrección' }));
+      await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'No hay cambios: la asistencia ya está así' }));
+      expect(screen.getByRole('dialog', { name: /Corregir asistencia/ })).toBeInTheDocument();
     });
   });
 
-  it("sin la acción de marcar a mano: no hay marcado masivo y los checks explican por qué", async () => {
-    permisos.actuales = new Set(["cda.asistencia.qr"]);
+  it('sin la acción de marcar a mano: no hay marcado masivo y los checks explican por qué', async () => {
+    permisos.actuales = new Set(['cda.asistencia.qr']);
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
-    expect(
-      screen.queryByRole("button", { name: /pendientes/ }),
-    ).not.toBeInTheDocument();
-    const entrada = within(filaDe("VEGA")).getByRole("button", {
-      name: /^Entrada de VEGA/,
-    });
-    expect(entrada).toHaveAttribute("aria-disabled", "true");
-    expect(entrada).toHaveAccessibleDescription(
-      /Su rol no tiene permiso para marcar a mano/,
-    );
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    expect(screen.queryByRole('button', { name: /pendientes/ })).not.toBeInTheDocument();
+    const entrada = within(filaDe('VEGA')).getByRole('button', { name: /^Entrada de VEGA/ });
+    expect(entrada).toHaveAttribute('aria-disabled', 'true');
+    expect(entrada).toHaveAccessibleDescription(/Su rol no tiene permiso para marcar a mano/);
     // Escanear el carnet es otra acción: sigue disponible.
-    expect(
-      screen.getByRole("button", { name: "Escanear carnet" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Exportar" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Escanear carnet' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Exportar' })).not.toBeInTheDocument();
   });
 
   it('sin la acción de escanear no aparece "Escanear carnet"', async () => {
-    permisos.actuales = new Set([
-      "cda.asistencia.marcar",
-      "cda.asistencia.exportar",
-    ]);
+    permisos.actuales = new Set(['cda.asistencia.marcar', 'cda.asistencia.exportar']);
     renderPanel();
-    await screen.findByRole("group", { name: "Resumen del día" });
-    expect(
-      screen.queryByRole("button", { name: "Escanear carnet" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Exportar" }),
-    ).toBeInTheDocument();
+    await screen.findByRole('group', { name: 'Resumen del día' });
+    expect(screen.queryByRole('button', { name: 'Escanear carnet' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
   });
 });
 
-describe("AsistenciaPanel: solo los convocados", () => {
+describe('AsistenciaPanel: solo los convocados', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     permisos.actuales = new Set(PERMISO_IDS);
   });
 
-  it("con convocatoria muestra solo a los convocados; los demás se ven a pedido, marcados como no convocados", async () => {
+  it('con convocatoria muestra solo a los convocados; los demás se ven a pedido, marcados como no convocados', async () => {
     getMock.mockResolvedValue({
-      data: dia({
-        convocados: 2,
-        filas: [
-          fila(ANA, { convocado: true }),
-          fila(LUIS, { convocado: true }),
-          fila(MARIA, { convocado: false }),
-        ],
-      }),
+      data: dia({ convocados: 2, filas: [fila(ANA, { convocado: true }), fila(LUIS, { convocado: true }), fila(MARIA, { convocado: false })] }),
     });
     renderPanel();
-    await screen.findByRole("rowheader", { name: /ANDRADE/ });
-    expect(
-      screen.queryByRole("rowheader", { name: /CHÁVEZ/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/2 convocados este día · 1 no convocado \(sin falta\)/),
-    ).toBeInTheDocument();
+    await screen.findByRole('rowheader', { name: /ANDRADE/ });
+    expect(screen.queryByRole('rowheader', { name: /CHÁVEZ/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/2 convocados este día · 1 no convocado \(sin falta\)/)).toBeInTheDocument();
     // Los KPI son de los convocados.
-    expect(
-      within(screen.getByRole("group", { name: "Resumen del día" })).getByText(
-        "Presentes hoy",
-      ).nextSibling,
-    ).toHaveTextContent("0 / 2");
+    expect(within(screen.getByRole('group', { name: 'Resumen del día' })).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Ver no convocados (1)" }),
-    );
-    expect(
-      within(filaDe("CHÁVEZ")).getByText(/No convocado/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Ocultar no convocados" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole('button', { name: 'Ver no convocados (1)' }));
+    expect(within(filaDe('CHÁVEZ')).getByText(/No convocado/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ocultar no convocados' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it("quien vino sin estar convocado se ve siempre; al ver a los demás, los resúmenes y los masivos siguen siendo de los convocados", async () => {
-    const PEDRO = operador("p", "PAZ PONCE PEDRO", "0909090909");
+  it('quien vino sin estar convocado se ve siempre; al ver a los demás, los resúmenes y los masivos siguen siendo de los convocados', async () => {
+    const PEDRO = operador('p', 'PAZ PONCE PEDRO', '0909090909');
     getMock.mockResolvedValue({
       data: dia({
         convocados: 2,
         filas: [
           fila(ANA, { convocado: true }),
           fila(LUIS, { convocado: true }),
-          fila(MARIA, {
-            convocado: false,
-            entradaEn: "2026-10-22T13:00:00.000Z",
-            entradaPor: "Técnico Uno",
-          }),
+          fila(MARIA, { convocado: false, entradaEn: '2026-10-22T13:00:00.000Z', entradaPor: 'Técnico Uno' }),
           fila(PEDRO, { convocado: false }),
         ],
       }),
     });
     renderPanel();
-    expect(
-      await screen.findByRole("rowheader", { name: /CHÁVEZ/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("rowheader", { name: /PAZ/ }),
-    ).not.toBeInTheDocument();
-    const resumen = screen.getByRole("group", { name: "Resumen del día" });
-    expect(
-      within(resumen).getByText("Presentes hoy").nextSibling,
-    ).toHaveTextContent("0 / 2");
-    expect(
-      screen.getByRole("button", { name: "Marcar entrada a pendientes (2)" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('rowheader', { name: /CHÁVEZ/ })).toBeInTheDocument();
+    expect(screen.queryByRole('rowheader', { name: /PAZ/ })).not.toBeInTheDocument();
+    const resumen = screen.getByRole('group', { name: 'Resumen del día' });
+    expect(within(resumen).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
+    expect(screen.getByRole('button', { name: 'Marcar entrada a pendientes (2)' })).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Ver no convocados (1)" }),
-    );
-    expect(screen.getByRole("rowheader", { name: /PAZ/ })).toBeInTheDocument();
-    expect(
-      within(resumen).getByText("Presentes hoy").nextSibling,
-    ).toHaveTextContent("0 / 2");
-    expect(
-      screen.getByRole("button", { name: "Marcar entrada a pendientes (2)" }),
-    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ver no convocados (1)' }));
+    expect(screen.getByRole('rowheader', { name: /PAZ/ })).toBeInTheDocument();
+    expect(within(resumen).getByText('Presentes hoy').nextSibling).toHaveTextContent('0 / 2');
+    expect(screen.getByRole('button', { name: 'Marcar entrada a pendientes (2)' })).toBeInTheDocument();
   });
 
-  it("un día sin convocatoria avisa que nadie tiene falta y muestra a todos para poder marcarlos", async () => {
-    getMock.mockResolvedValue({
-      data: dia({
-        convocados: 0,
-        filas: [
-          fila(ANA, { convocado: false }),
-          fila(LUIS, { convocado: false }),
-        ],
-      }),
-    });
+  it('un día sin convocatoria avisa que nadie tiene falta y muestra a todos para poder marcarlos', async () => {
+    getMock.mockResolvedValue({ data: dia({ convocados: 0, filas: [fila(ANA, { convocado: false }), fila(LUIS, { convocado: false })] }) });
     renderPanel();
-    expect(
-      await screen.findByText(
-        /No hay convocatoria ni parejas para este día: nadie tiene falta/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("rowheader", { name: /ANDRADE/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: /VEGA/ })).toBeInTheDocument();
+    expect(await screen.findByText(/No hay convocatoria ni parejas para este día: nadie tiene falta/)).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /ANDRADE/ })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /VEGA/ })).toBeInTheDocument();
     expect(screen.queryByText(/No convocado/)).not.toBeInTheDocument();
   });
 });
