@@ -76,8 +76,9 @@ const MARGEN_LLEGADA_METROS_DEFAULT = 150;
 type PersonaCdaRecinto = { apellidosNombres: string; telefono: string | null; grupo: string; usuarioId: string | null };
 
 /**
- * Personas de las parejas CDA del recinto para la app. Va primero la pareja de
- * quien tiene la sesión (o la del kit si no está en ninguna); las demás, con su
+ * Personas de la pareja CDA de quien tiene la sesión (o la del kit si no está
+ * en ninguna). Aunque al recinto vayan varias parejas, cada quien ve solo la
+ * suya. Si no se puede identificar ninguna, se listan las del recinto con su
  * número ("2.ª pareja") porque la APK solo muestra el nombre y este texto.
  */
 export function parejasDelRecinto(
@@ -89,7 +90,7 @@ export function parejasDelRecinto(
   const propia =
     parejas.find((p) => integrantes(p).some((x) => x.usuarioId === usuarioId)) ??
     parejas.find((p) => !!p.kitId && kitIds.has(p.kitId));
-  const ordenadas = propia ? [propia, ...parejas.filter((p) => p !== propia)] : parejas;
+  const ordenadas = propia ? [propia] : parejas;
   return ordenadas.flatMap((p, i) =>
     integrantes(p).map((x) => {
       const esUsted = x.usuarioId === usuarioId;
