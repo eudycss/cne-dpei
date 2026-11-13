@@ -1,11 +1,11 @@
 import { actuaComoAdmin } from '../../lib/roles';
 import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
 import type { Canton, Paginated, Recinto, TipoRecinto } from '@cne/shared-types';
 import { createRecintoSchema, updateRecintoSchema } from '@cne/shared-validation';
 import { sileo } from 'sileo';
 import { api } from '../../lib/api';
+import { descargarReporteRecintosCda, type FormatoReporteRecintos } from '../../lib/queries/recintos-reporte';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
 import { SyncRecintosModal } from './SyncRecintosModal';
@@ -32,7 +32,7 @@ export function RecintosPage() {
   const [showSync, setShowSync] = useState(false);
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<FormatoReporteRecintos | null>(null);
   const [importing, setImporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -96,66 +96,14 @@ export function RecintosPage() {
     }
   }
 
-  async function handleExport() {
-    setExporting(true);
+  async function handleExport(formato: FormatoReporteRecintos) {
+    setExporting(formato);
     try {
-      const params = new URLSearchParams({ page: '1', pageSize: '200' });
-      if (cantonId) params.set('cantonId', cantonId);
-      const res = await api.get<Paginated<Recinto>>(`/recintos?${params}`);
-      const items = res.data.items;
-
-      const cdas = items.filter((r) => r.tipo === 'CDA');
-      const noCdas = items.filter((r) => r.tipo === 'NO_CDA');
-
-      const rows: any[][] = [];
-
-      rows.push(['RECINTOS ELECTORALES — CNE IMBABURA']);
-      rows.push([]);
-
-      for (const cda of cdas) {
-        const jt = (cda.juntasFemeninas ?? 0) + (cda.juntasMasculinas ?? 0);
-        rows.push(['Unidad Educativa CDA']);
-        rows.push(['Código', 'Nombre', 'JF', 'JM', 'JT']);
-        rows.push([cda.codigoRecinto, cda.nombre, cda.juntasFemeninas ?? 0, cda.juntasMasculinas ?? 0, jt]);
-        rows.push([]);
-
-        const asociadas = noCdas.filter((n) => n.cantonId === cda.cantonId);
-        if (asociadas.length > 0) {
-          rows.push(['Unidades Educativas NO CDA']);
-          rows.push(['Cantón', 'Parroquia', 'Dirección', 'Código', 'Nombre', 'JF', 'JM', 'JT']);
-          let sumNoCdaJt = 0;
-          for (const nc of asociadas) {
-            const ncJt = (nc.juntasFemeninas ?? 0) + (nc.juntasMasculinas ?? 0);
-            sumNoCdaJt += ncJt;
-            rows.push([
-              nc.cantonNombre ?? '',
-              nc.parroquia ?? '',
-              nc.direccion ?? '',
-              nc.codigoRecinto,
-              nc.nombre,
-              nc.juntasFemeninas ?? 0,
-              nc.juntasMasculinas ?? 0,
-              ncJt,
-            ]);
-          }
-          rows.push([]);
-          rows.push(['', '', '', '', '', '', 'Nro Juntas Total', jt + sumNoCdaJt]);
-        } else {
-          rows.push(['', '', '', '', '', '', 'Nro Juntas Total', jt]);
-        }
-        rows.push([]);
-        rows.push(['---']);
-        rows.push([]);
-      }
-
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Recintos');
-      XLSX.writeFile(wb, 'recintos_electorales.xlsx');
+      await descargarReporteRecintosCda(formato, cantonId || undefined);
     } catch (e: any) {
       sileo.error({ title: 'No se pudo exportar: ' + (e?.message ?? '') });
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -217,11 +165,23 @@ export function RecintosPage() {
           )}
           <button
             className="btn secondary"
-            onClick={handleExport}
-            disabled={exporting}
-            title="Exportar a Excel"
+            onClick={() => handleExport('xlsx')}
+            disabled={exporting !== null}
+            aria-label="Descargar Excel"
+            aria-busy={exporting === 'xlsx'}
+            title="Exportar cada CDA con sus recintos NO CDA a Excel"
           >
-            {exporting ? 'Exportando…' : '↓ Excel'}
+            {exporting === 'xlsx' ? 'Exportando…' : '↓ Excel'}
+          </button>
+          <button
+            className="btn secondary"
+            onClick={() => handleExport('pdf')}
+            disabled={exporting !== null}
+            aria-label="Descargar PDF"
+            aria-busy={exporting === 'pdf'}
+            title="Exportar cada CDA con sus recintos NO CDA a PDF"
+          >
+            {exporting === 'pdf' ? 'Exportando…' : '↓ PDF'}
           </button>
           {isAdmin && (
             <label className="btn secondary" title="Importar desde Excel/CSV" style={{ cursor: 'pointer' }}>

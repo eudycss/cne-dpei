@@ -9,17 +9,22 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CreateRecintoRequest, GuardarTiemposViajeRequest, UpdateRecintoRequest } from '@cne/shared-types';
 import { guardarTiemposViajeSchema } from '@cne/shared-validation';
 import { Throttle } from '@nestjs/throttler';
 import { RecintosService } from './recintos.service';
 import { RecintosSyncService } from './recintos-sync.service';
+import { parseCantonReporte } from './reporte-recintos-cda';
+import { ReporteRecintosCdaService } from './reporte-recintos-cda.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from '../operadores-cda/reporte-cda';
 import { TiposEventoService } from './tipos-evento.service';
 import { TiemposViajeService } from './tiempos-viaje.service';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -39,6 +44,7 @@ export class CatalogController {
     private readonly tiposEvento: TiposEventoService,
     private readonly recintosSync: RecintosSyncService,
     private readonly tiemposViaje: TiemposViajeService,
+    private readonly reporteCda: ReporteRecintosCdaService,
   ) {}
 
   @LecturaConfigurable()
@@ -74,6 +80,24 @@ export class CatalogController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   bulkRecintos(@UploadedFile() file: Express.Multer.File) {
     return this.recintos.bulkUpload(file);
+  }
+
+  @LecturaConfigurable()
+  @Get('recintos/reporte-cda.xlsx')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel de cada CDA con sus recintos NO CDA (?cantonId= opcional)' })
+  async reporteCdaXlsx(@Query('cantonId') cantonId: string | undefined, @Res() res: Response) {
+    enviarReporte(res, await this.reporteCda.reporte('xlsx', parseCantonReporte(cantonId)));
+  }
+
+  @LecturaConfigurable()
+  @Get('recintos/reporte-cda.pdf')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF de cada CDA con sus recintos NO CDA (?cantonId= opcional)' })
+  async reporteCdaPdf(@Query('cantonId') cantonId: string | undefined, @Res() res: Response) {
+    enviarReporte(res, await this.reporteCda.reporte('pdf', parseCantonReporte(cantonId)));
   }
 
   // Cada llamada descarga el Sheet de Drive: límite estricto para no golpearlo.
