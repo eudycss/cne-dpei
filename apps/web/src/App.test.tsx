@@ -83,10 +83,11 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     expect(await screen.findByText('página: usuarios')).toBeInTheDocument();
   });
 
-  it('LECTOR recibe "Acceso denegado" en /alertas (fuera de su alcance)', async () => {
+  it('LECTOR no ve /alertas mientras el administrador no le active el módulo', async () => {
     setSessionUser(['LECTOR']);
     renderAppAt('/alertas');
-    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/permisos-modulos/mios'));
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument());
     expect(screen.queryByText('página: alertas')).not.toBeInTheDocument();
   });
 
@@ -114,10 +115,12 @@ describe('App — guards de ruta para el rol LECTOR', () => {
     expect(await screen.findByText('página: cadena de custodia')).toBeInTheDocument();
   });
 
-  it('ASISTENTE_TRANSVERSAL recibe "Acceso denegado" en páginas de administración', async () => {
+  it('ASISTENTE_TRANSVERSAL no ve el reporte No CDA si no tiene ese módulo', async () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderAppAt('/reportes/no-cda');
-    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/permisos-modulos/mios'));
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument());
+    expect(screen.queryByText('página: reportes')).not.toBeInTheDocument();
   });
 
   it('cadena de custodia: LECTOR la ve de fábrica; TECNICO_SUPERVISOR solo si el admin se la activa', async () => {

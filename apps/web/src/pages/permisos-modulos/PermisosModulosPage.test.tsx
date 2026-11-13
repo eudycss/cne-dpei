@@ -54,11 +54,9 @@ describe('PermisosModulosPage', () => {
     expect(casilla('Cadena de custodia para Asistente Electoral Transversal')).toBeChecked();
   });
 
-  it('deshabilita las casillas que el servidor no permite a ese rol y explica por qué', async () => {
+  it('sin techo: cualquier módulo se puede activar a cualquier rol', async () => {
     renderPage();
-    const alertasLector = await screen.findByRole('checkbox', { name: 'Alertas para Lector' });
-    expect(alertasLector).toBeDisabled();
-    expect(alertasLector).toHaveAccessibleDescription(/no están disponibles para ese rol/);
+    expect(await screen.findByRole('checkbox', { name: 'Alertas para Lector' })).toBeEnabled();
     expect(casilla('Alertas para Técnico supervisor')).toBeEnabled();
   });
 
@@ -207,8 +205,6 @@ describe('PermisosModulosPage', () => {
       const tec = accion('Emitir o anular carnets QR', 'Técnico supervisor');
       expect(tec).toBeDisabled();
       expect(tec).toHaveAccessibleDescription(/solo se pueden dar si el rol ve el módulo/);
-      // El lector nunca puede tener acciones de CDAs (techo del servidor).
-      expect(accion('Exportar asistencia y atrasos', 'Lector')).toHaveAccessibleDescription(/no están disponibles/);
     });
 
     it('al quitar el módulo, sus acciones se deshabilitan y no se guardan', async () => {
