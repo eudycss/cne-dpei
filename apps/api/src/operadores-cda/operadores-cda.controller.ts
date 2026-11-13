@@ -27,7 +27,7 @@ import { OperadoresCdaService } from './operadores-cda.service';
 import { parsearGrupo } from './grupo-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
@@ -40,6 +40,7 @@ import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 export class OperadoresCdaController {
   constructor(private readonly operadores: OperadoresCdaService) {}
 
+  @LecturaConfigurable()
   @Get()
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)

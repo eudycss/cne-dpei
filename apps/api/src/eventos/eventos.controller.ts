@@ -21,7 +21,7 @@ import { EventosService } from './eventos.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import {
   configAlertasSchema,
@@ -37,6 +37,7 @@ import {
 export class EventosController {
   constructor(private readonly eventos: EventosService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU20: listar eventos electorales' })
@@ -44,6 +45,7 @@ export class EventosController {
     return this.eventos.list();
   }
 
+  @LecturaConfigurable()
   @Get('active')
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Evento electoral activo actual' })

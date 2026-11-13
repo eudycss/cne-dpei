@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
-import { MODULOS_WEB, type ModuloWebId } from '@cne/shared-validation';
+import { MODULOS_WEB, esRolConfigurable, type ModuloWebId } from '@cne/shared-validation';
 import { useAuth } from './AuthContext';
 import { useModulos } from '../lib/useModulos';
 
@@ -53,9 +53,10 @@ export function ProtectedRoute({ children, roles, modulo, allowChangePassword }:
   if (user.debeCambiarPwd && !allowChangePassword) {
     return <Navigate to="/change-password" replace />;
   }
-  // El analista provincial pasa donde pasa el administrador, pero solo a módulos
-  // (GuardModulo) y nunca a las rutas exclusivas del administrador.
-  const comoAdmin = !!modulo && user.roles.includes('ANALISTA_PROVINCIAL');
+  // Los roles configurables pasan donde pasa el administrador, pero solo a módulos
+  // (GuardModulo) y nunca a las rutas exclusivas del administrador. Los botones de
+  // editar siguen siendo del administrador y del analista (actuaComoAdmin).
+  const comoAdmin = !!modulo && user.roles.some(esRolConfigurable);
   if (roles && roles.length > 0 && !roles.some((r) => user.roles.includes(r) || (comoAdmin && r === 'ADMINISTRADOR'))) {
     return <AccesoDenegado />;
   }

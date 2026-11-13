@@ -18,7 +18,7 @@ import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 
 import { UsersService } from './users.service';
-import { Roles, SoloAdmin } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles, SoloAdmin } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -40,6 +40,7 @@ import { CurrentUser, type AuthenticatedUser } from '../common/current-user.deco
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Listado paginado de usuarios' })
