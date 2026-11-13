@@ -189,11 +189,10 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
         {contingencia ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle} accessibilityRole="header">
-              Si hay un problema con el kit
+              Si hay un problema con el kit, diríjase a este lugar:
             </Text>
             <Text style={styles.militarNombre}>{contingencia.nombre}</Text>
             {contingencia.direccion ? <Text style={styles.recintoMeta}>{contingencia.direccion}</Text> : null}
-            <Text style={styles.note}>Diríjase a este lugar.</Text>
           </View>
         ) : null}
 
