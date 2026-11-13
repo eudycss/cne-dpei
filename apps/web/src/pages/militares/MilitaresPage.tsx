@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +13,7 @@ import { PasoFlujo } from '../../components/PasoFlujo';
 
 export function MilitaresPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');

@@ -24,11 +24,13 @@ import { upsertAsignacionSchema } from '@cne/shared-validation';
 import { AsignacionesService } from './asignaciones.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('asignaciones')
 @ApiBearerAuth()
+@RequiereModulo('asignaciones')
 @Controller('asignaciones')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AsignacionesController {

@@ -52,7 +52,7 @@ export default function App() {
       />
       <Route
         element={
-          <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']}>
+          <ProtectedRoute roles={['ADMINISTRADOR', 'ANALISTA_PROVINCIAL', 'TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL']}>
             <Layout />
           </ProtectedRoute>
         }

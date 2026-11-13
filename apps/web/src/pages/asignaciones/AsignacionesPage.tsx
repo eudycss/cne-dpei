@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asignacion, EventoElectoral, Paginated, User } from '@cne/shared-types';
@@ -11,7 +12,7 @@ const SIN_ASIGNAR = '';
 
 export function AsignacionesPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [eventoId, setEventoId] = useState<string>('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');

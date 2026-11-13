@@ -24,7 +24,7 @@ const PENDIENTES_ID = 'modulos-cambios-pendientes';
 
 function borradorVacio(): Borrador {
   const vacio = (): Config => ({ modulos: [], permisos: [] });
-  return { TECNICO_SUPERVISOR: vacio(), LECTOR: vacio(), ASISTENTE_TRANSVERSAL: vacio() };
+  return { TECNICO_SUPERVISOR: vacio(), LECTOR: vacio(), ASISTENTE_TRANSVERSAL: vacio(), ANALISTA_PROVINCIAL: vacio() };
 }
 
 function borradorDeFabrica(): Borrador {

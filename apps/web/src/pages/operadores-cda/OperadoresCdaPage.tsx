@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -50,7 +51,7 @@ export function OperadoresCdaPage() {
   const [acciones, setAcciones] = useState<HTMLDivElement | null>(null);
   const [params, setParams] = useSearchParams();
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [gestionando, setGestionando] = useState(false);
   // Mientras llega la lista (o si viniera vacía) quedan los 9 originales.
   const { data } = useQuery({ queryKey: ['cargos-cda'], queryFn: getCargosCda, staleTime: 5 * 60_000 });

@@ -34,6 +34,7 @@ import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
+@RequiereModulo('operadores-cda')
 @Controller('operadores-cda')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OperadoresCdaController {

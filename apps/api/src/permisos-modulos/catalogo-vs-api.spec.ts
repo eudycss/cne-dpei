@@ -1,8 +1,9 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Reflector } from '@nestjs/core';
 import { MODULOS_WEB, type ModuloWebId } from '@cne/shared-validation';
 import { ROLES_KEY } from '../common/roles.decorator';
+import { MODULO_KEY } from './modulo.guard';
 import { UsersController } from '../users/users.controller';
 import { CatalogController } from '../catalog/catalog.controller';
 import { MilitaresController } from '../militares/militares.controller';
@@ -50,15 +51,26 @@ describe('Catálogo de módulos web vs. API', () => {
       const [controlador, metodo] = ENDPOINT[modulo.id]!;
       const roles = rolesDe(controlador, metodo);
       expect(roles).toBeDefined();
-      for (const rol of modulo.rolesPermitidos) expect(roles).toContain(rol);
+      // El analista no figura en @Roles: entra por el alias del administrador (RolesGuard).
+      for (const rol of modulo.rolesPermitidos) expect(roles).toContain(rol === 'ANALISTA_PROVINCIAL' ? 'ADMINISTRADOR' : rol);
+      // ...y solo si el endpoint declara su módulo (si no, el alias cierra el paso).
+      // 'inicio' lee el evento activo, que declara el módulo 'eventos'.
+      if (modulo.id !== 'inicio') {
+        const declarado = new Reflector().getAllAndOverride<string>(MODULO_KEY, [(controlador as any).prototype[metodo], controlador as any]);
+        expect(declarado).toBe(modulo.id);
+      }
     },
   );
 
   it('la migración precarga exactamente la visibilidad de fábrica del catálogo', () => {
     const dir = join(__dirname, '../../prisma/migrations');
-    const carpeta = readdirSync(dir).find((d) => d.endsWith('_rol_modulos'));
-    expect(carpeta).toBeDefined();
-    const sql = readFileSync(join(dir, carpeta!, 'migration.sql'), 'utf8');
+    // La de fábrica de entonces, más lo que se agregó después (cada cosa en su migración).
+    const sql = readdirSync(dir)
+      .map((d) => join(dir, d, 'migration.sql'))
+      .filter((f) => existsSync(f))
+      .map((f) => readFileSync(f, 'utf8'))
+      .filter((s) => s.includes('INSERT INTO "rol_modulos"'))
+      .join(' ');
     const delSql = [...sql.matchAll(/\('([A-Z_]+)',\s*'([a-z-]+)'\)/g)].map(([, rol, mod]) => `${rol}:${mod}`).sort();
     const deFabrica = MODULOS_WEB.flatMap((m) => m.rolesPorDefecto.map((rol) => `${rol}:${m.id}`)).sort();
     expect(delSql).toEqual(deFabrica);

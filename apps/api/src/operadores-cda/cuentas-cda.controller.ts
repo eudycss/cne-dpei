@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CuentasCdaService } from './cuentas-cda.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
-import { Roles } from '../common/roles.decorator';
+import { Roles, SoloAdmin } from '../common/roles.decorator';
 
 /** Cuentas de la app de los Operadores y Asistentes CDA (solo administrador). */
 @ApiTags('operadores-cda')
@@ -12,6 +12,7 @@ import { Roles } from '../common/roles.decorator';
 @Controller('operadores-cda/cuentas')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMINISTRADOR')
+@SoloAdmin()
 export class CuentasCdaController {
   constructor(private readonly cuentas: CuentasCdaService) {}
 

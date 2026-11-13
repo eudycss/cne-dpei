@@ -62,6 +62,7 @@ export function parsearFecha(fecha: unknown): string {
 
 @ApiTags('parejas-cda')
 @ApiBearerAuth()
+@RequiereModulo('operadores-cda')
 @Controller('parejas-cda')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ParejasCdaController {

@@ -25,10 +25,12 @@ import { TiemposViajeService } from './tiempos-viaje.service';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 
 @ApiTags('catalogo')
 @ApiBearerAuth()
+@RequiereModulo('recintos')
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CatalogController {

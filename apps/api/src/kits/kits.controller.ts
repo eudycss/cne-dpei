@@ -35,11 +35,13 @@ import {
 import { KitsService } from './kits.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('kits')
 @ApiBearerAuth()
+@RequiereModulo('kits')
 @Controller('kits')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class KitsController {

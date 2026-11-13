@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MAX_FECHAS_HISTORIAL_PAREJAS_CDA, coincideBusqueda } from '@cne/shared-validation';
@@ -28,7 +29,7 @@ const pasaEstado = (estado: Estado, fue: boolean) => !estado || (estado === 'SI'
  */
 export function HistorialParejasPanel() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [proponiendo, setProponiendo] = useState(false);
   const { data: conLista } = useQuery({ queryKey: ['parejas-cda', 'fechas'], queryFn: getFechasParejasCda });
   // null = todavía no se tocó: las fechas con lista más recientes (hasta el máximo).

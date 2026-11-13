@@ -53,7 +53,10 @@ export function ProtectedRoute({ children, roles, modulo, allowChangePassword }:
   if (user.debeCambiarPwd && !allowChangePassword) {
     return <Navigate to="/change-password" replace />;
   }
-  if (roles && roles.length > 0 && !roles.some((r) => user.roles.includes(r))) {
+  // El analista provincial pasa donde pasa el administrador, pero solo a módulos
+  // (GuardModulo) y nunca a las rutas exclusivas del administrador.
+  const comoAdmin = !!modulo && user.roles.includes('ANALISTA_PROVINCIAL');
+  if (roles && roles.length > 0 && !roles.some((r) => user.roles.includes(r) || (comoAdmin && r === 'ADMINISTRADOR'))) {
     return <AccesoDenegado />;
   }
   if (modulo) return <GuardModulo modulo={modulo}>{children}</GuardModulo>;

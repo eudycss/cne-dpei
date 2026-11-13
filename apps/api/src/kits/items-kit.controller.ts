@@ -5,11 +5,13 @@ import type { CreateItemKitInput, UpdateItemKitInput } from '@cne/shared-validat
 import { ItemsKitService } from './items-kit.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('items-kit')
 @ApiBearerAuth()
+@RequiereModulo('kits')
 @Controller('items-kit')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ItemsKitController {

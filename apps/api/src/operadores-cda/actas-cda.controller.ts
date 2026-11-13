@@ -36,6 +36,7 @@ function enviar(res: Response, archivo: ArchivoActa, tipo: keyof typeof TIPOS): 
 // Los mismos roles que toman asistencia; reabrir un acta firmada, solo el administrador.
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
+@RequiereModulo('operadores-cda')
 @Controller('operadores-cda')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')

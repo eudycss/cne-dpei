@@ -41,7 +41,7 @@ describe('PermisosModulosService', () => {
   });
 
   describe('matriz', () => {
-    it('devuelve los tres roles configurables, con sus módulos en el orden del catálogo', async () => {
+    it('devuelve los roles configurables, con sus módulos en el orden del catálogo', async () => {
       prisma.rolModulo.findMany.mockResolvedValueOnce([
         fila('TECNICO_SUPERVISOR', 'alertas'),
         fila('TECNICO_SUPERVISOR', 'kits'),
@@ -52,6 +52,7 @@ describe('PermisosModulosService', () => {
         { rol: 'TECNICO_SUPERVISOR', modulos: ['kits', 'alertas'], permisos: [] },
         { rol: 'LECTOR', modulos: ['reportes'], permisos: [] },
         { rol: 'ASISTENTE_TRANSVERSAL', modulos: [], permisos: [] },
+        { rol: 'ANALISTA_PROVINCIAL', modulos: [], permisos: [] },
       ]);
     });
 

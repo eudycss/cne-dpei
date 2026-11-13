@@ -5,6 +5,7 @@ import { addCorreoEnlaceSchema, avisosEnlacesSchema, resumenJornadaSchema } from
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { EnlacesEstadisticasService, filtroEstadisticas } from './enlaces-estadisticas.service';
 import { EnlacesService, type TelegramUpdate } from './enlaces.service';
@@ -12,6 +13,7 @@ import { EnlacesService, type TelegramUpdate } from './enlaces.service';
 @ApiTags('enlaces')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@RequiereModulo('monitoreo')
 @Controller('enlaces')
 export class EnlacesController {
   private readonly log = new Logger('EnlacesController');

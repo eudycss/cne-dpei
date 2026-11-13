@@ -60,6 +60,7 @@ import { InformeOperadorService } from './informe-operador.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -68,6 +69,7 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('tracking')
 @ApiBearerAuth()
+@RequiereModulo('monitoreo')
 @Controller('tracking')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TrackingController {
@@ -289,6 +291,7 @@ export class TrackingController {
 
   @Get('reporte-no-cda')
   @Roles('ADMINISTRADOR', 'LECTOR')
+  @RequiereModulo('reportes')
   @ApiOperation({
     summary: 'Reporte admin: NO-CDAs visitados vs. pendientes por CDA del evento activo',
   })

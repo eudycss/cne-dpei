@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useMemo, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,7 +48,7 @@ function fechaCorta(dia: string): string {
 export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const esAdmin = actuaComoAdmin(user?.roles);
   const puedeActas = useModulos().puede('cda.actas.gestionar');
   const { grupo, plural, singular, Singular } = useGrupoCda();
   const [busqueda, setBusqueda] = useState('');

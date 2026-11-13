@@ -38,7 +38,7 @@ function EstadoBadge({ estado }: { estado: EstadoIncidencia }) {
 
 function IncidenciaDetalleModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { user } = useAuth();
-  const puedeGestionar = user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
+  const puedeGestionar = user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'ANALISTA_PROVINCIAL' || r === 'TECNICO_SUPERVISOR') ?? false;
   const qc = useQueryClient();
   const [comentario, setComentario] = useState('');
   const [nuevoEstado, setNuevoEstado] = useState<'ATENDIDA' | 'CERRADA'>('ATENDIDA');

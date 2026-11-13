@@ -27,6 +27,7 @@ import {
 import { IncidenciasService } from './incidencias.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -35,6 +36,7 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('incidencias')
 @ApiBearerAuth()
+@RequiereModulo('incidencias')
 @Controller('incidencias')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class IncidenciasController {

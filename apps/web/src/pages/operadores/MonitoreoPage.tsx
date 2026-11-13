@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -128,7 +129,7 @@ export function MonitoreoPage() {
   const operadores = data ?? SIN_OPERADORES;
   const qc = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   // Operador en retorno que olvidó marcar la llegada al DPEI (lo registra el admin).
   const [llegadaDe, setLlegadaDe] = useState<{ id: string; nombre: string } | null>(null);
 

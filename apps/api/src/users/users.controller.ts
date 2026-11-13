@@ -18,8 +18,9 @@ import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 
 import { UsersService } from './users.service';
-import { Roles } from '../common/roles.decorator';
+import { Roles, SoloAdmin } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type {
   CreateUserRequest,
@@ -33,6 +34,7 @@ import { CurrentUser, type AuthenticatedUser } from '../common/current-user.deco
 
 @ApiTags('users')
 @ApiBearerAuth()
+@RequiereModulo('usuarios')
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -59,6 +61,7 @@ export class UsersController {
 
   @Get('template.xlsx')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'Plantilla Excel para carga masiva (HU7)' })
   async template(@Res() res: Response) {
     const buf = await this.users.generateTemplate();
@@ -69,6 +72,7 @@ export class UsersController {
 
   @Post()
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'HU7-CA2: Alta manual de usuario' })
   create(@Body() body: CreateUserRequest) {
     return this.users.create(body);
@@ -76,6 +80,7 @@ export class UsersController {
 
   @Patch(':id')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'Editar usuario' })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateUserRequest) {
     return this.users.update(id, body);
@@ -83,6 +88,7 @@ export class UsersController {
 
   @Post('reset-password-bulk')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   // Cada llamada calcula hasta 50 hashes argon2 y la web envía por lotes:
   // 30 por minuto = mismo tope de antes (~1500 hashes/min).
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
@@ -96,6 +102,7 @@ export class UsersController {
 
   @Post(':id/reset-password')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'Restablecer contraseña de un usuario (contraseña temporal)' })
   resetPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.users.resetPassword(id);
@@ -103,6 +110,7 @@ export class UsersController {
 
   @Post(':id/desbloquear')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'Levantar el bloqueo por contraseñas erróneas' })
   desbloquear(@Param('id', ParseUUIDPipe) id: string) {
     return this.users.desbloquear(id);
@@ -110,6 +118,7 @@ export class UsersController {
 
   @Post('bulk')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'HU7-CA1: Carga masiva desde Excel/CSV' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
@@ -119,6 +128,7 @@ export class UsersController {
 
   @Post('assign-roles')
   @Roles('ADMINISTRADOR')
+  @SoloAdmin()
   @ApiOperation({ summary: 'HU9: Asignación de roles en bulk' })
   assignRoles(
     @Body(new ZodValidationPipe(assignRolesSchema)) body: AssignRolesRequest,

@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
@@ -18,7 +19,7 @@ const TIPO_LABELS: Record<TipoRecinto, string> = {
 
 export function RecintosPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');

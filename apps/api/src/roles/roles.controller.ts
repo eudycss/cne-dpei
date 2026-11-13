@@ -3,10 +3,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../db/prisma.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 
 @ApiTags('roles')
 @ApiBearerAuth()
+@RequiereModulo('usuarios')
 @Controller('roles')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RolesController {

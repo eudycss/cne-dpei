@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
@@ -112,7 +113,7 @@ const fechaLarga = (dia: string) =>
  */
 export function ParejasPanel() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const diaUrl = /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia') ?? '') ? (params.get('dia') as string) : null;

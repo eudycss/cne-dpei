@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
@@ -70,7 +71,7 @@ export function ReporteNoCdaPage() {
   // El Informe del Operador CDA (y quién lo firma) es solo del administrador;
   // el lector ve el reporte en pantalla y el Excel.
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
 
   const { data: responsables } = useQuery({
     queryKey: ['responsables-informe'],

@@ -20,6 +20,7 @@ import type {
 import { EventosService } from './eventos.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import {
@@ -30,6 +31,7 @@ import {
 
 @ApiTags('eventos')
 @ApiBearerAuth()
+@RequiereModulo('eventos')
 @Controller('eventos')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EventosController {
