@@ -127,7 +127,9 @@ describe('SalidaDpiScreen', () => {
       renderer = create(<SalidaDpiScreen onSalidaRegistrada={jest.fn()} />);
       await flushPromises();
     });
-    expect(renderer.root.findAllByProps({ children: 'Si hay un problema con el kit' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ children: 'Si hay un problema con el kit, diríjase a este lugar:' }).length).toBeGreaterThan(0);
+    // La indicación va antes del nombre y ya no se repite después.
+    expect(renderer.root.findAllByProps({ children: 'Diríjase a este lugar.' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ children: 'UE Juan Montalvo' }).length).toBeGreaterThan(0);
     expect(renderer.root.findAllByProps({ children: 'Gran Colombia y Mariscal Sucre' }).length).toBeGreaterThan(0);
   });
