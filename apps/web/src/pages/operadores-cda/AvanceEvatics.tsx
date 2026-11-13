@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ConteoEvatics, GrupoConteoEvatics } from '@cne/shared-types';
+import { NumeroAnimado } from '../../components/NumeroAnimado';
 
 /**
  * Orden fijo de los tramos (de "hecho" a "falta"). Son colores de estado del
@@ -69,6 +70,19 @@ function useAnimarReorden(lista: RefObject<HTMLUListElement | null>) {
 }
 
 /**
+ * Tramo de la barra: nace en 0 y crece hasta su valor (y sigue la transición
+ * de CSS cuando el valor cambia). Si hay un tramo resaltado, los demás se atenúan.
+ */
+function Tramo({ valor, clase, atenuado }: { valor: number; clase: string; atenuado: boolean }) {
+  const [grow, setGrow] = useState(0);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setGrow(valor));
+    return () => cancelAnimationFrame(id);
+  }, [valor]);
+  return <span className={`evx-tramo ${clase}${atenuado ? ' atenuado' : ''}`} style={{ flexGrow: grow }} />;
+}
+
+/**
  * Avance por cantón o por Asistente Transversal: una barra apilada por grupo
  * (100 % = su personal). Cada fila es un botón que filtra la tabla. Con
  * "Ver como tabla" se leen las mismas cifras sin gráfico.
@@ -87,6 +101,10 @@ export function AvanceEvatics({
 }) {
   const [vista, setVista] = useState<Vista>('canton');
   const [comoTabla, setComoTabla] = useState(false);
+  // Tramo que se resalta (al pasar el cursor o enfocar la leyenda, o fijado con clic): los demás se atenúan.
+  const [fijado, setFijado] = useState<keyof ConteoEvatics | null>(null);
+  const [sobre, setSobre] = useState<keyof ConteoEvatics | null>(null);
+  const resaltado = sobre ?? fijado;
   const grupos = ordenarGrupos(vista === 'canton' ? porCanton : porTecnico);
   const lista = useRef<HTMLUListElement>(null);
   useAnimarReorden(lista);
@@ -114,8 +132,20 @@ export function AvanceEvatics({
       <ul className="evx-leyenda" aria-label="Leyenda">
         {TRAMOS.map((t) => (
           <li key={t.clave}>
-            <span className={`evx-muestra ${t.clase}`} aria-hidden="true" />
-            {t.etiqueta}
+            <button
+              type="button"
+              className="evx-leyenda-boton"
+              aria-pressed={fijado === t.clave}
+              title="Resaltar este tramo en todas las barras"
+              onClick={() => setFijado((f) => (f === t.clave ? null : t.clave))}
+              onMouseEnter={() => setSobre(t.clave)}
+              onMouseLeave={() => setSobre(null)}
+              onFocus={() => setSobre(t.clave)}
+              onBlur={() => setSobre(null)}
+            >
+              <span className={`evx-muestra ${t.clase}`} aria-hidden="true" />
+              {t.etiqueta}
+            </button>
           </li>
         ))}
       </ul>
@@ -168,12 +198,12 @@ export function AvanceEvatics({
                   <span className="evx-barra" aria-hidden="true">
                     {TRAMOS.map((t) =>
                       g[t.clave] > 0 ? (
-                        <span key={t.clave} className={`evx-tramo ${t.clase}`} style={{ flexGrow: g[t.clave] }} />
+                        <Tramo key={t.clave} valor={g[t.clave]} clase={t.clase} atenuado={resaltado !== null && resaltado !== t.clave} />
                       ) : null,
                     )}
                   </span>
                   <span className="evx-cifra" aria-hidden="true">
-                    {g.aprobados}/{g.total} · {pct(g.aprobados, g.total)} %
+                    <NumeroAnimado valor={g.aprobados} />/{g.total} · <NumeroAnimado valor={pct(g.aprobados, g.total)} /> %
                   </span>
                   <span className="evx-tip" aria-hidden="true">
                     {TRAMOS.map((t) => (

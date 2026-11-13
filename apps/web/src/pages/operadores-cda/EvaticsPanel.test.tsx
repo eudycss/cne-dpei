@@ -154,6 +154,19 @@ describe('EvaticsPanel', () => {
       'Rechazados',
       'Sin subir',
     ]);
+    // Leyenda interactiva: resaltar un tramo atenúa los demás en todas las barras.
+    const aprobados = within(leyenda).getByRole('button', { name: 'Aprobados' });
+    expect(aprobados).toHaveAttribute('aria-pressed', 'false');
+    await user.click(aprobados);
+    expect(aprobados).toHaveAttribute('aria-pressed', 'true');
+    expect(avance.querySelectorAll('.evx-tramo.atenuado').length).toBeGreaterThan(0);
+    expect(avance.querySelectorAll('.evx-tramo.aprobado.atenuado')).toHaveLength(0);
+    await user.click(aprobados);
+    // Mientras el cursor o el foco siguen en la leyenda, el resalte provisional se mantiene.
+    await user.unhover(aprobados);
+    aprobados.blur();
+    expect(aprobados).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(avance.querySelectorAll('.evx-tramo.atenuado')).toHaveLength(0));
     await user.click(within(avance).getByRole('button', { name: 'Por asistente' }));
     expect(screen.getByRole('heading', { name: 'Avance por Asistente Transversal' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Ver como tabla' }));

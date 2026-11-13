@@ -1121,7 +1121,16 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
 .evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }
-.evx-tramo { min-width: 3px; flex-basis: 0; transition: flex-grow 0.45s ease-in-out; }
+.evx-tramo { min-width: 3px; flex-basis: 0; transition: flex-grow 0.45s ease-in-out, opacity 0.2s ease-out; }
+/* Tramo resaltado desde la leyenda: los demás se atenúan (sigue legible: nunca baja de 0.3). */
+.evx-tramo.atenuado { opacity: 0.3; }
+.evx-leyenda-boton {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 24px; padding: 0.2rem 0.55rem;
+  border-radius: 99px; border: 1px solid transparent; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.evx-leyenda-boton:hover { background: var(--f-bg-elevated); }
+.evx-leyenda-boton[aria-pressed='true'] { border-color: var(--f-cian); background: var(--f-cian-suave); color: var(--f-text); }
+.evx-leyenda-boton:focus-visible { outline: 2px solid var(--f-cian); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .evx-tramo { transition: none; } }
 .evx-cifra { font-size: 0.8rem; color: var(--f-text-muted); text-align: right; font-variant-numeric: tabular-nums; }
 .evx-tip {
