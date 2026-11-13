@@ -785,14 +785,18 @@ export class ParejasCdaService {
     return resultado;
   }
 
-  /** PDF de QR solo de los kits de las parejas de ese día. */
-  async qr(fecha: string): Promise<Buffer> {
+  /** PDF de QR de los kits de las parejas de ese día; si se indican `parejaIds`, solo de esas. */
+  async qr(fecha: string, parejaIds?: string[]): Promise<Buffer> {
     const conKit = await this.prisma.parejaCda.findMany({
-      where: { fecha: fechaDb(fecha), kitId: { not: null } },
+      where: { fecha: fechaDb(fecha), kitId: { not: null }, ...(parejaIds ? { id: { in: parejaIds } } : {}) },
       select: { kitId: true },
     });
     const kitIds = [...new Set(conKit.map((p) => p.kitId as string))];
-    if (kitIds.length === 0) throw new BadRequestException('Ninguna pareja de esta lista tiene kit todavía');
+    if (kitIds.length === 0) {
+      throw new BadRequestException(
+        parejaIds ? 'Ninguna de las parejas elegidas tiene kit todavía' : 'Ninguna pareja de esta lista tiene kit todavía',
+      );
+    }
     return this.kits.generatePdfQr({ kitIds });
   }
 

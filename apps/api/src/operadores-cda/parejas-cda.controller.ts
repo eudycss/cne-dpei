@@ -60,6 +60,18 @@ export function parsearFecha(fecha: unknown): string {
   return r.data;
 }
 
+// 150 ids × ~40 caracteres ≈ 6 KB de URL: bajo el límite de línea de petición de los proxies.
+export const MAX_IDS_PAREJAS_QR = 150;
+const idsParejasSchema = z.array(z.string().uuid()).max(MAX_IDS_PAREJAS_QR);
+
+/** ?parejas= opcional: un id o varios (repetido); undefined = todas las de la lista. */
+export function parsearIdsParejas(parejas: unknown): string[] | undefined {
+  if (parejas === undefined) return undefined;
+  const r = idsParejasSchema.safeParse(Array.isArray(parejas) ? parejas : [parejas]);
+  if (!r.success) throw new BadRequestException('Las parejas elegidas no son válidas');
+  return r.data;
+}
+
 @ApiTags('parejas-cda')
 @ApiBearerAuth()
 @RequiereModulo('operadores-cda')
@@ -114,10 +126,10 @@ export class ParejasCdaController {
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
-  @ApiOperation({ summary: 'PDF de QR de los kits de las parejas de ?fecha=' })
-  async qr(@Query('fecha') fecha: unknown, @Res() res: Response) {
+  @ApiOperation({ summary: 'PDF de QR de los kits de las parejas de ?fecha= (o solo de las ?parejas=id elegidas)' })
+  async qr(@Query('fecha') fecha: unknown, @Query('parejas') parejas: unknown, @Res() res: Response) {
     const dia = parsearFecha(fecha);
-    const buffer = await this.parejas.qr(dia);
+    const buffer = await this.parejas.qr(dia, parsearIdsParejas(parejas));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="kits-qr-parejas_${dia}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
