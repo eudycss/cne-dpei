@@ -244,7 +244,7 @@ describe('TrackingService', () => {
         ]);
       });
 
-      it('si van varias parejas al recinto, quien ingresa ve a todas: la suya primero y las demás como 2.ª, 3.ª pareja', async () => {
+      it('si van varias parejas al recinto, quien ingresa ve solo la suya (sin las demás)', async () => {
         mockAsignacion();
         prisma.parejaCda.findMany.mockResolvedValueOnce([
           // Registrada antes, pero no es la de quien tiene la sesión.
@@ -258,9 +258,6 @@ describe('TrackingService', () => {
         expect(pareja).toEqual([
           { nombre: 'TORRES MELANI', cargo: 'Operador CDA · lleva el kit', telefono: null, esUsted: true },
           { nombre: 'VELA MONICA', cargo: 'Asistente CDA', telefono: '0988166326', esUsted: false },
-          { nombre: 'TABI DORIAN', cargo: 'Operador CDA · 2.ª pareja', telefono: '0963637455', esUsted: false },
-          { nombre: 'BENAVIDES ROBERTO', cargo: 'Asistente CDA · 2.ª pareja', telefono: '0981611201', esUsted: false },
-          { nombre: 'LOPEZ ANA', cargo: 'Operador CDA · 3.ª pareja', telefono: null, esUsted: false },
         ]);
       });
 
@@ -276,12 +273,11 @@ describe('TrackingService', () => {
         expect(pareja?.map((p) => `${p.nombre} | ${p.cargo}`)).toEqual([
           'A OPERADOR | Operador CDA',
           'A ASISTENTE | Asistente CDA',
-          'B OPERADOR | Operador CDA · 2.ª pareja',
         ]);
         expect(pareja?.some((p) => p.esUsted)).toBe(false);
       });
 
-      it('su pareja va primero aunque otra tenga su kit, y la 4.ª pareja también se numera', async () => {
+      it('su pareja es la que se muestra aunque otra tenga su kit', async () => {
         mockAsignacion();
         prisma.parejaCda.findMany.mockResolvedValueOnce([
           { kitId, operador: persona('A', 'OPERADOR', null), asistente: null },
@@ -294,9 +290,6 @@ describe('TrackingService', () => {
 
         expect(pareja?.map((p) => `${p.nombre} | ${p.cargo}`)).toEqual([
           'B | Operador CDA · lleva el kit',
-          'A | Operador CDA · 2.ª pareja',
-          'C | Operador CDA · 3.ª pareja',
-          'D | Asistente CDA · 4.ª pareja',
         ]);
       });
 
