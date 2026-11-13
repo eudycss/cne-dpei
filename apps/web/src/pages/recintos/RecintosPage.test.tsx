@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Recinto } from '@cne/shared-types';
 
 import { RecintosPage } from './RecintosPage';
 import { api } from '../../lib/api';
+import { sileo } from 'sileo';
+import { descargarReporteRecintosCda } from '../../lib/queries/recintos-reporte';
 
 vi.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ user: { roles: ['ADMINISTRADOR'] } }),
@@ -15,6 +17,8 @@ vi.mock('../../auth/AuthContext', () => ({
 vi.mock('../../lib/api', () => ({
   api: { get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
+
+vi.mock('../../lib/queries/recintos-reporte', () => ({ descargarReporteRecintosCda: vi.fn() }));
 
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 
@@ -216,5 +220,71 @@ describe('RecintosPage — buscar un NO-CDA', () => {
     expect(await screen.findByText(/Coincide con el NO CDA/)).toHaveTextContent('1234 · Escuela Sin Kit');
     const fila = (await screen.findByText('Coincide')).closest('tr')!;
     expect(within(fila).getByText('1234')).toBeInTheDocument();
+  });
+});
+
+
+describe('RecintosPage — reporte CDA con sus NO CDA', () => {
+  const descargar = descargarReporteRecintosCda as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/cantones') return Promise.resolve({ data: [{ id: 1, codigo: '10', nombre: 'Ibarra' }] });
+      return Promise.resolve({ data: { items: [cda], total: 1, page: 1, pageSize: 20 } });
+    });
+    descargar.mockResolvedValue(undefined);
+  });
+
+  it('↓ Excel y ↓ PDF piden el reporte a la API (sin armarlo en el navegador)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('UE García Moreno');
+
+    await user.click(screen.getByRole('button', { name: 'Descargar Excel' }));
+    await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
+
+    expect(descargar).toHaveBeenNthCalledWith(1, 'xlsx', undefined);
+    expect(descargar).toHaveBeenNthCalledWith(2, 'pdf', undefined);
+  });
+
+  it('con un cantón elegido lo manda como filtro', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('UE García Moreno');
+    await screen.findByRole('option', { name: 'Ibarra' });
+    await user.selectOptions(screen.getByDisplayValue('Todos los cantones'), '1');
+
+    await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
+
+    expect(descargar).toHaveBeenCalledWith('pdf', '1');
+  });
+
+  it('si la descarga falla avisa y deja los botones habilitados', async () => {
+    const user = userEvent.setup();
+    descargar.mockRejectedValueOnce(new Error('sin red'));
+    renderPage();
+    await screen.findByText('UE García Moreno');
+
+    await user.click(screen.getByRole('button', { name: 'Descargar Excel' }));
+
+    await waitFor(() => expect(sileo.error).toHaveBeenCalledWith({ title: 'No se pudo exportar: sin red' }));
+    expect(screen.getByRole('button', { name: 'Descargar Excel' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeEnabled();
+  });
+
+  it('mientras descarga, ambos botones quedan deshabilitados', async () => {
+    const user = userEvent.setup();
+    let terminar!: () => void;
+    descargar.mockReturnValueOnce(new Promise<void>((r) => (terminar = r)));
+    renderPage();
+    await screen.findByText('UE García Moreno');
+
+    await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
+
+    expect(screen.getByRole('button', { name: 'Descargar Excel' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeDisabled();
+    terminar();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeEnabled());
   });
 });
