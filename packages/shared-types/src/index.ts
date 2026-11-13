@@ -810,6 +810,13 @@ export interface CdaEstadoDto {
   tieneFotoPruebaConexion: boolean;
   tieneActaInstalacion: boolean;
   tieneActaEscrutinio: boolean;
+  /** Asistente de la pareja del operador en la jornada; null si no tiene pareja cargada. */
+  asistenteNombre: string | null;
+  /** ISO de la hora de cada etapa (la primera registrada); null si aún no ocurre. */
+  salidaDpiEn: string | null;
+  llegadaRecintoEn: string | null;
+  salidaRecintoEn: string | null;
+  llegadaDpiEn: string | null;
 }
 
 export interface RecintoDificilAccesoDto {

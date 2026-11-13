@@ -1609,7 +1609,7 @@ export class TrackingService {
   async estadoCdas(viewerId: string, roles: RoleName[]): Promise<CdaEstadoDto[]> {
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
-      select: { id: true },
+      select: { id: true, fechaJornada: true },
     });
     if (!evento) return [];
 
@@ -1619,12 +1619,14 @@ export class TrackingService {
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
       select: { id: true, recintoId: true, operadorId: true },
     });
-    const operadorPorRecinto = new Map<string, string>();
+    // Un recinto puede tener varias parejas (un kit por operador): una fila por operador.
+    const operadoresPorRecinto = new Map<string, Set<string>>();
     for (const k of kits) {
-      if (k.recintoId && k.operadorId) operadorPorRecinto.set(k.recintoId, k.operadorId);
+      if (!k.recintoId || !k.operadorId) continue;
+      const set = operadoresPorRecinto.get(k.recintoId) ?? new Set<string>();
+      set.add(k.operadorId);
+      operadoresPorRecinto.set(k.recintoId, set);
     }
-
-    let recintoIds = Array.from(operadorPorRecinto.keys());
 
     if (!esAdmin) {
       const asignados = await this.prisma.asignacionSupervisor.findMany({
@@ -1632,8 +1634,13 @@ export class TrackingService {
         select: { operadorId: true },
       });
       const permitidos = new Set(asignados.map((a) => a.operadorId));
-      recintoIds = recintoIds.filter((rid) => permitidos.has(operadorPorRecinto.get(rid)!));
+      for (const [rid, ops] of Array.from(operadoresPorRecinto)) {
+        const visibles = new Set(Array.from(ops).filter((o) => permitidos.has(o)));
+        if (visibles.size === 0) operadoresPorRecinto.delete(rid);
+        else operadoresPorRecinto.set(rid, visibles);
+      }
     }
+    const recintoIds = Array.from(operadoresPorRecinto.keys());
 
     if (recintoIds.length === 0) return [];
 
@@ -1645,8 +1652,23 @@ export class TrackingService {
     if (recintos.length === 0) return [];
 
     const operadorIds = Array.from(
-      new Set(recintos.map((r) => operadorPorRecinto.get(r.id)!)),
+      new Set(recintos.flatMap((r) => Array.from(operadoresPorRecinto.get(r.id)!))),
     );
+
+    // Asistente de cada operador en la jornada (por la cuenta del operador).
+    const parejas = await this.prisma.parejaCda.findMany({
+      where: { fecha: evento.fechaJornada, recintoId: { in: recintoIds } },
+      select: {
+        operador: { select: { usuarioId: true } },
+        asistente: { select: { apellidosNombres: true } },
+      },
+    });
+    const asistentePorOperador = new Map<string, string>();
+    for (const p of parejas) {
+      if (p.operador?.usuarioId && p.asistente) {
+        asistentePorOperador.set(p.operador.usuarioId, p.asistente.apellidosNombres);
+      }
+    }
 
     const usuarios = await this.prisma.usuario.findMany({
       where: { id: { in: operadorIds } },
@@ -1662,10 +1684,16 @@ export class TrackingService {
     // La app puede repetir la prueba de conexión: vale la más reciente.
     const pruebaConexionPorOperador = new Map<string, Date>();
     const conFotoPruebaConexion = new Set<string>();
+    // Hora de cada etapa: la primera registrada (una repetición de la app no la mueve).
+    const horasPorOperador = new Map<string, Map<string, Date>>();
     for (const t of trackingRows) {
       const set = tiposPorOperador.get(t.operadorId) ?? new Set<string>();
       set.add(t.tipo);
       tiposPorOperador.set(t.operadorId, set);
+      const horas = horasPorOperador.get(t.operadorId) ?? new Map<string, Date>();
+      const previaHora = horas.get(t.tipo);
+      if (!previaHora || t.ocurridoEn < previaHora) horas.set(t.tipo, t.ocurridoEn);
+      horasPorOperador.set(t.operadorId, horas);
       if (t.tipo === 'PRUEBA_CONEXION') {
         const previa = pruebaConexionPorOperador.get(t.operadorId);
         if (!previa || t.ocurridoEn > previa) pruebaConexionPorOperador.set(t.operadorId, t.ocurridoEn);
@@ -1726,33 +1754,40 @@ export class TrackingService {
       ultimasTracking.map((t) => [t.operador_id, t]),
     );
 
-    return recintos.map((recinto) => {
-      const operadorId = operadorPorRecinto.get(recinto.id)!;
-      const gps = gpsPorOperador.get(operadorId);
-      const trk = trackingPorOperador.get(operadorId);
-      const ubicacion = gps
-        ? { latitud: gps.lat, longitud: gps.lng, capturadoEn: gps.capturado_en.toISOString() }
-        : trk
-          ? { latitud: trk.lat, longitud: trk.lng, capturadoEn: trk.ocurrido_en.toISOString() }
-          : null;
+    return recintos.flatMap((recinto) =>
+      Array.from(operadoresPorRecinto.get(recinto.id)!).map((operadorId) => {
+        const gps = gpsPorOperador.get(operadorId);
+        const trk = trackingPorOperador.get(operadorId);
+        const ubicacion = gps
+          ? { latitud: gps.lat, longitud: gps.lng, capturadoEn: gps.capturado_en.toISOString() }
+          : trk
+            ? { latitud: trk.lat, longitud: trk.lng, capturadoEn: trk.ocurrido_en.toISOString() }
+            : null;
+        const hora = (tipo: string) => horasPorOperador.get(operadorId)?.get(tipo)?.toISOString() ?? null;
 
-      return {
-        recintoId: recinto.id,
-        codigoRecinto: recinto.codigoRecinto,
-        nombreRecinto: recinto.nombre,
-        cantonId: recinto.cantonId,
-        cantonNombre: recinto.canton?.nombre ?? null,
-        operadorId,
-        operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
-        estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
-        ubicacion,
-        tieneFotoMilitar: operadoresConFoto.has(operadorId),
-        pruebaConexionEn: pruebaConexionPorOperador.get(operadorId)?.toISOString() ?? null,
-        tieneFotoPruebaConexion: conFotoPruebaConexion.has(operadorId),
-        tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
-        tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
-      };
-    });
+        return {
+          recintoId: recinto.id,
+          codigoRecinto: recinto.codigoRecinto,
+          nombreRecinto: recinto.nombre,
+          cantonId: recinto.cantonId,
+          cantonNombre: recinto.canton?.nombre ?? null,
+          operadorId,
+          operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
+          estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
+          ubicacion,
+          tieneFotoMilitar: operadoresConFoto.has(operadorId),
+          pruebaConexionEn: pruebaConexionPorOperador.get(operadorId)?.toISOString() ?? null,
+          tieneFotoPruebaConexion: conFotoPruebaConexion.has(operadorId),
+          tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
+          tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
+          asistenteNombre: asistentePorOperador.get(operadorId) ?? null,
+          salidaDpiEn: hora('SALIDA_DPI'),
+          llegadaRecintoEn: hora('LLEGADA_RECINTO'),
+          salidaRecintoEn: hora('SALIDA_RECINTO'),
+          llegadaDpiEn: hora('LLEGADA_DPI'),
+        };
+      }),
+    );
   }
 
   private deriveEstadoOperador(tipos: Set<string> | undefined): EstadoOperadorCda {

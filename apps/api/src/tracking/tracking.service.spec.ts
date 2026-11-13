@@ -1826,6 +1826,97 @@ describe('TrackingService', () => {
       prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     }
 
+    it('un recinto con dos parejas da una fila por operador, con su asistente y la hora de cada etapa', async () => {
+      const otroOperadorId = '33333333-3333-4333-8333-333333333333';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: kitId, recintoId, operadorId },
+        { id: 'kit-2', recintoId, operadorId: otroOperadorId },
+      ]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        { operador: { usuarioId: operadorId }, asistente: { apellidosNombres: 'Rosa Lema' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+        { id: otroOperadorId, nombres: 'Luis', apellidos: 'Mora' },
+      ]);
+      prisma.eventoTracking.findMany
+        .mockResolvedValueOnce([
+          { operadorId, tipo: 'SALIDA_DPI', ocurridoEn: new Date('2026-10-21T12:00:00.000Z') },
+          // Repetida por la app: vale la primera hora registrada.
+          { operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-21T13:10:00.000Z') },
+          { operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-21T13:00:00.000Z') },
+        ])
+        .mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const filas = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(filas.map((f) => f.operadorNombre)).toEqual(['Ana Perez', 'Luis Mora']);
+      expect(filas[0]).toEqual(
+        expect.objectContaining({
+          asistenteNombre: 'Rosa Lema',
+          salidaDpiEn: '2026-10-21T12:00:00.000Z',
+          llegadaRecintoEn: '2026-10-21T13:00:00.000Z',
+          salidaRecintoEn: null,
+          llegadaDpiEn: null,
+        }),
+      );
+      expect(filas[1].asistenteNombre).toBeNull();
+    });
+
+    it('un supervisor solo ve las filas de sus operadores asignados dentro de un recinto compartido', async () => {
+      const otroOperadorId = '33333333-3333-4333-8333-333333333333';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: kitId, recintoId, operadorId },
+        { id: 'kit-2', recintoId, operadorId: otroOperadorId },
+      ]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId: otroOperadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: otroOperadorId, nombres: 'Luis', apellidos: 'Mora' }]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const filas = await service.estadoCdas('supervisor-1', ['TECNICO_SUPERVISOR']);
+
+      expect(filas.map((f) => f.operadorId)).toEqual([otroOperadorId]);
+    });
+
+    it('asigna cada hora a su etapa, consulta las parejas de la jornada y tolera parejas sin asistente', async () => {
+      prepararUnCda([
+        { operadorId, tipo: 'LLEGADA_DPI', ocurridoEn: new Date('2026-10-21T20:00:00.000Z') },
+        { operadorId, tipo: 'SALIDA_RECINTO', ocurridoEn: new Date('2026-10-21T18:30:00.000Z') },
+        { operadorId, tipo: 'SALIDA_RECINTO', ocurridoEn: new Date('2026-10-21T18:00:00.000Z') },
+      ]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([{ operador: { usuarioId: operadorId }, asistente: null }]);
+
+      const [cda] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(cda.salidaRecintoEn).toBe('2026-10-21T18:00:00.000Z');
+      expect(cda.llegadaDpiEn).toBe('2026-10-21T20:00:00.000Z');
+      expect(cda.salidaDpiEn).toBeNull();
+      expect(cda.asistenteNombre).toBeNull();
+      expect(prisma.parejaCda.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { fecha: undefined, recintoId: { in: [recintoId] } } }),
+      );
+    });
+
+    it('un supervisor sin operadores asignados en los kits recibe una lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId: 'otro' }]);
+
+      await expect(service.estadoCdas('supervisor-1', ['TECNICO_SUPERVISOR'])).resolves.toEqual([]);
+    });
+
     it('sin prueba de conexión, pruebaConexionEn es null', async () => {
       prepararUnCda([{ operadorId, tipo: 'LLEGADA_RECINTO', ocurridoEn: new Date('2026-10-21T13:00:00.000Z') }]);
 
