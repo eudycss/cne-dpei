@@ -1,4 +1,5 @@
-import type { ModuloWebId, RolConfigurable } from './modulos';
+import type { ModuloWebId } from './modulos';
+import { ROLES_CONFIGURABLES, type RolConfigurable } from './roles-configurables';
 
 // Acciones dentro de un módulo que el administrador puede dar o quitar por rol.
 // Solo cuentan si el rol además ve el módulo. El ADMINISTRADOR siempre puede todo.
@@ -21,7 +22,7 @@ export interface PermisoAccion {
   id: PermisoId;
   modulo: ModuloWebId;
   etiqueta: string;
-  /** Techo: roles a los que se les puede dar (el API los deja pasar por @Roles). */
+  /** Roles a los que se les puede dar: todos los configurables. */
   rolesPermitidos: readonly RolConfigurable[];
   /** De fábrica: lo que cada rol ya podía hacer antes de que fuera configurable. */
   rolesPorDefecto: readonly RolConfigurable[];
@@ -29,24 +30,24 @@ export interface PermisoAccion {
 
 const TEC_AET = ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'] as const;
 
-const PERMISOS_BASE: readonly PermisoAccion[] = [
-  { id: 'cda.asistencia.marcar', modulo: 'operadores-cda', etiqueta: 'Marcar o quitar asistencia a mano', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
-  { id: 'cda.asistencia.qr', modulo: 'operadores-cda', etiqueta: 'Marcar asistencia escaneando el carnet', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
-  { id: 'cda.asistencia.exportar', modulo: 'operadores-cda', etiqueta: 'Exportar asistencia y atrasos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
+const PERMISOS_BASE: readonly Omit<PermisoAccion, 'rolesPermitidos'>[] = [
+  { id: 'cda.asistencia.marcar', modulo: 'operadores-cda', etiqueta: 'Marcar o quitar asistencia a mano', rolesPorDefecto: TEC_AET },
+  { id: 'cda.asistencia.qr', modulo: 'operadores-cda', etiqueta: 'Marcar asistencia escaneando el carnet', rolesPorDefecto: TEC_AET },
+  { id: 'cda.asistencia.exportar', modulo: 'operadores-cda', etiqueta: 'Exportar asistencia y atrasos', rolesPorDefecto: TEC_AET },
   // Cambia la historia: de fábrica solo el administrador, y al Asistente Transversal no se le puede dar.
-  { id: 'cda.asistencia.corregir', modulo: 'operadores-cda', etiqueta: 'Corregir la asistencia de días pasados (con motivo)', rolesPermitidos: ['TECNICO_SUPERVISOR'], rolesPorDefecto: [] },
-  { id: 'cda.actas.gestionar', modulo: 'operadores-cda', etiqueta: 'Generar, descargar y marcar firmadas las actas', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
-  { id: 'cda.fotos.enlace', modulo: 'operadores-cda', etiqueta: 'Crear enlaces para subir fotos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
+  { id: 'cda.asistencia.corregir', modulo: 'operadores-cda', etiqueta: 'Corregir la asistencia de días pasados (con motivo)', rolesPorDefecto: [] },
+  { id: 'cda.actas.gestionar', modulo: 'operadores-cda', etiqueta: 'Generar, descargar y marcar firmadas las actas', rolesPorDefecto: TEC_AET },
+  { id: 'cda.fotos.enlace', modulo: 'operadores-cda', etiqueta: 'Crear enlaces para subir fotos', rolesPorDefecto: TEC_AET },
   // Emitir un carnet anula el anterior: de fábrica, solo el administrador.
-  { id: 'cda.carnets.emitir', modulo: 'operadores-cda', etiqueta: 'Emitir o anular carnets QR', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
+  { id: 'cda.carnets.emitir', modulo: 'operadores-cda', etiqueta: 'Emitir o anular carnets QR', rolesPorDefecto: [] },
   // Reimprimir no anula: el mismo código queda en dos papeles. De fábrica, solo el administrador.
-  { id: 'cda.carnets.reimprimir', modulo: 'operadores-cda', etiqueta: 'Reimprimir carnets QR vigentes (sin anularlos)', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
+  { id: 'cda.carnets.reimprimir', modulo: 'operadores-cda', etiqueta: 'Reimprimir carnets QR vigentes (sin anularlos)', rolesPorDefecto: [] },
   // Decide quién tiene falta: de fábrica, solo el administrador.
-  { id: 'cda.convocatoria.gestionar', modulo: 'operadores-cda', etiqueta: 'Gestionar la convocatoria del día (a quién se llamó)', rolesPermitidos: TEC_AET, rolesPorDefecto: [] },
+  { id: 'cda.convocatoria.gestionar', modulo: 'operadores-cda', etiqueta: 'Gestionar la convocatoria del día (a quién se llamó)', rolesPorDefecto: [] },
   // Ver la foto del certificado Evatics, sin poder decidir: de fábrica, los técnicos supervisores.
-  { id: 'cda.evatics.ver', modulo: 'operadores-cda', etiqueta: 'Ver las fotos de los certificados Evatics (solo ver)', rolesPermitidos: TEC_AET, rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
+  { id: 'cda.evatics.ver', modulo: 'operadores-cda', etiqueta: 'Ver las fotos de los certificados Evatics (solo ver)', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
   // Aprobar o rechazar: de fábrica, los técnicos supervisores. A Asistentes y Analistas solo los revisa el administrador.
-  { id: 'cda.evatics.revisar', modulo: 'operadores-cda', etiqueta: 'Aprobar o rechazar certificados Evatics', rolesPermitidos: TEC_AET, rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
+  { id: 'cda.evatics.revisar', modulo: 'operadores-cda', etiqueta: 'Aprobar o rechazar certificados Evatics', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
 ];
 
 /** Al analista provincial se le puede dar cualquier acción, y de fábrica las tiene todas. */
@@ -54,7 +55,7 @@ const conAnalista = (roles: readonly RolConfigurable[]): RolConfigurable[] => Ar
 
 export const PERMISOS: readonly PermisoAccion[] = PERMISOS_BASE.map((p) => ({
   ...p,
-  rolesPermitidos: conAnalista(p.rolesPermitidos),
+  rolesPermitidos: ROLES_CONFIGURABLES,
   rolesPorDefecto: conAnalista(p.rolesPorDefecto),
 }));
 

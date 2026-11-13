@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { PERMISO_IDS } from './permisos';
+import { ROLES_CONFIGURABLES, type RolConfigurable } from './roles-configurables';
 
 // Módulos de la web que el administrador puede mostrar u ocultar por rol.
 // El ADMINISTRADOR siempre ve todos; OPERADOR_CDA no entra a la web.
 // ANALISTA_PROVINCIAL es como el administrador de fábrica (ve y hace todo, salvo lo
 // exclusivo del administrador) y el administrador le quita lo que no deba.
-export const ROLES_CONFIGURABLES = ['TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL', 'ANALISTA_PROVINCIAL'] as const;
-export type RolConfigurable = (typeof ROLES_CONFIGURABLES)[number];
+export { ROLES_CONFIGURABLES, type RolConfigurable };
 
 export const MODULO_WEB_IDS = [
   'inicio',
@@ -35,8 +35,8 @@ export interface ModuloWeb {
   seccion: SeccionModulo;
   ruta: string;
   /**
-   * Techo: roles a los que el API ya les permite leer los datos del módulo
-   * (sus `@Roles`). Activarlo para otro rol solo daría una página con 403.
+   * Roles a los que el administrador puede dar el módulo: todos los configurables.
+   * Quien no es analista lo ve en solo lectura (el API lo trata como administrador solo en GET).
    */
   rolesPermitidos: readonly RolConfigurable[];
   /** Visibilidad de fábrica (la que había antes de que fuera configurable). */
@@ -45,23 +45,22 @@ export interface ModuloWeb {
 
 const TEC_LEC = ['TECNICO_SUPERVISOR', 'LECTOR'] as const;
 
-const MODULOS_BASE: readonly ModuloWeb[] = [
-  { id: 'inicio', etiqueta: 'Estado de la preparación', seccion: 'Preparación', ruta: '/', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'recintos', etiqueta: 'Recintos Electorales', seccion: 'Preparación', ruta: '/recintos', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'usuarios', etiqueta: 'Usuarios', seccion: 'Preparación', ruta: '/users', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'militares', etiqueta: 'Militares', seccion: 'Preparación', ruta: '/militares', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'eventos', etiqueta: 'Eventos Electorales', seccion: 'Preparación', ruta: '/eventos', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'asignaciones', etiqueta: 'Asignaciones', seccion: 'Preparación', ruta: '/asignaciones', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'kits', etiqueta: 'Kits Electorales', seccion: 'Preparación', ruta: '/kits', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'monitoreo', etiqueta: 'Monitoreo', seccion: 'Operación', ruta: '/operadores', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'incidencias', etiqueta: 'Incidencias', seccion: 'Operación', ruta: '/incidencias', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
-  { id: 'alertas', etiqueta: 'Alertas', seccion: 'Operación', ruta: '/alertas', rolesPermitidos: ['TECNICO_SUPERVISOR'], rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
+const MODULOS_BASE: readonly Omit<ModuloWeb, 'rolesPermitidos'>[] = [
+  { id: 'inicio', etiqueta: 'Estado de la preparación', seccion: 'Preparación', ruta: '/', rolesPorDefecto: TEC_LEC },
+  { id: 'recintos', etiqueta: 'Recintos Electorales', seccion: 'Preparación', ruta: '/recintos', rolesPorDefecto: TEC_LEC },
+  { id: 'usuarios', etiqueta: 'Usuarios', seccion: 'Preparación', ruta: '/users', rolesPorDefecto: TEC_LEC },
+  { id: 'militares', etiqueta: 'Militares', seccion: 'Preparación', ruta: '/militares', rolesPorDefecto: TEC_LEC },
+  { id: 'eventos', etiqueta: 'Eventos Electorales', seccion: 'Preparación', ruta: '/eventos', rolesPorDefecto: TEC_LEC },
+  { id: 'asignaciones', etiqueta: 'Asignaciones', seccion: 'Preparación', ruta: '/asignaciones', rolesPorDefecto: TEC_LEC },
+  { id: 'kits', etiqueta: 'Kits Electorales', seccion: 'Preparación', ruta: '/kits', rolesPorDefecto: TEC_LEC },
+  { id: 'monitoreo', etiqueta: 'Monitoreo', seccion: 'Operación', ruta: '/operadores', rolesPorDefecto: TEC_LEC },
+  { id: 'incidencias', etiqueta: 'Incidencias', seccion: 'Operación', ruta: '/incidencias', rolesPorDefecto: TEC_LEC },
+  { id: 'alertas', etiqueta: 'Alertas', seccion: 'Operación', ruta: '/alertas', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
   {
     id: 'operadores-cda',
     etiqueta: 'CDAs (Operadores y Asistentes)',
     seccion: 'Personal',
     ruta: '/operadores-cda',
-    rolesPermitidos: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
     rolesPorDefecto: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
   },
   {
@@ -70,7 +69,6 @@ const MODULOS_BASE: readonly ModuloWeb[] = [
     seccion: 'Personal',
     ruta: '/simulador-digitacion',
     // De fábrica solo el ADMINISTRADOR; se activa a otros roles en "Módulos por rol".
-    rolesPermitidos: ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'],
     rolesPorDefecto: [],
   },
   {
@@ -79,17 +77,15 @@ const MODULOS_BASE: readonly ModuloWeb[] = [
     seccion: 'Informes',
     ruta: '/reportes/cadena-custodia',
     // El API exige además que el módulo esté activo para el rol (ModuloGuard).
-    rolesPermitidos: ROLES_CONFIGURABLES,
     rolesPorDefecto: ['LECTOR', 'ASISTENTE_TRANSVERSAL'],
   },
-  { id: 'reportes', etiqueta: 'Reportes', seccion: 'Informes', ruta: '/reportes/no-cda', rolesPermitidos: ['LECTOR'], rolesPorDefecto: ['LECTOR'] },
+  { id: 'reportes', etiqueta: 'Reportes', seccion: 'Informes', ruta: '/reportes/no-cda', rolesPorDefecto: ['LECTOR'] },
   // Power BI controla su propio acceso: no consume el API.
   {
     id: 'powerbi-cdas',
     etiqueta: 'Power BI CDAS',
     seccion: 'Informes',
     ruta: '/reportes/cdas',
-    rolesPermitidos: ROLES_CONFIGURABLES,
     rolesPorDefecto: TEC_LEC,
   },
 ];
@@ -99,7 +95,7 @@ const conAnalista = (roles: readonly RolConfigurable[]): RolConfigurable[] => Ar
 
 export const MODULOS_WEB: readonly ModuloWeb[] = MODULOS_BASE.map((m) => ({
   ...m,
-  rolesPermitidos: conAnalista(m.rolesPermitidos),
+  rolesPermitidos: ROLES_CONFIGURABLES,
   rolesPorDefecto: conAnalista(m.rolesPorDefecto),
 }));
 

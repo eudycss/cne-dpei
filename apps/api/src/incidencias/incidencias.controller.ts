@@ -29,7 +29,7 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -54,6 +54,7 @@ export class IncidenciasController {
     return this.incidencias.create(user.sub, body);
   }
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU14-CA2: listar incidencias con filtros opcionales (estado, eventoId)' })

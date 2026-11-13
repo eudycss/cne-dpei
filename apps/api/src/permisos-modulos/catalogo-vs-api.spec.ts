@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Reflector } from '@nestjs/core';
 import { MODULOS_WEB, type ModuloWebId } from '@cne/shared-validation';
-import { ROLES_KEY } from '../common/roles.decorator';
+import { LECTURA_CONFIGURABLE_KEY, ROLES_KEY } from '../common/roles.decorator';
 import { MODULO_KEY } from './modulo.guard';
 import { UsersController } from '../users/users.controller';
 import { CatalogController } from '../catalog/catalog.controller';
@@ -46,14 +46,17 @@ const ENDPOINT: Record<ModuloWebId, [controlador: unknown, metodo: string] | nul
 
 describe('Catálogo de módulos web vs. API', () => {
   it.each(MODULOS_WEB.filter((m) => ENDPOINT[m.id]).map((m) => [m.id, m] as const))(
-    '%s: el techo del catálogo no promete roles que el API rechaza con 403',
+    '%s: el API deja entrar a los roles configurables por el alias del administrador',
     (_id, modulo) => {
       const [controlador, metodo] = ENDPOINT[modulo.id]!;
       const roles = rolesDe(controlador, metodo);
       expect(roles).toBeDefined();
-      // El analista no figura en @Roles: entra por el alias del administrador (RolesGuard).
-      for (const rol of modulo.rolesPermitidos) expect(roles).toContain(rol === 'ANALISTA_PROVINCIAL' ? 'ADMINISTRADOR' : rol);
-      // ...y solo si el endpoint declara su módulo (si no, el alias cierra el paso).
+      // Sin techo: los roles configurables sin @Roles propio entran por el alias del
+      // administrador (RolesGuard), así que el endpoint debe nombrarlo...
+      expect(roles).toContain('ADMINISTRADOR');
+      // Los roles que no son analista solo leen lo marcado @LecturaConfigurable (lista blanca).
+      expect(new Reflector().getAllAndOverride<boolean>(LECTURA_CONFIGURABLE_KEY, [(controlador as any).prototype[metodo], controlador as any])).toBe(true);
+      // ...y declarar su módulo (si no, el alias cierra el paso).
       // 'inicio' lee el evento activo, que declara el módulo 'eventos'.
       if (modulo.id !== 'inicio') {
         const declarado = new Reflector().getAllAndOverride<string>(MODULO_KEY, [(controlador as any).prototype[metodo], controlador as any]);

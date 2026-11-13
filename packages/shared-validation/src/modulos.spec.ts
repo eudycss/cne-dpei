@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MODULOS_WEB,
   MODULO_WEB_IDS,
+  ROLES_CONFIGURABLES,
   actualizarModulosRolSchema,
   esRolConfigurable,
   modulosPermitidosParaRol,
@@ -33,9 +34,9 @@ describe('catálogo de módulos web', () => {
     expect(ids).toContain('cadena-custodia');
   });
 
-  it('solo el técnico supervisor puede tener Alertas', () => {
-    expect(modulosPermitidosParaRol('TECNICO_SUPERVISOR')).toContain('alertas');
-    expect(modulosPermitidosParaRol('LECTOR')).not.toContain('alertas');
+  it('sin techo: cualquier rol configurable puede tener cualquier módulo, y los de fábrica no cambian', () => {
+    for (const rol of ROLES_CONFIGURABLES) expect(modulosPermitidosParaRol(rol)).toEqual(MODULO_WEB_IDS);
+    expect(modulosPorDefecto(['LECTOR'])).not.toContain('alertas');
   });
 
   it('el administrador y el operador CDA no son configurables', () => {

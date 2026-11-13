@@ -62,7 +62,7 @@ import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -257,6 +257,7 @@ export class TrackingController {
     return this.tracking.operadoresEnRetorno(user.sub, user.roles);
   }
 
+  @LecturaConfigurable()
   @Get('estado-cdas')
   @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
   @ApiOperation({
@@ -289,6 +290,7 @@ export class TrackingController {
     return this.tracking.registrarLlegadaRecintoManual(user.sub, user.roles, body);
   }
 
+  @LecturaConfigurable()
   @Get('reporte-no-cda')
   @Roles('ADMINISTRADOR', 'LECTOR')
   @RequiereModulo('reportes')

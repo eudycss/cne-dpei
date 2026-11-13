@@ -5,7 +5,7 @@ import { updateEstadoAlertaSchema } from '@cne/shared-validation';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -19,6 +19,7 @@ import { AlertasService } from './alertas.service';
 export class AlertasController {
   constructor(private readonly alertas: AlertasService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR')
   @ApiOperation({ summary: 'HU18: listar alertas de un evento' })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MODULOS_WEB, actualizarModulosRolSchema } from './modulos';
+import { MODULOS_WEB, ROLES_CONFIGURABLES, actualizarModulosRolSchema } from './modulos';
 import {
   PERMISOS,
   PERMISO_IDS,
@@ -34,9 +34,8 @@ describe('catálogo de acciones por rol', () => {
     expect(suyos).not.toContain('cda.carnets.emitir');
   });
 
-  it('emitir carnets se le puede dar al técnico y al asistente, nunca al lector', () => {
-    expect(permisosPermitidosParaRol('ASISTENTE_TRANSVERSAL')).toContain('cda.carnets.emitir');
-    expect(permisosPermitidosParaRol('LECTOR')).toEqual([]);
+  it('sin techo: cualquier rol configurable puede recibir cualquier acción', () => {
+    for (const rol of ROLES_CONFIGURABLES) expect(permisosPermitidosParaRol(rol)).toEqual(PERMISO_IDS);
   });
 
   it('reimprimir carnets: de fábrica solo el administrador; se le puede dar al técnico y al asistente', () => {
@@ -45,11 +44,9 @@ describe('catálogo de acciones por rol', () => {
     expect(permisosPermitidosParaRol('ASISTENTE_TRANSVERSAL')).toContain('cda.carnets.reimprimir');
   });
 
-  it('corregir días pasados: de fábrica solo el administrador; se le puede dar al técnico, nunca al asistente', () => {
+  it('corregir días pasados: de fábrica solo el administrador', () => {
     expect(permisosPorDefecto(['TECNICO_SUPERVISOR'])).not.toContain('cda.asistencia.corregir');
     expect(permisosPorDefecto(['ASISTENTE_TRANSVERSAL'])).not.toContain('cda.asistencia.corregir');
-    expect(permisosPermitidosParaRol('TECNICO_SUPERVISOR')).toContain('cda.asistencia.corregir');
-    expect(permisosPermitidosParaRol('ASISTENTE_TRANSVERSAL')).not.toContain('cda.asistencia.corregir');
   });
 
   it('sin el módulo visible, sus acciones no cuentan', () => {

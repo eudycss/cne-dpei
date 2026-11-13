@@ -118,12 +118,9 @@ describe('Acciones de CDAs en los endpoints', () => {
   });
 
   it.each(ENDPOINTS.map(([c, m, p]) => [`${c.name}.${m}`, c, m, p] as const))(
-    '%s: @Roles deja pasar a todos los roles a los que se les puede dar la acción',
-    (_n, controlador, metodo, permiso) => {
-      const roles = rolesDe(controlador, metodo);
-      const techo = PERMISOS.find((p) => p.id === permiso)!.rolesPermitidos;
-      // El analista entra por el alias del administrador (RolesGuard), no por @Roles.
-      for (const rol of ['ADMINISTRADOR', ...techo.filter((r) => r !== 'ANALISTA_PROVINCIAL')]) expect(roles).toContain(rol);
+    '%s: @Roles incluye al administrador, así RolesGuard aplica el alias a los roles configurables',
+    (_n, controlador, metodo) => {
+      expect(rolesDe(controlador, metodo)).toContain('ADMINISTRADOR');
     },
   );
 
