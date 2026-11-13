@@ -438,7 +438,7 @@ describe('EnlacesService', () => {
 
         expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
         expect(telegram.publicarTablero).toHaveBeenCalledWith(
-          expect.stringContaining('✅ Todos los enlaces levantados (1/1)'),
+          expect.stringContaining('✅ Todos los enlaces activos (1/1)'),
           undefined,
           77,
         );

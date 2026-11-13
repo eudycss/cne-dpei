@@ -68,14 +68,14 @@ const grupo = (n: number | null, tecnico: string, caidos: string[], activos: str
 describe('formatearEstadoEnlaces', () => {
   const r = (codigo: string, canton = 'Ibarra') => ({ codigoRecinto: codigo, nombreRecinto: `R${codigo}`, canton });
 
-  it('todo arriba: "Todos los enlaces levantados" y cuántos por cantón, sin botones', () => {
+  it('todo arriba: "Todos los enlaces activos" y cuántos por cantón, sin botones', () => {
     const { texto, teclado } = formatearEstadoEnlaces({
       caidos: [],
       activos: [r('1'), r('2'), r('3', 'Otavalo')],
       grupos: [],
     });
 
-    expect(texto).toBe('<b>✅ Todos los enlaces levantados (3/3)</b>\n📍 Ibarra: 2 · 📍 Otavalo: 1');
+    expect(texto).toBe('<b>✅ Todos los enlaces activos (3/3)</b>\n📍 Ibarra: 2 · 📍 Otavalo: 1');
     expect(teclado).toBeUndefined();
   });
 
@@ -91,7 +91,7 @@ describe('formatearEstadoEnlaces', () => {
     expect(texto).toContain('<b>🔴 2 de 3 enlaces caídos</b>');
     expect(texto).toContain('🔴 1 (Iba) — R1\n    👷 Técnico: Jairo Leal\n    📞 Llamar: Danilo · 0968');
     expect(texto).toContain('🚨 <b>2 (Iba) — R2</b>\n    👷 Técnico: sin asignar');
-    expect(texto).toContain('✅ Levantados: 1');
+    expect(texto).toContain('✅ Activos: 1');
     expect(teclado).toBeUndefined();
   });
 
@@ -103,7 +103,7 @@ describe('formatearEstadoEnlaces', () => {
       grupos: [grupo(1, 'Jairo Leal', ['1', '2', '3']), grupo(2, 'Ana <Pérez>', [], ['9']), grupo(null, '', ['4', '5'])],
     });
 
-    expect(texto).toContain('<b>🔴 5 caídos · ✅ 1 levantados (de 6)</b>');
+    expect(texto).toContain('<b>🔴 5 caídos · ✅ 1 activos (de 6)</b>');
     expect(texto).toContain('Caídos por cantón: 📍 Ibarra: 5');
     expect(texto).toContain('1. Jairo Leal: 3');
     expect(texto).toContain('Sin técnico: 2');
@@ -159,7 +159,7 @@ describe('formatearTablero', () => {
     const { texto, teclado } = formatearTablero({ caidos, activos: [], grupos }, new Date());
 
     expect(texto.length).toBeLessThanOrEqual(4096);
-    expect(texto).toContain('<b>🔴 60 caídos · ✅ 0 levantados</b>');
+    expect(texto).toContain('<b>🔴 60 caídos · ✅ 0 activos</b>');
     expect((teclado as { inline_keyboard: unknown[] }).inline_keyboard).toHaveLength(100);
   });
 
@@ -170,7 +170,7 @@ describe('formatearTablero', () => {
     );
 
     expect(texto).toMatch(/^📌 <b>Tablero de enlaces<\/b>/);
-    expect(texto).toContain('✅ Todos los enlaces levantados (1/1)');
+    expect(texto).toContain('✅ Todos los enlaces activos (1/1)');
     expect(texto).toContain('🕒 Actualizado 22:50');
   });
 });
@@ -252,7 +252,7 @@ describe('formatearAvisoCiclo', () => {
         recuperados: [recinto('978', { canton: 'Ibarra' })],
       });
 
-      expect(todo).toBe('<b>✅ Todos los enlaces levantados (2/2)</b>\n📍 Ibarra: 2');
+      expect(todo).toBe('<b>✅ Todos los enlaces activos (2/2)</b>\n📍 Ibarra: 2');
     });
 
     it('todos levantados: lo dice arriba y suena', () => {
@@ -263,7 +263,7 @@ describe('formatearAvisoCiclo', () => {
       });
 
       expect(mensajes).toHaveLength(1);
-      expect(mensajes[0]).toMatch(/^<b>✅ Todos los enlaces levantados \(2\/2\)<\/b>/);
+      expect(mensajes[0]).toMatch(/^<b>✅ Todos los enlaces activos \(2\/2\)<\/b>/);
       expect(sonar).toBe(true);
     });
 
