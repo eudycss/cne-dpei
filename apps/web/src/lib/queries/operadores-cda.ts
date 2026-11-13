@@ -550,8 +550,11 @@ export function pedirContactosTecnicosCda(fecha: string, tecnicos: string[]) {
   return api.get<Blob>(`/parejas-cda/contactos.vcf?${paramsTecnicos(fecha, tecnicos)}`, { responseType: 'blob' });
 }
 
-export async function descargarQrParejasCda(fecha: string): Promise<void> {
-  const res = await api.get<Blob>(`/parejas-cda/qr?fecha=${fecha}`, { responseType: 'blob' });
+/** QR de los kits de la lista del día; con `parejaIds`, solo los de esas parejas. */
+export async function descargarQrParejasCda(fecha: string, parejaIds?: string[]): Promise<void> {
+  const params = new URLSearchParams({ fecha });
+  for (const id of parejaIds ?? []) params.append('parejas', id);
+  const res = await api.get<Blob>(`/parejas-cda/qr?${params.toString()}`, { responseType: 'blob' });
   guardar(res.data, nombreDeDescarga(res.headers['content-disposition'], `kits-qr-parejas_${fecha}.pdf`));
 }
 

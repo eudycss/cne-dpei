@@ -1,5 +1,5 @@
 import { actuaComoAdmin } from '../../lib/roles';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -123,6 +123,10 @@ export function ParejasPanel() {
   const [agregando, setAgregando] = useState(false);
   const [asignandoRecinto, setAsignandoRecinto] = useState<RecintoParejaCda | null>(null);
   const [soloSinPareja, setSoloSinPareja] = useState(false);
+  const [soloMasDeUna, setSoloMasDeUna] = useState(false);
+  const [elegidas, setElegidas] = useState<Set<string>>(new Set());
+  // Los QR elegidos son de la lista de un día: al cambiar de día se empieza de cero.
+  useEffect(() => setElegidas(new Set()), [dia]);
   const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
@@ -190,7 +194,7 @@ export function ParejasPanel() {
     },
   });
   const qr = useMutation({
-    mutationFn: () => descargarQrParejasCda(dia),
+    mutationFn: (parejaIds?: string[]) => descargarQrParejasCda(dia, parejaIds),
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo descargar el PDF de QR') }),
   });
   const reporte = useDescargaPdf('No se pudo generar el reporte de parejas');
@@ -242,25 +246,47 @@ export function ParejasPanel() {
     : parejas;
   const sinParejaVisibles = q ? sinPareja.filter((r) => coincideBusqueda([r.codigo, r.nombre], q)) : sinPareja;
   // Si se completó el último vacío, el filtro deja de aplicar (ya no se muestra su casilla).
-  const soloVacios = soloSinPareja && sinPareja.length > 0;
+  // Recintos con 2+ parejas: para elegir cuáles QR imprimir (el de cada pareja adicional es otro kit).
+  const hayVarias = parejas.some((p) => p.parejasEnRecinto > 1);
+  const filtroVarias = soloMasDeUna && hayVarias;
+  const soloVacios = soloSinPareja && sinPareja.length > 0 && !filtroVarias;
   const conKit = parejas.some((p) => p.kitCodigo);
   // N° por recinto, como el Excel: las parejas del mismo recinto forman un bloque.
   const numeroRecinto = new Map<string, number>();
   for (const p of parejas) if (!numeroRecinto.has(p.recinto.id)) numeroRecinto.set(p.recinto.id, numeroRecinto.size + 1);
   // Orden estable por bloque: aunque dos recintos se llamen igual, sus parejas no se mezclan.
-  const filas = soloVacios ? [] : [...visibles].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
+  const porMostrar = filtroVarias ? visibles.filter((p) => p.parejasEnRecinto > 1) : visibles;
+  const filas = soloVacios ? [] : [...porMostrar].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
   const inicioBloque = (i: number) => i === 0 || filas[i - 1].recinto.id !== filas[i].recinto.id;
   const filasDelBloque = (i: number) => {
     let n = 1;
     while (filas[i + n]?.recinto.id === filas[i].recinto.id) n++;
     return n;
   };
+  // Solo cuentan las elegidas que siguen a la vista (con kit); lo que se filtró no se descarga sin querer.
+  const elegidasVisibles = filas.filter((p) => p.kitCodigo && elegidas.has(p.id)).map((p) => p.id);
+  const alternarElegida = (id: string) =>
+    setElegidas((prev) => {
+      const nuevo = new Set(prev);
+      if (!nuevo.delete(id)) nuevo.add(id);
+      return nuevo;
+    });
+  // Las adicionales de cada recinto (todas menos la primera pareja, que ya tiene su QR impreso).
+  // La "primera" se toma de la lista completa: si el buscador la oculta, la que queda no pasa a ser la primera.
+  const primeraDeRecinto = new Map<string, string>();
+  for (const p of parejas) if (!primeraDeRecinto.has(p.recinto.id)) primeraDeRecinto.set(p.recinto.id, p.id);
+  const marcarAdicionales = () =>
+    setElegidas(new Set(filas.filter((p) => p.kitCodigo && primeraDeRecinto.get(p.recinto.id) !== p.id).map((p) => p.id)));
   const resumenTabla = () => {
     if (soloVacios) {
       if (!q) return `${sinPareja.length} recinto(s) sin pareja`;
       return sinParejaVisibles.length
         ? `${sinParejaVisibles.length} de ${sinPareja.length} recinto(s) sin pareja`
         : `Ningún recinto sin pareja coincide con "${q}".`;
+    }
+    if (filtroVarias) {
+      const recintosVarios = new Set(porMostrar.map((p) => p.recinto.id)).size;
+      return `${recintosVarios} recinto(s) con más de una pareja · ${porMostrar.length} pareja(s) · ${elegidasVisibles.length} QR elegido(s)`;
     }
     if (q) {
       if (!visibles.length && !sinParejaVisibles.length) return `Ninguna pareja coincide con "${q}".`;
@@ -346,7 +372,7 @@ export function ParejasPanel() {
             </button>
           </>
         )}
-        <button type="button" className="btn secondary" onClick={() => qr.mutate()} disabled={!conKit || qr.isPending}>
+        <button type="button" className="btn secondary" onClick={() => qr.mutate(undefined)} disabled={!conKit || qr.isPending}>
           Descargar QR de esta lista
         </button>
         <button
@@ -441,9 +467,40 @@ export function ParejasPanel() {
                   </span>
                   {sinPareja.length > 0 && (
                     <label className="ocda-check-linea" style={{ margin: 0 }}>
-                      <input type="checkbox" checked={soloSinPareja} onChange={(e) => setSoloSinPareja(e.target.checked)} />
+                      <input type="checkbox" checked={soloSinPareja}
+                        onChange={(e) => {
+                          setSoloSinPareja(e.target.checked);
+                          if (e.target.checked) setSoloMasDeUna(false);
+                        }}
+                      />
                       Solo sin pareja
                     </label>
+                  )}
+                  {hayVarias && (
+                    <label className="ocda-check-linea" style={{ margin: 0 }}>
+                      <input type="checkbox" checked={soloMasDeUna}
+                        onChange={(e) => {
+                          setSoloMasDeUna(e.target.checked);
+                          if (e.target.checked) setSoloSinPareja(false);
+                        }}
+                      />
+                      Solo recintos con +1 pareja
+                    </label>
+                  )}
+                  {filtroVarias && (
+                    <>
+                      <button type="button" className="btn secondary" onClick={marcarAdicionales}>
+                        Marcar las parejas adicionales
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => qr.mutate(elegidasVisibles)}
+                        disabled={elegidasVisibles.length === 0 || qr.isPending}
+                      >
+                        Descargar QR elegidos ({elegidasVisibles.length})
+                      </button>
+                    </>
                   )}
                 </div>
                 <p className="muted" role="status">
@@ -463,6 +520,7 @@ export function ParejasPanel() {
                     <thead>
                       <tr>
                         <th scope="col">N°</th>
+                        {filtroVarias && <th scope="col">QR</th>}
                         <th scope="col">Operador CDA</th>
                         <th scope="col">Asistente CDA</th>
                         <th scope="col">Recinto</th>
@@ -483,6 +541,20 @@ export function ParejasPanel() {
                             >
                               {numeroRecinto.get(p.recinto.id)}
                             </th>
+                          )}
+                          {filtroVarias && (
+                            <td>
+                              {p.kitCodigo ? (
+                                <input
+                                  type="checkbox"
+                                  checked={elegidas.has(p.id)}
+                                  onChange={() => alternarElegida(p.id)}
+                                  aria-label={`Elegir el QR de ${p.operador.apellidosNombres} (${p.recinto.nombre})`}
+                                />
+                              ) : (
+                                <span className="muted">Sin kit</span>
+                              )}
+                            </td>
                           )}
                           <td>
                             {p.operador.apellidosNombres}
@@ -574,7 +646,7 @@ export function ParejasPanel() {
                           )}
                         </tr>
                       ))}
-                      {sinParejaVisibles.map((r) => (
+                      {!filtroVarias && sinParejaVisibles.map((r) => (
                         <FilaRecintoSinPareja
                           key={r.id}
                           recinto={r}

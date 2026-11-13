@@ -1927,6 +1927,18 @@ describe('ParejasCdaService', () => {
       prisma.parejaCda.findMany.mockResolvedValueOnce([]);
       await expect(service.qr(DIA)).rejects.toThrow(BadRequestException);
     });
+
+    it('QR de parejas elegidas: filtra por esos ids y, si ninguna tiene kit, responde 400', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([{ kitId: 'k2' }]);
+      await service.qr(DIA, ['p2']);
+      expect(prisma.parejaCda.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: { in: ['p2'] } }) }),
+      );
+      expect(kits.generatePdfQr).toHaveBeenLastCalledWith({ kitIds: ['k2'] });
+
+      prisma.parejaCda.findMany.mockResolvedValueOnce([]);
+      await expect(service.qr(DIA, ['p9'])).rejects.toThrow('elegidas');
+    });
   });
 
   describe('parejas de reserva (sin recinto)', () => {

@@ -321,6 +321,119 @@ describe('Parejas Operador + Asistente CDA por día', () => {
     });
   });
 
+  describe('recintos con más de una pareja (QR a imprimir)', () => {
+    const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE SIN GENTE' };
+    const filasDeTabla = async () => within(await screen.findByRole('region', { name: `Parejas del ${DIA}` })).getAllByRole('row').slice(1);
+    const MORA = { ...LUIS, id: 'op3', apellidosNombres: 'VEGA RITA' };
+    const conVarias = () =>
+      mockApi({
+        parejas: [
+          fila({ id: 'p1', parejasEnRecinto: 2 }),
+          fila({ id: 'p2', operador: LUIS, kitCodigo: 'KIT-0002', parejasEnRecinto: 2 }),
+          fila({ id: 'p3', recinto: R1126, operador: MORA, asistente: null, kitCodigo: 'KIT-0003', parejasEnRecinto: 1 }),
+        ],
+        recintosSinPareja: [{ id: 'r9', codigo: '8320', nombre: 'UE LEJANA' }],
+      });
+
+    it('sin recintos con 2+ parejas no aparece el filtro', async () => {
+      mockApi();
+      renderPagina();
+      await filasDeTabla();
+      expect(screen.queryByRole('checkbox', { name: 'Solo recintos con +1 pareja' })).not.toBeInTheDocument();
+    });
+
+    it('el filtro deja solo esos recintos, sin los vacíos, y cuenta los QR elegidos', async () => {
+      conVarias();
+      renderPagina();
+      expect(await filasDeTabla()).toHaveLength(4);
+
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+      const filas = await filasDeTabla();
+      expect(filas).toHaveLength(2);
+      expect(screen.getByText('1 recinto(s) con más de una pareja · 2 pareja(s) · 0 QR elegido(s)')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Descargar QR elegidos (0)' })).toBeDisabled();
+    });
+
+    it('marca las adicionales y descarga solo el QR de las parejas elegidas', async () => {
+      conVarias();
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Marcar las parejas adicionales' }));
+      expect(screen.getByRole('checkbox', { name: /Elegir el QR de PÉREZ ANA/ })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /Elegir el QR de MORA LUIS/ })).toBeChecked();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Descargar QR elegidos (1)' }));
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith(`/parejas-cda/qr?fecha=${DIA}&parejas=p2`, { responseType: 'blob' }));
+    });
+
+    it('desactivar el filtro vuelve a mostrar todo; "QR de esta lista" sigue sin pedir parejas', async () => {
+      conVarias();
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+      expect(await filasDeTabla()).toHaveLength(2);
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+      expect(await filasDeTabla()).toHaveLength(4);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Descargar QR de esta lista' }));
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith(`/parejas-cda/qr?fecha=${DIA}`, { responseType: 'blob' }));
+    });
+
+    it('elige y desmarca a mano; con varias elegidas repite ?parejas=', async () => {
+      conVarias();
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+
+      const ana = screen.getByRole('checkbox', { name: /Elegir el QR de PÉREZ ANA/ });
+      const luis = screen.getByRole('checkbox', { name: /Elegir el QR de MORA LUIS/ });
+      await userEvent.click(ana);
+      await userEvent.click(luis);
+      await userEvent.click(luis);
+      expect(luis).not.toBeChecked();
+      await userEvent.click(luis);
+      await userEvent.click(screen.getByRole('button', { name: 'Descargar QR elegidos (2)' }));
+      await waitFor(() => expect(getMock).toHaveBeenCalledWith(`/parejas-cda/qr?fecha=${DIA}&parejas=p1&parejas=p2`, { responseType: 'blob' }));
+    });
+
+    it('con el buscador ocultando la primera pareja, "marcar adicionales" no marca a la que queda', async () => {
+      conVarias();
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Buscar por persona/ }), 'MORA');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Marcar las parejas adicionales' }));
+      expect(screen.getByRole('checkbox', { name: /Elegir el QR de MORA LUIS/ })).toBeChecked();
+      await userEvent.clear(screen.getByRole('textbox', { name: /Buscar por persona/ }));
+      expect(screen.getByRole('checkbox', { name: /Elegir el QR de PÉREZ ANA/ })).not.toBeChecked();
+    });
+
+    it('los dos filtros se excluyen entre sí', async () => {
+      conVarias();
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo sin pareja' }));
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+      expect(screen.getByRole('checkbox', { name: 'Solo sin pareja' })).not.toBeChecked();
+    });
+
+    it('la pareja sin kit no se puede elegir', async () => {
+      mockApi({
+        parejas: [fila({ id: 'p1', parejasEnRecinto: 2 }), fila({ id: 'p2', operador: LUIS, kitCodigo: null, estado: 'SIN_KIT', parejasEnRecinto: 2 })],
+      });
+      renderPagina();
+      await filasDeTabla();
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Solo recintos con +1 pareja' }));
+
+      expect(screen.queryByRole('checkbox', { name: /Elegir el QR de MORA LUIS/ })).not.toBeInTheDocument();
+      const filas = await filasDeTabla();
+      expect(within(filas[1]).getAllByText('Sin kit').length).toBeGreaterThan(0);
+    });
+  });
+
   describe('CDA sin pareja', () => {
     const R1126 = { id: 'r2', codigo: '1126', nombre: 'UE SIN GENTE' };
     const R8320 = { id: 'r3', codigo: '8320', nombre: 'UE LEJANA' };
