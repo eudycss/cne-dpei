@@ -824,18 +824,18 @@ export function formatearEstadoEnlaces(e: EstadoEnlaces, nuevos: Set<string> = n
   const total = e.caidos.length + e.activos.length;
   if (e.caidos.length === 0) {
     const porCanton = conteoPorCanton(e.activos);
-    return { texto: `<b>✅ Todos los enlaces levantados (${total}/${total})</b>${porCanton ? `\n${porCanton}` : ''}` };
+    return { texto: `<b>✅ Todos los enlaces activos (${total}/${total})</b>${porCanton ? `\n${porCanton}` : ''}` };
   }
   if (e.caidos.length <= MAX_CAIDOS_DETALLADOS) {
     const bloques = e.caidos.map((c) => bloqueCaidoConContacto(c, nuevos.has(c.codigoRecinto), e.contactos?.get(c.codigoRecinto)));
     return {
       texto:
         `<b>🔴 ${e.caidos.length} de ${total} enlace${total === 1 ? '' : 's'} caído${e.caidos.length === 1 ? '' : 's'}</b>\n` +
-        `${bloques.join('\n')}\n✅ Levantados: ${e.activos.length}`,
+        `${bloques.join('\n')}\n✅ Activos: ${e.activos.length}`,
     };
   }
   const lineas = [
-    `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} levantados (de ${total})</b>`,
+    `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} activos (de ${total})</b>`,
     `Caídos por cantón: ${conteoPorCanton(e.caidos)}`,
   ];
   const pendientes = e.grupos.filter((g) => caidosDe(g).length > 0);
@@ -865,7 +865,7 @@ export function formatearTablero(e: EstadoEnlaces, ahora: Date): { texto: string
   // totales y los botones de técnico, que llevan el detalle.
   if (`📌 <b>Tablero de enlaces</b>\n\n${cuerpo}\n\n${pie}`.length > MAX_LARGO_MENSAJE) {
     cuerpo =
-      `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} levantados</b>\n` +
+      `<b>🔴 ${e.caidos.length} caídos · ✅ ${e.activos.length} activos</b>\n` +
       `<i>Toque un técnico para ver sus recintos y a quién llamar.</i>`;
   }
   return {
