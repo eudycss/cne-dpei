@@ -440,7 +440,7 @@ export function MonitoreoPage() {
               {cdasFiltrados.map((c) => {
                 const info = ESTADO_INFO[c.estado];
                 return (
-                  <tr key={c.recintoId}>
+                  <tr key={`${c.recintoId}-${c.operadorId}`}>
                     <td>{c.codigoRecinto}</td>
                     <td>{c.nombreRecinto}</td>
                     <td>{c.cantonNombre ?? '—'}</td>
