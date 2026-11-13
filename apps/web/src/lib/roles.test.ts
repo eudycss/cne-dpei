@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { etiquetaRol } from './roles';
+import { actuaComoAdmin, etiquetaRol } from './roles';
 
 describe('etiquetaRol', () => {
   it('traduce los roles del sistema a un nombre legible', () => {
@@ -11,5 +11,19 @@ describe('etiquetaRol', () => {
 
   it('deja tal cual un rol desconocido', () => {
     expect(etiquetaRol('AUDITOR')).toBe('AUDITOR');
+  });
+});
+
+describe('actuaComoAdmin', () => {
+  it('es verdadero para el administrador y el analista provincial', () => {
+    expect(actuaComoAdmin(['ADMINISTRADOR'])).toBe(true);
+    expect(actuaComoAdmin(['ANALISTA_PROVINCIAL'])).toBe(true);
+    expect(etiquetaRol('ANALISTA_PROVINCIAL')).toBe('Analista provincial');
+  });
+
+  it('es falso para los demás roles y sin sesión', () => {
+    expect(actuaComoAdmin(['TECNICO_SUPERVISOR', 'LECTOR'])).toBe(false);
+    expect(actuaComoAdmin([])).toBe(false);
+    expect(actuaComoAdmin(undefined)).toBe(false);
   });
 });

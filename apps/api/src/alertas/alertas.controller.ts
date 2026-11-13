@@ -7,12 +7,14 @@ import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Roles } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { AlertasService } from './alertas.service';
 
 @ApiTags('alertas')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@RequiereModulo('alertas')
 @Controller('alertas')
 export class AlertasController {
   constructor(private readonly alertas: AlertasService) {}

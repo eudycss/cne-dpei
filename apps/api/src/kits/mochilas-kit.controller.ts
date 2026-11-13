@@ -23,6 +23,7 @@ import { numeroMochilaRequestSchema } from '@cne/shared-validation';
 import { MochilasKitService } from './mochilas-kit.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -33,6 +34,7 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 /** N.º de mochila ↔ QR del kit: editar uno, cargar desde Excel y el reporte del evento. */
 @ApiTags('kits')
 @ApiBearerAuth()
+@RequiereModulo('kits')
 @Controller('kits')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class MochilasKitController {

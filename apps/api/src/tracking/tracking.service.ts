@@ -153,7 +153,7 @@ function desfaseSinSenalMinutos(desdeOffline: boolean | undefined, ocurridoEn: D
  * ASISTENTE_TRANSVERSAL, revisar si pasa por verificarPertenenciaOperador.
  */
 function esRolTransversalKits(roles: RoleName[]): boolean {
-  return roles.some((r) => r === 'ADMINISTRADOR' || r === 'LECTOR' || r === 'ASISTENTE_TRANSVERSAL');
+  return roles.some((r) => r === 'ADMINISTRADOR' || r === 'ANALISTA_PROVINCIAL' || r === 'LECTOR' || r === 'ASISTENTE_TRANSVERSAL');
 }
 
 @Injectable()
@@ -1511,7 +1511,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
 
     const trackingRows = await this.prisma.eventoTracking.findMany({
       where: { eventoId: evento.id },
@@ -1612,7 +1612,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1776,7 +1776,7 @@ export class TrackingService {
     });
     if (!evento) return [];
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -2035,7 +2035,7 @@ export class TrackingService {
     });
     if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
     if (!esAdmin) {
       const asignado = await this.prisma.asignacionSupervisor.findFirst({
         where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
@@ -2090,7 +2090,7 @@ export class TrackingService {
     });
     if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
 
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
     if (!esAdmin) {
       const asignado = await this.prisma.asignacionSupervisor.findFirst({
         where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },

@@ -3,7 +3,8 @@ export type RoleName =
   | 'TECNICO_SUPERVISOR'
   | 'OPERADOR_CDA'
   | 'LECTOR'
-  | 'ASISTENTE_TRANSVERSAL';
+  | 'ASISTENTE_TRANSVERSAL'
+  | 'ANALISTA_PROVINCIAL';
 
 export interface Role {
   id: string;

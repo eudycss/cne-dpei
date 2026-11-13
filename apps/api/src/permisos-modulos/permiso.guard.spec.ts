@@ -122,7 +122,8 @@ describe('Acciones de CDAs en los endpoints', () => {
     (_n, controlador, metodo, permiso) => {
       const roles = rolesDe(controlador, metodo);
       const techo = PERMISOS.find((p) => p.id === permiso)!.rolesPermitidos;
-      for (const rol of ['ADMINISTRADOR', ...techo]) expect(roles).toContain(rol);
+      // El analista entra por el alias del administrador (RolesGuard), no por @Roles.
+      for (const rol of ['ADMINISTRADOR', ...techo.filter((r) => r !== 'ANALISTA_PROVINCIAL')]) expect(roles).toContain(rol);
     },
   );
 
@@ -141,7 +142,7 @@ describe('Acciones de CDAs en los endpoints', () => {
       .map((f) => readFileSync(f, 'utf8'))
       .filter((s) => s.includes('INSERT INTO "rol_permisos"'))
       .join(' ');
-    const delSql = [...sql.matchAll(/\('([A-Z_]+)',\s*'([a-z.]+)'\)/g)].map(([, rol, p]) => `${rol}:${p}`).sort();
+    const delSql = [...sql.matchAll(/\('([A-Z_]+)',\s*'([a-z]+\.[a-z.]+)'\)/g)].map(([, rol, p]) => `${rol}:${p}`).sort();
     const deFabrica = PERMISOS.flatMap((p) => p.rolesPorDefecto.map((rol) => `${rol}:${p.id}`)).sort();
     expect(delSql).toEqual(deFabrica);
   });

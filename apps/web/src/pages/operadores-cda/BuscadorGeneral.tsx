@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -19,7 +20,7 @@ const MAXIMO = 20;
  */
 export function useBuscarPersonasCda(texto: string) {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const limpio = texto.trim();
   const [q, setQ] = useState(limpio);
   useEffect(() => {

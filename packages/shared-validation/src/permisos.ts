@@ -29,7 +29,7 @@ export interface PermisoAccion {
 
 const TEC_AET = ['TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'] as const;
 
-export const PERMISOS: readonly PermisoAccion[] = [
+const PERMISOS_BASE: readonly PermisoAccion[] = [
   { id: 'cda.asistencia.marcar', modulo: 'operadores-cda', etiqueta: 'Marcar o quitar asistencia a mano', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.qr', modulo: 'operadores-cda', etiqueta: 'Marcar asistencia escaneando el carnet', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.exportar', modulo: 'operadores-cda', etiqueta: 'Exportar asistencia y atrasos', rolesPermitidos: TEC_AET, rolesPorDefecto: TEC_AET },
@@ -48,6 +48,15 @@ export const PERMISOS: readonly PermisoAccion[] = [
   // Aprobar o rechazar: de fábrica, los técnicos supervisores. A Asistentes y Analistas solo los revisa el administrador.
   { id: 'cda.evatics.revisar', modulo: 'operadores-cda', etiqueta: 'Aprobar o rechazar certificados Evatics', rolesPermitidos: TEC_AET, rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
 ];
+
+/** Al analista provincial se le puede dar cualquier acción, y de fábrica las tiene todas. */
+const conAnalista = (roles: readonly RolConfigurable[]): RolConfigurable[] => Array.from(new Set([...roles, 'ANALISTA_PROVINCIAL' as const]));
+
+export const PERMISOS: readonly PermisoAccion[] = PERMISOS_BASE.map((p) => ({
+  ...p,
+  rolesPermitidos: conAnalista(p.rolesPermitidos),
+  rolesPorDefecto: conAnalista(p.rolesPorDefecto),
+}));
 
 export function esPermisoId(v: unknown): v is PermisoId {
   return typeof v === 'string' && (PERMISO_IDS as readonly string[]).includes(v);

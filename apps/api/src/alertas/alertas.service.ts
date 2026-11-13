@@ -338,7 +338,7 @@ export class AlertasService {
 }
 
 function esAdmin(roles: RoleName[]): boolean {
-  return roles.includes('ADMINISTRADOR') || roles.includes('LECTOR');
+  return roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
 }
 
 function toDto(row: any, operadorNombre: string | null = null): Alerta {

@@ -21,6 +21,7 @@ const texto = (v: unknown) => (typeof v === 'string' ? v : undefined);
 // Ven el reporte los mismos roles que toman asistencia; la hora oficial solo la cambia el administrador.
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
+@RequiereModulo('operadores-cda')
 @Controller('operadores-cda/asistencia')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')

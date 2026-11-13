@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -81,7 +82,7 @@ function EstadoBadge({ estado }: { estado: string }) {
 
 export function KitsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   // El N.º de mochila lo registran también los supervisores (escaneando); pasarlo de un QR a otro, solo el admin.
   const puedeMochila = isAdmin || (user?.roles.includes('TECNICO_SUPERVISOR') ?? false);
   const [tab, setTab] = useState<'kits' | 'items'>('kits');

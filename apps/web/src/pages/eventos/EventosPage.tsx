@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -52,7 +53,7 @@ function EstadoBadge({ estado }: { estado: EstadoEvento }) {
 
 export function EventosPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const qc = useQueryClient();
 
   const [tab, setTab] = useState<'eventos' | 'tipos'>('eventos');

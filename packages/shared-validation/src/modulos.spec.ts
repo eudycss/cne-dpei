@@ -60,3 +60,11 @@ describe('actualizarModulosRolSchema', () => {
     expect(actualizarModulosRolSchema.safeParse({ modulos: ['bitacora'] }).success).toBe(false);
   });
 });
+
+describe('ANALISTA_PROVINCIAL', () => {
+  it('es configurable, ve todos los módulos de fábrica y se le puede dar cualquiera', () => {
+    expect(esRolConfigurable('ANALISTA_PROVINCIAL')).toBe(true);
+    expect(modulosPorDefecto(['ANALISTA_PROVINCIAL']).sort()).toEqual([...MODULO_WEB_IDS].sort());
+    expect(modulosPermitidosParaRol('ANALISTA_PROVINCIAL').sort()).toEqual([...MODULO_WEB_IDS].sort());
+  });
+});

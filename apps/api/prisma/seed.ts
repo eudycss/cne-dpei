@@ -25,6 +25,7 @@ const ROLES = [
   'OPERADOR_CDA',
   'LECTOR',
   'ASISTENTE_TRANSVERSAL',
+  'ANALISTA_PROVINCIAL',
 ] as const;
 
 const CANTONES = [

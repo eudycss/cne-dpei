@@ -3,7 +3,9 @@ import { PERMISO_IDS } from './permisos';
 
 // Módulos de la web que el administrador puede mostrar u ocultar por rol.
 // El ADMINISTRADOR siempre ve todos; OPERADOR_CDA no entra a la web.
-export const ROLES_CONFIGURABLES = ['TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL'] as const;
+// ANALISTA_PROVINCIAL es como el administrador de fábrica (ve y hace todo, salvo lo
+// exclusivo del administrador) y el administrador le quita lo que no deba.
+export const ROLES_CONFIGURABLES = ['TECNICO_SUPERVISOR', 'LECTOR', 'ASISTENTE_TRANSVERSAL', 'ANALISTA_PROVINCIAL'] as const;
 export type RolConfigurable = (typeof ROLES_CONFIGURABLES)[number];
 
 export const MODULO_WEB_IDS = [
@@ -43,7 +45,7 @@ export interface ModuloWeb {
 
 const TEC_LEC = ['TECNICO_SUPERVISOR', 'LECTOR'] as const;
 
-export const MODULOS_WEB: readonly ModuloWeb[] = [
+const MODULOS_BASE: readonly ModuloWeb[] = [
   { id: 'inicio', etiqueta: 'Estado de la preparación', seccion: 'Preparación', ruta: '/', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
   { id: 'recintos', etiqueta: 'Recintos Electorales', seccion: 'Preparación', ruta: '/recintos', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
   { id: 'usuarios', etiqueta: 'Usuarios', seccion: 'Preparación', ruta: '/users', rolesPermitidos: TEC_LEC, rolesPorDefecto: TEC_LEC },
@@ -91,6 +93,15 @@ export const MODULOS_WEB: readonly ModuloWeb[] = [
     rolesPorDefecto: TEC_LEC,
   },
 ];
+
+/** Al analista provincial se le puede dar cualquier módulo, y de fábrica los ve todos. */
+const conAnalista = (roles: readonly RolConfigurable[]): RolConfigurable[] => Array.from(new Set([...roles, 'ANALISTA_PROVINCIAL' as const]));
+
+export const MODULOS_WEB: readonly ModuloWeb[] = MODULOS_BASE.map((m) => ({
+  ...m,
+  rolesPermitidos: conAnalista(m.rolesPermitidos),
+  rolesPorDefecto: conAnalista(m.rolesPorDefecto),
+}));
 
 export function esRolConfigurable(rol: string): rol is RolConfigurable {
   return (ROLES_CONFIGURABLES as readonly string[]).includes(rol);

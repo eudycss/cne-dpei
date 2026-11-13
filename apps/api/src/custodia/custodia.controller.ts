@@ -41,6 +41,7 @@ import { FiltrosInforme, InformeCustodiaService } from './informe-custodia.servi
 /** Cadena de custodia del kit en el DPEI (Asistente Electoral Transversal). */
 @ApiTags('custodia')
 @ApiBearerAuth()
+@RequiereModulo('cadena-custodia')
 @Controller('custodia')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')

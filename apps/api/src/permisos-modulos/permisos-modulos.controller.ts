@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { actualizarModulosRolSchema, type ModuloWebId, type PermisoId } from '@cne/shared-validation';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { Roles } from '../common/roles.decorator';
+import { Roles, SoloAdmin } from '../common/roles.decorator';
 import { RolesGuard } from '../common/roles.guard';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
@@ -11,6 +11,7 @@ import { PermisosModulosService } from './permisos-modulos.service';
 @ApiTags('permisos-modulos')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@SoloAdmin()
 @Controller('permisos-modulos')
 export class PermisosModulosController {
   constructor(private readonly permisos: PermisosModulosService) {}

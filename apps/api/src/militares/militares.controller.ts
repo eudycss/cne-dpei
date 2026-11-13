@@ -21,10 +21,12 @@ import type { CreateMilitarRequest, UpdateMilitarRequest } from '@cne/shared-typ
 import { MilitaresService } from './militares.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
+import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { Roles } from '../common/roles.decorator';
 
 @ApiTags('militares')
 @ApiBearerAuth()
+@RequiereModulo('militares')
 @Controller('militares')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class MilitaresController {

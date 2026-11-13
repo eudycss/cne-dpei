@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useState, type FormEvent } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,7 +47,7 @@ const FILTROS: { id: Filtro; etiqueta: string }[] = [
  */
 export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const { puede } = useModulos();
   const { grupo, plural, singular, Singular } = useGrupoCda();
   const hoy = hoyEcuador();

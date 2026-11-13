@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useRef, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
@@ -21,7 +22,7 @@ const PESTANAS: { id: Pestana; etiqueta: string }[] = [
  */
 export function RecintosSeccion() {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const [params, setParams] = useSearchParams();
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 

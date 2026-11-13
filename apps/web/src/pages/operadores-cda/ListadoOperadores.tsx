@@ -1,3 +1,4 @@
+import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
@@ -53,7 +54,7 @@ const ESTADO_CUENTA: Record<EstadoCuentaCda, { texto: string; clase: string }> =
  */
 export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement | null }) {
   const { user } = useAuth();
-  const isAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
+  const isAdmin = actuaComoAdmin(user?.roles);
   const { puede } = useModulos();
   const puedeCarnets = puede('cda.carnets.emitir') || puede('cda.carnets.reimprimir');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();

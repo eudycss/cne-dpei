@@ -40,6 +40,7 @@ import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 /** Listado, foto y revisión de los certificados Evatics (pestaña de CDAs). */
 @ApiTags('evatics')
 @ApiBearerAuth()
+@RequiereModulo('operadores-cda')
 @Controller('operadores-cda/evatics')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
