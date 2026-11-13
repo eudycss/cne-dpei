@@ -26,7 +26,7 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 
 @ApiTags('catalogo')
 @ApiBearerAuth()
@@ -41,6 +41,7 @@ export class CatalogController {
     private readonly tiemposViaje: TiemposViajeService,
   ) {}
 
+  @LecturaConfigurable()
   @Get('recintos')
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'Listar recintos (paginado, búsqueda y filtros)' })

@@ -22,7 +22,7 @@ import {
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { PracticasDigitacionService } from './practicas-digitacion.service';
@@ -53,12 +53,14 @@ function operadorDe(v: unknown): string | undefined {
 export class SimuladorController {
   constructor(private readonly practicas: PracticasDigitacionService) {}
 
+  @LecturaConfigurable()
   @Get('practicas')
   @ApiOperation({ summary: 'Prácticas de digitación (también las desactivadas)' })
   listar() {
     return this.practicas.listar();
   }
 
+  @LecturaConfigurable()
   @Get('cargos')
   @ApiOperation({ summary: 'Cargos activos del personal CDA/CPE, con cuántas personas tienen' })
   listarCargos() {
@@ -134,6 +136,7 @@ export class SimuladorController {
     return this.practicas.cambiarActiva(id, body.activa);
   }
 
+  @LecturaConfigurable()
   @Get('novedades')
   @ApiOperation({ summary: 'Catálogo de novedades del SIER' })
   listarNovedades() {

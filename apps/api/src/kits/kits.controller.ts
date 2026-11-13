@@ -36,7 +36,7 @@ import { KitsService } from './kits.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('kits')
@@ -47,6 +47,7 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 export class KitsController {
   constructor(private readonly kits: KitsService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU11: listar kits electorales de un evento' })

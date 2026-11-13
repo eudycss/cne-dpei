@@ -276,8 +276,8 @@ export function PermisosModulosPage() {
             </table>
           </div>
           <p id={NOTA_TECHO_ID} className="muted" style={{ fontSize: '0.8rem' }}>
-            Las casillas deshabilitadas no están disponibles para ese rol: el servidor no le permite consultar esos
-            datos ni hacer esa acción.
+            Todos los roles se pueden configurar. Solo el Analista provincial puede editar como el administrador; en los
+            demás roles, activar un módulo les permite verlo y consultar sus datos, pero no modificarlos.
           </p>
           <p id={NOTA_MODULO_ID} className="muted" style={{ fontSize: '0.8rem' }}>
             Las acciones (↳) solo se pueden dar si el rol ve el módulo; al quitarle el módulo, tampoco puede hacerlas.

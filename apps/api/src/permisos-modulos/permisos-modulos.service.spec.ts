@@ -56,14 +56,14 @@ describe('PermisosModulosService', () => {
       ]);
     });
 
-    it('descarta filas fuera del techo del rol o con ids desconocidos', async () => {
+    it('sin techo: conserva cualquier módulo del catálogo y descarta ids desconocidos', async () => {
       prisma.rolModulo.findMany.mockResolvedValueOnce([
         fila('LECTOR', 'alertas'),
         fila('LECTOR', 'modulo-viejo'),
         fila('LECTOR', 'kits'),
       ]);
       const { roles } = await service.matriz();
-      expect(roles.find((r) => r.rol === 'LECTOR')?.modulos).toEqual(['kits']);
+      expect(roles.find((r) => r.rol === 'LECTOR')?.modulos).toEqual(['kits', 'alertas']);
     });
   });
 
@@ -91,7 +91,7 @@ describe('PermisosModulosService', () => {
   });
 
   describe('acciones por rol', () => {
-    it('la matriz trae las acciones de cada rol, sin las que superan su techo', async () => {
+    it('la matriz trae las acciones de cada rol, sin ids desconocidos', async () => {
       prisma.rolModulo.findMany.mockResolvedValueOnce([]);
       prisma.rolPermiso.findMany.mockResolvedValueOnce([
         accion('ASISTENTE_TRANSVERSAL', 'cda.carnets.emitir'),
@@ -104,7 +104,7 @@ describe('PermisosModulosService', () => {
         'cda.asistencia.marcar',
         'cda.carnets.emitir',
       ]);
-      expect(roles.find((r) => r.rol === 'LECTOR')?.permisos).toEqual([]);
+      expect(roles.find((r) => r.rol === 'LECTOR')?.permisos).toEqual(['cda.asistencia.marcar']);
     });
 
     it('una acción solo cuenta si el mismo rol ve su módulo', async () => {
@@ -135,9 +135,10 @@ describe('PermisosModulosService', () => {
       expect(r.permisos).toEqual(['cda.asistencia.marcar']);
     });
 
-    it('rechaza acciones fuera del techo del rol', async () => {
-      await expect(service.actualizar('LECTOR', [], ['cda.asistencia.marcar'])).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+    it('sin techo: acepta una acción para cualquier rol configurable', async () => {
+      prisma.rol.findUnique.mockResolvedValueOnce({ id: 'rol-lec' });
+      const r = await service.actualizar('LECTOR', ['operadores-cda'], ['cda.asistencia.marcar']);
+      expect(r.permisos).toEqual(['cda.asistencia.marcar']);
     });
   });
 
@@ -167,9 +168,10 @@ describe('PermisosModulosService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('rechaza módulos fuera del techo del API para ese rol', async () => {
-      await expect(service.actualizar('LECTOR', ['kits', 'alertas'])).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+    it('sin techo: acepta cualquier módulo para cualquier rol configurable', async () => {
+      prisma.rol.findUnique.mockResolvedValueOnce({ id: 'rol-lec' });
+      const r = await service.actualizar('LECTOR', ['kits', 'alertas']);
+      expect(r.modulos).toEqual(['kits', 'alertas']);
     });
 
     it('404 si el rol no existe en la base', async () => {

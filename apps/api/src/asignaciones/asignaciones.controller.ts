@@ -25,7 +25,7 @@ import { AsignacionesService } from './asignaciones.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 
 @ApiTags('asignaciones')
@@ -36,6 +36,7 @@ import { ZodValidationPipe } from '../common/zod-body.pipe';
 export class AsignacionesController {
   constructor(private readonly asignaciones: AsignacionesService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   @ApiOperation({ summary: 'HU10: listar asignaciones operador↔supervisor por evento' })

@@ -30,7 +30,7 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -110,6 +110,7 @@ export class CustodiaController {
 
   // ─── Informe y actas (lectura): los roles a los que el admin les active el módulo ───
 
+  @LecturaConfigurable()
   @Get('informe')
   @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
   @RequiereModulo('cadena-custodia')

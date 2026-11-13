@@ -22,7 +22,7 @@ import { MilitaresService } from './militares.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
-import { Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 
 @ApiTags('militares')
 @ApiBearerAuth()
@@ -32,6 +32,7 @@ import { Roles } from '../common/roles.decorator';
 export class MilitaresController {
   constructor(private readonly militares: MilitaresService) {}
 
+  @LecturaConfigurable()
   @Get()
   @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'LECTOR')
   list(
