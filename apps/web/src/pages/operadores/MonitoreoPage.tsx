@@ -424,34 +424,40 @@ export function MonitoreoPage() {
           // Alto tope con scroll y encabezado fijo; enfocable para desplazarla con el teclado.
           <WarmTooltipGroup>
           <div className="table-scroll table-scroll-alta" role="region" aria-label="Tabla de estado de CDAs" tabIndex={0}>
-          <table className="table-sticky-first">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Recinto (CDA)</th>
-                <th>Cantón</th>
-                <th>Operador</th>
-                <th>Asistente</th>
-                <th>Estado</th>
-                <th>Última actualización</th>
-                <th>Ubicación</th>
-                <th>Foto militar</th>
-                <th>Prueba de conexión</th>
-                <th>Reporte instalación</th>
-                <th>Reporte escrutinio</th>
+          <table className="tabla-monitoreo" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader">Recinto (CDA)</th>
+                <th role="columnheader">Pareja</th>
+                <th role="columnheader">Cantón</th>
+                <th role="columnheader">Estado</th>
+                <th role="columnheader">Avance y detalle</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {cdasFiltrados.map((c) => {
                 const info = ESTADO_INFO[c.estado];
+                const sufijo = ` — ${c.nombreRecinto}`;
                 return (
-                  <tr key={`${c.recintoId}-${c.operadorId}`}>
-                    <td>{c.codigoRecinto}</td>
-                    <td>{c.nombreRecinto}</td>
-                    <td>{c.cantonNombre ?? '—'}</td>
-                    <td>{c.operadorNombre}</td>
-                    <td>{c.asistenteNombre ?? '—'}</td>
-                    <td>
+                  <tr role="row" key={`${c.recintoId}-${c.operadorId}`}>
+                    <td role="cell">
+                      <div className="mon-recinto">
+                        <strong>{c.nombreRecinto}</strong>
+                        <span className="muted mon-codigo">Código {c.codigoRecinto}</span>
+                      </div>
+                    </td>
+                    <td role="cell" data-label="Pareja">
+                      <span className="mon-persona">
+                        <span className="muted">Operador: </span>
+                        {c.operadorNombre}
+                      </span>
+                      <span className="mon-persona">
+                        <span className="muted">Asistente: </span>
+                        {c.asistenteNombre ?? 'Sin asistente'}
+                      </span>
+                    </td>
+                    <td role="cell" data-label="Cantón">{c.cantonNombre ?? '—'}</td>
+                    <td role="cell" data-label="Estado">
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                         <span
                           style={{
@@ -464,70 +470,64 @@ export function MonitoreoPage() {
                         />
                         <TextoAnimado text={info.label} />
                       </span>
+                      <span className="muted mon-codigo">
+                        {c.ubicacion ? `Actualizado ${formatearFechaHora(c.ubicacion.capturadoEn)}` : 'Sin ubicación aún'}
+                      </span>
+                      <span className="muted mon-codigo">
+                        Prueba de conexión: {c.pruebaConexionEn ? formatearFechaHora(c.pruebaConexionEn) : 'Pendiente'}
+                      </span>
                     </td>
-                    <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
-                    <td>
-                      <BotonConMotivo
-                        onClick={() => setVerUbicacion(c)}
-                        motivo={c.ubicacion ? null : 'Aún no hay ubicación registrada'}
-                      >
-                        Ver ubicación
-                      </BotonConMotivo>
-                    </td>
-                    <td>
-                      <BotonConMotivo
-                        onClick={() => setVerFoto(c)}
-                        motivo={c.tieneFotoMilitar ? null : 'El operador aún no subió la foto del militar'}
-                      >
-                        Ver foto
-                      </BotonConMotivo>
-                    </td>
-                    <td style={c.pruebaConexionEn ? undefined : { color: 'var(--text-muted)' }}>
-                      {c.pruebaConexionEn ? formatearFechaHora(c.pruebaConexionEn) : 'Pendiente'}
-                      {c.pruebaConexionEn && (
-                        <div>
-                          {c.tieneFotoPruebaConexion ? (
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', marginTop: '0.25rem', minHeight: 28 }}
-                              onClick={() => setVerActa({ cda: c, tipo: 'conexion' })}
-                              aria-label={`Ver foto de la prueba de conexión — ${c.nombreRecinto}`}
-                            >
-                              Ver foto
-                            </button>
-                          ) : (
-                            <span className="muted" style={{ fontSize: '0.8rem' }}>
-                              Sin foto
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <BotonConMotivo
-                        onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
-                        motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el reporte de instalación'}
-                        ariaLabel={`Ver reporte de instalación — ${c.nombreRecinto}`}
-                      >
-                        Ver reporte
-                      </BotonConMotivo>
-                    </td>
-                    <td>
-                      <BotonConMotivo
-                        onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
-                        motivo={c.tieneActaEscrutinio ? null : 'Aún no se subió el reporte de escrutinio'}
-                        ariaLabel={`Ver reporte de escrutinio — ${c.nombreRecinto}`}
-                      >
-                        Ver reporte
-                      </BotonConMotivo>
+                    <td role="cell" data-label="Avance y detalle">
+                      <div className="mon-acciones">
+                        <BotonConMotivo
+                          onClick={() => setVerUbicacion(c)}
+                          motivo={c.ubicacion ? null : 'Aún no hay ubicación registrada'}
+                          ariaLabel={`Ver ubicación${sufijo}`}
+                        >
+                          Ubicación
+                        </BotonConMotivo>
+                        <BotonConMotivo
+                          onClick={() => setVerFoto(c)}
+                          motivo={c.tieneFotoMilitar ? null : 'El operador aún no subió la foto del militar'}
+                          ariaLabel={`Ver foto militar${sufijo}`}
+                        >
+                          {c.tieneFotoMilitar && <span aria-hidden="true">✓ </span>}Foto militar
+                        </BotonConMotivo>
+                        <BotonConMotivo
+                          onClick={() => setVerActa({ cda: c, tipo: 'conexion' })}
+                          motivo={
+                            c.tieneFotoPruebaConexion
+                              ? null
+                              : c.pruebaConexionEn
+                                ? 'La prueba de conexión se hizo sin foto'
+                                : 'Aún no hizo la prueba de conexión'
+                          }
+                          ariaLabel={`Ver foto de la prueba de conexión${c.pruebaConexionEn ? ` (${formatearFechaHora(c.pruebaConexionEn)})` : ''}${sufijo}`}
+                        >
+                          {c.tieneFotoPruebaConexion && <span aria-hidden="true">✓ </span>}Conexión
+                        </BotonConMotivo>
+                        <BotonConMotivo
+                          onClick={() => setVerActa({ cda: c, tipo: 'instalacion' })}
+                          motivo={c.tieneActaInstalacion ? null : 'Aún no se subió el reporte de instalación'}
+                          ariaLabel={`Ver reporte de instalación${sufijo}`}
+                        >
+                          {c.tieneActaInstalacion && <span aria-hidden="true">✓ </span>}Instalación
+                        </BotonConMotivo>
+                        <BotonConMotivo
+                          onClick={() => setVerActa({ cda: c, tipo: 'escrutinio' })}
+                          motivo={c.tieneActaEscrutinio ? null : 'Aún no se subió el reporte de escrutinio'}
+                          ariaLabel={`Ver reporte de escrutinio${sufijo}`}
+                        >
+                          {c.tieneActaEscrutinio && <span aria-hidden="true">✓ </span>}Escrutinio
+                        </BotonConMotivo>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td role="cell" colSpan={5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     {cdas.length === 0
                       ? 'No hay CDAs con operador asignado en el evento activo'
                       : 'Ningún CDA coincide con los filtros elegidos'}

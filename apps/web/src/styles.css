@@ -1169,3 +1169,19 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .fcda-enlace { padding: 0; min-height: 44px; background: none; border: 0; font: inherit; color: var(--f-cian); text-decoration: underline; cursor: pointer; }
 .fcda-documento { border-radius: 14px; overflow: hidden; background: var(--f-bg-elevated); border: 1px solid var(--f-border-subtle); }
 .fcda-documento img { display: block; width: 100%; max-height: 55vh; object-fit: contain; }
+
+/* --- Monitoreo: tabla compacta; en el celular cada pareja es una tarjeta --- */
+.tabla-monitoreo td { vertical-align: top; }
+.tabla-monitoreo .mon-recinto { display: flex; flex-direction: column; gap: 0.1rem; }
+.tabla-monitoreo .btn { min-height: 44px; }
+.tabla-monitoreo .mon-codigo { display: block; font-size: 0.78rem; }
+.tabla-monitoreo .mon-persona { display: block; }
+.tabla-monitoreo .mon-acciones { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 720px) {
+  .tabla-monitoreo thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .tabla-monitoreo, .tabla-monitoreo tbody, .tabla-monitoreo tr, .tabla-monitoreo td { display: block; width: 100%; }
+  .tabla-monitoreo tr { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.8rem; margin-bottom: 0.75rem; background: var(--bg-card); }
+  .tabla-monitoreo td { border: 0; padding: 0.25rem 0; }
+  .tabla-monitoreo td[data-label]::before { content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  .tabla-monitoreo .mon-recinto strong { font-size: 1rem; }
+}

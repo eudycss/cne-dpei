@@ -298,12 +298,12 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Colegio Otavalo');
 
-    expect(screen.getByRole('columnheader', { name: 'Asistente' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Pareja' })).toBeInTheDocument();
     expect(screen.getByText('Rosa Lema')).toBeInTheDocument();
     // Las horas de cada etapa van en la pantalla de estadísticas, no en esta tabla.
     expect(screen.queryByRole('columnheader', { name: 'Llegada al recinto' })).not.toBeInTheDocument();
     const filaSinAsistente = screen.getByText('Ana Ruiz').closest('tr')!;
-    expect(within(filaSinAsistente).getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    expect(within(filaSinAsistente).getByText('Sin asistente')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'lema');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
@@ -525,14 +525,14 @@ describe('MonitoreoPage', () => {
     expect(estado.nextElementSibling).toHaveAttribute('aria-hidden', 'true');
 
     expect(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' })).toBeInTheDocument();
-    expect(fila.closest('table')).toHaveClass('table-sticky-first');
+    expect(fila.closest('table')).toHaveClass('tabla-monitoreo');
     expect(fila.closest('.table-scroll')).not.toBeNull();
 
     // El motivo de cada botón desactivado.
     const filaSin = screen.getByText('Colegio Otavalo').closest('tr')!;
     expect(
       within(filaSin).getByRole('button', {
-        name: 'Ver foto',
+        name: /^Ver foto militar/,
         description: 'El operador aún no subió la foto del militar',
       }),
     ).toHaveAttribute('aria-disabled', 'true');
@@ -547,7 +547,7 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Escuela Manuela Cañizares');
 
-    const botonesUbicacion = screen.getAllByRole('button', { name: 'Ver ubicación' });
+    const botonesUbicacion = screen.getAllByRole('button', { name: /^Ver ubicación/ });
     expect(botonesUbicacion[1]).toHaveAttribute('aria-disabled', 'true'); // fila sin ubicación (Colegio Otavalo)
     expect(botonesUbicacion[0]).not.toHaveAttribute('aria-disabled');
 
@@ -567,7 +567,7 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Escuela Manuela Cañizares');
 
-    const botonesFoto = screen.getAllByRole('button', { name: 'Ver foto' });
+    const botonesFoto = screen.getAllByRole('button', { name: /^Ver foto militar/ });
     expect(botonesFoto[1]).toHaveAttribute('aria-disabled', 'true'); // Colegio Otavalo sin foto militar
     expect(botonesFoto[0]).not.toHaveAttribute('aria-disabled');
 
@@ -577,7 +577,7 @@ describe('MonitoreoPage', () => {
     expect(getFotoMilitarMock).toHaveBeenCalledWith('r1');
   });
 
-  it('la prueba de conexión va entre la foto del militar y los reportes, con la hora o "Pendiente"', async () => {
+  it('la tabla compacta tiene 5 columnas y la prueba de conexión es un botón con el motivo si falta', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
 
@@ -585,11 +585,20 @@ describe('MonitoreoPage', () => {
     const conPrueba = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
     const sinPrueba = screen.getByText('Colegio Otavalo').closest('tr')!;
 
-    const encabezados = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    const i = encabezados.indexOf('Prueba de conexión');
-    expect(encabezados.slice(i - 1, i + 2)).toEqual(['Foto militar', 'Prueba de conexión', 'Reporte instalación']);
-    expect(within(conPrueba).getByText(formatearFechaHora('2026-07-01T09:45:00.000Z'))).toBeInTheDocument();
-    expect(within(sinPrueba).getByText('Pendiente')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Tabla de estado de CDAs' })).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Recinto (CDA)',
+      'Pareja',
+      'Cantón',
+      'Estado',
+      'Avance y detalle',
+    ]);
+    const hora = formatearFechaHora('2026-07-01T09:45:00.000Z');
+    expect(
+      within(conPrueba).getByRole('button', { name: `Ver foto de la prueba de conexión (${hora}) — Escuela Manuela Cañizares` }),
+    ).not.toHaveAttribute('aria-disabled');
+    expect(
+      within(sinPrueba).getByRole('button', { name: /^Ver foto de la prueba de conexión/, description: 'Aún no hizo la prueba de conexión' }),
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('avisa que se actualiza cada 30 segundos (el mismo intervalo de las consultas)', async () => {
@@ -603,20 +612,45 @@ describe('MonitoreoPage', () => {
     expect(screen.queryByText(/cada 10 segundos/)).not.toBeInTheDocument();
   });
 
-  it('las columnas y botones dicen "Reporte" (no "Acta")', async () => {
+  it('la fila indica operador y asistente, el código, la última ubicación y la prueba de conexión', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    renderPage();
+    const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    const sin = screen.getByText('Colegio Otavalo').closest('tr')!;
+
+    expect(within(fila).getByText('Operador:')).toBeInTheDocument();
+    expect(within(fila).getByText('Asistente:')).toBeInTheDocument();
+    expect(within(fila).getByText(/^Código /)).toBeInTheDocument();
+    expect(within(fila).getByText(/^Actualizado /)).toBeInTheDocument();
+    expect(within(fila).getByText(/Prueba de conexión: (?!Pendiente)/)).toBeInTheDocument();
+    expect(within(sin).getByText('Sin ubicación aún')).toBeInTheDocument();
+    expect(within(sin).getByText('Prueba de conexión: Pendiente')).toBeInTheDocument();
+    // La marca ✓ solo aparece con el dato y no la lee el lector de pantalla.
+    expect(fila.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThan(sin.querySelectorAll('[aria-hidden="true"]').length);
+  });
+
+  it('sin CDAs, la fila vacía ocupa las 5 columnas', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([]);
+    renderPage();
+    const celda = (await screen.findByText('No hay CDAs con operador asignado en el evento activo')).closest('td')!;
+    expect(celda).toHaveAttribute('colspan', '5');
+  });
+
+  it('los botones dicen "reporte" (no "acta")', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
 
     renderPage();
     const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
 
-    expect(screen.getByRole('columnheader', { name: 'Reporte instalación' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Reporte escrutinio' })).toBeInTheDocument();
-    expect(within(fila).queryByText('Ver acta')).not.toBeInTheDocument();
-    expect(within(fila).getAllByText('Ver reporte')).toHaveLength(2);
+    expect(within(fila).queryByRole('button', { name: /acta/i })).not.toBeInTheDocument();
+    expect(within(fila).getByRole('button', { name: /^Ver reporte de instalación/ })).toBeInTheDocument();
+    expect(within(fila).getByRole('button', { name: /^Ver reporte de escrutinio/ })).toBeInTheDocument();
   });
 
-  it('la prueba de conexión con foto muestra "Ver foto" y abre la foto de la computadora del test', async () => {
+  it('la prueba de conexión con foto se abre; sin foto o sin prueba el botón explica por qué', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([
       cdaConUbicacionYFoto,
@@ -632,12 +666,14 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Escuela Manuela Cañizares');
 
     expect(
-      within(screen.getByText('Colegio Otavalo').closest('tr')!).queryByRole('button', { name: /prueba de conexión/ }),
-    ).not.toBeInTheDocument();
-    expect(within(screen.getByText('UE Sin Foto').closest('tr')!).getByText('Sin foto')).toBeInTheDocument();
+      within(screen.getByText('UE Sin Foto').closest('tr')!).getByRole('button', {
+        name: /^Ver foto de la prueba de conexión/,
+        description: 'La prueba de conexión se hizo sin foto',
+      }),
+    ).toHaveAttribute('aria-disabled', 'true');
 
     await user.click(
-      screen.getByRole('button', { name: 'Ver foto de la prueba de conexión — Escuela Manuela Cañizares' }),
+      screen.getByRole('button', { name: /^Ver foto de la prueba de conexión.* — Escuela Manuela Cañizares$/ }),
     );
 
     expect(await screen.findByRole('dialog', { name: 'Foto de la prueba de conexión' })).toBeInTheDocument();
