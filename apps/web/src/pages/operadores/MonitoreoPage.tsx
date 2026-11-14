@@ -74,8 +74,8 @@ function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => vo
 
 function FotoMilitarModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['foto-militar', cda.recintoId],
-    queryFn: () => getFotoMilitar(cda.recintoId),
+    queryKey: ['foto-militar', cda.recintoId, cda.operadorId],
+    queryFn: () => getFotoMilitar(cda.recintoId, cda.operadorId),
   });
 
   const [url, setUrl] = useState<string | null>(null);

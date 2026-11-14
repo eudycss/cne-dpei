@@ -15,13 +15,13 @@ export function FotoActaModal({
   tipo,
   onClose,
 }: {
-  cda: { recintoId: string; nombreRecinto: string; operadorNombre: string };
+  cda: { recintoId: string; nombreRecinto: string; operadorNombre: string; operadorId?: string };
   tipo: TipoFotoCda;
   onClose: () => void;
 }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['foto-acta', cda.recintoId, tipo],
-    queryFn: () => getFotoActa(cda.recintoId, tipo),
+    queryKey: ['foto-acta', cda.recintoId, cda.operadorId, tipo],
+    queryFn: () => getFotoActa(cda.recintoId, tipo, cda.operadorId),
   });
 
   const [url, setUrl] = useState<string | null>(null);

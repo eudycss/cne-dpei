@@ -2081,20 +2081,48 @@ describe('TrackingService', () => {
   describe('obtenerFotoMilitar', () => {
     it('un LECTOR obtiene la foto sin verificar asignación de supervisor', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
       prisma.recepcionKit.findFirst.mockResolvedValueOnce({ fotoMilitarUrl: 'militares/foto.bin' });
       storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
 
       const result = await service.obtenerFotoMilitar(recintoId, operadorId, ['LECTOR']);
 
-      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
       expect(result.contentType).toBe('image/jpeg');
+    });
+
+    it('con dos kits (parejas) busca la foto de ambos operadores y respeta la asignación del supervisor', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId: 'op-2' }, { operadorId }]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce({ fotoMilitarUrl: 'militares/foto.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      await service.obtenerFotoMilitar(recintoId, 'sup-1', ['TECNICO_SUPERVISOR']);
+
+      expect(prisma.recepcionKit.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ operadorId: { in: [operadorId] } }),
+          orderBy: { confirmadoEn: 'desc' },
+        }),
+      );
+    });
+
+    it('con dos kits sin operador asignado al supervisor responde 404', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId: 'op-2' }, { operadorId }]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([]);
+
+      await expect(service.obtenerFotoMilitar(recintoId, 'sup-1', ['TECNICO_SUPERVISOR'])).rejects.toThrow(
+        'CDA no encontrado',
+      );
     });
 
     it('solo busca la foto en recepciones de kits del evento activo (no de un evento cerrado)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
       prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
 
@@ -2102,11 +2130,11 @@ describe('TrackingService', () => {
         'No hay foto del militar registrada para este CDA',
       );
       expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { eventoId: evento.id, operadorId } }),
+        expect.objectContaining({ where: { eventoId: evento.id, operadorId: { in: [operadorId] } } }),
       );
       expect(prisma.recepcionKit.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ operadorId, kitId: { in: [kitId] } }),
+          where: expect.objectContaining({ operadorId: { in: [operadorId] }, kitId: { in: [kitId] } }),
         }),
       );
     });
@@ -2279,7 +2307,7 @@ describe('TrackingService', () => {
   describe('obtenerFotoActa', () => {
     it('lanza NotFoundException si el CDA no existe', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce(null);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
 
       await expect(
         service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'instalacion'),
@@ -2288,7 +2316,7 @@ describe('TrackingService', () => {
 
     it('lanza NotFoundException si el operador aún no registró su salida del recinto', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
 
       await expect(
@@ -2298,7 +2326,7 @@ describe('TrackingService', () => {
 
     it('lanza NotFoundException si no hay acta de ese tipo registrada', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({
         actaInstalacionUrl: null,
         actaEscrutinioUrl: 'actas/escrutinio.bin',
@@ -2311,31 +2339,107 @@ describe('TrackingService', () => {
 
     it('la foto de la prueba de conexión sale de la fila PRUEBA_CONEXION', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: 'actas/pc.bin' });
       storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
 
       await service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'conexion');
 
       expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith({
-        where: { eventoId, operadorId, tipo: 'PRUEBA_CONEXION' },
+        where: {
+          eventoId,
+          operadorId: { in: [operadorId] },
+          tipo: 'PRUEBA_CONEXION',
+          fotoPruebaConexionUrl: { not: null },
+        },
         select: { fotoPruebaConexionUrl: true },
+        orderBy: { registradoEn: 'desc' },
       });
       expect(storage.readDecrypted).toHaveBeenCalledWith('actas/pc.bin');
     });
 
     it('sin foto de la prueba de conexión: 404 con mensaje claro', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: null });
       await expect(service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'conexion')).rejects.toThrow(
         'No hay foto de la prueba de conexión para este CDA',
       );
     });
 
+    it('con dos kits (parejas) en el recinto busca las fotos de ambos operadores, no solo del primer kit', async () => {
+      const otroOperador = 'op-2';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId: otroOperador }, { operadorId }]);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: 'actas/pc.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      await service.obtenerFotoActa(recintoId, operadorId, ['ADMINISTRADOR'], 'conexion');
+
+      expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ operadorId: { in: [otroOperador, operadorId] } }),
+        }),
+      );
+      expect(storage.readDecrypted).toHaveBeenCalledWith('actas/pc.bin');
+    });
+
+    it('con operadorId pedido solo busca los kits y las fotos de esa pareja', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: 'actas/pc.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      await service.obtenerFotoActa(recintoId, 'admin-1', ['ADMINISTRADOR'], 'conexion', operadorId);
+
+      expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { eventoId, recintoId, operadorId } }),
+      );
+      expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ operadorId: { in: [operadorId] } }),
+        }),
+      );
+    });
+
+    it('con operadorId que no tiene kit en ese recinto responde 404', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.obtenerFotoActa(recintoId, 'admin-1', ['ADMINISTRADOR'], 'conexion', 'otro-operador'),
+      ).rejects.toThrow('CDA no encontrado');
+    });
+
+    it('un supervisor solo ve las fotos de los operadores del recinto que tiene asignados', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId: 'op-2' }, { operadorId }]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ fotoPruebaConexionUrl: 'actas/pc.bin' });
+      storage.readDecrypted.mockResolvedValueOnce(Buffer.from([0xff, 0xd8, 0xff]));
+
+      await service.obtenerFotoActa(recintoId, 'sup-1', ['TECNICO_SUPERVISOR'], 'conexion');
+
+      expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ operadorId: { in: [operadorId] } }),
+        }),
+      );
+    });
+
+    it('un supervisor sin ningún operador asignado en el recinto recibe 404', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
+      prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([]);
+
+      await expect(
+        service.obtenerFotoActa(recintoId, 'sup-1', ['TECNICO_SUPERVISOR'], 'conexion'),
+      ).rejects.toThrow('CDA no encontrado');
+    });
+
     it('un LECTOR obtiene el acta de escrutinio sin verificar asignación de supervisor', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
-      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ operadorId });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ operadorId }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({
         actaInstalacionUrl: 'actas/instalacion.bin',
         actaEscrutinioUrl: 'actas/escrutinio.bin',
@@ -2344,7 +2448,17 @@ describe('TrackingService', () => {
 
       const result = await service.obtenerFotoActa(recintoId, operadorId, ['LECTOR'], 'escrutinio');
 
-      expect(prisma.asignacionSupervisor.findFirst).not.toHaveBeenCalled();
+      expect(prisma.asignacionSupervisor.findMany).not.toHaveBeenCalled();
+      expect(prisma.eventoTracking.findFirst).toHaveBeenCalledWith({
+        where: {
+          eventoId,
+          operadorId: { in: [operadorId] },
+          tipo: 'SALIDA_RECINTO',
+          actaEscrutinioUrl: { not: null },
+        },
+        select: { actaInstalacionUrl: true, actaEscrutinioUrl: true },
+        orderBy: { registradoEn: 'desc' },
+      });
       expect(storage.readDecrypted).toHaveBeenCalledWith('actas/escrutinio.bin');
       expect(result.contentType).toBe('image/jpeg');
     });

@@ -2053,15 +2053,46 @@ export class TrackingService {
   }
 
   /**
+   * Operadores con kit en el recinto del evento activo (un CDA puede tener
+   * varias parejas/kits; con `operadorIdPedido` solo el de esa pareja) a los que el visor tiene acceso: administradores,
+   * analistas y lectores ven todos; un supervisor solo los que tiene asignados.
+   */
+  private async operadoresVisiblesDelRecinto(
+    eventoId: string,
+    recintoId: string,
+    viewerId: string,
+    roles: RoleName[],
+    operadorIdPedido?: string,
+  ): Promise<string[]> {
+    const kits = await this.prisma.kitElectoral.findMany({
+      where: { eventoId, recintoId, operadorId: operadorIdPedido ?? { not: null } },
+      select: { operadorId: true },
+    });
+    let operadorIds = [...new Set(kits.map((k) => k.operadorId).filter((id): id is string => !!id))];
+    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
+    if (!esAdmin && operadorIds.length > 0) {
+      const asignados = await this.prisma.asignacionSupervisor.findMany({
+        where: { eventoId, supervisorId: viewerId, operadorId: { in: operadorIds } },
+        select: { operadorId: true },
+      });
+      const permitidos = new Set(asignados.map((a) => a.operadorId));
+      operadorIds = operadorIds.filter((id) => permitidos.has(id));
+    }
+    if (operadorIds.length === 0) throw new NotFoundException('CDA no encontrado');
+    return operadorIds;
+  }
+
+  /**
    * Devuelve la foto del militar (cifrada en disco) descifrada para el CDA
-   * del recinto indicado. Reutiliza el mismo control de acceso que
-   * estadoCdas: administradores ven cualquier CDA, supervisores solo los de
-   * sus operadores asignados.
+   * del recinto indicado. Si el recinto tiene varios kits (parejas), sirve la
+   * foto más reciente de cualquiera de ellos, o la de la pareja indicada con `operadorId`. Control de acceso: administradores
+   * ven cualquier CDA, supervisores solo los de sus operadores asignados.
    */
   async obtenerFotoMilitar(
     recintoId: string,
     viewerId: string,
     roles: RoleName[],
+    operadorId?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
@@ -2069,29 +2100,16 @@ export class TrackingService {
     });
     if (!evento) throw new NotFoundException('No hay un evento electoral activo');
 
-    const kit = await this.prisma.kitElectoral.findFirst({
-      where: { eventoId: evento.id, recintoId, operadorId: { not: null } },
-      select: { operadorId: true },
-    });
-    if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
-
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
-    if (!esAdmin) {
-      const asignado = await this.prisma.asignacionSupervisor.findFirst({
-        where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
-        select: { id: true },
-      });
-      if (!asignado) throw new NotFoundException('CDA no encontrado');
-    }
+    const operadorIds = await this.operadoresVisiblesDelRecinto(evento.id, recintoId, viewerId, roles, operadorId);
 
     // Solo la foto de una recepción de este evento, no la de uno anterior.
     const kitsDelEvento = await this.prisma.kitElectoral.findMany({
-      where: { eventoId: evento.id, operadorId: kit.operadorId },
+      where: { eventoId: evento.id, operadorId: { in: operadorIds } },
       select: { id: true },
     });
     const recepcion = await this.prisma.recepcionKit.findFirst({
       where: {
-        operadorId: kit.operadorId,
+        operadorId: { in: operadorIds },
         kitId: { in: kitsDelEvento.map((k) => k.id) },
         fotoMilitarUrl: { not: null },
       },
@@ -2109,14 +2127,16 @@ export class TrackingService {
   /**
    * Devuelve el acta de instalación o de escrutinio (cifrada en disco,
    * subida antes de la salida del recinto), o la foto de la computadora de la
-   * prueba de conexión, descifrada para el CDA del recinto indicado. Mismo
-   * control de acceso que obtenerFotoMilitar.
+   * prueba de conexión, descifrada para el CDA del recinto indicado. Si el
+   * recinto tiene varios kits (parejas), sirve la más reciente de cualquiera
+   * de ellos. Mismo control de acceso que obtenerFotoMilitar.
    */
   async obtenerFotoActa(
     recintoId: string,
     viewerId: string,
     roles: RoleName[],
     tipo: TipoFotoCda,
+    operadorId?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
@@ -2124,25 +2144,18 @@ export class TrackingService {
     });
     if (!evento) throw new NotFoundException('No hay un evento electoral activo');
 
-    const kit = await this.prisma.kitElectoral.findFirst({
-      where: { eventoId: evento.id, recintoId, operadorId: { not: null } },
-      select: { operadorId: true },
-    });
-    if (!kit?.operadorId) throw new NotFoundException('CDA no encontrado');
-
-    const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
-    if (!esAdmin) {
-      const asignado = await this.prisma.asignacionSupervisor.findFirst({
-        where: { eventoId: evento.id, supervisorId: viewerId, operadorId: kit.operadorId },
-        select: { id: true },
-      });
-      if (!asignado) throw new NotFoundException('CDA no encontrado');
-    }
+    const operadorIds = await this.operadoresVisiblesDelRecinto(evento.id, recintoId, viewerId, roles, operadorId);
 
     if (tipo === 'conexion') {
       const prueba = await this.prisma.eventoTracking.findFirst({
-        where: { eventoId: evento.id, operadorId: kit.operadorId, tipo: 'PRUEBA_CONEXION' },
+        where: {
+          eventoId: evento.id,
+          operadorId: { in: operadorIds },
+          tipo: 'PRUEBA_CONEXION',
+          fotoPruebaConexionUrl: { not: null },
+        },
         select: { fotoPruebaConexionUrl: true },
+        orderBy: { registradoEn: 'desc' },
       });
       if (!prueba?.fotoPruebaConexionUrl) {
         throw new NotFoundException('No hay foto de la prueba de conexión para este CDA');
@@ -2152,8 +2165,14 @@ export class TrackingService {
     }
 
     const salidaRecinto = await this.prisma.eventoTracking.findFirst({
-      where: { eventoId: evento.id, operadorId: kit.operadorId, tipo: 'SALIDA_RECINTO' },
+      where: {
+        eventoId: evento.id,
+        operadorId: { in: operadorIds },
+        tipo: 'SALIDA_RECINTO',
+        ...(tipo === 'instalacion' ? { actaInstalacionUrl: { not: null } } : { actaEscrutinioUrl: { not: null } }),
+      },
       select: { actaInstalacionUrl: true, actaEscrutinioUrl: true },
+      orderBy: { registradoEn: 'desc' },
     });
     const url =
       tipo === 'instalacion' ? salidaRecinto?.actaInstalacionUrl : salidaRecinto?.actaEscrutinioUrl;
