@@ -1,5 +1,6 @@
 import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../auth/AuthContext';
@@ -33,8 +34,6 @@ const SIN_OPERADORES: OperadorEnRetorno[] = [];
 const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
 // Debe coincidir con la clase h-[480px] del MapView de operadores en ruta.
 const ALTO_MAPA = 480;
-
-const fechaHora = (iso: string | null) => (iso ? formatearFechaHora(iso) : '—');
 
 function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   if (!cda.ubicacion) return null;
@@ -209,6 +208,9 @@ export function MonitoreoPage() {
   return (
     <div>
       <h2>Monitoreo de operadores en ruta</h2>
+      <p style={{ margin: '-0.25rem 0 0.5rem' }}>
+        <Link to="/operadores/estadisticas">Ver estadísticas y horas de cada etapa →</Link>
+      </p>
       <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
         Ubicación en tiempo real de tus operadores de CDA, tanto en su trayecto hacia el recinto
         como en su regreso al DPI. Se actualiza automáticamente cada {SEGUNDOS_REFRESCO} segundos.
@@ -431,10 +433,6 @@ export function MonitoreoPage() {
                 <th>Operador</th>
                 <th>Asistente</th>
                 <th>Estado</th>
-                <th>Salida del DPEI</th>
-                <th>Llegada al recinto</th>
-                <th>Salida del recinto</th>
-                <th>Llegada al DPEI</th>
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
@@ -467,10 +465,6 @@ export function MonitoreoPage() {
                         <TextoAnimado text={info.label} />
                       </span>
                     </td>
-                    <td>{fechaHora(c.salidaDpiEn)}</td>
-                    <td>{fechaHora(c.llegadaRecintoEn)}</td>
-                    <td>{fechaHora(c.salidaRecintoEn)}</td>
-                    <td>{fechaHora(c.llegadaDpiEn)}</td>
                     <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
                     <td>
                       <BotonConMotivo
@@ -533,7 +527,7 @@ export function MonitoreoPage() {
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={16} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td colSpan={12} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     {cdas.length === 0
                       ? 'No hay CDAs con operador asignado en el evento activo'
                       : 'Ningún CDA coincide con los filtros elegidos'}

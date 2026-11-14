@@ -42,7 +42,7 @@ describe('TrackingController — llegada al DPEI registrada desde la web', () =>
 
   it('pasa el motivo y quién la registra (el usuario de la sesión, no un dato del cuerpo)', () => {
     const registrarLlegadaDpiManual = jest.fn();
-    const ctrl = new TrackingController({ registrarLlegadaDpiManual } as never, {} as never);
+    const ctrl = new TrackingController({ registrarLlegadaDpiManual } as never, {} as never, {} as never);
     ctrl.llegadaDpiManual('op-1', { motivo: 'Olvidó marcarla' }, { sub: 'admin-1' } as never);
     expect(registrarLlegadaDpiManual).toHaveBeenCalledWith('op-1', 'Olvidó marcarla', 'admin-1');
   });

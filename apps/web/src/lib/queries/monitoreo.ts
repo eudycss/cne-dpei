@@ -1,4 +1,4 @@
-import type { CdaEstadoDto, LlegadaDpiResponse, OperadorEnRetorno } from '@cne/shared-types';
+import type { CdaEstadoDto, EstadisticasJornadaDto, LlegadaDpiResponse, OperadorEnRetorno } from '@cne/shared-types';
 import { api } from '../api';
 
 /**
@@ -53,4 +53,10 @@ export async function getFotoActa(recintoId: string, tipo: TipoFotoCda): Promise
     responseType: 'blob',
   });
   return data;
+}
+
+/** Horas de cada etapa por pareja y llegadas a NO CDA (base de los gráficos); null = sin evento activo. */
+export async function getEstadisticasJornada(): Promise<EstadisticasJornadaDto | null> {
+  const { data } = await api.get<EstadisticasJornadaDto | ''>('/tracking/estadisticas-jornada');
+  return data || null;
 }
