@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Cargando } from '../../components/Cargando';
+import { Pestanas } from '../../components/Pestanas';
 import { NumeroAnimado } from '../../components/NumeroAnimado';
 import { formatearFechaHora } from '../../lib/notifications';
 import { getEstadisticasJornada } from '../../lib/queries/monitoreo';
 import { AvanceEtapas } from './AvanceEtapas';
+import { OrdenLlegadaPanel } from './OrdenLlegadaPanel';
 import { REFRESCO_MONITOREO_MS } from './MonitoreoPage';
 import { ETAPAS, avanceNoCda, avancePorEtapa, embudo, porcentaje, type Agrupacion, type EtapaClave } from './estadisticas';
 
@@ -13,6 +15,11 @@ const AGRUPACIONES: { valor: Agrupacion; etiqueta: string }[] = [
   { valor: 'canton', etiqueta: 'Por cantón' },
   { valor: 'tecnico', etiqueta: 'Por técnico' },
 ];
+
+const SECCIONES = [
+  { id: 'avance', etiqueta: 'Avance y horas' },
+  { id: 'orden', etiqueta: 'Orden de llegada' },
+] as const;
 
 const fechaHora = (iso: string | null) => (iso ? formatearFechaHora(iso) : '—');
 
@@ -74,95 +81,105 @@ export function EstadisticasMonitoreoPage() {
             ))}
           </div>
 
-          <div className="ocda-filtros" role="group" aria-label="Agrupar el avance" style={{ margin: '1rem 0 0.5rem' }}>
-            {AGRUPACIONES.map((a) => (
-              <button
-                key={a.valor}
-                type="button"
-                className="ocda-chip"
-                aria-pressed={agrupacion === a.valor}
-                onClick={() => setAgrupacion(a.valor)}
-              >
-                {agrupacion === a.valor && <span aria-hidden="true">✓ </span>}
-                {a.etiqueta}
-              </button>
-            ))}
-          </div>
-
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <div className="ocda-filtros" role="group" aria-label="Etapa del recorrido" style={{ margin: '0 0 0.75rem' }}>
-              {ETAPAS.map((e) => (
-                <button
-                  key={e.clave}
-                  type="button"
-                  className="ocda-chip"
-                  aria-pressed={etapa === e.clave}
-                  onClick={() => setEtapa(e.clave)}
-                >
-                  {etapa === e.clave && <span aria-hidden="true">✓ </span>}
-                  {e.etiqueta}
-                </button>
-              ))}
-            </div>
-            <AvanceEtapas
-              titulo={`${info.hecho} (parejas), ${sufijo}`}
-              grupos={porEtapa}
-              vacio="Aún no hay parejas con kit asignado."
-              etiquetaHecho="parejas"
-            />
-          </div>
-
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <AvanceEtapas
-              titulo={`Llegadas a los NO CDA, ${sufijo}`}
-              grupos={noCda}
-              vacio="No hay recintos NO CDA con su CDA en ruta."
-              etiquetaHecho="NO CDA visitados"
-            />
-          </div>
-
-          <div className="card">
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Hora de cada etapa por pareja</h3>
-            <div className="table-scroll table-scroll-alta" role="region" aria-label="Horas de cada etapa por pareja" tabIndex={0}>
-              <table className="table-sticky-first">
-                <thead>
-                  <tr>
-                    <th>Código</th>
-                    <th>Recinto (CDA)</th>
-                    <th>Cantón</th>
-                    <th>Técnico</th>
-                    <th>Operador</th>
-                    <th>Asistente</th>
-                    {ETAPAS.map((e) => (
-                      <th key={e.clave}>{e.etiqueta}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.unidades.map((u, i) => (
-                    <tr key={`${u.codigoRecinto}-${i}`}>
-                      <td>{u.codigoRecinto}</td>
-                      <td>{u.nombreRecinto}</td>
-                      <td>{u.cantonNombre}</td>
-                      <td>{u.tecnicoNombre || 'Sin técnico'}</td>
-                      <td>{u.operadorNombre ?? '—'}</td>
-                      <td>{u.asistenteNombre ?? '—'}</td>
-                      {ETAPAS.map((e) => (
-                        <td key={e.clave}>{fechaHora(u[e.clave])}</td>
-                      ))}
-                    </tr>
+          <Pestanas pestanas={SECCIONES} porDefecto="avance" etiqueta="Secciones de las estadísticas">
+            {(seccion) =>
+              seccion === 'orden' ? (
+                <OrdenLlegadaPanel datos={data} />
+              ) : (
+                <>
+                <div className="ocda-filtros" role="group" aria-label="Agrupar el avance" style={{ margin: '1rem 0 0.5rem' }}>
+                  {AGRUPACIONES.map((a) => (
+                    <button
+                      key={a.valor}
+                      type="button"
+                      className="ocda-chip"
+                      aria-pressed={agrupacion === a.valor}
+                      onClick={() => setAgrupacion(a.valor)}
+                    >
+                      {agrupacion === a.valor && <span aria-hidden="true">✓ </span>}
+                      {a.etiqueta}
+                    </button>
                   ))}
-                  {data.unidades.length === 0 && (
-                    <tr>
-                      <td colSpan={6 + ETAPAS.length} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
-                        Aún no hay parejas con kit asignado.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+
+                <div className="card" style={{ marginBottom: '1rem' }}>
+                  <div className="ocda-filtros" role="group" aria-label="Etapa del recorrido" style={{ margin: '0 0 0.75rem' }}>
+                    {ETAPAS.map((e) => (
+                      <button
+                        key={e.clave}
+                        type="button"
+                        className="ocda-chip"
+                        aria-pressed={etapa === e.clave}
+                        onClick={() => setEtapa(e.clave)}
+                      >
+                        {etapa === e.clave && <span aria-hidden="true">✓ </span>}
+                        {e.etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                  <AvanceEtapas
+                    titulo={`${info.hecho} (parejas), ${sufijo}`}
+                    grupos={porEtapa}
+                    vacio="Aún no hay parejas con kit asignado."
+                    etiquetaHecho="parejas"
+                  />
+                </div>
+
+                <div className="card" style={{ marginBottom: '1rem' }}>
+                  <AvanceEtapas
+                    titulo={`Llegadas a los NO CDA, ${sufijo}`}
+                    grupos={noCda}
+                    vacio="No hay recintos NO CDA con su CDA en ruta."
+                    etiquetaHecho="NO CDA visitados"
+                  />
+                </div>
+
+                <div className="card">
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Hora de cada etapa por pareja</h3>
+                  <div className="table-scroll table-scroll-alta" role="region" aria-label="Horas de cada etapa por pareja" tabIndex={0}>
+                    <table className="table-sticky-first">
+                      <thead>
+                        <tr>
+                          <th>Código</th>
+                          <th>Recinto (CDA)</th>
+                          <th>Cantón</th>
+                          <th>Técnico</th>
+                          <th>Operador</th>
+                          <th>Asistente</th>
+                          {ETAPAS.map((e) => (
+                            <th key={e.clave}>{e.etiqueta}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.unidades.map((u, i) => (
+                          <tr key={`${u.codigoRecinto}-${i}`}>
+                            <td>{u.codigoRecinto}</td>
+                            <td>{u.nombreRecinto}</td>
+                            <td>{u.cantonNombre}</td>
+                            <td>{u.tecnicoNombre || 'Sin técnico'}</td>
+                            <td>{u.operadorNombre ?? '—'}</td>
+                            <td>{u.asistenteNombre ?? '—'}</td>
+                            {ETAPAS.map((e) => (
+                              <td key={e.clave}>{fechaHora(u[e.clave])}</td>
+                            ))}
+                          </tr>
+                        ))}
+                        {data.unidades.length === 0 && (
+                          <tr>
+                            <td colSpan={6 + ETAPAS.length} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                              Aún no hay parejas con kit asignado.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                </>
+              )
+            }
+          </Pestanas>
         </>
       )}
     </div>

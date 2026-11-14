@@ -98,6 +98,31 @@ describe('EstadisticasMonitoreoPage', () => {
     expect(within(tabla).getAllByText('—').length).toBeGreaterThan(0);
   });
 
+  it('la pestaña "Orden de llegada" numera por hora, cuenta pendientes y filtra', async () => {
+    getMock.mockResolvedValue(datos);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(/Simulacro/);
+
+    await user.click(screen.getByRole('tab', { name: 'Orden de llegada' }));
+    const tabla = screen.getByRole('region', { name: 'Orden de llegada: Llegada al recinto' });
+    expect(within(tabla).getAllByRole('row')).toHaveLength(2); // encabezado + C1
+    expect(within(tabla).getByText('Op C1')).toBeInTheDocument();
+    expect(screen.getByText(/1 registro\. 2 parejas aún sin registrar esta etapa\./)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Salida del DPEI/ }));
+    const salida = screen.getByRole('region', { name: 'Orden de llegada: Salida del DPEI' });
+    const filas = within(salida).getAllByRole('row').slice(1);
+    expect(filas[0]).toHaveTextContent('1C1');
+    expect(filas[1]).toHaveTextContent('2C2');
+
+    await user.selectOptions(screen.getByLabelText(/Técnico/), 'Jairo');
+    expect(within(screen.getByRole('region', { name: 'Orden de llegada: Salida del DPEI' })).queryByText('Op C1')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Llegada a NO CDA/ }));
+    expect(screen.getByText(/0 registros\. 0 NO CDA aún sin visita\./)).toBeInTheDocument();
+  });
+
   it('un error de carga se avisa', async () => {
     getMock.mockImplementation(() => Promise.reject(new Error('x')));
     renderPage();
