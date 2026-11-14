@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { TextoAnimado } from '../../components/TextoAnimado';
+import { NumeroAnimado } from '../../components/NumeroAnimado';
 import { ESTADO_INFO, ORDEN_ESTADOS, type ConteoEstados } from './estado-info';
 
 // Dona: anillo SVG de radio 30 en un lienzo de 72 px (trazo de 8 px).
@@ -49,7 +49,7 @@ export function KpiEstados({ conteo, total }: Props) {
             )}
           </svg>
           <span className="kpi-dona-valor" aria-hidden="true">
-            {porcentaje}%
+            <NumeroAnimado valor={porcentaje} />%
           </span>
         </div>
         <div>
@@ -73,7 +73,11 @@ export function KpiEstados({ conteo, total }: Props) {
               {info.label}
             </div>
             <div className="kpi-num">
-              <TextoAnimado text={String(conteo[estado] ?? 0)} />
+              {/* La cifra sube animada solo a la vista: el lector de pantalla oye el valor final, no cada paso. */}
+              <span className="sr-only">{conteo[estado] ?? 0}</span>
+              <span aria-hidden="true">
+                <NumeroAnimado valor={conteo[estado] ?? 0} />
+              </span>
             </div>
           </div>
         );

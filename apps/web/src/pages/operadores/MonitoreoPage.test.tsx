@@ -99,6 +99,11 @@ const cdaConUbicacionYFoto: CdaEstadoDto = {
   tieneFotoPruebaConexion: true,
   tieneActaInstalacion: true,
   tieneActaEscrutinio: false,
+  asistenteNombre: 'Rosa Lema',
+  salidaDpiEn: '2026-07-01T08:00:00.000Z',
+  llegadaRecintoEn: '2026-07-01T09:00:00.000Z',
+  salidaRecintoEn: '2026-07-01T09:50:00.000Z',
+  llegadaDpiEn: null,
 };
 
 const cdaSinUbicacionNiFoto: CdaEstadoDto = {
@@ -116,6 +121,11 @@ const cdaSinUbicacionNiFoto: CdaEstadoDto = {
   tieneFotoPruebaConexion: false,
   tieneActaInstalacion: false,
   tieneActaEscrutinio: false,
+  asistenteNombre: null,
+  salidaDpiEn: null,
+  llegadaRecintoEn: null,
+  salidaRecintoEn: null,
+  llegadaDpiEn: null,
 };
 
 function renderPage() {
@@ -271,13 +281,37 @@ describe('MonitoreoPage', () => {
     expect(screen.queryByText('En retorno, distancia al DPEI:')).not.toBeInTheDocument();
   });
 
+  it('muestra el asistente y la hora de cada etapa, y se puede buscar por el asistente', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Colegio Otavalo');
+
+    expect(screen.getByRole('columnheader', { name: 'Asistente' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Llegada al recinto' })).toBeInTheDocument();
+    expect(screen.getByText('Rosa Lema')).toBeInTheDocument();
+    for (const nombre of ['Salida del DPEI', 'Llegada al recinto', 'Salida del recinto', 'Llegada al DPEI']) {
+      expect(screen.getByRole('columnheader', { name: nombre })).toBeInTheDocument();
+    }
+    // Etapas con hora y etapas pendientes (—), según la fila.
+    const filaConHoras = screen.getByText('Juan Pérez').closest('tr')!;
+    expect(within(filaConHoras).getAllByText(/\d{1,2}:\d{2}/).length).toBeGreaterThanOrEqual(3);
+    const filaSinDatos = screen.getByText('Ana Ruiz').closest('tr')!;
+    expect(within(filaSinDatos).getAllByText('—').length).toBeGreaterThanOrEqual(5);
+
+    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'lema');
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+  });
+
   it('busca CDAs por código, por nombre del recinto o del operador, sin importar tildes', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Colegio Otavalo');
-    const buscar = screen.getByLabelText('Buscar CDA por código, recinto u operador');
+    const buscar = screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente');
 
     await user.type(buscar, 'canizares');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
@@ -322,7 +356,7 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Colegio Otavalo');
     await user.selectOptions(screen.getByLabelText('Filtrar CDAs por cantón'), '1');
-    await user.type(screen.getByLabelText('Buscar CDA por código, recinto u operador'), 'ana');
+    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'ana');
     expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
     expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
   });
