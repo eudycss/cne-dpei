@@ -72,6 +72,10 @@ export interface UnidadJornada {
   tiempoViajeMin: number | null;
   /** Última posición GPS del día; null = no mandó ninguna. */
   ultimoGps: Date | null;
+  /** Primera prueba de conexión del día (no es un momento del resumen); ausente/null = aún no la hace. */
+  pruebaConexion?: RegistroJornada | null;
+  /** Cuentas que reciben los recordatorios de etapa pendiente: quien lleva el kit y su pareja. */
+  destinatarios?: string[];
 }
 
 export interface NoCdaJornada {

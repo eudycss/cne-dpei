@@ -459,15 +459,15 @@ export class JornadaService {
         select: {
           kitId: true,
           fecha: true,
-          operador: { select: { apellidosNombres: true, telefono: true } },
-          asistente: { select: { apellidosNombres: true, telefono: true } },
+          operador: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
+          asistente: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
         },
       }),
       this.prisma.eventoTracking.findMany({
         where: {
           eventoId: evento.id,
           operadorId: { in: operadorIds },
-          tipo: { in: MOMENTOS_JORNADA },
+          tipo: { in: [...MOMENTOS_JORNADA, 'PRUEBA_CONEXION'] },
           ocurridoEn: { gte: dia.desde },
         },
         orderBy: { ocurridoEn: 'asc' },
@@ -535,7 +535,12 @@ export class JornadaService {
     // El primer registro de cada momento (por operador): repetir una marca no cambia la hora.
     const registrosPorOperador = new Map<string, Partial<Record<MomentoJornada, RegistroJornada>>>();
     const actasPorOperador = new Map<string, ActasJornada>();
+    const pruebaPorOperador = new Map<string, RegistroJornada>();
     for (const t of tracking) {
+      if (t.tipo === 'PRUEBA_CONEXION') {
+        if (!pruebaPorOperador.has(t.operadorId)) pruebaPorOperador.set(t.operadorId, { en: t.ocurridoEn, sinSenal: t.desdeOffline });
+        continue;
+      }
       const registros = registrosPorOperador.get(t.operadorId) ?? {};
       const momento = t.tipo as MomentoJornada;
       registros[momento] ??= { en: t.ocurridoEn, sinSenal: t.desdeOffline };
@@ -606,6 +611,8 @@ export class JornadaService {
         actas: actasPorOperador.get(k.operadorId!) ?? null,
         tiempoViajeMin: k.recinto!.tiempoDpiMin ?? null,
         ultimoGps: gpsPorOperador.get(k.operadorId!) ?? null,
+        pruebaConexion: pruebaPorOperador.get(k.operadorId!) ?? null,
+        destinatarios: cuentasDeLaPareja(k.operadorId!, parejaPorKit.get(k.id)),
       });
     }
 
@@ -687,6 +694,15 @@ export class JornadaService {
       return null;
     }
   }
+}
+
+/** Quien lleva el kit más las cuentas de su pareja (si están vinculadas a un usuario). */
+function cuentasDeLaPareja(
+  portadorId: string,
+  pareja: { operador: { usuarioId: string | null } | null; asistente: { usuarioId: string | null } | null } | undefined,
+): string[] {
+  const ids = [portadorId, pareja?.operador?.usuarioId, pareja?.asistente?.usuarioId];
+  return [...new Set(ids.filter((id): id is string => !!id))];
 }
 
 /** Operador y asistente de la pareja del kit; sin pareja, quien tiene el kit en la app. */
