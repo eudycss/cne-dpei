@@ -1655,18 +1655,21 @@ export class TrackingService {
       new Set(recintos.flatMap((r) => Array.from(operadoresPorRecinto.get(r.id)!))),
     );
 
-    // Asistente de cada operador en la jornada (por la cuenta del operador).
+    // Pareja de cada cuenta en la jornada. El kit lo lleva quien tiene Android en la
+    // pareja (operador o asistente): se busca por la cuenta de cualquiera de los dos.
     const parejas = await this.prisma.parejaCda.findMany({
       where: { fecha: evento.fechaJornada, recintoId: { in: recintoIds } },
       select: {
-        operador: { select: { usuarioId: true } },
-        asistente: { select: { apellidosNombres: true } },
+        recintoId: true,
+        operador: { select: { usuarioId: true, apellidosNombres: true } },
+        asistente: { select: { usuarioId: true, apellidosNombres: true } },
       },
     });
-    const asistentePorOperador = new Map<string, string>();
+    const parejaPorCuenta = new Map<string, { operador: string | null; asistente: string | null }>();
     for (const p of parejas) {
-      if (p.operador?.usuarioId && p.asistente) {
-        asistentePorOperador.set(p.operador.usuarioId, p.asistente.apellidosNombres);
+      const nombres = { operador: p.operador?.apellidosNombres ?? null, asistente: p.asistente?.apellidosNombres ?? null };
+      for (const cuenta of [p.operador?.usuarioId, p.asistente?.usuarioId]) {
+        if (cuenta) parejaPorCuenta.set(`${p.recintoId}:${cuenta}`, nombres);
       }
     }
 
@@ -1756,6 +1759,7 @@ export class TrackingService {
 
     return recintos.flatMap((recinto) =>
       Array.from(operadoresPorRecinto.get(recinto.id)!).map((operadorId) => {
+        const pareja = parejaPorCuenta.get(`${recinto.id}:${operadorId}`);
         const gps = gpsPorOperador.get(operadorId);
         const trk = trackingPorOperador.get(operadorId);
         const ubicacion = gps
@@ -1772,7 +1776,7 @@ export class TrackingService {
           cantonId: recinto.cantonId,
           cantonNombre: recinto.canton?.nombre ?? null,
           operadorId,
-          operadorNombre: nombrePorId.get(operadorId) ?? 'Operador',
+          operadorNombre: pareja?.operador ?? nombrePorId.get(operadorId) ?? 'Operador',
           estado: this.deriveEstadoOperador(tiposPorOperador.get(operadorId)),
           ubicacion,
           tieneFotoMilitar: operadoresConFoto.has(operadorId),
@@ -1780,7 +1784,7 @@ export class TrackingService {
           tieneFotoPruebaConexion: conFotoPruebaConexion.has(operadorId),
           tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
           tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
-          asistenteNombre: asistentePorOperador.get(operadorId) ?? null,
+          asistenteNombre: pareja?.asistente ?? null,
           salidaDpiEn: hora('SALIDA_DPI'),
           llegadaRecintoEn: hora('LLEGADA_RECINTO'),
           salidaRecintoEn: hora('SALIDA_RECINTO'),
