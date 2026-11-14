@@ -11,6 +11,7 @@ import { SearchInput } from '../../components/SearchInput';
 import { getEvatics, guardarConfigEvatics } from '../../lib/queries/evatics';
 import { AccionesEncabezado } from './AccionesEncabezado';
 import { AvanceEvatics, pct } from './AvanceEvatics';
+import { DonaEvatics } from './DonaEvatics';
 import { Campo } from './Campo';
 import { Kpi } from './Kpi';
 import { RevisarEvaticsModal, sugerenciaIa } from './RevisarEvaticsModal';
@@ -163,6 +164,12 @@ export function EvaticsPanel({ acciones = null }: { acciones?: HTMLElement | nul
             total={t.total}
             detalle={`${pct(t.sinSubir, t.total)} % aún no lo sube`}
           />
+        </div>
+      )}
+
+      {t && (
+        <div className="card estad-seccion" style={{ marginBottom: '1.5rem' }}>
+          <DonaEvatics totales={t} />
         </div>
       )}
 
