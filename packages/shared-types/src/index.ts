@@ -400,6 +400,8 @@ export interface Kit {
   creadoEn: string;
   /** Número de la mochila física con este QR (vale en todos los eventos); null = sin cargar. */
   numeroMochila?: number | null;
+  /** Asistente CDA de la pareja del kit (solo en la lista y si el kit tiene operador). */
+  asistenteNombre?: string | null;
 }
 
 /** Cambiar o quitar (null) el N.º de mochila del QR de un kit. */

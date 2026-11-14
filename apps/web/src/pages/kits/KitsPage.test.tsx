@@ -493,6 +493,23 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     expect(screen.queryByText('Recinto')).not.toBeInTheDocument();
   });
 
+  it('muestra el asistente de la pareja bajo el operador del kit', async () => {
+    kitsActuales = [kit({ operadorId, asistenteNombre: 'GOMEZ LUIS' })];
+    renderKitsPage();
+    expect(await screen.findByText('Asistente: GOMEZ LUIS')).toBeInTheDocument();
+    expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
+  });
+
+  it('sin asistente, o sin operador, no muestra la línea de asistente', async () => {
+    kitsActuales = [
+      kit({ operadorId, asistenteNombre: null }),
+      kit({ id: 'sin-op', codigoUnico: 'SINOPER2', nombre: 'Kit sin operador', asistenteNombre: 'GOMEZ LUIS' }),
+    ];
+    renderKitsPage();
+    await screen.findByText('SINOPER2');
+    expect(screen.queryByText(/Asistente:/)).not.toBeInTheDocument();
+  });
+
   describe('N.º de mochila', () => {
     it('la columna Mochila muestra el número; el admin lo abre para cambiarlo y se guarda con PUT', async () => {
       kitsActuales = [kit({ numeroMochila: 54 }), kit({ id: 'otro-kit', codigoUnico: 'SINNUM22', nombre: 'Kit sin número', numeroMochila: null })];

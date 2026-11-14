@@ -479,6 +479,11 @@ export function KitsPage() {
                       </td>
                       <td className={kit.operadorId ? '' : 'muted'}>
                         {kit.operadorId ? operadoresById.get(kit.operadorId) ?? kit.operadorId : '—'}
+                        {kit.operadorId && kit.asistenteNombre && (
+                          <div className="muted" style={{ fontSize: '0.8rem' }}>
+                            Asistente: {kit.asistenteNombre}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <EstadoBadge estado={kit.estado} />

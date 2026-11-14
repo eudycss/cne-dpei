@@ -39,6 +39,7 @@ describe('KitsService', () => {
     },
     parejaCda: {
       count: jest.fn(),
+      findMany: jest.fn(),
     },
     mochilaKit: {
       findMany: jest.fn(),
@@ -93,6 +94,7 @@ describe('KitsService', () => {
     prisma.kitElectoral.findFirst.mockResolvedValue(null);
     prisma.kitElectoral.findMany.mockResolvedValue([]);
     prisma.parejaCda.count.mockResolvedValue(0);
+    prisma.parejaCda.findMany.mockResolvedValue([]);
     prisma.mochilaKit.findMany.mockResolvedValue([]);
 
     const moduleRef = await Test.createTestingModule({
@@ -139,11 +141,36 @@ describe('KitsService', () => {
       expect(sql.sql).toContain(
         'FROM kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id LEFT JOIN mochilas_kit m ON m.codigo_unico = t.codigo_unico',
       );
-      expect(sql.sql).toContain("t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto,'mochila ' || m.numero");
+      // También por el operador (usuario del kit) y por el asistente de su pareja.
+      expect(sql.sql).toContain('LEFT JOIN usuarios uo ON uo.id = t.operador_id');
+      expect(sql.sql).toContain('pc.kit_id = t.id AND oo.usuario_id = t.operador_id');
+      expect(sql.sql).toContain("t.nombre,t.codigo_unico,r.nombre,r.codigo_recinto,'mochila ' || m.numero,uo.nombres,uo.apellidos,a.apellidos_nombres");
       expect(sql.values).toEqual(expect.arrayContaining(['%juan%', '%montalvo%', eventoId]));
       expect(sql.sql).toContain('(t.evento_id = ?::uuid) AND');
       // Los ids encontrados se combinan con el resto del filtro (evento, prueba).
       expect(prisma.kitElectoral.count.mock.calls[0][0].where).toEqual({ eventoId, esPrueba: false, id: { in: ['k1'] } });
+    });
+  });
+
+  describe('list: asistente de la pareja', () => {
+    it('trae el asistente más reciente de la pareja del kit, solo si el kit tiene operador', async () => {
+      prisma.kitElectoral.count.mockResolvedValueOnce(2);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        kitRow({ operadorId }),
+        kitRow({ id: 'k2', codigoUnico: 'SINOPER2' }),
+      ]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        { kitId, operador: { usuarioId: 'otro-operador' }, asistente: { apellidosNombres: 'DE OTRA PAREJA' } },
+        { kitId, operador: { usuarioId: operadorId }, asistente: { apellidosNombres: 'PEREZ ANA' } },
+        { kitId, operador: { usuarioId: operadorId }, asistente: { apellidosNombres: 'VIEJO LUIS' } },
+        { kitId: 'k2', operador: { usuarioId: operadorId }, asistente: { apellidosNombres: 'SIN OPERADOR' } },
+      ]);
+      const r = await service.list({ eventoId });
+      expect(r.items.map((k) => k.asistenteNombre)).toEqual(['PEREZ ANA', null]);
+      expect(prisma.parejaCda.findMany.mock.calls[0][0].where).toMatchObject({
+        kitId: { in: [kitId, 'k2'] },
+        operador: { usuarioId: { in: [operadorId] } },
+      });
     });
   });
 
