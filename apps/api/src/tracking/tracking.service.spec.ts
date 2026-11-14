@@ -736,6 +736,71 @@ describe('TrackingService', () => {
     });
   });
 
+  describe('dos kits en el mismo recinto (kit 1 y kit 2, cada uno de su pareja)', () => {
+    const recintoId = 'recinto-compartido';
+    const operadorKit1 = 'operador-pareja-1';
+    const operadorKit2 = 'operador-pareja-2';
+    const kit1 = { id: '11111111-1111-4111-8111-111111111111', eventoId, recintoId, operadorId: operadorKit1, codigoUnico: 'KIT1', nombre: 'Kit 1', contenidos: null };
+    const kit2 = { id: '22222222-2222-4222-8222-222222222222', eventoId, recintoId, operadorId: operadorKit2, codigoUnico: 'KIT2', nombre: 'Kit 2', contenidos: null };
+    const porCodigo = (kits: (typeof kit1)[]) => (args: any) =>
+      Promise.resolve(kits.find((k) => k.codigoUnico === args.where.eventoId_codigoUnico.codigoUnico) ?? null);
+    const entrada = (kitId: string) => ({ kitId, fotoMilitarUrl: 'militares/foto.enc', latitud: 0.35, longitud: -78.11 });
+
+    it('el operador del kit 2 escanea su QR y lo valida aunque el recinto tenga otro kit', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockImplementationOnce(porCodigo([kit1, kit2]));
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.validarKit(operadorKit2, 'KIT2');
+
+      expect(result).toEqual(expect.objectContaining({ id: '22222222-2222-4222-8222-222222222222', codigoUnico: 'KIT2', yaRecibido: false }));
+    });
+
+    it('el operador del kit 1 NO puede escanear el QR del kit 2 (mismo recinto, otra pareja)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockImplementationOnce(porCodigo([kit1, kit2]));
+
+      await expect(service.validarKit(operadorKit1, 'KIT2')).rejects.toThrow('Este kit no te pertenece');
+    });
+
+    it('el operador del kit 2 NO puede escanear el QR del kit 1', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findUnique.mockImplementationOnce(porCodigo([kit1, kit2]));
+
+      await expect(service.validarKit(operadorKit2, 'KIT1')).rejects.toThrow('Este kit no te pertenece');
+    });
+
+    it('la recepción del kit 2 por el operador del kit 1 se rechaza, avisa y no guarda nada', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit2);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Pareja', apellidos: 'Dos' });
+
+      await expect(service.confirmarRecepcionKit(operadorKit1, entrada('22222222-2222-4222-8222-222222222222') as any)).rejects.toThrow(
+        'Este kit no te pertenece',
+      );
+      expect(alertas.generarKitNoCorresponde).toHaveBeenCalledWith(
+        expect.objectContaining({ kitId: '22222222-2222-4222-8222-222222222222', operadorId: operadorKit1, codigoKit: 'KIT2' }),
+      );
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(prisma.kitElectoral.update).not.toHaveBeenCalled();
+    });
+
+    it('el operador del kit 2 confirma su recepción: solo el kit 2 pasa a ENTREGADO', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit2);
+      storage.exists.mockResolvedValueOnce(true);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'rk2', confirmado_en: new Date(ocurridoEn) }]);
+
+      const result = await service.confirmarRecepcionKit(operadorKit2, entrada('22222222-2222-4222-8222-222222222222') as any);
+
+      expect(result.kitId).toBe('22222222-2222-4222-8222-222222222222');
+      expect(prisma.kitElectoral.update).toHaveBeenCalledTimes(1);
+      expect(prisma.kitElectoral.update).toHaveBeenCalledWith({ where: { id: '22222222-2222-4222-8222-222222222222' }, data: { estado: 'ENTREGADO' } });
+      expect(prisma.recepcionKit.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { kitId: '22222222-2222-4222-8222-222222222222', operadorId: operadorKit2 } }),
+      );
+    });
+  });
+
   describe('validarKitRetorno', () => {
     const adminRoles = ['ADMINISTRADOR'] as any;
 

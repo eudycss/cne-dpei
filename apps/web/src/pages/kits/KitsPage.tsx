@@ -101,6 +101,7 @@ export function KitsPage() {
   const [escaneando, setEscaneando] = useState(false);
   const [importResult, setImportResult] = useState<BulkUploadResult | null>(null);
   const [incluirPrueba, setIncluirPrueba] = useState(false);
+  const [soloSegundos, setSoloSegundos] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
   const invalidateKits = () => {
@@ -115,7 +116,7 @@ export function KitsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [debounced, eventoId, incluirPrueba]);
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [debounced, eventoId, incluirPrueba, soloSegundos]);
 
   // Eventos
   const { data: eventos } = useQuery({
@@ -132,11 +133,12 @@ export function KitsPage() {
 
   // Kits paginados
   const { data: kitsData, isLoading } = useQuery({
-    queryKey: ['kits', { eventoId, page, search: debounced, incluirPrueba }],
+    queryKey: ['kits', { eventoId, page, search: debounced, incluirPrueba, soloSegundos }],
     queryFn: async () => {
       const params = new URLSearchParams({ eventoId, page: String(page), pageSize: '20' });
       if (debounced) params.set('search', debounced);
       if (incluirPrueba) params.set('incluirPrueba', 'true');
+      if (soloSegundos) params.set('soloSegundos', 'true');
       return (await getKits(params)).data;
     },
     enabled: !!eventoId,
@@ -332,6 +334,18 @@ export function KitsPage() {
                 onChange={(e) => setIncluirPrueba(e.target.checked)}
               />
               Mostrar kits de prueba
+            </label>
+            <label
+              className="row"
+              style={{ margin: 0, gap: '0.35rem', fontSize: '0.85rem', alignItems: 'center' }}
+              title="Segundo kit (o más) de recintos que llevan otro dispositivo"
+            >
+              <input
+                type="checkbox"
+                checked={soloSegundos}
+                onChange={(e) => setSoloSegundos(e.target.checked)}
+              />
+              Solo kits 2 (otro dispositivo)
             </label>
             {isAdmin && (
               <>
