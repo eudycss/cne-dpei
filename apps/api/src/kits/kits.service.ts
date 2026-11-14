@@ -66,11 +66,13 @@ export class KitsService {
     pageSize?: number;
     search?: string;
     incluirPrueba?: boolean;
+    soloSegundos?: boolean;
   }): Promise<Paginated<Kit>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
     const where: any = { eventoId: opts.eventoId };
     if (!opts.incluirPrueba) where.esPrueba = false;
+    const idsSegundos = opts.soloSegundos ? await this.idsKitsSegundos(opts.eventoId) : null;
     // Sin tildes y por palabras en cualquier orden. El nombre del kit solo trae
     // el código del recinto ("Kit Recinto 1198"): también por su recinto y por el N.º de mochila.
     const ids = await idsPorBusqueda(
@@ -87,7 +89,10 @@ export class KitsService {
       // Solo los kits del evento: sin esto volverían los de todos los eventos.
       Prisma.sql`t.evento_id = ${opts.eventoId}::uuid`,
     );
-    if (ids) where.id = { in: ids };
+    if (ids || idsSegundos) {
+      const filtrados = ids && idsSegundos ? ids.filter((id) => idsSegundos.includes(id)) : ids ?? idsSegundos;
+      where.id = { in: filtrados };
+    }
     const [total, items] = await this.prisma.$transaction([
       this.prisma.kitElectoral.count({ where }),
       this.prisma.kitElectoral.findMany({
@@ -109,6 +114,20 @@ export class KitsService {
       page,
       pageSize,
     };
+  }
+
+  /**
+   * "Kits 2": en un recinto con varios kits reales del evento, todos menos el
+   * primero creado (el 1.º es el kit original; el resto es el otro dispositivo).
+   */
+  private async idsKitsSegundos(eventoId: string): Promise<string[]> {
+    const filas = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY recinto_id ORDER BY creado_en, id) AS pos
+        FROM kits_electorales
+        WHERE evento_id = ${eventoId}::uuid AND recinto_id IS NOT NULL AND es_prueba = false
+      ) k WHERE pos > 1`);
+    return filas.map((f) => f.id);
   }
 
   /**

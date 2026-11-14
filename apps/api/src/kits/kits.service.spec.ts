@@ -117,6 +117,18 @@ describe('KitsService', () => {
       expect(prisma.kitElectoral.count).toHaveBeenCalledWith({ where: { eventoId } });
     });
 
+    it('soloSegundos lista únicamente los kits 2 (todos menos el primero de cada recinto)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'k2' }]);
+      prisma.kitElectoral.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow()]);
+      await service.list({ eventoId, soloSegundos: true });
+
+      const sql = prisma.$queryRaw.mock.calls[0][0];
+      expect(sql.sql).toContain('ROW_NUMBER() OVER (PARTITION BY recinto_id ORDER BY creado_en, id)');
+      expect(sql.sql).toContain('pos > 1');
+      expect(prisma.kitElectoral.count.mock.calls[0][0].where).toEqual({ eventoId, esPrueba: false, id: { in: ['k2'] } });
+    });
+
     it('la búsqueda (sin tildes, por palabras) también encuentra el kit por el nombre o el código de su recinto', async () => {
       prisma.$queryRaw.mockResolvedValueOnce([{ id: 'k1' }]);
       prisma.kitElectoral.count.mockResolvedValueOnce(1);
