@@ -34,6 +34,8 @@ const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
 // Debe coincidir con la clase h-[480px] del MapView de operadores en ruta.
 const ALTO_MAPA = 480;
 
+const fechaHora = (iso: string | null) => (iso ? formatearFechaHora(iso) : '—');
+
 function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   if (!cda.ubicacion) return null;
   const pos: [number, number] = [cda.ubicacion.latitud, cda.ubicacion.longitud];
@@ -195,7 +197,7 @@ export function MonitoreoPage() {
   const cdasFiltrados = cdasDelCanton.filter(
     (c) =>
       (estadoFiltro === 'TODOS' || c.estado === estadoFiltro) &&
-      coincideBusqueda([c.codigoRecinto, c.nombreRecinto, c.operadorNombre], textoBuscado),
+      coincideBusqueda([c.codigoRecinto, c.nombreRecinto, c.operadorNombre, c.asistenteNombre ?? ''], textoBuscado),
   );
 
   const conteoPorEstado = useMemo(() => {
@@ -401,8 +403,8 @@ export function MonitoreoPage() {
           <SearchInput
             value={busqueda}
             onChange={setBusqueda}
-            placeholder="Buscar por código, recinto u operador"
-            ariaLabel="Buscar CDA por código, recinto u operador"
+            placeholder="Buscar por código, recinto, operador o asistente"
+            ariaLabel="Buscar CDA por código, recinto, operador o asistente"
             style={{ flex: '1 1 240px', minWidth: 200 }}
           />
         </div>
@@ -427,7 +429,12 @@ export function MonitoreoPage() {
                 <th>Recinto (CDA)</th>
                 <th>Cantón</th>
                 <th>Operador</th>
+                <th>Asistente</th>
                 <th>Estado</th>
+                <th>Salida del DPEI</th>
+                <th>Llegada al recinto</th>
+                <th>Salida del recinto</th>
+                <th>Llegada al DPEI</th>
                 <th>Última actualización</th>
                 <th>Ubicación</th>
                 <th>Foto militar</th>
@@ -445,6 +452,7 @@ export function MonitoreoPage() {
                     <td>{c.nombreRecinto}</td>
                     <td>{c.cantonNombre ?? '—'}</td>
                     <td>{c.operadorNombre}</td>
+                    <td>{c.asistenteNombre ?? '—'}</td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                         <span
@@ -459,6 +467,10 @@ export function MonitoreoPage() {
                         <TextoAnimado text={info.label} />
                       </span>
                     </td>
+                    <td>{fechaHora(c.salidaDpiEn)}</td>
+                    <td>{fechaHora(c.llegadaRecintoEn)}</td>
+                    <td>{fechaHora(c.salidaRecintoEn)}</td>
+                    <td>{fechaHora(c.llegadaDpiEn)}</td>
                     <td>{c.ubicacion ? formatearFechaHora(c.ubicacion.capturadoEn) : '—'}</td>
                     <td>
                       <BotonConMotivo
@@ -521,7 +533,7 @@ export function MonitoreoPage() {
               })}
               {cdasFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                  <td colSpan={16} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
                     {cdas.length === 0
                       ? 'No hay CDAs con operador asignado en el evento activo'
                       : 'Ningún CDA coincide con los filtros elegidos'}
