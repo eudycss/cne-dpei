@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 import type { ReporteCda, TablaReporte } from '../operadores-cda/reporte-cda';
+import { type ContactosCda, textoConserjes, textoRector } from './contactos-cda';
 
 /** Datos mínimos de un recinto para el reporte "CDA con sus recintos NO CDA". */
 export interface RecintoReporte {
@@ -13,6 +14,8 @@ export interface RecintoReporte {
   juntasFemeninas: number | null;
   juntasMasculinas: number | null;
   cdaDestinoId: string | null;
+  /** Solo los CDA los traen (rector y conserjes). */
+  contactos?: ContactosCda | null;
 }
 
 const COLUMNAS = [
@@ -22,6 +25,8 @@ const COLUMNAS = [
   { titulo: 'Código', ancho: 10 },
   { titulo: 'Recinto', ancho: 38 },
   { titulo: 'Dirección', ancho: 30 },
+  { titulo: 'Rector', ancho: 34 },
+  { titulo: 'Conserje(s)', ancho: 34 },
   { titulo: 'JF', ancho: 6 },
   { titulo: 'JM', ancho: 6 },
   { titulo: 'JT', ancho: 6 },
@@ -31,7 +36,9 @@ const juntas = (r: RecintoReporte) => (r.juntasFemeninas ?? 0) + (r.juntasMascul
 const porNombre = (a: RecintoReporte, b: RecintoReporte) => a.nombre.localeCompare(b.nombre, 'es');
 
 function fila(cda: string, r: RecintoReporte, nombre: string) {
-  return [cda, r.cantonNombre, r.parroquia ?? '', r.codigoRecinto, nombre, r.direccion ?? '', r.juntasFemeninas ?? 0, r.juntasMasculinas ?? 0, juntas(r)];
+  const rector = r.contactos ? textoRector(r.contactos) : '';
+  const conserjes = r.contactos ? textoConserjes(r.contactos) : '';
+  return [cda, r.cantonNombre, r.parroquia ?? '', r.codigoRecinto, nombre, r.direccion ?? '', rector, conserjes, r.juntasFemeninas ?? 0, r.juntasMasculinas ?? 0, juntas(r)];
 }
 
 /**
@@ -62,9 +69,9 @@ export function reporteRecintosCda(
     const hijos = (porCda.get(cda.id) ?? []).sort(porNombre);
     filas.push(fila(etiqueta, cda, `${cda.nombre} (CDA)`));
     for (const n of hijos) filas.push(fila(etiqueta, n, n.nombre));
-    if (hijos.length === 0) filas.push([etiqueta, '', '', '', 'Sin recintos NO CDA asignados', '', '', '', '']);
+    if (hijos.length === 0) filas.push([etiqueta, '', '', '', 'Sin recintos NO CDA asignados', '', '', '', '', '', '']);
     resaltadas.push(filas.length);
-    filas.push([etiqueta, '', '', '', 'Total de juntas', '', '', '', juntas(cda) + hijos.reduce((s, n) => s + juntas(n), 0)]);
+    filas.push([etiqueta, '', '', '', 'Total de juntas', '', '', '', '', '', juntas(cda) + hijos.reduce((s, n) => s + juntas(n), 0)]);
   }
 
   const tablas: TablaReporte[] = [

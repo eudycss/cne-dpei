@@ -31,9 +31,30 @@ describe('reporteRecintosCda', () => {
       'Sin recintos NO CDA asignados',
       'Total de juntas',
     ]);
-    expect(t.filas[2][8]).toBe(3 + 6); // CDA A: 1+2 y Escuela 1: 3+3
-    expect(t.filas[5][8]).toBe(3);
+    expect(t.filas[2][10]).toBe(3 + 6); // CDA A: 1+2 y Escuela 1: 3+3
+    expect(t.filas[5][10]).toBe(3);
     expect(t.resaltadas).toEqual([2, 5]);
+  });
+
+  it('el CDA muestra el rector y el/los conserjes; sus NO CDA y los totales van sin contactos', () => {
+    const conContactos = recinto('a', 'Colegio A', {
+      contactos: {
+        rectorNombre: 'Ana Rector',
+        rectorTelefono: '0991111111',
+        conserjeNombre: 'Luis Conserje',
+        conserjeTelefono: '0992222222',
+        conserje2Nombre: 'Eva Conserje',
+        conserje2Telefono: null,
+      },
+    });
+    const n1 = recinto('n1', 'Escuela 1', { cdaDestinoId: 'a' });
+    const [t] = reporteRecintosCda([conContactos], [n1], '2026-11-13').tablas;
+
+    expect(t.columnas.map((c) => c.titulo).slice(6, 8)).toEqual(['Rector', 'Conserje(s)']);
+    expect(t.filas[0][6]).toBe('Ana Rector · 0991111111');
+    expect(t.filas[0][7]).toBe(['Luis Conserje · 0992222222', 'Eva Conserje'].join('\n'));
+    expect(t.filas[1].slice(6, 8)).toEqual(['', '']);
+    expect(t.filas.every((f) => f.length === t.columnas.length)).toBe(true);
   });
 
   it('los NO CDA sin CDA (o con un CDA que no está en la lista) van a una hoja aparte', () => {

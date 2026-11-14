@@ -5,6 +5,7 @@ import type { FormatoReporteCda } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { diaEcuador } from '../operadores-cda/dia-ecuador';
 import { type ArchivoReporte, generarReporte } from '../operadores-cda/reporte-cda';
+import { CAMPOS_CONTACTOS_CDA } from './contactos-cda';
 import { type RecintoReporte, reporteRecintosCda } from './reporte-recintos-cda';
 
 /** Excel/PDF de cada recinto CDA con los recintos NO CDA que se le asignan. */
@@ -37,9 +38,19 @@ export class ReporteRecintosCdaService {
         juntasFemeninas: true,
         juntasMasculinas: true,
         cdaDestinoId: true,
+        tipo: true,
+        ...CAMPOS_CONTACTOS_CDA,
         canton: { select: { nombre: true } },
       },
     });
-    return rows.map(({ canton, ...r }) => ({ ...r, cantonNombre: canton.nombre }));
+    return rows.map(({ canton, tipo, rectorNombre, rectorTelefono, conserjeNombre, conserjeTelefono, conserje2Nombre, conserje2Telefono, ...r }) => ({
+      ...r,
+      cantonNombre: canton.nombre,
+      // Solo un CDA tiene contactos de rector y conserjes.
+      contactos:
+        tipo === 'CDA'
+          ? { rectorNombre, rectorTelefono, conserjeNombre, conserjeTelefono, conserje2Nombre, conserje2Telefono }
+          : null,
+    }));
   }
 }

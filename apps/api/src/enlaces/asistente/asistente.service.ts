@@ -293,7 +293,7 @@ export class AsistenteService {
         estado: e.estado === 'FALLO' ? 'caido' : 'activo',
         numero_tecnico: a?.numeroTecnico ?? null,
         tecnico: a?.tecnico ?? null,
-        tiene_contacto: encargados === null ? null : encargados.get(e.codigoRecinto)?.telefono?.trim() ? 1 : 0,
+        tiene_contacto: encargados === null ? null : tieneTelefono(encargados.get(e.codigoRecinto)) ? 1 : 0,
       } as const;
     });
 
@@ -587,4 +587,9 @@ Error: ${error}
     this.preguntas.set(clavePersona, [...propias, ahora]);
     return false;
   }
+}
+
+/** Hay a quién llamar: teléfono propio o dentro del texto (rector y conserjes de la base). */
+function tieneTelefono(e: EncargadoRecinto | undefined): boolean {
+  return !!(e?.telefono?.trim() || e?.conTelefono);
 }

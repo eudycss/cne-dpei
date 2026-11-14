@@ -10,6 +10,13 @@ describe('ReporteRecintosCdaService', () => {
     juntasFemeninas: 1,
     juntasMasculinas: 1,
     cdaDestinoId: null,
+    tipo: 'CDA',
+    rectorNombre: null,
+    rectorTelefono: null,
+    conserjeNombre: null,
+    conserjeTelefono: null,
+    conserje2Nombre: null,
+    conserje2Telefono: null,
     canton: { nombre: 'Ibarra' },
     ...extra,
   });
