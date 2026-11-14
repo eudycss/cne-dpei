@@ -800,7 +800,9 @@ export interface CdaEstadoDto {
   nombreRecinto: string;
   cantonId: number;
   cantonNombre: string | null;
+  /** Cuenta que lleva el kit y se rastrea: operador o asistente de la pareja. */
   operadorId: string;
+  /** Operador de la pareja del día (si no hay pareja, el titular de la cuenta). */
   operadorNombre: string;
   estado: EstadoOperadorCda;
   ubicacion: CdaUbicacion | null;

@@ -1837,7 +1837,7 @@ describe('TrackingService', () => {
         { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
       ]);
       prisma.parejaCda.findMany.mockResolvedValueOnce([
-        { operador: { usuarioId: operadorId }, asistente: { apellidosNombres: 'Rosa Lema' } },
+        { recintoId, operador: { usuarioId: operadorId, apellidosNombres: 'PEREZ ANA' }, asistente: { usuarioId: 'asis-1', apellidosNombres: 'Rosa Lema' } },
       ]);
       prisma.usuario.findMany.mockResolvedValueOnce([
         { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
@@ -1856,7 +1856,7 @@ describe('TrackingService', () => {
 
       const filas = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
 
-      expect(filas.map((f) => f.operadorNombre)).toEqual(['Ana Perez', 'Luis Mora']);
+      expect(filas.map((f) => f.operadorNombre)).toEqual(['PEREZ ANA', 'Luis Mora']);
       expect(filas[0]).toEqual(
         expect.objectContaining({
           asistenteNombre: 'Rosa Lema',
@@ -1867,6 +1867,53 @@ describe('TrackingService', () => {
         }),
       );
       expect(filas[1].asistenteNombre).toBeNull();
+    });
+
+    it('si el kit lo lleva el asistente, la fila muestra a su pareja completa (operador y asistente de la pareja)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      // La cuenta del kit (operadorId) es la del ASISTENTE de la pareja.
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        {
+          recintoId,
+          operador: { usuarioId: 'cuenta-operador', apellidosNombres: 'PROAÑO MIGUEL' },
+          asistente: { usuarioId: operadorId, apellidosNombres: 'VELASCO GLADYS' },
+        },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, nombres: 'Gladys', apellidos: 'Velasco' }]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const [fila] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(fila.operadorId).toBe(operadorId);
+      expect(fila.operadorNombre).toBe('PROAÑO MIGUEL');
+      expect(fila.asistenteNombre).toBe('VELASCO GLADYS');
+    });
+
+    it('una pareja del mismo día en otro recinto no se mezcla con la fila, y un operador sin cuenta no rompe', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        { recintoId: 'otro-recinto', operador: { usuarioId: operadorId, apellidosNombres: 'AJENO' }, asistente: null },
+        { recintoId, operador: { usuarioId: null, apellidosNombres: 'SIN CUENTA' }, asistente: null },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, nombres: 'Ana', apellidos: 'Perez' }]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const [fila] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(fila.operadorNombre).toBe('Ana Perez');
+      expect(fila.asistenteNombre).toBeNull();
     });
 
     it('un supervisor solo ve las filas de sus operadores asignados dentro de un recinto compartido', async () => {
@@ -1896,7 +1943,7 @@ describe('TrackingService', () => {
         { operadorId, tipo: 'SALIDA_RECINTO', ocurridoEn: new Date('2026-10-21T18:30:00.000Z') },
         { operadorId, tipo: 'SALIDA_RECINTO', ocurridoEn: new Date('2026-10-21T18:00:00.000Z') },
       ]);
-      prisma.parejaCda.findMany.mockResolvedValueOnce([{ operador: { usuarioId: operadorId }, asistente: null }]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([{ recintoId, operador: { usuarioId: operadorId, apellidosNombres: 'PEREZ ANA' }, asistente: null }]);
 
       const [cda] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
 
