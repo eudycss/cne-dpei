@@ -289,7 +289,6 @@ describe('MonitoreoPage', () => {
     await screen.findByText('Colegio Otavalo');
 
     expect(screen.getByRole('columnheader', { name: 'Asistente' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Llegada al recinto' })).toBeInTheDocument();
     expect(screen.getByText('Rosa Lema')).toBeInTheDocument();
     // Las horas de cada etapa van en la pantalla de estadísticas, no en esta tabla.
     expect(screen.queryByRole('columnheader', { name: 'Llegada al recinto' })).not.toBeInTheDocument();
