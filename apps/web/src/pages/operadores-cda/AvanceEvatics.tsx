@@ -43,7 +43,7 @@ const DURACION_REORDEN_MS = 450;
  * su nueva posición en vez de saltar. Respeta "reducir movimiento". Cada <li>
  * lleva data-clave con su nombre.
  */
-function useAnimarReorden(lista: RefObject<HTMLUListElement | null>) {
+export function useAnimarReorden(lista: RefObject<HTMLUListElement | null>) {
   const antes = useRef(new Map<string, number>());
   useLayoutEffect(() => {
     const ul = lista.current;
@@ -73,7 +73,7 @@ function useAnimarReorden(lista: RefObject<HTMLUListElement | null>) {
  * Tramo de la barra: nace en 0 y crece hasta su valor (y sigue la transición
  * de CSS cuando el valor cambia). Si hay un tramo resaltado, los demás se atenúan.
  */
-function Tramo({ valor, clase, atenuado }: { valor: number; clase: string; atenuado: boolean }) {
+export function Tramo({ valor, clase, atenuado }: { valor: number; clase: string; atenuado: boolean }) {
   const [grow, setGrow] = useState(0);
   useEffect(() => {
     const id = requestAnimationFrame(() => setGrow(valor));

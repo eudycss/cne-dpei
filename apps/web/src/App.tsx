@@ -17,6 +17,7 @@ import { EventosPage } from './pages/eventos/EventosPage';
 import { AsignacionesPage } from './pages/asignaciones/AsignacionesPage';
 import { KitsPage } from './pages/kits/KitsPage';
 import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
+import { EstadisticasMonitoreoPage } from './pages/operadores/EstadisticasMonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
@@ -149,6 +150,15 @@ export default function App() {
           element={
             <ProtectedRoute modulo="monitoreo">
               <MonitoreoPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/operadores/estadisticas"
+          element={
+            <ProtectedRoute modulo="monitoreo">
+              <EstadisticasMonitoreoPage />
             </ProtectedRoute>
           }
         />

@@ -32,6 +32,6 @@ import { TelegramNotifier } from './telegram-notifier';
     LlmClient,
   ],
   // El distributivo de técnicos también lo usa el reporte por técnico de Parejas CDA.
-  exports: [EnlacesService, DistributivoTecnicosClient],
+  exports: [EnlacesService, DistributivoTecnicosClient, JornadaService],
 })
 export class EnlacesModule {}

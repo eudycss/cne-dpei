@@ -57,6 +57,7 @@ import {
 
 import { TrackingService } from './tracking.service';
 import { InformeOperadorService } from './informe-operador.service';
+import { EstadisticasJornadaService } from './estadisticas-jornada.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
@@ -76,6 +77,7 @@ export class TrackingController {
   constructor(
     private readonly tracking: TrackingService,
     private readonly informes: InformeOperadorService,
+    private readonly estadisticasJornada: EstadisticasJornadaService,
   ) {}
 
   @Get('mi-asignacion')
@@ -265,6 +267,16 @@ export class TrackingController {
   })
   estadoCdas(@CurrentUser() user: AuthenticatedUser) {
     return this.tracking.estadoCdas(user.sub, user.roles);
+  }
+
+  @LecturaConfigurable()
+  @Get('estadisticas-jornada')
+  @Roles('TECNICO_SUPERVISOR', 'ADMINISTRADOR', 'LECTOR')
+  @ApiOperation({
+    summary: 'Horas de cada etapa por pareja y llegadas a NO CDA de la jornada (base de los gráficos de Monitoreo)',
+  })
+  estadisticasDeLaJornada(@CurrentUser() user: AuthenticatedUser) {
+    return this.estadisticasJornada.estadisticas(user.sub, user.roles);
   }
 
   @Get('recintos-dificil-acceso')

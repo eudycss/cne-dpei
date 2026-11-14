@@ -2321,3 +2321,39 @@ export interface RevisarEvaticsRequest {
   /** subidoEn (ISO) de la foto que vio quien revisa: si cambió, 409. */
   subidoEn: string;
 }
+
+// Estadísticas de la jornada (pantalla de gráficos de Monitoreo)
+
+export interface UnidadEstadisticaJornada {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  cantonNombre: string;
+  /** Nombre del técnico del distributivo; '' = sin técnico. */
+  tecnicoNombre: string;
+  operadorNombre: string | null;
+  asistenteNombre: string | null;
+  /** ISO de cada etapa; null = aún no ocurre. */
+  salidaDpiEn: string | null;
+  llegadaRecintoEn: string | null;
+  salidaRecintoEn: string | null;
+  llegadaDpiEn: string | null;
+}
+
+export interface NoCdaEstadisticaJornada {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  codigoCda: string;
+  nombreCda: string;
+  cantonNombre: string;
+  tecnicoNombre: string;
+  /** ISO de la llegada al NO CDA; null = aún no llegan. */
+  llegadaEn: string | null;
+}
+
+export interface EstadisticasJornadaDto {
+  evento: string;
+  /** No se pudo leer el distributivo: todo queda "sin técnico". */
+  sinDistributivo: boolean;
+  unidades: UnidadEstadisticaJornada[];
+  noCdas: NoCdaEstadisticaJornada[];
+}
