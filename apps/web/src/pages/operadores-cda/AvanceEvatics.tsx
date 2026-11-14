@@ -112,7 +112,7 @@ export function AvanceEvatics({
   const titulo = vista === 'canton' ? 'Avance por cantón' : 'Avance por Asistente Transversal';
 
   return (
-    <section className="evx-avance" aria-labelledby="evx-avance-titulo">
+    <section className="evx-avance estad-seccion" aria-labelledby="evx-avance-titulo">
       <div className="evx-avance-cabecera">
         <h3 id="evx-avance-titulo">{titulo}</h3>
         <div className="ocda-filtros" role="group" aria-label="Agrupar el avance" style={{ margin: 0 }}>
