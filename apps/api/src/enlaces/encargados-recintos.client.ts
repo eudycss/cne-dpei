@@ -1,11 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { CAMPOS_CONTACTOS_CDA, type ContactosCda, primerTelefono, textoContactosBot } from '../catalog/contactos-cda';
+import { PrismaService } from '../db/prisma.service';
 import { descargarExcelDrive, LecturaCacheada, normalizarEncabezado, textoCelda } from './drive-excel';
 
 /** Persona encargada de un recinto CDA, a quien se llama cuando su enlace se cae. */
 export interface EncargadoRecinto {
   nombre: string;
   telefono: string;
+  /** Hay un teléfono dentro del texto del nombre (rector y conserjes de la base): sí hay a quién llamar. */
+  conTelefono?: boolean;
 }
 
 const VARIABLE = 'ENCARGADOS_RECINTOS_DRIVE_ID';
@@ -119,11 +123,60 @@ function unaLinea(valor: string): string {
   return valor.replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩﻿]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** Un CDA con los contactos de su rector y conserjes guardados en la base. */
+export type ContactosDeRecinto = ContactosCda & { codigoRecinto: string };
+
+/**
+ * Suma el rector y los conserjes (base de datos) a los encargados del Drive:
+ * "Rector: Nombre, teléfono 099… · Conserje: …", y el encargado del formulario
+ * va detrás ("· Encargado: …"). Un CDA solo con contactos de la base también aparece.
+ */
+export function combinarContactos(
+  drive: Map<string, EncargadoRecinto>,
+  contactos: ContactosDeRecinto[],
+): Map<string, EncargadoRecinto> {
+  const mapa = new Map(drive);
+  for (const c of contactos) {
+    const texto = textoContactosBot(c);
+    if (!texto) continue;
+    const previo = drive.get(c.codigoRecinto);
+    mapa.set(c.codigoRecinto, {
+      nombre: previo?.nombre ? `${texto} · Encargado: ${previo.nombre}` : texto,
+      telefono: previo?.telefono ?? '',
+      conTelefono: !!(previo?.telefono?.trim() || primerTelefono(c)),
+    });
+  }
+  return mapa;
+}
+
 @Injectable()
 export class EncargadosRecintosClient {
-  private readonly lectura = new LecturaCacheada<Map<string, EncargadoRecinto>>(new Logger('EncargadosRecintos'));
+  private readonly log = new Logger('EncargadosRecintos');
+  private readonly lectura = new LecturaCacheada<Map<string, EncargadoRecinto>>(this.log);
 
-  encargados(ahora = Date.now()): Promise<Map<string, EncargadoRecinto>> {
-    return this.lectura.obtener(async () => leerEncargados(await descargarExcelDrive(VARIABLE)), ahora);
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Encargados del Drive más rector y conserjes de la base. Si el Drive falla pero
+   * hay contactos en la base, se responde solo con ellos; sin ninguno, el fallo sigue igual.
+   */
+  async encargados(ahora = Date.now()): Promise<Map<string, EncargadoRecinto>> {
+    const contactos = await this.contactosDeLaBase();
+    try {
+      const drive = await this.lectura.obtener(async () => leerEncargados(await descargarExcelDrive(VARIABLE)), ahora);
+      return combinarContactos(drive, contactos);
+    } catch (e) {
+      if (contactos.length === 0) throw e;
+      this.log.warn(`Sin el archivo de encargados de Drive, solo rector y conserjes de la base: ${(e as Error)?.message ?? e}`);
+      return combinarContactos(new Map(), contactos);
+    }
+  }
+
+  private async contactosDeLaBase(): Promise<ContactosDeRecinto[]> {
+    return this.prisma.recinto.findMany({
+      // Sin filtrar por campo: combinarContactos descarta a quien no tenga ningún dato.
+      where: { tipo: 'CDA', activo: true },
+      select: { codigoRecinto: true, ...CAMPOS_CONTACTOS_CDA },
+    });
   }
 }

@@ -1,6 +1,6 @@
 import * as ExcelJS from 'exceljs';
 import { ArchivoDriveNoConfigurado } from './drive-excel';
-import { EncargadosRecintosClient, leerEncargados } from './encargados-recintos.client';
+import { combinarContactos, EncargadosRecintosClient, leerEncargados } from './encargados-recintos.client';
 
 function libro(encabezado: string[], filas: (string | number)[][]) {
   const wb = new ExcelJS.Workbook();
@@ -118,6 +118,9 @@ describe('leerEncargados', () => {
   });
 });
 
+const sinDatos = { rectorNombre: null, rectorTelefono: null, conserjeNombre: null, conserjeTelefono: null, conserje2Nombre: null, conserje2Telefono: null };
+const clienteSinContactos = () => new EncargadosRecintosClient({ recinto: { findMany: jest.fn().mockResolvedValue([]) } } as never);
+
 describe('EncargadosRecintosClient', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
@@ -128,7 +131,7 @@ describe('EncargadosRecintosClient', () => {
   it('sin ENCARGADOS_RECINTOS_DRIVE_ID avisa que no está configurado (sin llamar a Drive)', async () => {
     global.fetch = jest.fn();
 
-    await expect(new EncargadosRecintosClient().encargados()).rejects.toBeInstanceOf(ArchivoDriveNoConfigurado);
+    await expect(clienteSinContactos().encargados()).rejects.toBeInstanceOf(ArchivoDriveNoConfigurado);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -137,11 +140,77 @@ describe('EncargadosRecintosClient', () => {
     const cuerpo = (await libro(['CODIGO DE RECINTO', 'ENCARGADO', 'TELEFONO'], [[28, 'Ana', '099']]).xlsx.writeBuffer()) as ArrayBuffer;
     global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => cuerpo });
 
-    const r = await new EncargadosRecintosClient().encargados();
+    const r = await clienteSinContactos().encargados();
 
     expect(r.get('28')).toEqual({ nombre: 'Ana', telefono: '099' });
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
       'https://drive.google.com/uc?export=download&id=1AbCdEfGhIjK_lmn-op',
     );
+  });
+
+  it('suma el rector y los conserjes de la base; sin Drive configurado responde solo con ellos', async () => {
+    const contactos = [
+      {
+        codigoRecinto: '5891',
+        rectorNombre: 'Ana Rector',
+        rectorTelefono: '0991111111',
+        conserjeNombre: 'Luis Conserje',
+        conserjeTelefono: null,
+        conserje2Nombre: null,
+        conserje2Telefono: null,
+      },
+    ];
+    const cliente = new EncargadosRecintosClient({ recinto: { findMany: jest.fn().mockResolvedValue(contactos) } } as never);
+
+    const r = await cliente.encargados();
+
+    expect(r.get('5891')).toEqual({
+      nombre: 'Rector: Ana Rector, teléfono 0991111111 · Conserje: Luis Conserje',
+      telefono: '',
+      conTelefono: true,
+    });
+  });
+
+  it('con el Drive configurado pero caído, responde con los contactos de la base; y un CDA con solo el conserje 2 también entra', async () => {
+    process.env.ENCARGADOS_RECINTOS_DRIVE_ID = '1AbCdEfGhIjK_lmn-op';
+    global.fetch = jest.fn().mockRejectedValue(new Error('sin red'));
+    const findMany = jest.fn().mockResolvedValue([
+      { ...sinDatos, codigoRecinto: '7', conserje2Nombre: 'Eva' },
+      { ...sinDatos, codigoRecinto: '8' },
+    ]);
+    const cliente = new EncargadosRecintosClient({ recinto: { findMany } } as never);
+
+    const r = await cliente.encargados();
+
+    expect(findMany.mock.calls[0][0].where).toEqual({ tipo: 'CDA', activo: true });
+    expect([...r.keys()]).toEqual(['7']);
+    expect(r.get('7')).toMatchObject({ nombre: 'Conserje: Eva', conTelefono: false });
+  });
+});
+
+
+describe('combinarContactos', () => {
+  it('pone el rector y los conserjes primero y deja al encargado del Drive detrás, con su teléfono', () => {
+    const drive = new Map([['5891', { nombre: 'Juan Espinoza', telefono: '0987005158' }]]);
+    const r = combinarContactos(drive, [
+      { ...sinDatos, codigoRecinto: '5891', rectorNombre: 'Ana', rectorTelefono: '0991111111', conserjeNombre: 'Luis', conserjeTelefono: '0992222222' },
+    ]);
+    expect(r.get('5891')).toEqual({
+      nombre: 'Rector: Ana, teléfono 0991111111 · Conserje: Luis, teléfono 0992222222 · Encargado: Juan Espinoza',
+      telefono: '0987005158',
+      conTelefono: true,
+    });
+  });
+
+  it('un CDA sin datos de rector ni conserjes queda como estaba en el Drive, y no modifica el mapa original', () => {
+    const drive = new Map([['28', { nombre: 'Ana', telefono: '099' }]]);
+    const r = combinarContactos(drive, [{ ...sinDatos, codigoRecinto: '28' }, { ...sinDatos, codigoRecinto: '29' }]);
+    expect(r).toEqual(drive);
+    expect(r).not.toBe(drive);
+  });
+
+  it('un rector sin teléfono no cuenta como "hay a quién llamar"', () => {
+    const r = combinarContactos(new Map(), [{ ...sinDatos, codigoRecinto: '1', rectorNombre: 'Ana' }]);
+    expect(r.get('1')).toMatchObject({ nombre: 'Rector: Ana', conTelefono: false });
   });
 });

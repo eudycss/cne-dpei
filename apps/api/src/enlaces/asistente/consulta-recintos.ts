@@ -46,7 +46,7 @@ function textoDeEncargado(encargado: EncargadoRecinto | null): string {
 
 /** Sin teléfono no hay a quién llamar, aunque haya nombre. */
 function sinContacto(f: FilaRecinto): boolean {
-  return !f.encargado?.telefono?.trim();
+  return !f.encargado?.telefono?.trim() && !f.encargado?.conTelefono;
 }
 
 const plural = (n: number, singular: string, varios = `${singular}s`) => `${n} ${n === 1 ? singular : varios}`;
