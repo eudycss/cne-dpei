@@ -281,7 +281,7 @@ describe('MonitoreoPage', () => {
     expect(screen.queryByText('En retorno, distancia al DPEI:')).not.toBeInTheDocument();
   });
 
-  it('muestra el asistente y la hora de cada etapa, y se puede buscar por el asistente', async () => {
+  it('muestra el asistente, no las horas de etapa, y se puede buscar por el asistente', async () => {
     getOperadoresMock.mockResolvedValue([]);
     getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
     const user = userEvent.setup();
@@ -291,14 +291,10 @@ describe('MonitoreoPage', () => {
     expect(screen.getByRole('columnheader', { name: 'Asistente' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Llegada al recinto' })).toBeInTheDocument();
     expect(screen.getByText('Rosa Lema')).toBeInTheDocument();
-    for (const nombre of ['Salida del DPEI', 'Llegada al recinto', 'Salida del recinto', 'Llegada al DPEI']) {
-      expect(screen.getByRole('columnheader', { name: nombre })).toBeInTheDocument();
-    }
-    // Etapas con hora y etapas pendientes (—), según la fila.
-    const filaConHoras = screen.getByText('Juan Pérez').closest('tr')!;
-    expect(within(filaConHoras).getAllByText(/\d{1,2}:\d{2}/).length).toBeGreaterThanOrEqual(3);
-    const filaSinDatos = screen.getByText('Ana Ruiz').closest('tr')!;
-    expect(within(filaSinDatos).getAllByText('—').length).toBeGreaterThanOrEqual(5);
+    // Las horas de cada etapa van en la pantalla de estadísticas, no en esta tabla.
+    expect(screen.queryByRole('columnheader', { name: 'Llegada al recinto' })).not.toBeInTheDocument();
+    const filaSinAsistente = screen.getByText('Ana Ruiz').closest('tr')!;
+    expect(within(filaSinAsistente).getAllByText('—').length).toBeGreaterThanOrEqual(1);
 
     await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'lema');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
