@@ -68,3 +68,63 @@ describe('estadísticas de la jornada', () => {
     expect(agrupar([], () => 'x', () => true)).toEqual([]);
   });
 });
+
+import { opcionesFiltro, ordenNoCda, ordenPorEtapa } from './estadisticas';
+
+describe('orden de llegada', () => {
+  const conCodigo = (codigo: string, canton: string, tecnico: string, llegada: string | null) => ({
+    ...unidad(canton, tecnico, null, llegada),
+    codigoRecinto: codigo,
+  });
+  const base: EstadisticasJornadaDto = {
+    evento: 'S',
+    sinDistributivo: false,
+    unidades: [
+      conCodigo('B', 'IBARRA', 'Isidro', '2026-11-15T13:00:00Z'),
+      conCodigo('A', 'OTAVALO', '', '2026-11-15T12:00:00Z'),
+      conCodigo('D', 'IBARRA', 'Jairo', null),
+      conCodigo('C', 'IBARRA', 'Isidro', '2026-11-15T13:00:00Z'),
+    ],
+    noCdas: datos.noCdas,
+  };
+  const todos = { canton: '', tecnico: '' };
+
+  it('numera por hora (misma hora, mismo N.º); las pendientes solo se cuentan', () => {
+    const r = ordenPorEtapa(base, 'llegadaRecintoEn', todos);
+    expect(r.filas.map((f) => [f.orden, f.codigoRecinto])).toEqual([[1, 'A'], [2, 'B'], [2, 'C']]);
+    expect(r.pendientes).toBe(1);
+  });
+
+  it('la misma hora (al minuto) lleva el mismo N.º y descarta horas inválidas', () => {
+    const d = {
+      ...base,
+      unidades: [
+        conCodigo('A', 'IBARRA', 'X', '2026-11-15T12:00:10Z'),
+        conCodigo('B', 'IBARRA', 'X', '2026-11-15T12:00:50Z'),
+        conCodigo('C', 'IBARRA', 'X', '2026-11-15T12:01:00Z'),
+        conCodigo('D', 'IBARRA', 'X', 'no-es-fecha'),
+      ],
+    };
+    const r = ordenPorEtapa(d, 'llegadaRecintoEn', todos);
+    expect(r.filas.map((f) => [f.orden, f.codigoRecinto])).toEqual([[1, 'A'], [1, 'B'], [3, 'C']]);
+    expect(r.pendientes).toBe(1);
+  });
+
+  it('filtra por cantón y por técnico (vacío = "Sin técnico")', () => {
+    expect(ordenPorEtapa(base, 'llegadaRecintoEn', { canton: 'IBARRA', tecnico: '' }).filas).toHaveLength(2);
+    const r = ordenPorEtapa(base, 'llegadaRecintoEn', { canton: '', tecnico: 'Sin técnico' });
+    expect(r.filas.map((f) => f.codigoRecinto)).toEqual(['A']);
+    expect(r.filas[0].tecnicoNombre).toBe('Sin técnico');
+  });
+
+  it('ordena las llegadas a NO CDA y cuenta las sin visita', () => {
+    const r = ordenNoCda(datos, todos);
+    expect(r.filas.map((f) => f.codigoRecinto)).toEqual(['N1']);
+    expect(r.pendientes).toBe(1);
+  });
+
+  it('ofrece cantones y técnicos únicos y ordenados', () => {
+    expect(opcionesFiltro(base, 'canton')).toEqual(['IBARRA', 'OTAVALO']);
+    expect(opcionesFiltro(base, 'tecnico')).toEqual(['Isidro', 'Jairo', 'Sin técnico']);
+  });
+});
