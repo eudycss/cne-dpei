@@ -1,4 +1,5 @@
-import type { EstadisticasJornadaDto, NoCdaEstadisticaJornada, UnidadEstadisticaJornada } from '@cne/shared-types';
+import type { EstadisticasJornadaDto, EstadoOperadorCda, NoCdaEstadisticaJornada, UnidadEstadisticaJornada } from '@cne/shared-types';
+import { ORDEN_ESTADOS } from './estado-info';
 
 export type EtapaClave = 'salidaDpiEn' | 'llegadaRecintoEn' | 'salidaRecintoEn' | 'llegadaDpiEn';
 
@@ -163,4 +164,25 @@ export function ordenNoCda(datos: EstadisticasJornadaDto, filtro: FiltroOrden): 
 export function opcionesFiltro(datos: EstadisticasJornadaDto, agrupacion: Agrupacion): string[] {
   const nombres = new Set([...datos.unidades, ...datos.noCdas].map(grupoDe(agrupacion)));
   return Array.from(nombres).sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+export interface TramoReparto {
+  estado: EstadoOperadorCda;
+  cantidad: number;
+}
+
+/** La etapa más avanzada que completó una pareja es su estado actual. */
+export function estadoDeUnidad(u: UnidadEstadisticaJornada): EstadoOperadorCda {
+  if (u.llegadaDpiEn) return 'RETORNADO';
+  if (u.salidaRecintoEn) return 'EN_RETORNO';
+  if (u.llegadaRecintoEn) return 'EN_RECINTO';
+  if (u.salidaDpiEn) return 'EN_TRANSITO';
+  return 'EN_DPI';
+}
+
+/** Cuántas parejas hay en cada estado, en el orden de la jornada (incluye los de 0). */
+export function repartoPorEstado(datos: EstadisticasJornadaDto): TramoReparto[] {
+  const cuenta = new Map<EstadoOperadorCda, number>();
+  for (const u of datos.unidades) cuenta.set(estadoDeUnidad(u), (cuenta.get(estadoDeUnidad(u)) ?? 0) + 1);
+  return ORDEN_ESTADOS.map((estado) => ({ estado, cantidad: cuenta.get(estado) ?? 0 }));
 }

@@ -128,3 +128,32 @@ describe('orden de llegada', () => {
     expect(opcionesFiltro(base, 'tecnico')).toEqual(['Isidro', 'Jairo', 'Sin técnico']);
   });
 });
+
+import { estadoDeUnidad, repartoPorEstado } from './estadisticas';
+
+describe('reparto por estado', () => {
+  it('el estado es la etapa más avanzada que completó la pareja', () => {
+    const u = (o: Partial<UnidadEstadisticaJornada>) => ({ ...unidad('IBARRA', 'X', null), ...o });
+    expect(estadoDeUnidad(u({}))).toBe('EN_DPI');
+    expect(estadoDeUnidad(u({ salidaDpiEn: 'a' }))).toBe('EN_TRANSITO');
+    expect(estadoDeUnidad(u({ salidaDpiEn: 'a', llegadaRecintoEn: 'b' }))).toBe('EN_RECINTO');
+    expect(estadoDeUnidad(u({ salidaRecintoEn: 'c' }))).toBe('EN_RETORNO');
+    expect(estadoDeUnidad(u({ llegadaDpiEn: 'd' }))).toBe('RETORNADO');
+  });
+
+  it('sin parejas todos los estados quedan en 0, y una etapa salteada cuenta como la más avanzada', () => {
+    expect(repartoPorEstado({ ...datos, unidades: [] }).every((t) => t.cantidad === 0)).toBe(true);
+    expect(estadoDeUnidad({ ...unidad('IBARRA', 'X', null), llegadaRecintoEn: 'b' })).toBe('EN_RECINTO');
+    expect(estadoDeUnidad({ ...unidad('IBARRA', 'X', null), llegadaDpiEn: 'd' })).toBe('RETORNADO');
+  });
+
+  it('cuenta cada estado en el orden de la jornada, incluidos los de 0', () => {
+    expect(repartoPorEstado(datos)).toEqual([
+      { estado: 'EN_DPI', cantidad: 1 },
+      { estado: 'EN_TRANSITO', cantidad: 2 },
+      { estado: 'EN_RECINTO', cantidad: 1 },
+      { estado: 'EN_RETORNO', cantidad: 0 },
+      { estado: 'RETORNADO', cantidad: 0 },
+    ]);
+  });
+});

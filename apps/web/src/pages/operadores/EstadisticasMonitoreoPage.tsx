@@ -7,9 +7,10 @@ import { NumeroAnimado } from '../../components/NumeroAnimado';
 import { formatearFechaHora } from '../../lib/notifications';
 import { getEstadisticasJornada } from '../../lib/queries/monitoreo';
 import { AvanceEtapas } from './AvanceEtapas';
+import { DonaEstados } from './DonaEstados';
 import { OrdenLlegadaPanel } from './OrdenLlegadaPanel';
 import { REFRESCO_MONITOREO_MS } from './MonitoreoPage';
-import { ETAPAS, avanceNoCda, avancePorEtapa, embudo, porcentaje, type Agrupacion, type EtapaClave } from './estadisticas';
+import { ETAPAS, avanceNoCda, avancePorEtapa, embudo, porcentaje, repartoPorEstado, type Agrupacion, type EtapaClave } from './estadisticas';
 
 const AGRUPACIONES: { valor: Agrupacion; etiqueta: string }[] = [
   { valor: 'canton', etiqueta: 'Por cantón' },
@@ -43,6 +44,7 @@ export function EstadisticasMonitoreoPage() {
   const porEtapa = useMemo(() => (data ? avancePorEtapa(data, etapa, agrupacion) : []), [data, etapa, agrupacion]);
   const noCda = useMemo(() => (data ? avanceNoCda(data, agrupacion) : []), [data, agrupacion]);
   const resumen = useMemo(() => (data ? embudo(data) : []), [data]);
+  const reparto = useMemo(() => (data ? repartoPorEstado(data) : []), [data]);
 
   return (
     <div>
@@ -81,6 +83,10 @@ export function EstadisticasMonitoreoPage() {
             ))}
           </div>
 
+          <div className="card estad-seccion" style={{ margin: '1rem 0' }}>
+            <DonaEstados reparto={reparto} />
+          </div>
+
           <Pestanas pestanas={SECCIONES} porDefecto="avance" etiqueta="Secciones de las estadísticas">
             {(seccion) =>
               seccion === 'orden' ? (
@@ -102,7 +108,7 @@ export function EstadisticasMonitoreoPage() {
                   ))}
                 </div>
 
-                <div className="card" style={{ marginBottom: '1rem' }}>
+                <div className="card estad-seccion" style={{ marginBottom: '1rem' }}>
                   <div className="ocda-filtros" role="group" aria-label="Etapa del recorrido" style={{ margin: '0 0 0.75rem' }}>
                     {ETAPAS.map((e) => (
                       <button
@@ -125,7 +131,7 @@ export function EstadisticasMonitoreoPage() {
                   />
                 </div>
 
-                <div className="card" style={{ marginBottom: '1rem' }}>
+                <div className="card estad-seccion" style={{ marginBottom: '1rem' }}>
                   <AvanceEtapas
                     titulo={`Llegadas a los NO CDA, ${sufijo}`}
                     grupos={noCda}
