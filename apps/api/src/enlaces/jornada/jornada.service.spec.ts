@@ -67,8 +67,8 @@ describe('JornadaService', () => {
       {
         kitId: 'k1',
         fecha: T('2026-11-01T00:00:00Z'),
-        operador: { apellidosNombres: 'PEREZ ANA', telefono: '0991111111' },
-        asistente: { apellidosNombres: 'RUIZ JUAN', telefono: '0992222222' },
+        operador: { apellidosNombres: 'PEREZ ANA', telefono: '0991111111', usuarioId: 'u-op' },
+        asistente: { apellidosNombres: 'RUIZ JUAN', telefono: '0992222222', usuarioId: 'u-as' },
       },
       // Una pareja más vieja del mismo kit: no se usa.
       { kitId: 'k1', fecha: T('2026-10-28T00:00:00Z'), operador: { apellidosNombres: 'VIEJA', telefono: null }, asistente: null },
@@ -81,6 +81,8 @@ describe('JornadaService', () => {
               { operadorId: 'u1', tipo: 'SALIDA_DPI', ocurridoEn: T('2026-11-29T13:12:00Z'), desdeOffline: true },
               // Repetir la marca no cambia la hora.
               { operadorId: 'u1', tipo: 'SALIDA_DPI', ocurridoEn: T('2026-11-29T13:40:00Z'), desdeOffline: false },
+              // La prueba de conexión no es un momento del resumen: va aparte.
+              { operadorId: 'u1', tipo: 'PRUEBA_CONEXION', ocurridoEn: T('2026-11-29T14:00:00Z'), desdeOffline: false },
             ],
       ),
     );
@@ -164,6 +166,9 @@ describe('JornadaService', () => {
           // Tiempo de viaje del recinto y último GPS del día (para los avisos).
           tiempoViajeMin: 45,
           ultimoGps: T('2026-11-29T13:30:00Z'),
+          pruebaConexion: { en: T('2026-11-29T14:00:00Z'), sinSenal: false },
+          // Quien lleva el kit y las cuentas de su pareja (recordatorios de etapa).
+          destinatarios: ['u1', 'u-op', 'u-as'],
         },
         {
           operadorId: 'u2',
@@ -179,6 +184,8 @@ describe('JornadaService', () => {
           actas: null,
           tiempoViajeMin: null,
           ultimoGps: null,
+          pruebaConexion: null,
+          destinatarios: ['u2'],
         },
       ]);
       expect(j.sinKit).toEqual([
