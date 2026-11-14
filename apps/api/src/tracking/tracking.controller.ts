@@ -384,12 +384,14 @@ export class TrackingController {
   async fotoMilitar(
     @CurrentUser() user: AuthenticatedUser,
     @Param('recintoId') recintoId: string,
+    @Query('operadorId', new ParseUUIDPipe({ optional: true })) operadorId: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const { buffer, contentType } = await this.tracking.obtenerFotoMilitar(
       recintoId,
       user.sub,
       user.roles,
+      operadorId,
     );
     res.set({ 'Content-Type': contentType });
     return new StreamableFile(buffer);
@@ -407,6 +409,7 @@ export class TrackingController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('recintoId') recintoId: string,
     @Param('tipo') tipo: string,
+    @Query('operadorId', new ParseUUIDPipe({ optional: true })) operadorId: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     if (tipo !== 'instalacion' && tipo !== 'escrutinio' && tipo !== 'conexion') {
@@ -417,6 +420,7 @@ export class TrackingController {
       user.sub,
       user.roles,
       tipo,
+      operadorId,
     );
     res.set({ 'Content-Type': contentType });
     return new StreamableFile(buffer);

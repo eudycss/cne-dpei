@@ -574,7 +574,7 @@ describe('MonitoreoPage', () => {
     await user.click(botonesFoto[0]);
 
     expect(await screen.findByAltText('Foto del militar')).toBeInTheDocument();
-    expect(getFotoMilitarMock).toHaveBeenCalledWith('r1');
+    expect(getFotoMilitarMock).toHaveBeenCalledWith('r1', 'op1');
   });
 
   it('la tabla compacta tiene 5 columnas y la prueba de conexión es un botón con el motivo si falta', async () => {
@@ -677,7 +677,7 @@ describe('MonitoreoPage', () => {
     );
 
     expect(await screen.findByRole('dialog', { name: 'Foto de la prueba de conexión' })).toBeInTheDocument();
-    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'conexion');
+    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'conexion', 'op1');
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -718,6 +718,6 @@ describe('MonitoreoPage', () => {
     await user.click(botonInstalacion1);
 
     expect(await screen.findByRole('heading', { name: 'Reporte de instalación' })).toBeInTheDocument();
-    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'instalacion');
+    expect(getFotoActaMock).toHaveBeenCalledWith('r1', 'instalacion', 'op1');
   });
 });

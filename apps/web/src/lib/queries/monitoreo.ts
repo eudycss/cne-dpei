@@ -34,8 +34,9 @@ export async function getEstadoCdas(): Promise<CdaEstadoDto[]> {
  * HU3-CA2: foto del militar (descifrada) recibida al entregar el kit del CDA
  * de ese recinto. Devuelve el blob de la imagen para mostrarla con un Object URL.
  */
-export async function getFotoMilitar(recintoId: string): Promise<Blob> {
+export async function getFotoMilitar(recintoId: string, operadorId?: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/tracking/estado-cdas/${recintoId}/foto-militar`, {
+    ...(operadorId ? { params: { operadorId } } : {}),
     responseType: 'blob',
   });
   return data;
@@ -46,10 +47,12 @@ export type TipoFotoCda = 'instalacion' | 'escrutinio' | 'conexion';
 /**
  * Foto del acta de instalación o de escrutinio (descifrada), subida por el
  * operador antes de la salida del recinto de ese CDA, o de la computadora de
- * la prueba de conexión (`conexion`).
+ * la prueba de conexión (`conexion`). Con `operadorId` solo la de esa pareja
+ * (un recinto puede recibir varias).
  */
-export async function getFotoActa(recintoId: string, tipo: TipoFotoCda): Promise<Blob> {
+export async function getFotoActa(recintoId: string, tipo: TipoFotoCda, operadorId?: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/tracking/estado-cdas/${recintoId}/foto-acta/${tipo}`, {
+    ...(operadorId ? { params: { operadorId } } : {}),
     responseType: 'blob',
   });
   return data;
