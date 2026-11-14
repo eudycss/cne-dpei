@@ -1185,3 +1185,25 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   .tabla-monitoreo td[data-label]::before { content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
   .tabla-monitoreo .mon-recinto strong { font-size: 1rem; }
 }
+
+/* --- Estadísticas: dona de estados y aparición de secciones al hacer scroll --- */
+.estad-dona-cuerpo { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; }
+.estad-dona-grafico { position: relative; width: 180px; height: 180px; flex-shrink: 0; }
+.estad-dona-grafico svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.estad-dona-grafico circle { fill: none; stroke-width: 16; }
+.estad-dona-fondo { stroke: var(--border); }
+.estad-dona-tramo { transition: stroke-dasharray var(--dur-base, 0.4s), stroke-dashoffset var(--dur-base, 0.4s); }
+.estad-dona-total { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.9rem; font-weight: 700; }
+.estad-dona-total small { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+.estad-dona-leyenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; min-width: 220px; flex: 1; }
+.estad-dona-leyenda li { display: flex; align-items: center; gap: 0.5rem; }
+.estad-dona-leyenda strong { margin-left: auto; }
+.estad-dona-punto { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .estad-dona-tramo { transition: none; } }
+
+@keyframes estad-aparecer { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) and (not print) {
+    .estad-seccion { animation: estad-aparecer linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+  }
+}
