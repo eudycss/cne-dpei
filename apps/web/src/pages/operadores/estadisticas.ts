@@ -11,10 +11,16 @@ export const ETAPAS: { clave: EtapaClave; etiqueta: string; hecho: string }[] = 
   { clave: 'llegadaDpiEn', etiqueta: 'Llegada al DPEI', hecho: 'Ya regresaron al DPEI' },
 ];
 
+export type Medalla = 1 | 2 | 3;
+
 export interface GrupoAvance {
   nombre: string;
   hechos: number;
   total: number;
+  /** Hora ISO en que el grupo completó la etapa (la de su última pareja); null si aún no llega al 100 %. */
+  completadoEn?: string | null;
+  /** Puesto en el podio: los 3 primeros grupos en completar la etapa. */
+  medalla?: Medalla;
 }
 
 export const porcentaje = (hechos: number, total: number) => (total > 0 ? Math.round((hechos / total) * 100) : 0);
@@ -46,11 +52,38 @@ export type Agrupacion = 'canton' | 'tecnico';
 
 type ConGrupo = Pick<UnidadEstadisticaJornada | NoCdaEstadisticaJornada, 'cantonNombre' | 'tecnicoNombre'>;
 
+const SIN_TECNICO = 'Sin técnico';
+
 export const grupoDe = (agrupacion: Agrupacion) => (x: ConGrupo) =>
-  (agrupacion === 'canton' ? x.cantonNombre : x.tecnicoNombre) || (agrupacion === 'canton' ? 'Sin cantón' : 'Sin técnico');
+  (agrupacion === 'canton' ? x.cantonNombre : x.tecnicoNombre) || (agrupacion === 'canton' ? 'Sin cantón' : SIN_TECNICO);
 
 export function avancePorEtapa(datos: EstadisticasJornadaDto, etapa: EtapaClave, agrupacion: Agrupacion): GrupoAvance[] {
   return agrupar(datos.unidades, grupoDe(agrupacion), (u) => u[etapa] !== null);
+}
+
+/**
+ * Avance por grupo de una etapa, con podio: 🥇🥈🥉 a los tres primeros técnicos que
+ * llegaron al 100 % (cuenta la hora de su última pareja). Solo gana quien completó
+ * toda la etapa; a igual hora, por nombre. Por cantón no hay medallas, ni para
+ * "Sin técnico". El orden de la lista no cambia.
+ */
+export function avanceConPodio(datos: EstadisticasJornadaDto, etapa: EtapaClave, agrupacion: Agrupacion): GrupoAvance[] {
+  const grupos = avancePorEtapa(datos, etapa, agrupacion);
+  const nombreDe = grupoDe(agrupacion);
+  // Hora en que cada grupo cerró la etapa: la de su última pareja (NaN si alguna no tiene hora válida).
+  const horas = new Map<string, number>();
+  for (const u of datos.unidades) {
+    const hora = u[etapa] === null ? Number.NaN : Date.parse(u[etapa]);
+    const nombre = nombreDe(u);
+    horas.set(nombre, horas.has(nombre) ? Math.max(horas.get(nombre)!, hora) : hora);
+  }
+  const completados = grupos
+    .filter((g) => agrupacion === 'tecnico' && g.nombre !== SIN_TECNICO && g.total > 0 && g.hechos === g.total && !Number.isNaN(horas.get(g.nombre)))
+    .map((g) => ({ nombre: g.nombre, ms: horas.get(g.nombre)! }))
+    .sort((a, b) => a.ms - b.ms || a.nombre.localeCompare(b.nombre, 'es'));
+  const medallas = new Map(completados.slice(0, 3).map((c, i) => [c.nombre, (i + 1) as Medalla]));
+  const horaIso = new Map(completados.map((c) => [c.nombre, new Date(c.ms).toISOString()]));
+  return grupos.map((g) => ({ ...g, completadoEn: horaIso.get(g.nombre) ?? null, medalla: medallas.get(g.nombre) }));
 }
 
 export function avanceNoCda(datos: EstadisticasJornadaDto, agrupacion: Agrupacion): GrupoAvance[] {
