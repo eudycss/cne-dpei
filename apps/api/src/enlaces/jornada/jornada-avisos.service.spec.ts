@@ -1,4 +1,4 @@
-import type { Jornada, UnidadJornada } from './jornada';
+import { tecladoFijoJornada, type Jornada, type UnidadJornada } from './jornada';
 import { FALLOS_PARA_DESCARTAR, JornadaAvisosService, MAX_AVISOS_POR_VUELTA } from './jornada-avisos.service';
 import type { JornadaService } from './jornada.service';
 import type { TelegramNotifier } from '../telegram-notifier';
@@ -66,7 +66,7 @@ describe('JornadaAvisosService', () => {
       skipDuplicates: true,
     });
     expect(telegram.responderEn).toHaveBeenCalledWith(CHAT, expect.any(Function));
-    expect(telegram.enviarHtml).toHaveBeenCalledWith(expect.stringContaining('Retraso al recinto'), expect.any(String), undefined, { silencioso: false });
+    expect(telegram.enviarHtml).toHaveBeenCalledWith(expect.stringContaining('Retraso al recinto'), expect.any(String), tecladoFijoJornada(), { silencioso: false });
 
     // Ya guardado (p. ej. tras un reinicio): no se manda otra vez.
     jest.clearAllMocks();
