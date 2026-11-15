@@ -77,13 +77,16 @@ export class KitsService {
     // el código del recinto ("Kit Recinto 1198"): también por su recinto y por el N.º de mochila.
     const ids = await idsPorBusqueda(
       this.prisma,
-      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id LEFT JOIN mochilas_kit m ON m.codigo_unico = t.codigo_unico`,
+      Prisma.sql`kits_electorales t LEFT JOIN recintos r ON r.id = t.recinto_id LEFT JOIN mochilas_kit m ON m.codigo_unico = t.codigo_unico LEFT JOIN usuarios uo ON uo.id = t.operador_id LEFT JOIN LATERAL (SELECT oa.apellidos_nombres FROM parejas_cda pc JOIN operadores_cda oo ON oo.id = pc.operador_cda_id JOIN operadores_cda oa ON oa.id = pc.asistente_cda_id WHERE pc.kit_id = t.id AND oo.usuario_id = t.operador_id ORDER BY pc.fecha DESC, pc.creado_en DESC LIMIT 1) a ON true`,
       [
         Prisma.raw('t.nombre'),
         Prisma.raw('t.codigo_unico'),
         Prisma.raw('r.nombre'),
         Prisma.raw('r.codigo_recinto'),
         Prisma.raw("'mochila ' || m.numero"),
+        Prisma.raw('uo.nombres'),
+        Prisma.raw('uo.apellidos'),
+        Prisma.raw('a.apellidos_nombres'),
       ],
       opts.search,
       // Solo los kits del evento: sin esto volverían los de todos los eventos.
@@ -108,8 +111,31 @@ export class KitsService {
       select: { codigoUnico: true, numero: true },
     });
     const numeroPorCodigo = new Map<string, number>(mochilas.map((m) => [m.codigoUnico, m.numero]));
+    // El asistente va bajo el operador: la pareja más reciente del kit cuyo operador es el actual
+    // (un recinto con varias parejas comparte el kit).
+    const operadorIds = items.map((k) => k.operadorId).filter((id): id is string => !!id);
+    const parejas = await this.prisma.parejaCda.findMany({
+      where: {
+        kitId: { in: items.map((k) => k.id) },
+        asistenteCdaId: { not: null },
+        operador: { usuarioId: { in: operadorIds } },
+      },
+      orderBy: [{ fecha: 'desc' }, { creadoEn: 'desc' }],
+      select: { kitId: true, operador: { select: { usuarioId: true } }, asistente: { select: { apellidosNombres: true } } },
+    });
+    const asistentePorKit = new Map<string, string>();
+    for (const p of parejas) {
+      const kit = items.find((k) => k.id === p.kitId);
+      if (kit && p.asistente && p.operador?.usuarioId === kit.operadorId && !asistentePorKit.has(kit.id)) {
+        asistentePorKit.set(kit.id, p.asistente.apellidosNombres);
+      }
+    }
     return {
-      items: items.map((k) => ({ ...toKitDto(k), numeroMochila: numeroPorCodigo.get(k.codigoUnico) ?? null })),
+      items: items.map((k) => ({
+        ...toKitDto(k),
+        numeroMochila: numeroPorCodigo.get(k.codigoUnico) ?? null,
+        asistenteNombre: k.operadorId ? asistentePorKit.get(k.id) ?? null : null,
+      })),
       total,
       page,
       pageSize,
