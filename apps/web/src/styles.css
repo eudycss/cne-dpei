@@ -1118,6 +1118,10 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-fila:hover, .evx-fila:focus-visible { background: var(--f-bg-elevated); }
 .evx-fila:focus-visible { outline: 2px solid var(--f-cian); outline-offset: 1px; }
 .evx-fila[aria-pressed='true'] { border-color: var(--f-cian); background: var(--f-cian-suave); }
+.evx-etapas-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1rem; }
+.evx-etapas-grid > .card { margin: 0; min-width: 0; }
+@media (max-width: 1100px) { .evx-etapas-grid { grid-template-columns: 1fr; } }
+.evx-medalla { margin-right: 0.35rem; }
 .evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
 .evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }

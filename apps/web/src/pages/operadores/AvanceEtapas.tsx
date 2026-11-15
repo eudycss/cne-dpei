@@ -1,11 +1,25 @@
 import { useRef } from 'react';
 import { NumeroAnimado } from '../../components/NumeroAnimado';
 import { Tramo, useAnimarReorden } from '../operadores-cda/AvanceEvatics';
-import { porcentaje, type GrupoAvance } from './estadisticas';
+import { formatearFechaHora } from '../../lib/notifications';
+import { porcentaje, type GrupoAvance, type Medalla } from './estadisticas';
+
+const MEDALLAS: Record<Medalla, { icono: string; texto: string }> = {
+  1: { icono: '🥇', texto: 'Primer lugar' },
+  2: { icono: '🥈', texto: 'Segundo lugar' },
+  3: { icono: '🥉', texto: 'Tercer lugar' },
+};
+
+const describir = (g: GrupoAvance, etiquetaHecho: string) => {
+  const base = `${g.nombre}: ${g.hechos} de ${g.total} ${etiquetaHecho} (${porcentaje(g.hechos, g.total)} %)`;
+  if (!g.medalla) return base;
+  const hora = g.completadoEn ? ` a las ${formatearFechaHora(g.completadoEn)}` : '';
+  return `${base}. ${MEDALLAS[g.medalla].texto} en completarlo${hora}`;
+};
 
 /**
  * Barras de avance por grupo (cantón o técnico), de la que más avanzó a la que
- * menos. Cada barra crece desde 0 y, si otro grupo la pasa, se desliza a su
+ * menos. Los tres primeros grupos que llegan al 100 % llevan medalla. Cada barra crece desde 0 y, si otro grupo la pasa, se desliza a su
  * nuevo lugar. Las cifras van en texto: el color nunca va solo.
  */
 export function AvanceEtapas({
@@ -36,9 +50,16 @@ export function AvanceEtapas({
                 className="evx-fila"
                 style={{ cursor: 'default' }}
                 role="img"
-                aria-label={`${g.nombre}: ${g.hechos} de ${g.total} ${etiquetaHecho} (${porcentaje(g.hechos, g.total)} %)`}
+                aria-label={describir(g, etiquetaHecho)}
               >
-                <span className="evx-nombre">{g.nombre}</span>
+                <span className="evx-nombre">
+                  {g.medalla && (
+                    <span className="evx-medalla" aria-hidden="true">
+                      {MEDALLAS[g.medalla].icono}
+                    </span>
+                  )}
+                  {g.nombre}
+                </span>
                 <span className="evx-barra" aria-hidden="true">
                   <Tramo valor={g.hechos} clase="aprobado" atenuado={false} />
                   <Tramo valor={g.total - g.hechos} clase="sin-subir" atenuado={false} />

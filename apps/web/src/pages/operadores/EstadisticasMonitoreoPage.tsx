@@ -10,7 +10,7 @@ import { AvanceEtapas } from './AvanceEtapas';
 import { DonaEstados } from './DonaEstados';
 import { OrdenLlegadaPanel } from './OrdenLlegadaPanel';
 import { REFRESCO_MONITOREO_MS } from './MonitoreoPage';
-import { ETAPAS, avanceNoCda, avancePorEtapa, embudo, porcentaje, repartoPorEstado, type Agrupacion, type EtapaClave } from './estadisticas';
+import { ETAPAS, avanceConPodio, avanceNoCda, embudo, porcentaje, repartoPorEstado, type Agrupacion } from './estadisticas';
 
 const AGRUPACIONES: { valor: Agrupacion; etiqueta: string }[] = [
   { valor: 'canton', etiqueta: 'Por cantón' },
@@ -36,12 +36,10 @@ export function EstadisticasMonitoreoPage() {
     refetchInterval: REFRESCO_MONITOREO_MS,
     refetchOnWindowFocus: true,
   });
-  const [etapa, setEtapa] = useState<EtapaClave>('llegadaRecintoEn');
-  const [agrupacion, setAgrupacion] = useState<Agrupacion>('canton');
-  const info = ETAPAS.find((e) => e.clave === etapa)!;
+  const [agrupacion, setAgrupacion] = useState<Agrupacion>('tecnico');
   const sufijo = agrupacion === 'canton' ? 'por cantón' : 'por técnico';
 
-  const porEtapa = useMemo(() => (data ? avancePorEtapa(data, etapa, agrupacion) : []), [data, etapa, agrupacion]);
+  const porEtapa = useMemo(() => (data ? ETAPAS.map((e) => avanceConPodio(data, e.clave, agrupacion)) : []), [data, agrupacion]);
   const noCda = useMemo(() => (data ? avanceNoCda(data, agrupacion) : []), [data, agrupacion]);
   const resumen = useMemo(() => (data ? embudo(data) : []), [data]);
   const reparto = useMemo(() => (data ? repartoPorEstado(data) : []), [data]);
@@ -108,28 +106,24 @@ export function EstadisticasMonitoreoPage() {
                   ))}
                 </div>
 
-                <div className="card estad-seccion" style={{ marginBottom: '1rem' }}>
-                  <div className="ocda-filtros" role="group" aria-label="Etapa del recorrido" style={{ margin: '0 0 0.75rem' }}>
-                    {ETAPAS.map((e) => (
-                      <button
-                        key={e.clave}
-                        type="button"
-                        className="ocda-chip"
-                        aria-pressed={etapa === e.clave}
-                        onClick={() => setEtapa(e.clave)}
-                      >
-                        {etapa === e.clave && <span aria-hidden="true">✓ </span>}
-                        {e.etiqueta}
-                      </button>
-                    ))}
-                  </div>
-                  <AvanceEtapas
-                    titulo={`${info.hecho} (parejas), ${sufijo}`}
-                    grupos={porEtapa}
-                    vacio="Aún no hay parejas con kit asignado."
-                    etiquetaHecho="parejas"
-                  />
+                <div className="evx-etapas-grid">
+                  {ETAPAS.map((e, i) => (
+                    <div key={e.clave} className="card estad-seccion">
+                      <AvanceEtapas
+                        titulo={`${e.hecho} (parejas), ${sufijo}`}
+                        grupos={porEtapa[i] ?? []}
+                        vacio="Aún no hay parejas con kit asignado."
+                        etiquetaHecho="parejas"
+                      />
+                    </div>
+                  ))}
                 </div>
+                <p className="muted" style={{ margin: '-0.5rem 0 1rem' }}>
+                  <span aria-hidden="true">🥇🥈🥉 </span>
+                  {agrupacion === 'tecnico'
+                    ? 'Las medallas marcan a los tres primeros técnicos en completar cada etapa con todas sus parejas.'
+                    : 'Las medallas se otorgan por técnico: elija "Por técnico" para verlas.'}
+                </p>
 
                 <div className="card estad-seccion" style={{ marginBottom: '1rem' }}>
                   <AvanceEtapas

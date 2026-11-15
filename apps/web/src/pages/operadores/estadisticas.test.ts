@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EstadisticasJornadaDto, UnidadEstadisticaJornada } from '@cne/shared-types';
-import { agrupar, avanceNoCda, avancePorEtapa, embudo, ordenarPorAvance } from './estadisticas';
+import { agrupar, avanceConPodio, avanceNoCda, avancePorEtapa, embudo, ordenarPorAvance } from './estadisticas';
 
 const unidad = (cantonNombre: string, tecnicoNombre: string, salidaDpiEn: string | null, llegadaRecintoEn: string | null = null): UnidadEstadisticaJornada => ({
   codigoRecinto: 'C',
@@ -155,5 +155,54 @@ describe('reparto por estado', () => {
       { estado: 'EN_RETORNO', cantidad: 0 },
       { estado: 'RETORNADO', cantidad: 0 },
     ]);
+  });
+
+  describe('podio por etapa', () => {
+    const d = (unidades: UnidadEstadisticaJornada[]): EstadisticasJornadaDto => ({ ...datos, unidades });
+    const medallas = (r: ReturnType<typeof avanceConPodio>) => Object.fromEntries(r.map((g) => [g.nombre, g.medalla ?? null]));
+
+    it('da 🥇🥈🥉 a los tres primeros técnicos que llegaron al 100 %, por la hora de su última pareja', () => {
+      const r = avanceConPodio(
+        d([
+          unidad('X', 'A', '2026-11-15T12:30:00Z'),
+          unidad('X', 'A', '2026-11-15T12:05:00Z'), // A cierra a las 12:30
+          unidad('X', 'B', '2026-11-15T12:10:00Z'), // B cierra a las 12:10
+          unidad('X', 'C', '2026-11-15T12:20:00Z'),
+          unidad('X', 'D', '2026-11-15T12:40:00Z'),
+          unidad('X', 'E', '2026-11-15T12:50:00Z'),
+        ]),
+        'salidaDpiEn',
+        'tecnico',
+      );
+      expect(medallas(r)).toEqual({ A: 3, B: 1, C: 2, D: null, E: null });
+      expect(r.find((g) => g.nombre === 'B')?.completadoEn).toBe('2026-11-15T12:10:00.000Z');
+    });
+
+    it('un grupo incompleto no gana medalla aunque haya empezado antes', () => {
+      const r = avanceConPodio(
+        d([unidad('X', 'A', '2026-11-15T12:00:00Z'), unidad('X', 'A', null), unidad('X', 'B', '2026-11-15T13:00:00Z')]),
+        'salidaDpiEn',
+        'tecnico',
+      );
+      expect(medallas(r)).toEqual({ A: null, B: 1 });
+      expect(r.find((g) => g.nombre === 'A')?.completadoEn).toBeNull();
+    });
+
+    it('sin nadie al 100 % no hay medallas, y los empates de hora se resuelven por nombre', () => {
+      expect(Object.values(medallas(avanceConPodio(d([unidad('X', 'A', null)]), 'salidaDpiEn', 'tecnico')))).toEqual([null]);
+      const iguales = avanceConPodio(d([unidad('X', 'Z', '2026-11-15T12:00:00Z'), unidad('X', 'A', '2026-11-15T12:00:00Z')]), 'salidaDpiEn', 'tecnico');
+      expect(medallas(iguales)).toEqual({ A: 1, Z: 2 });
+    });
+
+    it('una hora inválida cuenta como etapa incompleta', () => {
+      const r = avanceConPodio(d([unidad('A', 'Isidro', '2026-11-15T12:00:00Z'), unidad('B', 'Jairo', 'no-es-fecha')]), 'salidaDpiEn', 'tecnico');
+      expect(medallas(r)).toEqual({ Isidro: 1, Jairo: null });
+    });
+
+    it('por cantón no hay medallas, y "Sin técnico" tampoco', () => {
+      const unidades = [unidad('IBARRA', 'Isidro', '2026-11-15T12:00:00Z'), unidad('OTAVALO', '', '2026-11-15T11:00:00Z')];
+      expect(Object.values(medallas(avanceConPodio(d(unidades), 'salidaDpiEn', 'canton')))).toEqual([null, null]);
+      expect(medallas(avanceConPodio(d(unidades), 'salidaDpiEn', 'tecnico'))).toEqual({ Isidro: 1, 'Sin técnico': null });
+    });
   });
 });

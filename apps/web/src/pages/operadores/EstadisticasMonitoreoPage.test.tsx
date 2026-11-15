@@ -63,30 +63,35 @@ describe('EstadisticasMonitoreoPage', () => {
     expect(await screen.findByText('No hay un evento activo.')).toBeInTheDocument();
   });
 
-  it('muestra las tarjetas por etapa y las barras por cantón con su porcentaje', async () => {
+  it('muestra las cuatro etapas a la vez, con el podio en la que ya cerró un cantón', async () => {
     getMock.mockResolvedValue(datos);
     renderPage();
 
     expect(await screen.findByText(/Simulacro · 3 parejas/)).toBeInTheDocument();
-    // Etapa elegida por defecto: llegada al recinto. IBARRA 1 de 2; OTAVALO 0 de 1.
-    expect(screen.getByRole('img', { name: 'IBARRA: 1 de 2 parejas (50 %)' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'OTAVALO: 0 de 1 parejas (0 %)' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'IBARRA: 1 de 1 NO CDA visitados (100 %)' })).toBeInTheDocument();
+    for (const titulo of ['Ya salieron del DPEI', 'Ya llegaron al recinto', 'Ya salieron del recinto', 'Ya regresaron al DPEI']) {
+      expect(screen.getByRole('region', { name: new RegExp(`^${titulo} \\(parejas\\)`) })).toBeInTheDocument();
+    }
+    // Llegada al recinto: Isidro 1 de 2, sin medalla (no llegó al 100 %).
+    const llegada = screen.getByRole('region', { name: /^Ya llegaron al recinto/ });
+    expect(within(llegada).getByRole('img', { name: 'Isidro: 1 de 2 parejas (50 %)' })).toBeInTheDocument();
+    expect(within(llegada).queryByText('🥇')).not.toBeInTheDocument();
+    // Salida del DPEI: Jairo 1 de 1 → 🥇, con la hora en que cerró (la de su última pareja).
+    const salida = screen.getByRole('region', { name: /^Ya salieron del DPEI/ });
+    expect(within(salida).getByRole('img', { name: /^Jairo: 1 de 1 parejas \(100 %\)\. Primer lugar en completarlo a las / })).toBeInTheDocument();
+    expect(within(salida).getByText('🥇')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Isidro: 1 de 1 NO CDA visitados (100 %)' })).toBeInTheDocument();
   });
 
-  it('cambia la etapa y la agrupación', async () => {
+  it('por cantón se ven las cuatro etapas pero sin medallas', async () => {
     getMock.mockResolvedValue(datos);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText(/Simulacro/);
 
-    const etapas = screen.getByRole('group', { name: 'Etapa del recorrido' });
-    await user.click(within(etapas).getByRole('button', { name: /Salida del DPEI/ }));
-    expect(screen.getByRole('img', { name: 'IBARRA: 2 de 2 parejas (100 %)' })).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /Por técnico/ }));
-    expect(screen.getByRole('img', { name: 'Isidro: 1 de 2 parejas (50 %)' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Jairo: 1 de 1 parejas (100 %)' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Por cantón/ }));
+    const salida = screen.getByRole('region', { name: /^Ya salieron del DPEI/ });
+    expect(within(salida).getByRole('img', { name: 'IBARRA: 2 de 2 parejas (100 %)' })).toBeInTheDocument();
+    expect(within(salida).queryByText('🥇')).not.toBeInTheDocument();
   });
 
   it('la tabla lista las horas de cada etapa por pareja', async () => {
