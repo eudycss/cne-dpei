@@ -152,6 +152,34 @@ describe('response interceptor — refresh en 401', () => {
     expect(result).toEqual({ config: original, retried: true });
   });
 
+  it('con un cuerpo multipart (foto) renueva el token pero NO reenvía el FormData: rechaza el 401 para que se reintente con uno nuevo', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: { accessToken: 'nuevo-access', refreshToken: 'nuevo-refresh' },
+    });
+    const original: any = { headers: {}, data: new FormData() };
+    const err = { response: { status: 401 }, config: original };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('cne.access', 'nuevo-access');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('cne.refresh', 'nuevo-refresh');
+    expect(mockInstance).not.toHaveBeenCalled();
+    expect(original._retry).toBeUndefined();
+  });
+
+  it('con multipart y un 401 sin refresh token cierra la sesión una sola vez', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
+    const listener = jest.fn();
+    const quitar = onSessionExpired(listener);
+    const err = { response: { status: 401 }, config: { headers: {}, url: '/tracking/foto-acta', data: new FormData() } };
+
+    await expect(responseErrorHandler(err)).rejects.toBe(err);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    quitar();
+  });
+
   it('limpia los tokens, notifica sesión expirada y rechaza si /auth/refresh responde 401', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('refresh-token');
     (axios.post as jest.Mock).mockRejectedValueOnce(httpError(401));

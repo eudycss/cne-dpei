@@ -1,10 +1,11 @@
 import axios from 'axios';
-import { api } from './api';
+import { api, tokenStore } from './api';
 
 /**
  * Sube una foto (multipart) al servidor. Si falla por sesión vencida (401) reintenta
  * UNA vez con un FormData nuevo: el de un envío ya hecho no es confiable para
- * reenviar, y tras el 401 el interceptor de `api` ya renovó el token. Los errores de
+ * reenviar. El interceptor de `api` renueva el token y deja pasar el 401 cuando el
+ * cuerpo es multipart, justamente para que el reintento sea este. Los errores de
  * red NO se reintentan aquí: la lógica offline (foto pendiente, cola) ya los maneja.
  * Antes, la primera foto tras >15 min sin otra petición fallaba y el operador la
  * subía a mano al segundo intento (Díaz Jumine, 2026-11-15).
@@ -28,6 +29,8 @@ export async function subirFoto<T>(endpoint: string, uri: string): Promise<T> {
     return await intentar();
   } catch (e) {
     if (!(axios.isAxiosError(e) && e.response?.status === 401)) throw e;
+    // Sin token guardado la sesión ya se cerró (el refresh fue rechazado): otro intento solo repetiría el aviso.
+    if (!(await tokenStore.getAccess())) throw e;
     return intentar();
   }
 }

@@ -1,7 +1,7 @@
-import { api } from './api';
+import { api, tokenStore } from './api';
 import { subirFoto } from './subir-foto';
 
-jest.mock('./api', () => ({ api: { post: jest.fn() } }));
+jest.mock('./api', () => ({ api: { post: jest.fn() }, tokenStore: { getAccess: jest.fn() } }));
 
 const postMock = api.post as jest.Mock;
 const error401 = { isAxiosError: true, response: { status: 401 } };
@@ -9,7 +9,10 @@ const errorRed = { isAxiosError: true, response: undefined };
 const error400 = { isAxiosError: true, response: { status: 400 } };
 const error502 = { isAxiosError: true, response: { status: 502 } };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  (tokenStore.getAccess as jest.Mock).mockResolvedValue('access-renovado');
+});
 
 describe('subirFoto', () => {
   it('sube la foto como multipart y devuelve la respuesta del servidor', async () => {
@@ -31,6 +34,13 @@ describe('subirFoto', () => {
 
     expect(postMock).toHaveBeenCalledTimes(2);
     expect(postMock.mock.calls[1][1]).not.toBe(postMock.mock.calls[0][1]);
+  });
+
+  it('con 401 y la sesión ya cerrada (sin token guardado) no reintenta', async () => {
+    (tokenStore.getAccess as jest.Mock).mockResolvedValue(null);
+    postMock.mockRejectedValueOnce(error401);
+    await expect(subirFoto('/tracking/foto-acta', 'file:///a.jpg')).rejects.toBe(error401);
+    expect(postMock).toHaveBeenCalledTimes(1);
   });
 
   it('si el reintento también falla, lanza ese error (no reintenta más)', async () => {

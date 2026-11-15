@@ -54,6 +54,10 @@ function notifySessionExpired(): void {
   sessionExpiredListeners.forEach((cb) => cb());
 }
 
+function esCuerpoMultipart(config: InternalAxiosRequestConfig): boolean {
+  return typeof FormData !== 'undefined' && config.data instanceof FormData;
+}
+
 /** true solo si el propio /auth/refresh respondió 401/403 (rechazo explícito). */
 function isRefreshRejection(err: unknown): boolean {
   return axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403);
@@ -87,6 +91,10 @@ api.interceptors.response.use(
           });
       }
       const newAccess = await refreshing;
+      // Un cuerpo multipart (foto) no se reenvía tal cual: el FormData ya enviado no es
+      // confiable y el reintento no llegaba al servidor. Se rechaza el 401 con el token ya
+      // renovado y quien subió el archivo lo reintenta con un FormData nuevo (subirFoto).
+      if (esCuerpoMultipart(original)) return Promise.reject(err);
       original._retry = true;
       original.headers.Authorization = `Bearer ${newAccess}`;
       return api(original);
@@ -110,6 +118,7 @@ api.interceptors.response.use(
         const currentRefresh = await tokenStore.getRefresh();
         if (currentRefresh && currentRefresh !== refresh) {
           const currentAccess = await tokenStore.getAccess();
+          if (esCuerpoMultipart(original)) return Promise.reject(err);
           original._retry = true;
           original.headers.Authorization = `Bearer ${currentAccess}`;
           return api(original);
