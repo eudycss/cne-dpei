@@ -1659,18 +1659,38 @@ export class TrackingService {
     // pareja (operador o asistente): se busca por la cuenta de cualquiera de los dos.
     const parejas = await this.prisma.parejaCda.findMany({
       where: { fecha: evento.fechaJornada, recintoId: { in: recintoIds } },
+      orderBy: { id: 'asc' },
       select: {
         recintoId: true,
-        operador: { select: { usuarioId: true, apellidosNombres: true } },
-        asistente: { select: { usuarioId: true, apellidosNombres: true } },
+        operador: { select: { usuarioId: true, apellidosNombres: true, telefono: true } },
+        asistente: { select: { usuarioId: true, apellidosNombres: true, telefono: true } },
       },
     });
-    const parejaPorCuenta = new Map<string, { operador: string | null; asistente: string | null }>();
-    for (const p of parejas) {
-      const nombres = { operador: p.operador?.apellidosNombres ?? null, asistente: p.asistente?.apellidosNombres ?? null };
-      for (const cuenta of [p.operador?.usuarioId, p.asistente?.usuarioId]) {
-        if (cuenta) parejaPorCuenta.set(`${p.recintoId}:${cuenta}`, nombres);
+    const parejaPorCuenta = new Map<
+      string,
+      {
+        operador: string | null;
+        asistente: string | null;
+        operadorTelefono: string | null;
+        asistenteTelefono: string | null;
+        portadorKit: 'OPERADOR' | 'ASISTENTE';
       }
+    >();
+    for (const p of parejas) {
+      const datos = {
+        operador: p.operador?.apellidosNombres ?? null,
+        asistente: p.asistente?.apellidosNombres ?? null,
+        operadorTelefono: p.operador?.telefono ?? null,
+        asistenteTelefono: p.asistente?.telefono ?? null,
+      };
+      // La cuenta de la fila es la de quien lleva el kit: la del operador o la del asistente.
+      // Si una misma cuenta figurara dos veces en el recinto, gana la primera (como operador antes que como asistente), no la última devuelta.
+      const guardar = (cuenta: string | null | undefined, portadorKit: 'OPERADOR' | 'ASISTENTE') => {
+        const clave = `${p.recintoId}:${cuenta}`;
+        if (cuenta && !parejaPorCuenta.has(clave)) parejaPorCuenta.set(clave, { ...datos, portadorKit });
+      };
+      guardar(p.operador?.usuarioId, 'OPERADOR');
+      guardar(p.asistente?.usuarioId, 'ASISTENTE');
     }
 
     const usuarios = await this.prisma.usuario.findMany({
@@ -1785,6 +1805,9 @@ export class TrackingService {
           tieneActaInstalacion: actasPorOperador.get(operadorId)?.instalacion ?? false,
           tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
           asistenteNombre: pareja?.asistente ?? null,
+          portadorKit: pareja?.portadorKit ?? 'OPERADOR',
+          operadorTelefono: pareja?.operadorTelefono ?? null,
+          asistenteTelefono: pareja?.asistenteTelefono ?? null,
           salidaDpiEn: hora('SALIDA_DPI'),
           llegadaRecintoEn: hora('LLEGADA_RECINTO'),
           salidaRecintoEn: hora('SALIDA_RECINTO'),

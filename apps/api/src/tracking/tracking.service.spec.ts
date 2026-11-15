@@ -1960,6 +1960,74 @@ describe('TrackingService', () => {
       expect(fila.asistenteNombre).toBe('VELASCO GLADYS');
     });
 
+    it('indica quién lleva el kit (la cuenta de la fila) y trae los celulares del operador y del asistente', async () => {
+      const preparar = (portadorEsAsistente: boolean) => {
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);
+        prisma.recinto.findMany.mockResolvedValueOnce([
+          { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+        ]);
+        prisma.parejaCda.findMany.mockResolvedValueOnce([
+          {
+            recintoId,
+            operador: { usuarioId: portadorEsAsistente ? 'otra-cuenta' : operadorId, apellidosNombres: 'PEREZ ANA', telefono: '0991111111' },
+            asistente: { usuarioId: portadorEsAsistente ? operadorId : 'asis-1', apellidosNombres: 'LEMA ROSA', telefono: '0982222222' },
+          },
+        ]);
+        prisma.usuario.findMany.mockResolvedValueOnce([{ id: operadorId, nombres: 'Ana', apellidos: 'Perez' }]);
+        prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+        prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+        prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      };
+
+      preparar(false);
+      const [delOperador] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+      expect(delOperador).toEqual(
+        expect.objectContaining({ portadorKit: 'OPERADOR', operadorTelefono: '0991111111', asistenteTelefono: '0982222222' }),
+      );
+
+      preparar(true);
+      const [delAsistente] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+      expect(delAsistente.portadorKit).toBe('ASISTENTE');
+    });
+
+    it('un recinto con dos parejas da a cada fila su portador y sus celulares; una cuenta repetida no cambia de portador', async () => {
+      const otro = '33333333-3333-4333-8333-333333333333';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([
+        { id: kitId, recintoId, operadorId },
+        { id: 'kit-2', recintoId, operadorId: otro },
+      ]);
+      prisma.recinto.findMany.mockResolvedValueOnce([
+        { id: recintoId, codigoRecinto: 'C01', nombre: 'Recinto 1', cantonId: 1, canton: { nombre: 'IBARRA' } },
+      ]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        { recintoId, operador: { usuarioId: operadorId, apellidosNombres: 'A OP', telefono: '0911' }, asistente: { usuarioId: 'x1', apellidosNombres: 'A AS', telefono: '0922' } },
+        // La misma cuenta del primer kit figura también como asistente de otra pareja: no cambia su portador.
+        { recintoId, operador: { usuarioId: 'x2', apellidosNombres: 'B OP', telefono: '0933' }, asistente: { usuarioId: operadorId, apellidosNombres: 'B AS', telefono: '0944' } },
+        { recintoId, operador: { usuarioId: 'x3', apellidosNombres: 'C OP', telefono: null }, asistente: { usuarioId: otro, apellidosNombres: 'C AS', telefono: '0955' } },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Perez' },
+        { id: otro, nombres: 'Luis', apellidos: 'Mora' },
+      ]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      prisma.recepcionKit.findMany.mockResolvedValueOnce([]);
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const filas = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+
+      expect(filas[0]).toEqual(expect.objectContaining({ operadorNombre: 'A OP', portadorKit: 'OPERADOR', operadorTelefono: '0911', asistenteTelefono: '0922' }));
+      expect(filas[1]).toEqual(expect.objectContaining({ operadorNombre: 'C OP', portadorKit: 'ASISTENTE', operadorTelefono: null, asistenteTelefono: '0955' }));
+    });
+
+    it('sin pareja cargada el titular de la cuenta es el portador y no hay celulares', async () => {
+      prepararUnCda([]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([]);
+      const [fila] = await service.estadoCdas(operadorId, ['ADMINISTRADOR']);
+      expect(fila).toEqual(expect.objectContaining({ portadorKit: 'OPERADOR', operadorTelefono: null, asistenteTelefono: null }));
+    });
+
     it('una pareja del mismo día en otro recinto no se mezcla con la fila, y un operador sin cuenta no rompe', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId, recintoId, operadorId }]);

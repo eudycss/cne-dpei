@@ -816,6 +816,11 @@ export interface CdaEstadoDto {
   tieneActaEscrutinio: boolean;
   /** Asistente de la pareja del operador en la jornada; null si no tiene pareja cargada. */
   asistenteNombre: string | null;
+  /** Quién de la pareja lleva el kit (la cuenta de esta fila); sin pareja cargada, el titular de la cuenta es el operador. */
+  portadorKit: 'OPERADOR' | 'ASISTENTE';
+  /** Celular del operador y del asistente de la pareja; null si no lo tienen registrado. */
+  operadorTelefono: string | null;
+  asistenteTelefono: string | null;
   /** ISO de la hora de cada etapa (la primera registrada); null si aún no ocurre. */
   salidaDpiEn: string | null;
   llegadaRecintoEn: string | null;
