@@ -13,6 +13,7 @@ vi.mock('../../auth/AuthContext', () => ({
 vi.mock('./RecintosPage', () => ({ RecintosPage: () => <div>listado de recintos</div> }));
 vi.mock('../enlaces/EnlacesPage', () => ({ EnlacesPage: () => <div>estado de enlaces</div> }));
 vi.mock('./TiemposViajePage', () => ({ TiemposViajePage: () => <div>tabla de tiempos</div> }));
+vi.mock('./CoordenadasPage', () => ({ CoordenadasPage: () => <div>tabla de coordenadas</div> }));
 
 function UbicacionActual() {
   const { search } = useLocation();
@@ -48,7 +49,7 @@ describe('RecintosSeccion', () => {
   it('el administrador ve las pestañas y por defecto el listado de recintos', () => {
     renderSeccion();
     expect(screen.getByRole('heading', { level: 2, name: 'Recintos Electorales' })).toBeInTheDocument();
-    expect(screen.getByRole('tablist', { name: 'Recintos, enlaces y tiempos de viaje' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Recintos, enlaces, tiempos de viaje y coordenadas' })).toBeInTheDocument();
     expect(pestana('Recintos')).toHaveAttribute('aria-selected', 'true');
     expect(pestana('Enlaces')).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tabpanel', { name: 'Recintos' })).toHaveTextContent('listado de recintos');
@@ -65,6 +66,12 @@ describe('RecintosSeccion', () => {
     renderSeccion('/recintos?tab=tiempos');
     expect(pestana('Tiempos de viaje')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel', { name: 'Tiempos de viaje' })).toHaveTextContent('tabla de tiempos');
+  });
+
+  it('?tab=coordenadas abre directo la pestaña Coordenadas', () => {
+    renderSeccion('/recintos?tab=coordenadas');
+    expect(pestana('Coordenadas')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Coordenadas' })).toHaveTextContent('tabla de coordenadas');
   });
 
   it('una pestaña desconocida en la URL abre el listado de recintos', () => {
@@ -103,16 +110,19 @@ describe('RecintosSeccion', () => {
     expect(pestana('Tiempos de viaje')).toHaveFocus();
 
     await userEvent.keyboard('{ArrowRight}');
+    expect(pestana('Coordenadas')).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowRight}');
     expect(pestana('Recintos')).toHaveFocus();
 
     await userEvent.keyboard('{ArrowLeft}');
-    expect(pestana('Tiempos de viaje')).toHaveFocus();
+    expect(pestana('Coordenadas')).toHaveFocus();
 
     await userEvent.keyboard('{Home}');
     expect(pestana('Recintos')).toHaveAttribute('aria-selected', 'true');
 
     await userEvent.keyboard('{End}');
-    expect(pestana('Tiempos de viaje')).toHaveAttribute('aria-selected', 'true');
+    expect(pestana('Coordenadas')).toHaveAttribute('aria-selected', 'true');
   });
 
   it.each<RoleName>(['TECNICO_SUPERVISOR', 'LECTOR'])(

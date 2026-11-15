@@ -2211,6 +2211,37 @@ export interface GuardarTiemposViajeResult {
   actualizados: number;
 }
 
+// ---- Coordenadas de recintos vs. marcaciones reales ----
+
+/** Un recinto con la coordenada guardada y la que sugieren las marcaciones reales del personal. */
+export interface CoordenadaRecinto {
+  id: string;
+  codigo: string;
+  nombre: string;
+  canton: string;
+  latActual: number;
+  lngActual: number;
+  /** Llegadas/salidas del recinto usadas (a menos de 2 km, sin registros manuales). */
+  marcas: number;
+  /** Llegadas/salidas a más de 2 km: no entran en la propuesta, pero delatan una coordenada muy corrida. */
+  marcasLejanas: number;
+  /** Mediana de la distancia de las marcaciones a la coordenada guardada, en metros. */
+  medianaMetros: number;
+  /** Mediana de latitud/longitud de las marcaciones; null si hay menos marcaciones que el mínimo. */
+  latPropuesta: number | null;
+  lngPropuesta: number | null;
+  /** Distancia entre la coordenada guardada y la propuesta, en metros. */
+  desfaseMetros: number | null;
+  /** Mediana sobre el umbral con suficientes marcaciones cercanas, o solo marcaciones lejanas (≥ el mínimo). */
+  sospechosa: boolean;
+}
+
+export interface CoordenadasRecintos {
+  umbralMetros: number;
+  minMarcas: number;
+  recintos: CoordenadaRecinto[];
+}
+
 // ---- Certificados Evatics ----
 
 /** SIN_SUBIR: aún no sube la foto. Los demás, del certificado subido. */
