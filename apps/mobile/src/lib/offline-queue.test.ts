@@ -486,3 +486,166 @@ describe('vaciarCola', () => {
     await expect(leerRechazadas()).resolves.toEqual([]);
   });
 });
+
+describe('un atraso de posiciones GPS no frena los registros de la jornada', () => {
+  const GPS = '/tracking/posiciones';
+  const encolarGps = async (n: number) => {
+    for (let i = 0; i < n; i++) await enqueue({ endpoint: GPS, method: 'post', payload: { posiciones: [{ i }] } });
+  };
+
+  it('ejecuta el registro de inmediato, sin enviar antes las posiciones acumuladas', async () => {
+    await encolarGps(5);
+    const orden: string[] = [];
+    (api.post as jest.Mock).mockImplementation(async (endpoint: string) => {
+      orden.push(endpoint);
+      return { data: {} };
+    });
+    const fn = jest.fn(async () => {
+      orden.push('/tracking/llegada-dpi');
+      return { id: 'l1' };
+    });
+
+    await expect(withOffline('/tracking/llegada-dpi', 'post', {}, fn)).resolves.toEqual({ id: 'l1' });
+
+    expect(orden[0]).toBe('/tracking/llegada-dpi');
+  });
+
+  it('el registro se ejecuta aunque las posiciones atrasadas no puedan enviarse (no se encola detrás)', async () => {
+    await encolarGps(3);
+    (api.post as jest.Mock).mockRejectedValue(networkError);
+    const fn = jest.fn().mockResolvedValue({ id: 'l1' });
+
+    await expect(withOffline('/tracking/llegada-dpi', 'post', {}, fn)).resolves.toEqual({ id: 'l1' });
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    await expect(contarPendientes()).resolves.toBe(3); // las posiciones siguen en cola, nada se pierde
+  });
+
+  it('las posiciones atrasadas se envían después, en segundo plano, y la cola queda vacía', async () => {
+    await encolarGps(4);
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+
+    await withOffline('/tracking/llegada-dpi', 'post', {}, async () => ({ id: 'l1' }));
+    await flushQueue();
+
+    const enviadas = (api.post as jest.Mock).mock.calls.filter((c) => c[0] === GPS);
+    expect(enviadas).toHaveLength(4);
+    await expect(contarPendientes()).resolves.toBe(0);
+  });
+
+  it('con un envío de posiciones en curso, solo espera a la petición en vuelo y no al resto del atraso', async () => {
+    await encolarGps(3);
+    const orden: string[] = [];
+    let terminarPrimera!: (v: unknown) => void;
+    (api.post as jest.Mock).mockImplementation((endpoint: string) => {
+      orden.push(endpoint);
+      if (endpoint === GPS && orden.filter((e) => e === GPS).length === 1) return new Promise((r) => (terminarPrimera = r));
+      return Promise.resolve({ data: {} });
+    });
+    const envioGps = flushQueue(); // arranca el envío de posiciones: la primera queda en vuelo
+    await new Promise((r) => setImmediate(r));
+
+    const registro = withOffline('/tracking/llegada-dpi', 'post', {}, async () => {
+      orden.push('/tracking/llegada-dpi');
+      return { id: 'l1' };
+    });
+    await new Promise((r) => setImmediate(r));
+    terminarPrimera({ data: {} });
+
+    await expect(registro).resolves.toEqual({ id: 'l1' });
+    await envioGps;
+    expect(orden.slice(0, 2)).toEqual([GPS, '/tracking/llegada-dpi']); // ninguna otra posición antes del registro
+  });
+
+  it('un registro pendiente que no se puede enviar sigue frenando al siguiente (el orden se conserva)', async () => {
+    await encolarGps(2);
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'k1' } });
+    (api.post as jest.Mock).mockRejectedValue(networkError);
+    const fn = jest.fn();
+
+    await expect(withOffline('/tracking/llegada-recinto', 'post', {}, fn)).resolves.toBeNull();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('un registro que falla con error no reintentable no deja frenado el envío de posiciones', async () => {
+    await encolarGps(2);
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    const fn = jest.fn().mockRejectedValue(badRequestError);
+
+    await expect(withOffline('/tracking/llegada-dpi', 'post', {}, fn)).rejects.toBe(badRequestError);
+    await flushQueue();
+
+    expect((api.post as jest.Mock).mock.calls.filter((c) => c[0] === GPS)).toHaveLength(2);
+  });
+
+  it('un registro que va a la cola (sin red) tampoco deja frenado el envío de posiciones', async () => {
+    await encolarGps(2);
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    const fn = jest.fn().mockRejectedValue(networkError);
+
+    await expect(withOffline('/tracking/llegada-dpi', 'post', {}, fn)).resolves.toBeNull();
+    await flushQueue();
+
+    expect((api.post as jest.Mock).mock.calls.filter((c) => c[0] === GPS)).toHaveLength(2);
+    await expect(contarPendientes()).resolves.toBe(0);
+  });
+
+  it('mientras el registro está en curso, un envío concurrente no manda posiciones', async () => {
+    await encolarGps(2);
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    let terminar!: (v: unknown) => void;
+    const registro = withOffline('/tracking/llegada-dpi', 'post', {}, () => new Promise((r) => (terminar = r)));
+    await new Promise((r) => setImmediate(r));
+
+    await flushQueue(); // p. ej. el reintento de cada 15 s
+    expect((api.post as jest.Mock).mock.calls.filter((c) => c[0] === GPS)).toHaveLength(0);
+
+    terminar({ id: 'l1' });
+    await registro;
+    await flushQueue();
+    expect((api.post as jest.Mock).mock.calls.filter((c) => c[0] === GPS)).toHaveLength(2);
+  });
+
+  it('con la cola intercalada envía los registros en su orden antes que cualquier posición, y un corte conserva ese orden', async () => {
+    await enqueue({ endpoint: GPS, method: 'post', payload: { n: 1 } });
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'A' } });
+    await enqueue({ endpoint: GPS, method: 'post', payload: { n: 2 } });
+    await enqueue({ endpoint: '/tracking/salida-recinto', method: 'post', payload: { id: 'B' } });
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+
+    await flushQueue();
+    expect((api.post as jest.Mock).mock.calls.map((c) => c[0])).toEqual([
+      '/tracking/recepcion-kit',
+      '/tracking/salida-recinto',
+      GPS,
+      GPS,
+    ]);
+
+    // Un corte (sin red) en el primer registro deja la cola en el mismo orden.
+    await enqueue({ endpoint: GPS, method: 'post', payload: { n: 3 } });
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: { kitId: 'C' } });
+    await enqueue({ endpoint: '/tracking/salida-recinto', method: 'post', payload: { id: 'D' } });
+    (api.post as jest.Mock).mockReset();
+    (api.post as jest.Mock).mockRejectedValueOnce(networkError);
+    await flushQueue();
+    (api.post as jest.Mock).mockReset();
+    (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    await flushQueue();
+    expect((api.post as jest.Mock).mock.calls.map((c) => c[0])).toEqual([
+      '/tracking/recepcion-kit',
+      '/tracking/salida-recinto',
+      GPS,
+    ]);
+  });
+
+  it('una posición GPS rechazada con 4xx no genera aviso al operador', async () => {
+    await enqueue({ endpoint: '/tracking/recepcion-kit', method: 'post', payload: {} });
+    await enqueue({ endpoint: GPS, method: 'post', payload: {} });
+    (api.post as jest.Mock).mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce(badRequestError);
+
+    await flushQueue();
+
+    await expect(leerRechazadas()).resolves.toEqual([]);
+    await expect(contarPendientes()).resolves.toBe(0);
+  });
+});
