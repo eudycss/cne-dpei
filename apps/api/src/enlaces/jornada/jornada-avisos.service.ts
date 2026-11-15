@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../db/prisma.service';
 import { TelegramNotifier } from '../telegram-notifier';
 import { ALERTAS_REENVIADAS, avisosJornada, mensajesDeAvisos, type AlertaParaAviso } from './avisos-jornada';
+import { tecladoFijoJornada } from './jornada';
 import { diaDeJornada, esChatJornada, JornadaService } from './jornada.service';
 
 /** Tras un envío fallido, no se reintenta antes de esto. */
@@ -91,7 +92,7 @@ export class JornadaAvisosService {
       });
       if (count === 0) continue;
       const enviado = await this.telegram.responderEn(chat, () =>
-        this.telegram.enviarHtml(m.texto, 'los avisos de la jornada', undefined, { silencioso: false }),
+        this.telegram.enviarHtml(m.texto, 'los avisos de la jornada', tecladoFijoJornada(), { silencioso: false }),
       );
       const id = m.claves.join('|');
       if (enviado) {
