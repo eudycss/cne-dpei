@@ -128,9 +128,17 @@ describe('JornadaService', () => {
 
   it('el día de jornada empieza a las 04:00 de Ecuador', () => {
     // 01:30 del 30-nov en Ecuador: sigue siendo la jornada del 29.
-    expect(diaDeJornada(T('2026-11-30T06:30:00Z'))).toEqual({ fecha: '2026-11-29', desde: T('2026-11-29T09:00:00Z') });
+    expect(diaDeJornada(T('2026-11-30T06:30:00Z'))).toEqual({
+      fecha: '2026-11-29',
+      desde: T('2026-11-29T09:00:00Z'),
+      desdeMedianoche: T('2026-11-29T05:00:00Z'),
+    });
     // 04:30 del 30-nov en Ecuador: ya es el 30.
-    expect(diaDeJornada(T('2026-11-30T09:30:00Z'))).toEqual({ fecha: '2026-11-30', desde: T('2026-11-30T09:00:00Z') });
+    expect(diaDeJornada(T('2026-11-30T09:30:00Z'))).toEqual({
+      fecha: '2026-11-30',
+      desde: T('2026-11-30T09:00:00Z'),
+      desdeMedianoche: T('2026-11-30T05:00:00Z'),
+    });
   });
 
   it('solo el chat de TELEGRAM_CHAT_ID_JORNADA es el grupo Jornada; sin la variable está apagado', () => {
@@ -236,14 +244,22 @@ describe('JornadaService', () => {
     it('solo cuenta los registros del día de jornada (las pruebas de otros días no marcan a nadie)', async () => {
       await service.cargar(T('2026-11-29T15:00:00Z').getTime());
       const desde = T('2026-11-29T09:00:00Z');
-      const filtros = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where.ocurridoEn);
-      expect(filtros).toEqual([{ gte: desde }, { gte: desde }]);
-      expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desde });
+      const [tracking, visitas] = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where);
+      // Ida (salida del DPEI, llegada al recinto): desde las 00:00; regreso y prueba: desde las 04:00.
+      expect(tracking.OR).toEqual([
+        { tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO'] }, ocurridoEn: { gte: T('2026-11-29T05:00:00Z') } },
+        { tipo: { in: ['SALIDA_RECINTO', 'LLEGADA_DPI', 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: desde } },
+      ]);
+      expect(visitas.ocurridoEn).toEqual({ gte: desde });
+      // El kit se recibe y se escanea en la ida: cuentan desde las 00:00, igual que la salida del DPEI.
+      const desdeMedianoche = T('2026-11-29T05:00:00Z');
+      expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desdeMedianoche });
       expect(prisma.recepcionKit.findMany.mock.calls[0][0].where).toEqual({
         kitId: { in: ['k1', 'k2'] },
         operadorId: { in: ['u1', 'u2'] },
-        confirmadoEn: { gte: desde },
+        confirmadoEn: { gte: desdeMedianoche },
       });
+      expect(prisma.posicionGps.groupBy.mock.calls[0][0].where.capturadoEn).toEqual({ gte: desdeMedianoche });
     });
 
     it('cumplimiento: el escaneo del kit con la foto del militar y los reportes de la salida del recinto', async () => {

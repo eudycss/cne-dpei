@@ -73,14 +73,22 @@ export function esChatJornada(chatId: number | string | undefined): boolean {
 /** La jornada cambia de día a las 04:00 de Ecuador: quien vuelve al DPEI pasada la medianoche sigue en el mismo día. */
 const CAMBIO_DE_DIA_H = 4;
 const ECUADOR_UTC_H = -5;
+const ETAPAS_DE_IDA: MomentoJornada[] = ['SALIDA_DPI', 'LLEGADA_RECINTO'];
+const ETAPAS_DE_REGRESO: MomentoJornada[] = ['SALIDA_RECINTO', 'LLEGADA_DPI'];
 
-/** Inicio del día de jornada (04:00 de Ecuador) y su fecha "YYYY-MM-DD". */
-export function diaDeJornada(ahora: Date): { desde: Date; fecha: string } {
+/**
+ * Inicio del día de jornada (04:00 de Ecuador) y su fecha "YYYY-MM-DD". `desdeMedianoche` es
+ * la 00:00 de esa fecha: las etapas de ida (salida del DPEI, llegada al recinto) cuentan desde ahí,
+ * porque una salida de madrugada es de la jornada que empieza; las de regreso, solo desde `desde`.
+ */
+export function diaDeJornada(ahora: Date): { desde: Date; desdeMedianoche: Date; fecha: string } {
   const local = new Date(ahora.getTime() + (ECUADOR_UTC_H - CAMBIO_DE_DIA_H) * 3_600_000);
   const fecha = local.toISOString().slice(0, 10);
   const desde = new Date(`${fecha}T00:00:00Z`);
   desde.setUTCHours(CAMBIO_DE_DIA_H - ECUADOR_UTC_H);
-  return { desde, fecha };
+  const desdeMedianoche = new Date(`${fecha}T00:00:00Z`);
+  desdeMedianoche.setUTCHours(-ECUADOR_UTC_H);
+  return { desde, desdeMedianoche, fecha };
 }
 
 /** Cuánto se reutiliza una carga: varios toques seguidos no repiten las consultas. */
@@ -467,8 +475,10 @@ export class JornadaService {
         where: {
           eventoId: evento.id,
           operadorId: { in: operadorIds },
-          tipo: { in: [...MOMENTOS_JORNADA, 'PRUEBA_CONEXION'] },
-          ocurridoEn: { gte: dia.desde },
+          OR: [
+            { tipo: { in: ETAPAS_DE_IDA }, ocurridoEn: { gte: dia.desdeMedianoche } },
+            { tipo: { in: [...ETAPAS_DE_REGRESO, 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: dia.desde } },
+          ],
         },
         orderBy: { ocurridoEn: 'asc' },
         select: {
@@ -482,12 +492,12 @@ export class JornadaService {
         },
       }),
       this.prisma.recepcionDpiKit.findMany({
-        where: { kitId: { in: kitIds }, confirmadoEn: { gte: dia.desde } },
+        where: { kitId: { in: kitIds }, confirmadoEn: { gte: dia.desdeMedianoche } },
         select: { kitId: true, confirmadoEn: true },
       }),
       // El operador escanea su kit (con la foto del militar) en la llegada al recinto.
       this.prisma.recepcionKit.findMany({
-        where: { kitId: { in: kitIds }, operadorId: { in: operadorIds }, confirmadoEn: { gte: dia.desde } },
+        where: { kitId: { in: kitIds }, operadorId: { in: operadorIds }, confirmadoEn: { gte: dia.desdeMedianoche } },
         select: { kitId: true, operadorId: true, confirmadoEn: true, desdeOffline: true, fotoMilitarUrl: true },
       }),
       this.prisma.recinto.findMany({
@@ -501,7 +511,7 @@ export class JornadaService {
         },
       }),
     ]);
-    const gpsPorOperador = await this.ultimoGpsEnCamino(evento.id, tracking, dia.desde);
+    const gpsPorOperador = await this.ultimoGpsEnCamino(evento.id, tracking, dia.desdeMedianoche);
     const visitas = await this.prisma.eventoTracking.findMany({
       where: {
         eventoId: evento.id,
