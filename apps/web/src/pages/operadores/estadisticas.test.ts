@@ -178,6 +178,22 @@ describe('reparto por estado', () => {
       expect(r.find((g) => g.nombre === 'B')?.completadoEn).toBe('2026-11-15T12:10:00.000Z');
     });
 
+    it('los que completaron suben en orden de llegada, aunque tengan menos parejas; luego los demás por avance', () => {
+      const r = avanceConPodio(
+        d([
+          unidad('X', 'Grande', '2026-11-15T12:30:00Z'),
+          unidad('X', 'Grande', '2026-11-15T12:31:00Z'),
+          unidad('X', 'Chico', '2026-11-15T12:10:00Z'),
+          unidad('X', 'Medio', '2026-11-15T12:20:00Z'),
+          unidad('X', 'Medio', null),
+        ]),
+        'salidaDpiEn',
+        'tecnico',
+      );
+      expect(r.map((g) => g.nombre)).toEqual(['Chico', 'Grande', 'Medio']);
+      expect(medallas(r)).toEqual({ Chico: 1, Grande: 2, Medio: null });
+    });
+
     it('un grupo incompleto no gana medalla aunque haya empezado antes', () => {
       const r = avanceConPodio(
         d([unidad('X', 'A', '2026-11-15T12:00:00Z'), unidad('X', 'A', null), unidad('X', 'B', '2026-11-15T13:00:00Z')]),

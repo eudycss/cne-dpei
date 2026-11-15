@@ -65,7 +65,8 @@ export function avancePorEtapa(datos: EstadisticasJornadaDto, etapa: EtapaClave,
  * Avance por grupo de una etapa, con podio: 🥇🥈🥉 a los tres primeros técnicos que
  * llegaron al 100 % (cuenta la hora de su última pareja). Solo gana quien completó
  * toda la etapa; a igual hora, por nombre. Por cantón no hay medallas, ni para
- * "Sin técnico". El orden de la lista no cambia.
+ * "Sin técnico". Los que ya completaron van primero, por hora de cierre; el resto,
+ * por avance.
  */
 export function avanceConPodio(datos: EstadisticasJornadaDto, etapa: EtapaClave, agrupacion: Agrupacion): GrupoAvance[] {
   const grupos = avancePorEtapa(datos, etapa, agrupacion);
@@ -83,7 +84,10 @@ export function avanceConPodio(datos: EstadisticasJornadaDto, etapa: EtapaClave,
     .sort((a, b) => a.ms - b.ms || a.nombre.localeCompare(b.nombre, 'es'));
   const medallas = new Map(completados.slice(0, 3).map((c, i) => [c.nombre, (i + 1) as Medalla]));
   const horaIso = new Map(completados.map((c) => [c.nombre, new Date(c.ms).toISOString()]));
-  return grupos.map((g) => ({ ...g, completadoEn: horaIso.get(g.nombre) ?? null, medalla: medallas.get(g.nombre) }));
+  const conPodio = grupos.map((g) => ({ ...g, completadoEn: horaIso.get(g.nombre) ?? null, medalla: medallas.get(g.nombre) }));
+  // Quien ya completó la etapa sube en el orden en que terminó (1.º, 2.º, 3.º…); los demás siguen por avance.
+  const lugar = new Map(completados.map((c, i) => [c.nombre, i]));
+  return conPodio.sort((a, b) => (lugar.get(a.nombre) ?? Infinity) - (lugar.get(b.nombre) ?? Infinity));
 }
 
 export function avanceNoCda(datos: EstadisticasJornadaDto, agrupacion: Agrupacion): GrupoAvance[] {
