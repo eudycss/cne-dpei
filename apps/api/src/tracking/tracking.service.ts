@@ -1614,6 +1614,9 @@ export class TrackingService {
     if (!evento) return [];
 
     const esAdmin = roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('LECTOR');
+    // Los celulares son datos personales: los ven quienes llaman al personal, no el LECTOR.
+    const verCelulares =
+      roles.includes('ADMINISTRADOR') || roles.includes('ANALISTA_PROVINCIAL') || roles.includes('TECNICO_SUPERVISOR');
 
     const kits = await this.prisma.kitElectoral.findMany({
       where: { eventoId: evento.id, recintoId: { not: null }, operadorId: { not: null } },
@@ -1806,8 +1809,8 @@ export class TrackingService {
           tieneActaEscrutinio: actasPorOperador.get(operadorId)?.escrutinio ?? false,
           asistenteNombre: pareja?.asistente ?? null,
           portadorKit: pareja?.portadorKit ?? 'OPERADOR',
-          operadorTelefono: pareja?.operadorTelefono ?? null,
-          asistenteTelefono: pareja?.asistenteTelefono ?? null,
+          operadorTelefono: verCelulares ? (pareja?.operadorTelefono ?? null) : null,
+          asistenteTelefono: verCelulares ? (pareja?.asistenteTelefono ?? null) : null,
           salidaDpiEn: hora('SALIDA_DPI'),
           llegadaRecintoEn: hora('LLEGADA_RECINTO'),
           salidaRecintoEn: hora('SALIDA_RECINTO'),

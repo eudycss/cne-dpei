@@ -2021,6 +2021,25 @@ describe('TrackingService', () => {
       expect(filas[1]).toEqual(expect.objectContaining({ operadorNombre: 'C OP', portadorKit: 'ASISTENTE', operadorTelefono: null, asistenteTelefono: '0955' }));
     });
 
+    it.each([
+      [['LECTOR'], false],
+      [['ADMINISTRADOR'], true],
+      [['ANALISTA_PROVINCIAL'], true],
+      [['ADMINISTRADOR', 'LECTOR'], true],
+    ] as const)('los celulares de %j se muestran: %s (el lector no los ve)', async (roles, ven) => {
+      prepararUnCda([]);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([
+        {
+          recintoId,
+          operador: { usuarioId: operadorId, apellidosNombres: 'PEREZ ANA', telefono: '0991111111' },
+          asistente: { usuarioId: 'asis-1', apellidosNombres: 'LEMA ROSA', telefono: '0982222222' },
+        },
+      ]);
+      const [fila] = await service.estadoCdas(operadorId, [...roles]);
+      expect(fila.operadorTelefono).toBe(ven ? '0991111111' : null);
+      expect(fila.asistenteTelefono).toBe(ven ? '0982222222' : null);
+    });
+
     it('sin pareja cargada el titular de la cuenta es el portador y no hay celulares', async () => {
       prepararUnCda([]);
       prisma.parejaCda.findMany.mockResolvedValueOnce([]);
