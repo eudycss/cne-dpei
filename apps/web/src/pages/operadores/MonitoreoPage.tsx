@@ -35,6 +35,17 @@ const CENTRO_IMBABURA: [number, number] = [0.35, -78.12];
 // Debe coincidir con la clase h-[480px] del MapView de operadores en ruta.
 const ALTO_MAPA = 480;
 
+/** Celular de una persona de la pareja: enlace para llamar, o aviso si no lo tiene registrado. */
+function Celular({ nombre, telefono }: { nombre: string; telefono: string | null }) {
+  if (!telefono) return <span className="muted mon-codigo">Sin celular</span>;
+  return (
+    // El número se muestra tal cual, pero el enlace solo lleva dígitos y "+" (puede venir con espacios o guiones).
+    <a className="mon-celular" href={`tel:${telefono.replace(/[^\d+]/g, '')}`} aria-label={`Llamar a ${nombre}, ${telefono}`}>
+      {telefono}
+    </a>
+  );
+}
+
 function UbicacionModal({ cda, onClose }: { cda: CdaEstadoDto; onClose: () => void }) {
   if (!cda.ubicacion) return null;
   const pos: [number, number] = [cda.ubicacion.latitud, cda.ubicacion.longitud];
@@ -196,7 +207,10 @@ export function MonitoreoPage() {
   const cdasFiltrados = cdasDelCanton.filter(
     (c) =>
       (estadoFiltro === 'TODOS' || c.estado === estadoFiltro) &&
-      coincideBusqueda([c.codigoRecinto, c.nombreRecinto, c.operadorNombre, c.asistenteNombre ?? ''], textoBuscado),
+      coincideBusqueda(
+        [c.codigoRecinto, c.nombreRecinto, c.operadorNombre, c.asistenteNombre ?? '', c.operadorTelefono ?? '', c.asistenteTelefono ?? ''],
+        textoBuscado,
+      ),
   );
 
   const conteoPorEstado = useMemo(() => {
@@ -405,8 +419,8 @@ export function MonitoreoPage() {
           <SearchInput
             value={busqueda}
             onChange={setBusqueda}
-            placeholder="Buscar por código, recinto, operador o asistente"
-            ariaLabel="Buscar CDA por código, recinto, operador o asistente"
+            placeholder="Buscar por código, recinto, operador, asistente o celular"
+            ariaLabel="Buscar CDA por código, recinto, operador, asistente o celular"
             style={{ flex: '1 1 240px', minWidth: 200 }}
           />
         </div>
@@ -437,6 +451,11 @@ export function MonitoreoPage() {
             <tbody role="rowgroup">
               {cdasFiltrados.map((c) => {
                 const info = ESTADO_INFO[c.estado];
+                // En retorno, el mismo color y texto de cercanía que la lista y el mapa.
+                const enRuta = c.estado === 'EN_RETORNO' ? operadores.find((o) => o.operadorId === c.operadorId) : undefined;
+                const sinSenal = enRuta ? estaSinSenal(enRuta.capturadoEn, ahora) : false;
+                const colorEstado = sinSenal ? COLOR_SIN_SENAL : enRuta ? colorOperador(enRuta) : info.color;
+                const textoEstado = enRuta ? etiquetaOperador(enRuta) : info.label;
                 const sufijo = ` — ${c.nombreRecinto}`;
                 return (
                   <tr role="row" key={`${c.recintoId}-${c.operadorId}`}>
@@ -449,11 +468,17 @@ export function MonitoreoPage() {
                     <td role="cell" data-label="Pareja">
                       <span className="mon-persona">
                         <span className="muted">Operador: </span>
-                        {c.operadorNombre}
+                        <span className={c.portadorKit === 'OPERADOR' ? 'mon-portador' : undefined}>{c.operadorNombre}</span>
+                        {c.portadorKit === 'OPERADOR' && <span className="mon-lleva-kit">lleva el kit</span>}
+                        <Celular nombre={c.operadorNombre} telefono={c.operadorTelefono} />
                       </span>
                       <span className="mon-persona">
                         <span className="muted">Asistente: </span>
-                        {c.asistenteNombre ?? 'Sin asistente'}
+                        <span className={c.portadorKit === 'ASISTENTE' ? 'mon-portador' : undefined}>
+                          {c.asistenteNombre ?? 'Sin asistente'}
+                        </span>
+                        {c.portadorKit === 'ASISTENTE' && <span className="mon-lleva-kit">lleva el kit</span>}
+                        {c.asistenteNombre && <Celular nombre={c.asistenteNombre} telefono={c.asistenteTelefono} />}
                       </span>
                     </td>
                     <td role="cell" data-label="Cantón">{c.cantonNombre ?? '—'}</td>
@@ -464,11 +489,13 @@ export function MonitoreoPage() {
                             width: 10,
                             height: 10,
                             borderRadius: '50%',
-                            background: info.color,
+                            background: colorEstado,
                             display: 'inline-block',
                           }}
+                          aria-hidden="true"
+                          data-testid="punto-estado"
                         />
-                        <TextoAnimado text={info.label} />
+                        <TextoAnimado text={textoEstado} />
                       </span>
                       <span className="muted mon-codigo">
                         {c.ubicacion ? `Actualizado ${formatearFechaHora(c.ubicacion.capturadoEn)}` : 'Sin ubicación aún'}

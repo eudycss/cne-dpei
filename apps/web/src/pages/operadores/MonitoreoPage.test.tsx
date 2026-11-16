@@ -101,6 +101,9 @@ const cdaConUbicacionYFoto: CdaEstadoDto = {
   tieneActaInstalacion: true,
   tieneActaEscrutinio: false,
   asistenteNombre: 'Rosa Lema',
+  portadorKit: 'OPERADOR',
+  operadorTelefono: '0991111111',
+  asistenteTelefono: '0982222222',
   salidaDpiEn: '2026-07-01T08:00:00.000Z',
   llegadaRecintoEn: '2026-07-01T09:00:00.000Z',
   salidaRecintoEn: '2026-07-01T09:50:00.000Z',
@@ -123,6 +126,9 @@ const cdaSinUbicacionNiFoto: CdaEstadoDto = {
   tieneActaInstalacion: false,
   tieneActaEscrutinio: false,
   asistenteNombre: null,
+  portadorKit: 'OPERADOR',
+  operadorTelefono: null,
+  asistenteTelefono: null,
   salidaDpiEn: null,
   llegadaRecintoEn: null,
   salidaRecintoEn: null,
@@ -274,6 +280,49 @@ describe('MonitoreoPage', () => {
     expect(screen.getByText('Muy cerca (3 km o menos)')).toBeInTheDocument();
   });
 
+  it('la tabla de CDAs pinta y nombra la cercanía igual que la lista y el mapa', async () => {
+    const enVivo = new Date().toISOString();
+    const muyCerca: OperadorEnRetorno = { ...operadorRetorno, capturadoEn: enVivo, cercania: 'MUY_CERCA', faltaMetros: 1_250 };
+    getOperadoresMock.mockResolvedValue([muyCerca]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+
+    renderPage();
+
+    const celda = async (recinto: string) =>
+      (await screen.findByText(recinto)).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
+    const punto = (td: HTMLElement) => td.querySelector('[data-testid="punto-estado"]') as HTMLElement;
+
+    const enRetorno = await celda('Escuela Manuela Cañizares');
+    expect(within(enRetorno).getAllByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/).length).toBeGreaterThan(0);
+    expect(punto(enRetorno).style.background).toBe('rgb(101, 163, 13)');
+    // Quien ya llegó conserva el verde del estado.
+    const llego = await celda('Colegio Otavalo');
+    expect(within(llego).getAllByText('Llegó al DPEI').length).toBeGreaterThan(0);
+    expect(punto(llego).style.background).toBe('rgb(22, 163, 74)');
+  });
+
+  it('la tabla de CDAs pinta gris al que en retorno lleva rato sin señal, como la lista y el mapa', async () => {
+    const viejo = new Date(Date.now() - 3 * 3600_000).toISOString();
+    getOperadoresMock.mockResolvedValue([{ ...operadorRetorno, capturadoEn: viejo, cercania: 'MUY_CERCA', faltaMetros: 1_250 }]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+
+    renderPage();
+
+    const td = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
+    expect((td.querySelector('[data-testid="punto-estado"]') as HTMLElement).style.background).toBe('rgb(107, 114, 128)');
+  });
+
+  it('la tabla de CDAs muestra "En retorno" con su color base si el operador no viene en la lista', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+
+    renderPage();
+
+    const td = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
+    expect(within(td).getAllByText('En retorno').length).toBeGreaterThan(0);
+    expect((td.querySelector('[data-testid="punto-estado"]') as HTMLElement).style.background).toBe('rgb(37, 99, 235)');
+  });
+
   it('si nadie va en retorno no muestra la leyenda de cercanía', async () => {
     getOperadoresMock.mockResolvedValue([operadorTransito]);
     getEstadoCdasMock.mockResolvedValue([]);
@@ -305,7 +354,7 @@ describe('MonitoreoPage', () => {
     const filaSinAsistente = screen.getByText('Ana Ruiz').closest('tr')!;
     expect(within(filaSinAsistente).getByText('Sin asistente')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'lema');
+    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador, asistente o celular'), 'lema');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
     expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
   });
@@ -316,7 +365,7 @@ describe('MonitoreoPage', () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Colegio Otavalo');
-    const buscar = screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente');
+    const buscar = screen.getByLabelText('Buscar CDA por código, recinto, operador, asistente o celular');
 
     await user.type(buscar, 'canizares');
     expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
@@ -361,7 +410,7 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Colegio Otavalo');
     await user.selectOptions(screen.getByLabelText('Filtrar CDAs por cantón'), '1');
-    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador o asistente'), 'ana');
+    await user.type(screen.getByLabelText('Buscar CDA por código, recinto, operador, asistente o celular'), 'ana');
     expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
     expect(screen.getByText('Ningún CDA coincide con los filtros elegidos')).toBeInTheDocument();
   });
@@ -628,6 +677,59 @@ describe('MonitoreoPage', () => {
     expect(within(sin).getByText('Prueba de conexión: Pendiente')).toBeInTheDocument();
     // La marca ✓ solo aparece con el dato y no la lee el lector de pantalla.
     expect(fila.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThan(sin.querySelectorAll('[aria-hidden="true"]').length);
+  });
+
+  it('subraya a quien lleva el kit, lo dice con texto y muestra el celular de cada uno como enlace para llamar', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, { ...cdaConUbicacionYFoto, recintoId: 'r3', operadorId: 'op3', nombreRecinto: 'Colegio Atuntaqui', portadorKit: 'ASISTENTE' }]);
+    renderPage();
+    const filaOperador = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    const filaAsistente = screen.getByText('Colegio Atuntaqui').closest('tr')!;
+
+    // Lleva el kit el operador: su nombre va subrayado y la fila lo dice con texto (no solo con el subrayado).
+    expect(within(filaOperador).getByText('Juan Pérez')).toHaveClass('mon-portador');
+    expect(within(filaOperador).getByText('Rosa Lema')).not.toHaveClass('mon-portador');
+    expect(within(filaOperador).getByText('lleva el kit')).toBeInTheDocument();
+    // Lleva el kit el asistente.
+    expect(within(filaAsistente).getByText('Rosa Lema')).toHaveClass('mon-portador');
+    expect(within(filaAsistente).getByText('Juan Pérez')).not.toHaveClass('mon-portador');
+
+    expect(within(filaOperador).getByRole('link', { name: /Llamar a Juan Pérez, 0991111111/ })).toHaveAttribute('href', 'tel:0991111111');
+    expect(within(filaOperador).getByRole('link', { name: /Llamar a Rosa Lema, 0982222222/ })).toHaveAttribute('href', 'tel:0982222222');
+  });
+
+  it('sin celular registrado lo dice y no pone enlace; sin asistente no inventa uno', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaSinUbicacionNiFoto]);
+    renderPage();
+    const fila = (await screen.findByText('Colegio Otavalo')).closest('tr')!;
+
+    expect(within(fila).getByText('Sin celular')).toBeInTheDocument();
+    expect(within(fila).queryByRole('link', { name: /Llamar/ })).not.toBeInTheDocument();
+    expect(within(fila).getByText('Sin asistente')).toBeInTheDocument();
+  });
+
+  it('el enlace de llamada solo lleva dígitos y "+", aunque el celular venga con espacios o guiones', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([{ ...cdaConUbicacionYFoto, operadorTelefono: '+593 99-111 1111' }]);
+    renderPage();
+    const fila = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!;
+    expect(within(fila).getByRole('link', { name: /Llamar a Juan Pérez, \+593 99-111 1111/ })).toHaveAttribute('href', 'tel:+593991111111');
+  });
+
+  it('el buscador también encuentra por el celular', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto, cdaSinUbicacionNiFoto]);
+    renderPage();
+    await screen.findByText('Escuela Manuela Cañizares');
+    const buscar = screen.getByLabelText('Buscar CDA por código, recinto, operador, asistente o celular');
+    await userEvent.type(buscar, '0982222222'); // celular del asistente
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
+    await userEvent.clear(buscar);
+    await userEvent.type(buscar, '0991111111'); // celular del operador
+    expect(screen.getByText('Escuela Manuela Cañizares')).toBeInTheDocument();
+    expect(screen.queryByText('Colegio Otavalo')).not.toBeInTheDocument();
   });
 
   it('sin CDAs, la fila vacía ocupa las 5 columnas', async () => {

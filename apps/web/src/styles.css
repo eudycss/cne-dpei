@@ -1180,8 +1180,13 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .tabla-monitoreo .btn { min-height: 44px; }
 .tabla-monitoreo .mon-codigo { display: block; font-size: 0.78rem; }
 .tabla-monitoreo .mon-persona { display: block; }
+/* Quien lleva el kit va subrayado; el texto "lleva el kit" lo dice también sin depender del subrayado. */
+.tabla-monitoreo .mon-portador { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; font-weight: 600; }
+.tabla-monitoreo .mon-celular { display: inline-block; font-size: 0.85rem; padding: 0.25rem 0; min-height: 24px; }
+.tabla-monitoreo .mon-lleva-kit { margin-left: 0.4rem; font-size: 0.75rem; font-weight: 600; }
 .tabla-monitoreo .mon-acciones { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 @media (max-width: 720px) {
+  .tabla-monitoreo .mon-celular { min-height: 44px; display: inline-flex; align-items: center; }
   .tabla-monitoreo thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .tabla-monitoreo, .tabla-monitoreo tbody, .tabla-monitoreo tr, .tabla-monitoreo td { display: block; width: 100%; }
   .tabla-monitoreo tr { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.8rem; margin-bottom: 0.75rem; background: var(--bg-card); }
