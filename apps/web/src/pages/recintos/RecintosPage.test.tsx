@@ -143,6 +143,12 @@ describe('RecintosPage — NO-CDA sin CDA asignado', () => {
     expect(within(fila).queryByTitle('Ver No CDAs asociados')).not.toBeInTheDocument();
   });
 
+  it('ni el administrador ve el botón de sincronizar con el Google Sheet: la base es la final', async () => {
+    renderPage();
+    await screen.findByText('UE García Moreno');
+    expect(screen.queryByRole('button', { name: /Sincronizar con Google Sheet/ })).not.toBeInTheDocument();
+  });
+
   it('borrar el texto de la contingencia la deja vacía (null)', async () => {
     const user = userEvent.setup();
     const conConting = recinto({ contingenciaNombre: 'CPE', contingenciaDireccion: 'Sánchez y Cifuentes' });
