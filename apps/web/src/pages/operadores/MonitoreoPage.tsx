@@ -451,6 +451,10 @@ export function MonitoreoPage() {
             <tbody role="rowgroup">
               {cdasFiltrados.map((c) => {
                 const info = ESTADO_INFO[c.estado];
+                // En retorno, el mismo color y texto de cercanía que la lista y el mapa.
+                const enRuta = c.estado === 'EN_RETORNO' ? operadores.find((o) => o.operadorId === c.operadorId) : undefined;
+                const colorEstado = enRuta ? colorOperador(enRuta) : info.color;
+                const textoEstado = enRuta ? etiquetaOperador(enRuta) : info.label;
                 const sufijo = ` — ${c.nombreRecinto}`;
                 return (
                   <tr role="row" key={`${c.recintoId}-${c.operadorId}`}>
@@ -484,11 +488,11 @@ export function MonitoreoPage() {
                             width: 10,
                             height: 10,
                             borderRadius: '50%',
-                            background: info.color,
+                            background: colorEstado,
                             display: 'inline-block',
                           }}
                         />
-                        <TextoAnimado text={info.label} />
+                        <TextoAnimado text={textoEstado} />
                       </span>
                       <span className="muted mon-codigo">
                         {c.ubicacion ? `Actualizado ${formatearFechaHora(c.ubicacion.capturadoEn)}` : 'Sin ubicación aún'}
