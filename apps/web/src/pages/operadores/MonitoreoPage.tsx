@@ -453,7 +453,8 @@ export function MonitoreoPage() {
                 const info = ESTADO_INFO[c.estado];
                 // En retorno, el mismo color y texto de cercanía que la lista y el mapa.
                 const enRuta = c.estado === 'EN_RETORNO' ? operadores.find((o) => o.operadorId === c.operadorId) : undefined;
-                const colorEstado = enRuta ? colorOperador(enRuta) : info.color;
+                const sinSenal = enRuta ? estaSinSenal(enRuta.capturadoEn, ahora) : false;
+                const colorEstado = sinSenal ? COLOR_SIN_SENAL : enRuta ? colorOperador(enRuta) : info.color;
                 const textoEstado = enRuta ? etiquetaOperador(enRuta) : info.label;
                 const sufijo = ` — ${c.nombreRecinto}`;
                 return (
@@ -491,6 +492,8 @@ export function MonitoreoPage() {
                             background: colorEstado,
                             display: 'inline-block',
                           }}
+                          aria-hidden="true"
+                          data-testid="punto-estado"
                         />
                         <TextoAnimado text={textoEstado} />
                       </span>

@@ -290,7 +290,7 @@ describe('MonitoreoPage', () => {
 
     const celda = async (recinto: string) =>
       (await screen.findByText(recinto)).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
-    const punto = (td: HTMLElement) => td.querySelector('span[style*="border-radius"]') as HTMLElement;
+    const punto = (td: HTMLElement) => td.querySelector('[data-testid="punto-estado"]') as HTMLElement;
 
     const enRetorno = await celda('Escuela Manuela Cañizares');
     expect(within(enRetorno).getAllByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/).length).toBeGreaterThan(0);
@@ -299,6 +299,28 @@ describe('MonitoreoPage', () => {
     const llego = await celda('Colegio Otavalo');
     expect(within(llego).getAllByText('Llegó al DPEI').length).toBeGreaterThan(0);
     expect(punto(llego).style.background).toBe('rgb(22, 163, 74)');
+  });
+
+  it('la tabla de CDAs pinta gris al que en retorno lleva rato sin señal, como la lista y el mapa', async () => {
+    const viejo = new Date(Date.now() - 3 * 3600_000).toISOString();
+    getOperadoresMock.mockResolvedValue([{ ...operadorRetorno, capturadoEn: viejo, cercania: 'MUY_CERCA', faltaMetros: 1_250 }]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+
+    renderPage();
+
+    const td = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
+    expect((td.querySelector('[data-testid="punto-estado"]') as HTMLElement).style.background).toBe('rgb(107, 114, 128)');
+  });
+
+  it('la tabla de CDAs muestra "En retorno" con su color base si el operador no viene en la lista', async () => {
+    getOperadoresMock.mockResolvedValue([]);
+    getEstadoCdasMock.mockResolvedValue([cdaConUbicacionYFoto]);
+
+    renderPage();
+
+    const td = (await screen.findByText('Escuela Manuela Cañizares')).closest('tr')!.querySelector('td[data-label="Estado"]') as HTMLElement;
+    expect(within(td).getAllByText('En retorno').length).toBeGreaterThan(0);
+    expect((td.querySelector('[data-testid="punto-estado"]') as HTMLElement).style.background).toBe('rgb(37, 99, 235)');
   });
 
   it('si nadie va en retorno no muestra la leyenda de cercanía', async () => {
