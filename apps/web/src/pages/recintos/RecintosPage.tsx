@@ -8,7 +8,6 @@ import { api } from '../../lib/api';
 import { descargarReporteRecintosCda, type FormatoReporteRecintos } from '../../lib/queries/recintos-reporte';
 import { useAuth } from '../../auth/AuthContext';
 import { SearchInput } from '../../components/SearchInput';
-import { SyncRecintosModal } from './SyncRecintosModal';
 import { PasoFlujo } from '../../components/PasoFlujo';
 
 const TIPOS: TipoRecinto[] = ['CDA', 'NO_CDA'];
@@ -29,7 +28,6 @@ export function RecintosPage() {
   // que solo se ven con este filtro (p. ej. un CDA que se cambió a NO-CDA).
   const [soloSueltos, setSoloSueltos] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [showSync, setShowSync] = useState(false);
   const [editing, setEditing] = useState<Recinto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<FormatoReporteRecintos | null>(null);
@@ -190,15 +188,6 @@ export function RecintosPage() {
             </label>
           )}
           {isAdmin && (
-            <button
-              className="btn secondary"
-              onClick={() => setShowSync(true)}
-              title="Comparar con el Google Sheet de recintos y aplicar los cambios"
-            >
-              <span aria-hidden="true">⟳ </span>Sincronizar con Google Sheet
-            </button>
-          )}
-          {isAdmin && (
             <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo</button>
           )}
         </div>
@@ -357,7 +346,6 @@ export function RecintosPage() {
         )}
       </div>
 
-      {showSync && <SyncRecintosModal onClose={() => setShowSync(false)} />}
 
       {showCreate && (
         <RecintoModal
