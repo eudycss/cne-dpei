@@ -5,20 +5,22 @@ import { useAuth } from '../../auth/AuthContext';
 import { RecintosPage } from './RecintosPage';
 import { EnlacesPage } from '../enlaces/EnlacesPage';
 import { TiemposViajePage } from './TiemposViajePage';
+import { CoordenadasPage } from './CoordenadasPage';
 
-type Pestana = 'recintos' | 'enlaces' | 'tiempos';
+type Pestana = 'recintos' | 'enlaces' | 'tiempos' | 'coordenadas';
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'recintos', etiqueta: 'Recintos' },
   { id: 'enlaces', etiqueta: 'Enlaces' },
   { id: 'tiempos', etiqueta: 'Tiempos de viaje' },
+  { id: 'coordenadas', etiqueta: 'Coordenadas' },
 ];
 
 /**
  * Recintos y el estado de sus enlaces en una sola página con pestañas (patrón
  * WAI-ARIA Tabs, activación automática). Los datos siguen separados: los enlaces
- * vienen de la hoja de Drive. Las pestañas Enlaces y Tiempos de viaje son solo del
- * administrador y se abren directo con `?tab=enlaces` / `?tab=tiempos`.
+ * vienen de la hoja de Drive. Las pestañas Enlaces, Tiempos de viaje y Coordenadas son
+ * solo del administrador y se abren directo con `?tab=enlaces` / `?tab=tiempos` / `?tab=coordenadas`.
  */
 export function RecintosSeccion() {
   const { user } = useAuth();
@@ -60,7 +62,7 @@ export function RecintosSeccion() {
   return (
     <>
       <h2>Recintos Electorales</h2>
-      <div role="tablist" aria-label="Recintos, enlaces y tiempos de viaje" className="pestanas">
+      <div role="tablist" aria-label="Recintos, enlaces, tiempos de viaje y coordenadas" className="pestanas">
         {PESTANAS.map((p, i) => (
           <button
             key={p.id}
@@ -82,7 +84,15 @@ export function RecintosSeccion() {
         ))}
       </div>
       <div role="tabpanel" id={`panel-${activa}`} aria-labelledby={`pestana-${activa}`}>
-        {activa === 'enlaces' ? <EnlacesPage /> : activa === 'tiempos' ? <TiemposViajePage /> : <RecintosPage />}
+        {activa === 'enlaces' ? (
+          <EnlacesPage />
+        ) : activa === 'tiempos' ? (
+          <TiemposViajePage />
+        ) : activa === 'coordenadas' ? (
+          <CoordenadasPage />
+        ) : (
+          <RecintosPage />
+        )}
       </div>
     </>
   );

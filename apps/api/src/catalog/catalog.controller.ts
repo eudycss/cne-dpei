@@ -27,6 +27,8 @@ import { ReporteRecintosCdaService } from './reporte-recintos-cda.service';
 import { LIMITE_DESCARGA_REPORTE, enviarReporte } from '../operadores-cda/reporte-cda';
 import { TiposEventoService } from './tipos-evento.service';
 import { TiemposViajeService } from './tiempos-viaje.service';
+import { CoordenadasRecintosService } from './coordenadas-recintos.service';
+import { parseUmbral } from './coordenadas-recintos';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -45,6 +47,7 @@ export class CatalogController {
     private readonly recintosSync: RecintosSyncService,
     private readonly tiemposViaje: TiemposViajeService,
     private readonly reporteCda: ReporteRecintosCdaService,
+    private readonly coordenadas: CoordenadasRecintosService,
   ) {}
 
   @LecturaConfigurable()
@@ -130,6 +133,13 @@ export class CatalogController {
   @ApiOperation({ summary: 'Guarda el tiempo de viaje de uno o varios CDA (límite de los avisos de retraso del bot Jornada)' })
   guardarTiemposViaje(@Body(new ZodValidationPipe(guardarTiemposViajeSchema)) body: GuardarTiemposViajeRequest) {
     return this.tiemposViaje.guardar(body);
+  }
+
+  @Get('recintos/coordenadas')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Coordenada guardada de cada recinto vs. dónde marcó el personal (?umbral= metros, 150 por defecto)' })
+  listarCoordenadas(@Query('umbral') umbral?: string) {
+    return this.coordenadas.listar(parseUmbral(umbral));
   }
 
   @Get('recintos/:id')
