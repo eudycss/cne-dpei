@@ -40,9 +40,18 @@ function avisarCambioCargo(r: CambiarCargoOperadorCdaResult, textos: (g: GrupoCd
     r.carnetVigente && `reemita su carnet QR (el impreso dice el cargo de ${antes})`,
     r.actaVigente && `genere una nueva acta de entrega en ${ahora}`,
   ].filter(Boolean);
+  if (r.cuentaDesactivada) {
+    sileo.warning({
+      title: 'Su cuenta de usuario quedó desactivada',
+      description: `${ahora} no usa la app. Para darle otro rol, actívela en Usuarios (marque "Mostrar inactivos").`,
+    });
+  }
   if (pendientes.length === 0) return;
   sileo.warning({ title: `Pasó a ${ahora}: falta un paso`, description: `Ahora ${pendientes.join(' y ')}.` });
 }
+
+/** Solo Operadores y Asistentes CDA usan la app de campo (GRUPOS_CON_CUENTA en la API). */
+const usaApp = (g: GrupoCda) => g === 'OPERADOR' || g === 'ASISTENTE';
 
 /**
  * Agregar a mano (sin `operador`) o corregir los datos de uno. La cédula solo
@@ -66,6 +75,7 @@ export function OperadorFormModal({
   const grupoOriginal = operador?.grupo ?? grupo;
   const [grupoNuevo, setGrupoNuevo] = useState<GrupoCda>(grupoOriginal);
   const cambiaCargo = editando && grupoNuevo !== grupoOriginal;
+  const pierdeApp = cambiaCargo && usaApp(grupoOriginal) && !usaApp(grupoNuevo);
 
   function elegirCargo(g: GrupoCda) {
     // El texto de "Cargo" sigue al cargo CDA si era el de por defecto; si lo escribieron a mano, se respeta.
@@ -230,6 +240,16 @@ export function OperadorFormModal({
             'Fecha de ingreso',
             <input type="date" value={f.fechaInicio} onChange={(e) => cambiar({ fechaInicio: e.target.value })} />,
             { opcional: !fechaObligatoria, ayuda: 'Día en que empieza a trabajar en el CDA.' },
+          )}
+        </div>
+
+        {/* La región existe siempre: los lectores de pantalla anuncian mejor un cambio de contenido que una región recién montada. */}
+        <div role="status" id="operador-aviso-app">
+          {pierdeApp && (
+            <div className="banner aviso">
+              <strong>Perderá el acceso a la app.</strong> {textos(grupoNuevo).titulo} no usa la app de campo: se le quita el rol
+              de CDA y se cierran sus sesiones. Si no tiene otro rol en Usuarios, su cuenta quedará desactivada.
+            </div>
           )}
         </div>
 
