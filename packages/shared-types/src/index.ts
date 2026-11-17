@@ -1060,6 +1060,8 @@ export interface EstadisticaEnlace {
   /** % del tiempo observado del período en que estuvo ACTIVO (0-100, 1 decimal). */
   disponibilidad: number;
   sigueCaido: boolean;
+  /** Si sigue caído: cuándo empezó la caída abierta (ISO). */
+  caidoDesde?: string;
 }
 
 export interface EstadisticasEnlacesResponse {

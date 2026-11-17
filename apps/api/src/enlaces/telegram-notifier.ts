@@ -258,7 +258,6 @@ function plural(n: number, singular: string, pluralForma = `${singular}s`): stri
   return `${n} ${n === 1 ? singular : pluralForma}`;
 }
 
-const ANCHO_BARRA = 10;
 const TOP_TARJETA = 5;
 const NOMBRE_ANTERIOR: Record<PeriodoEstadisticasEnlaces, string> = {
   dia: 'el día anterior',
@@ -276,12 +275,6 @@ const MESES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
 
-/** Barra de 10 bloques proporcional a `valor` (mínimo 1 bloque si es mayor que 0). */
-export function barra(valor: number, maximo: number): string {
-  const llenos = valor > 0 && maximo > 0 ? Math.max(1, Math.round((valor / maximo) * ANCHO_BARRA)) : 0;
-  return '█'.repeat(llenos) + '░'.repeat(ANCHO_BARRA - llenos);
-}
-
 function totalCaidas(stats: EstadisticasEnlacesResponse): number {
   return stats.ranking.reduce((n, e) => n + e.caidas, 0);
 }
@@ -295,30 +288,47 @@ function rotuloPeriodo(stats: EstadisticasEnlacesResponse): string {
   return rotuloRango(stats);
 }
 
+/** Disponibilidad de toda la red: promedio de la de cada recinto (los que no se cayeron, 100 %). */
+function disponibilidadRed(stats: EstadisticasEnlacesResponse): number | null {
+  const recintos = stats.ranking.length + stats.sinCaidas.length;
+  if (recintos === 0) return null;
+  const suma = stats.ranking.reduce((n, e) => n + e.disponibilidad, 0) + 100 * stats.sinCaidas.length;
+  return Math.round((suma / recintos) * 10) / 10;
+}
+
+/** "98,9 %" (coma decimal, como se escribe en Ecuador). */
+function porcentaje(valor: number): string {
+  return `${String(valor).replace('.', ',')} %`;
+}
+
+/** Desde cuándo sigue caído: "desde las 08:15" si empezó en el día mostrado; si no, con la fecha. */
+function textoCaidoDesde(stats: EstadisticasEnlacesResponse, desdeIso: string): string {
+  const hora = HORA_ECUADOR.format(new Date(desdeIso));
+  return stats.periodo === 'dia' && desdeIso >= stats.desde ? `desde las ${hora}` : `desde el ${ddmm(desdeIso)} ${hora}`;
+}
+
+/** De una caída que empezó antes del período: no es "0 caídas", ya venía. */
+function textoVeniaCaido(stats: EstadisticasEnlacesResponse): string {
+  return stats.periodo === 'dia' ? 'desde antes de las 00:00' : 'desde antes del período';
+}
+
+const MAX_SIGUEN_TARJETA = 10;
+
 /**
  * Tarjeta de un período para Telegram (HTML escapado: código y nombre vienen
- * de la hoja): primero lo que se entiende de un vistazo (cuántos recintos no
- * se cayeron, cuánto tiempo sin enlace, comparación con el período anterior)
- * y después los recintos con más tiempo caído, con una barra proporcional.
+ * de la hoja): primero lo que se entiende de un vistazo (disponibilidad de la red,
+ * cuántos recintos no se cayeron, comparación con el período anterior); después
+ * los que siguen caídos y desde cuándo (lo urgente) y al final los que ya volvieron.
  */
 export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }: TarjetaEstadisticas): string {
   const lineas = [`<b>📊 Enlaces CDA · ${escapeHtml(titulo)}</b> (${escapeHtml(rotuloPeriodo(actual))})`, ''];
 
-  const sanos = actual.sinCaidas.length;
-  const porcentaje = actual.totalRecintos > 0 ? Math.round((sanos * 100) / actual.totalRecintos) : 100;
-  lineas.push(`✅ <b>${sanos} de ${actual.totalRecintos}</b> recintos sin caídas (${porcentaje} %)`);
+  const disponibilidad = disponibilidadRed(actual);
+  if (disponibilidad !== null) lineas.push(`📶 Disponibilidad: <b>${porcentaje(disponibilidad)}</b>`);
+  lineas.push(`✅ <b>${actual.sinCaidas.length} de ${actual.totalRecintos}</b> recintos sin caídas`);
 
   const conCaidas = actual.ranking;
-  if (conCaidas.length === 0) {
-    lineas.push('🎉 Ningún enlace se cayó en este período');
-  } else {
-    const minutos = conCaidas.reduce((n, e) => n + e.minutosCaido, 0);
-    lineas.push(
-      `🔴 ${plural(conCaidas.length, 'recinto')} con caídas · ${formatearDuracion(minutos)} sin enlace en total`,
-    );
-    const siguen = conCaidas.filter((e) => e.sigueCaido).length;
-    if (siguen > 0) lineas.push(`🚨 ${siguen} ${siguen === 1 ? 'sigue caído' : 'siguen caídos'} ahora`);
-  }
+  if (conCaidas.length === 0) lineas.push('🎉 Ningún enlace se cayó en este período');
 
   if (anterior) {
     const diferencia = totalCaidas(actual) - totalCaidas(anterior);
@@ -336,29 +346,43 @@ export function formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora }
     lineas.push(`<i>ℹ️ El registro empezó el ${ddmm(actual.historialDesde)}: este período aún no está completo.</i>`);
   }
 
-  if (conCaidas.length > 0) {
-    const top = [...conCaidas]
-      .sort(
-        (a, b) =>
-          b.minutosCaido - a.minutosCaido || b.caidas - a.caidas || a.codigoRecinto.localeCompare(b.codigoRecinto),
-      )
-      .slice(0, TOP_TARJETA);
-    const maximo = top[0].minutosCaido;
-    lineas.push('', '<b>Más tiempo sin enlace</b>');
-    top.forEach((e, i) => {
-      const abreviatura = abreviarCanton(e.canton);
-      // 0 caídas con tiempo caído = la caída venía del período anterior.
-      const caidas = e.caidas === 0 ? 'venía caído' : plural(e.caidas, 'caída');
-      lineas.push(
-        `${i + 1}. ${escapeHtml(recortarNombre(e.nombreRecinto))} ` +
-          `<i>(${escapeHtml(e.codigoRecinto)}${abreviatura ? ` · ${escapeHtml(abreviatura)}` : ''})</i>`,
-        `${barra(e.minutosCaido, maximo)} ${formatearDuracion(e.minutosCaido)} · ${caidas}${e.sigueCaido ? ' 🔴' : ''}`,
-      );
-    });
-    if (conCaidas.length > TOP_TARJETA) {
-      lineas.push(`… y ${plural(conCaidas.length - TOP_TARJETA, 'recinto')} más con caídas`);
+  const porTiempo = [...conCaidas].sort(
+    (a, b) => b.minutosCaido - a.minutosCaido || b.caidas - a.caidas || a.codigoRecinto.localeCompare(b.codigoRecinto),
+  );
+  const siguen = porTiempo.filter((e) => e.sigueCaido);
+  const volvieron = porTiempo.filter((e) => !e.sigueCaido);
+  const encabezado = (e: (typeof conCaidas)[number], n: number) => {
+    const abreviatura = abreviarCanton(e.canton);
+    return (
+      `${n}. ${escapeHtml(recortarNombre(e.nombreRecinto))} ` +
+      `<i>(${escapeHtml(e.codigoRecinto)}${abreviatura ? ` · ${escapeHtml(abreviatura)}` : ''})</i>`
+    );
+  };
+  let n = 0;
+  let sinMostrar = 0;
+
+  if (siguen.length > 0) {
+    lineas.push('', `<b>🔴 Siguen caídos (${siguen.length})</b>`);
+    for (const e of siguen.slice(0, MAX_SIGUEN_TARJETA)) {
+      const desde = e.caidoDesde ? textoCaidoDesde(actual, e.caidoDesde) : textoVeniaCaido(actual);
+      // Si la caída empezó antes del período, sus minutos son solo los de este período.
+      const empezoAntes = !e.caidoDesde || e.caidoDesde < actual.desde;
+      const duracion = formatearDuracion(e.minutosCaido) + (empezoAntes ? ` ${actual.periodo === 'dia' ? 'en el día' : 'en el período'}` : '');
+      lineas.push(encabezado(e, ++n), `    caído ${desde} · ${duracion}`);
     }
+    sinMostrar += Math.max(0, siguen.length - MAX_SIGUEN_TARJETA);
   }
+
+  if (volvieron.length > 0) {
+    lineas.push('', `<b>✅ Ya volvieron (${volvieron.length})</b>`);
+    for (const e of volvieron.slice(0, TOP_TARJETA)) {
+      const caidas = e.caidas === 0 ? textoVeniaCaido(actual) : plural(e.caidas, 'caída');
+      lineas.push(`${encabezado(e, ++n)} · ${formatearDuracion(e.minutosCaido)}, ${caidas}`);
+    }
+    sinMostrar += Math.max(0, volvieron.length - TOP_TARJETA);
+  }
+
+  if (sinMostrar > 0) lineas.push(`… y ${plural(sinMostrar, 'recinto')} más`);
   return lineas.join('\n');
 }
 
