@@ -657,14 +657,14 @@ function formatearEscalamientoResumido(grupos: GrupoAlerta[]): string[] {
 
 /** Todo lo que cambió en un ciclo del cron, para avisarlo en un solo mensaje. */
 export interface AvisoCiclo {
-  /** Estado confirmado de todos los recintos (no la lectura cruda, que parpadea). */
+  /** Estado de todos los recintos según la hoja en este ciclo (lo mismo que /caidos). */
   caidos: EnlaceCaido[];
   activos: EnlaceCaido[];
   /** Caídas confirmadas en este ciclo (se destacan con técnico y a quién llamar). */
   nuevos: Set<string>;
   /** Técnico y a quién llamar: de todos los caídos si son pocos; si no, de los nuevos. */
   contactos?: Map<string, ContactoRecinto>;
-  /** Recintos por técnico con su estado confirmado (botones con muchos caídos). */
+  /** Recintos por técnico con su estado según la hoja (botones con muchos caídos). */
   grupos: GrupoAsignacion[];
   /** Recuperaciones confirmadas en este ciclo. */
   recuperados: EnlaceCaido[];
@@ -768,13 +768,13 @@ const MAX_BOTONES = 100;
 /** callback_data de los botones de técnico del tablero ("pend:3"; "pend:sin" = sin técnico). */
 export const PREFIJO_CALLBACK_PENDIENTES = 'pend:';
 
-/** Lo necesario para describir la situación de los enlaces (estado confirmado). */
+/** Lo necesario para describir la situación de los enlaces (según la hoja). */
 export interface EstadoEnlaces {
   caidos: EnlaceCaido[];
   activos: EnlaceCaido[];
   /** Técnico y a quién llamar de cada caído (se usa con pocos caídos). */
   contactos?: Map<string, ContactoRecinto>;
-  /** Recintos por técnico con su estado confirmado; [] si no se pudo leer el distributivo. */
+  /** Recintos por técnico con su estado según la hoja; [] si no se pudo leer el distributivo. */
   grupos: GrupoAsignacion[];
 }
 

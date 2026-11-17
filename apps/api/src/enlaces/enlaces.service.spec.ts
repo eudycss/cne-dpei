@@ -473,7 +473,7 @@ describe('EnlacesService', () => {
         await expect(service.revisarEnlaces()).resolves.toBeUndefined();
       });
 
-      it('con muchos caídos, el tablero va por técnico con el estado confirmado', async () => {
+      it('con muchos caídos, el tablero va por técnico con lo que dice la hoja (como /caidos)', async () => {
         const filas = ['1', '2', '3', '4', '5'].map((c) => ({ codigoRecinto: c, nombreRecinto: `R${c}`, estado: 'FALLO' as const }));
         sheetsClient.leerEnlacesImbabura.mockResolvedValue(filas);
         prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
@@ -481,7 +481,7 @@ describe('EnlacesService', () => {
         distributivo.asignaciones.mockResolvedValue(
           filas.map((f) => ({ codigoRecinto: f.codigoRecinto, localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo Leal' })),
         );
-        // En la tabla la lectura del 5 ya volvió a ACTIVO, pero sigue confirmado en FALLO.
+        // En la tabla la lectura del 5 ya volvió a ACTIVO (aún confirmado en FALLO): cuenta lo de la hoja.
         prisma.enlaceRecinto.findMany.mockResolvedValue(
           filas.map((f) => ({ ...f, canton: null, estado: f.codigoRecinto === '5' ? 'ACTIVO' : 'FALLO', estadoConfirmado: 'FALLO' })),
         );
@@ -489,9 +489,29 @@ describe('EnlacesService', () => {
         await service.revisarEnlaces();
 
         const [texto, teclado] = telegram.publicarTablero.mock.calls[0];
-        expect(texto).toContain('1. Jairo Leal: 5');
-        expect(teclado).toEqual({ inline_keyboard: [[{ text: '1. Jairo Leal · 5🔴', callback_data: 'pend:1' }]] });
+        expect(texto).toContain('1. Jairo Leal: 4');
+        expect(teclado).toEqual({ inline_keyboard: [[{ text: '1. Jairo Leal · 4🔴', callback_data: 'pend:1' }]] });
       });
+    });
+
+    it('el aviso cuenta los caídos según la hoja, aunque un recinto aún no confirme su vuelta', async () => {
+      sheetsClient.leerEnlacesImbabura.mockResolvedValue([
+        { codigoRecinto: '1476', nombreRecinto: 'UE Víctor Mideros', estado: 'ACTIVO' },
+        { codigoRecinto: '100', nombreRecinto: 'Parpadea', estado: 'ACTIVO' },
+        { codigoRecinto: '5939', nombreRecinto: 'UE República del Ecuador', estado: 'FALLO' },
+      ]);
+      prisma.enlaceRecinto.findUnique
+        .mockResolvedValueOnce(antes('FALLO', 'ACTIVO')) // 2.ª lectura ACTIVO: recuperación confirmada
+        .mockResolvedValueOnce(antes('FALLO', 'FALLO')) // 1.ª lectura ACTIVO: sigue confirmado en FALLO
+        .mockResolvedValueOnce(antes('FALLO', 'FALLO'));
+      prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
+
+      await service.revisarEnlaces();
+
+      const aviso = telegram.enviarAvisoCiclo.mock.calls[0][0];
+      expect(aviso.recuperados.map((e: { codigoRecinto: string }) => e.codigoRecinto)).toEqual(['1476']);
+      expect(aviso.caidos.map((e: { codigoRecinto: string }) => e.codigoRecinto)).toEqual(['5939']);
+      expect(aviso.activos).toHaveLength(2);
     });
 
     describe('anti-parpadeo (varios ciclos sobre la misma tabla)', () => {
@@ -595,7 +615,7 @@ describe('EnlacesService', () => {
           expect(telegram.enviarAvisoCiclo.mock.calls[0][0].recuperados).toEqual([{ ...recinto, canton: null }]);
         });
 
-        it('la lista del aviso usa el estado confirmado: un recinto que parpadea no aparece y desaparece', async () => {
+        it('la lista del aviso muestra lo que dice la hoja (como /caidos), aunque el recinto aún no confirme', async () => {
           const otro = { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide' };
           // 978 confirmado caído; 982 confirmado ACTIVO pero esta lectura dice FALLO (parpadeo).
           prisma.enlaceRecinto.findUnique.mockImplementation(async ({ where }: { where: { codigoRecinto: string } }) =>
@@ -608,8 +628,10 @@ describe('EnlacesService', () => {
           await service.revisarEnlaces();
 
           const aviso = telegram.enviarAvisoCiclo.mock.calls[0][0];
-          expect(aviso.caidos).toEqual([{ ...recinto, canton: null }]);
-          expect(aviso.activos).toEqual([{ ...otro, canton: null }]);
+          // 982 aparece caído (lo dice la hoja) pero no se anuncia como nuevo: el anti-parpadeo solo decide qué se avisa.
+          expect(aviso.caidos).toEqual([{ ...recinto, canton: null }, { ...otro, canton: null }]);
+          expect(aviso.activos).toEqual([]);
+          expect(aviso.nuevos).toEqual(new Set(['978']));
         });
 
         it('con 2 caídas en la hora todavía es un aviso normal', async () => {
@@ -1769,20 +1791,20 @@ describe('EnlacesService', () => {
           { codigoRecinto: '1', localidad: '', parroquia: '', numeroTecnico: 1, tecnico: 'Jairo Leal' },
         ]);
         prisma.enlaceRecinto.findMany.mockResolvedValue([
-          // Lectura en ACTIVO pero confirmado en FALLO: cuenta como pendiente (no parpadea).
+          // Lectura en ACTIVO aunque siga confirmado en FALLO: manda la hoja, ya no es pendiente.
           { codigoRecinto: '982', nombreRecinto: 'UE Zaldumbide', canton: 'Ibarra', estado: 'ACTIVO', estadoConfirmado: 'FALLO' },
           { codigoRecinto: '1', nombreRecinto: 'Escuela', canton: 'Ibarra', estado: 'ACTIVO', estadoConfirmado: 'ACTIVO' },
         ]);
         encargados.encargados.mockResolvedValue(new Map([['982', { nombre: 'Danilo', telefono: '0968' }]]));
       });
 
-      it('"pend:1" contesta el toque y manda los pendientes de ese técnico con su estado confirmado', async () => {
+      it('"pend:1" contesta el toque y manda los pendientes de ese técnico según la hoja', async () => {
         await service.procesarComandoTelegram('secreto123', boton('pend:1'));
 
         expect(telegram.responderBoton).toHaveBeenCalledWith('cb-p');
         const [grupo, contactos] = telegram.enviarPendientesTecnico.mock.calls[0];
         expect(grupo.tecnico).toBe('Jairo Leal');
-        expect(grupo.recintos.find((r: { codigoRecinto: string }) => r.codigoRecinto === '982').estado).toBe('FALLO');
+        expect(grupo.recintos.find((r: { codigoRecinto: string }) => r.codigoRecinto === '982').estado).toBe('ACTIVO');
         expect(contactos.get('982')).toEqual({ nombre: 'Danilo', telefono: '0968' });
       });
 
