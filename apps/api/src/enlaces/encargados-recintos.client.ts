@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import { CAMPOS_CONTACTOS_CDA, type ContactosCda, primerTelefono, textoContactosBot } from '../catalog/contactos-cda';
+import {
+  CAMPOS_CONTACTOS_CDA,
+  claveTelefono,
+  type ContactosCda,
+  primerTelefono,
+  telefonosDeContactos,
+  telefonosEnTexto,
+  textoContactosBot,
+} from '../catalog/contactos-cda';
 import { PrismaService } from '../db/prisma.service';
 import { descargarExcelDrive, LecturaCacheada, normalizarEncabezado, textoCelda } from './drive-excel';
 
@@ -127,9 +135,25 @@ function unaLinea(valor: string): string {
 export type ContactosDeRecinto = ContactosCda & { codigoRecinto: string };
 
 /**
+ * El encargado del Drive sin quien ya figura en la base (mismo número): en el formato de
+ * columnas se descarta entero; en el del formulario ("Rector Ana 099…, inspector Luis 098…")
+ * se quita cada persona cuyo número ya salió. null si no queda nadie nuevo.
+ */
+function encargadoSinRepetir(encargado: EncargadoRecinto, vistos: Set<string>): EncargadoRecinto | null {
+  const clave = claveTelefono(encargado.telefono);
+  if (clave) return vistos.has(clave) ? null : encargado;
+  const nuevos = encargado.nombre.split(/\s*[,;]\s*/).filter((parte) => {
+    const telefonos = telefonosEnTexto(parte);
+    return parte && !(telefonos.length > 0 && telefonos.every((t) => vistos.has(t)));
+  });
+  return nuevos.length > 0 ? { ...encargado, nombre: nuevos.join(', ') } : null;
+}
+
+/**
  * Suma el rector y los conserjes (base de datos) a los encargados del Drive:
  * "Rector: Nombre, teléfono 099… · Conserje: …", y el encargado del formulario
- * va detrás ("· Encargado: …"). Un CDA solo con contactos de la base también aparece.
+ * va detrás ("· Encargado: …") solo con quien no repita un número de la base.
+ * Un CDA solo con contactos de la base también aparece.
  */
 export function combinarContactos(
   drive: Map<string, EncargadoRecinto>,
@@ -140,10 +164,11 @@ export function combinarContactos(
     const texto = textoContactosBot(c);
     if (!texto) continue;
     const previo = drive.get(c.codigoRecinto);
+    const extra = previo ? encargadoSinRepetir(previo, telefonosDeContactos(c)) : null;
     mapa.set(c.codigoRecinto, {
-      nombre: previo?.nombre ? `${texto} · Encargado: ${previo.nombre}` : texto,
-      telefono: previo?.telefono ?? '',
-      conTelefono: !!(previo?.telefono?.trim() || primerTelefono(c)),
+      nombre: extra?.nombre ? `${texto} · Encargado: ${extra.nombre}` : texto,
+      telefono: extra?.telefono ?? '',
+      conTelefono: !!(extra?.telefono?.trim() || primerTelefono(c)),
     });
   }
   return mapa;

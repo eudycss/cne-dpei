@@ -213,4 +213,25 @@ describe('combinarContactos', () => {
     const r = combinarContactos(new Map(), [{ ...sinDatos, codigoRecinto: '1', rectorNombre: 'Ana' }]);
     expect(r.get('1')).toMatchObject({ nombre: 'Rector: Ana', conTelefono: false });
   });
+
+  it('del encargado del formulario quita a quien repite un número de la base y deja a los demás', () => {
+    const drive = new Map([
+      ['5939', { nombre: 'Rector Silvia Morales 0986659040, inspector Hernán Cachimuel 0994652948', telefono: '' }],
+    ]);
+    const r = combinarContactos(drive, [
+      { ...sinDatos, codigoRecinto: '5939', rectorNombre: 'Morales Jacome Silvia', rectorTelefono: '0986659040' },
+    ]);
+    expect(r.get('5939')!.nombre).toBe(
+      'Rector: Morales Jacome Silvia, teléfono 0986659040 · Encargado: inspector Hernán Cachimuel 0994652948',
+    );
+  });
+
+  it('si el encargado del Drive solo repite números de la base, no se agrega', () => {
+    const base = { ...sinDatos, codigoRecinto: '7', rectorNombre: 'Ana', rectorTelefono: '0991111111' };
+    const esperado = { nombre: 'Rector: Ana, teléfono 0991111111', telefono: '', conTelefono: true };
+    const formulario = combinarContactos(new Map([['7', { nombre: 'Rectora Ana 099 111 1111', telefono: '' }]]), [base]);
+    const columnas = combinarContactos(new Map([['7', { nombre: 'Ana P.', telefono: '0991111111' }]]), [base]);
+    expect(formulario.get('7')).toEqual(esperado);
+    expect(columnas.get('7')).toEqual(esperado);
+  });
 });

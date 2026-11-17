@@ -37,12 +37,40 @@ export function textoConserjes(c: ContactosCda): string {
     .join('\n');
 }
 
-/** Línea del bot: "Rector: Nombre, teléfono 099… · Conserje: Nombre, teléfono 099…"; vacía si no hay dato. */
+/**
+ * Un teléfono para comparar: solo dígitos y los últimos 9 (0991234567, "099 123 4567"
+ * y +593991234567 son el mismo). Vacío si no parece un teléfono.
+ */
+export function claveTelefono(telefono: string | null | undefined): string {
+  const digitos = (telefono ?? '').replace(/\D/g, '');
+  return digitos.length >= 7 ? digitos.slice(-9) : '';
+}
+
+/** Las claves (ver claveTelefono) de los teléfonos escritos dentro de un texto libre. */
+export function telefonosEnTexto(texto: string): string[] {
+  return (texto.match(/\+?\d[\d\s-]{5,}\d/g) ?? []).map(claveTelefono).filter(Boolean);
+}
+
+/** Claves de los teléfonos del rector y los conserjes. */
+export function telefonosDeContactos(c: ContactosCda): Set<string> {
+  return new Set([c.rectorTelefono, c.conserjeTelefono, c.conserje2Telefono].map(claveTelefono).filter(Boolean));
+}
+
+/**
+ * Línea del bot: "Rector: Nombre, teléfono 099… · Conserje: Nombre, teléfono 099…"; vacía si no hay dato.
+ * Un contacto con un número que ya salió (ej. los dos conserjes con el mismo celular) no se repite.
+ */
 export function textoContactosBot(c: ContactosCda): string {
+  const vistos = new Set<string>();
   const persona = (cargo: string, nombre: string | null, telefono: string | null) => {
     const n = limpiar(nombre);
     const t = limpiar(telefono);
     if (!n && !t) return '';
+    const clave = claveTelefono(t);
+    if (clave) {
+      if (vistos.has(clave)) return '';
+      vistos.add(clave);
+    }
     return `${cargo}: ${unir([n, t ? `teléfono ${t}` : ''], ', ')}`;
   };
   return unir(
