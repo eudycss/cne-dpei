@@ -284,7 +284,8 @@ export class EnlacesService {
 
     // El historial sigue el estado confirmado, no la lectura cruda: así una caída
     // se cierra en el mismo ciclo en que se avisa la recuperación ("volvió tras 42
-    // min") y un parpadeo no reinicia el reloj del escalamiento.
+    // min") y un parpadeo no reinicia el reloj del escalamiento. Lo que se MUESTRA
+    // (conteos, lista y tablero) es lo que dice la hoja, igual que /caidos.
     const filasConfirmadas = filas.flatMap((f) => {
       const estado = confirmados.get(f.codigoRecinto);
       return estado ? [{ ...f, estado }] : [];
@@ -302,7 +303,7 @@ export class EnlacesService {
     // Con el historial desactualizado podría avisarse de un enlace que ya volvió.
     const escalados = historial.ok ? await this.escalamiento.escalar() : [];
 
-    const estado = await this.estadoEnlaces(filasConfirmadas, caidas);
+    const estado = await this.estadoEnlaces(filas, caidas);
 
     await this.notificarCaidasPorCorreo(caidas);
     await this.notificarRecuperadosPorCorreo(recuperados);
@@ -470,7 +471,7 @@ export class EnlacesService {
     caidas: EnlaceCaido[];
     recuperados: EnlaceCaido[];
     escalados: GrupoAlerta[];
-    /** La situación confirmada (no la lectura cruda, que parpadea). */
+    /** La situación según la hoja en este ciclo (lo mismo que muestra /caidos). */
     estado: EstadoEnlaces;
     minutosCaido: Map<string, number>;
   }): Promise<void> {
@@ -502,24 +503,24 @@ export class EnlacesService {
   }
 
   /**
-   * La situación confirmada para el aviso y el tablero. Con pocos caídos, el técnico y
+   * La situación según la hoja para el aviso y el tablero. Con pocos caídos, el técnico y
    * a quién llamar de cada uno; con muchos, los recintos por técnico (para sus botones)
    * y los contactos de los que cayeron en este ciclo. Si Drive falla, sale sin eso.
    */
-  private async estadoEnlaces(filasConfirmadas: SheetEnlaceRow[], caidasDelCiclo: EnlaceCaido[]): Promise<EstadoEnlaces> {
+  private async estadoEnlaces(filas: SheetEnlaceRow[], caidasDelCiclo: EnlaceCaido[]): Promise<EstadoEnlaces> {
     const comoEnlace = (f: SheetEnlaceRow): EnlaceCaido => ({
       codigoRecinto: f.codigoRecinto,
       nombreRecinto: f.nombreRecinto,
       canton: normalizarCanton(f.canton),
     });
-    const caidos = filasConfirmadas.filter((f) => f.estado === 'FALLO').map(comoEnlace);
-    const activos = filasConfirmadas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace);
+    const caidos = filas.filter((f) => f.estado === 'FALLO').map(comoEnlace);
+    const activos = filas.filter((f) => f.estado === 'ACTIVO').map(comoEnlace);
     const muchos = caidos.length > MAX_CAIDOS_DETALLADOS;
     const codigos = new Set((muchos ? caidasDelCiclo : caidos).map((e) => e.codigoRecinto));
     const [contactos, grupos] = await Promise.all([
       codigos.size > 0 ? this.contactosDe(codigos) : Promise.resolve(undefined),
       muchos
-        ? this.gruposAsignacion(true).catch((e) => {
+        ? this.gruposAsignacion().catch((e) => {
             this.log.warn(`No se pudieron armar los pendientes por técnico: ${(e as Error)?.message ?? e}`);
             return [] as GrupoAsignacion[];
           })
@@ -553,7 +554,7 @@ export class EnlacesService {
   /** Botón de un técnico (tablero o aviso): manda aparte, en silencio, sus recintos caídos y a quién llamar. */
   async mostrarPendientesTelegram(clave: string): Promise<void> {
     const [grupos, encargados] = await Promise.all([
-      this.gruposAsignacion(true),
+      this.gruposAsignacion(),
       this.leerDeDrive(() => this.encargados.encargados(), 'los encargados de recintos'),
     ]);
     const grupo = grupos.find((g) => claveGrupoAsignacion(g) === clave);
@@ -731,17 +732,15 @@ export class EnlacesService {
   /** Recintos CDA agrupados por técnico, leídos del distributivo en Drive, con
    * el estado actual del enlace de cada uno. Los recintos monitoreados que no
    * están en el distributivo van al final como "Sin técnico asignado". */
-  private async gruposAsignacion(confirmado = false): Promise<GrupoAsignacion[]> {
-    const [asignaciones, filas] = await Promise.all([
+  private async gruposAsignacion(): Promise<GrupoAsignacion[]> {
+    // Lo que dice la hoja, igual que /caidos: el anti-parpadeo solo decide qué se avisa.
+    const [asignaciones, enlaces] = await Promise.all([
       this.distributivo.asignaciones(),
       this.prisma.enlaceRecinto.findMany({
-        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true, estadoConfirmado: true },
+        select: { codigoRecinto: true, nombreRecinto: true, canton: true, estado: true },
         orderBy: { codigoRecinto: 'asc' },
       }),
     ]);
-    // `confirmado`: el tablero y sus botones usan lo confirmado (no parpadea); un
-    // recinto aún sin confirmar cae a su última lectura.
-    const enlaces = filas.map((f) => ({ ...f, estado: confirmado ? (f.estadoConfirmado ?? f.estado) : f.estado }));
     // Genéricos explícitos: sin ellos la CI (sin `prisma generate`) infiere Map<unknown, unknown>.
     const enlacePorCodigo = new Map<string, (typeof enlaces)[number]>(enlaces.map((e) => [e.codigoRecinto, e]));
 
