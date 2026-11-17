@@ -10,7 +10,7 @@ import {
   parsearFecha,
   rangoPeriodo,
 } from './enlaces-estadisticas.service';
-import { barra, formatearDuracion, formatearTarjeta, tecladoPeriodos } from './telegram-notifier';
+import { formatearDuracion, formatearTarjeta, tecladoPeriodos } from './telegram-notifier';
 
 const iso = (s: string) => new Date(s);
 // Medianoche de Ecuador = 05:00 UTC.
@@ -128,7 +128,13 @@ describe('calcularEstadisticas', () => {
     );
 
     expect(r.ranking[0]).toEqual(
-      expect.objectContaining({ codigoRecinto: '96', caidas: 1, minutosCaido: 60, sigueCaido: true }),
+      expect.objectContaining({
+        codigoRecinto: '96',
+        caidas: 1,
+        minutosCaido: 60,
+        sigueCaido: true,
+        caidoDesde: '2026-10-14T16:00:00.000Z',
+      }),
     );
     // Observado: 05:00→17:00 = 12 h; 1 h caído → 91,7 %.
     expect(r.ranking[0].disponibilidad).toBe(91.7);
@@ -374,38 +380,56 @@ describe('formato para Telegram', () => {
     comparaHastaAhora = false,
   ) => formatearTarjeta({ titulo, actual, anterior, comparaHastaAhora });
 
-  it('resume arriba lo que se entiende de un vistazo', () => {
-    const texto = tarjeta(stats([item('1207', 'Escuela', 2, 75, true), item('28', 'UE Ibarra', 1, 10)]));
+  it('resume arriba lo que se entiende de un vistazo: disponibilidad de la red y recintos sin caídas', () => {
+    // Promedio de los 56: 54 al 100 %, uno al 99 % y otro al 50 % → 99,1 %.
+    const texto = tarjeta(stats([item('1207', 'Escuela', 2, 75, true), { ...item('28', 'UE Ibarra', 1, 10), disponibilidad: 50 }]));
 
     expect(texto).toContain('<b>📊 Enlaces CDA · Hoy</b> (14/10)');
-    expect(texto).toContain('✅ <b>54 de 56</b> recintos sin caídas (96 %)');
-    expect(texto).toContain('🔴 2 recintos con caídas · 1 h 25 min sin enlace en total');
-    expect(texto).toContain('🚨 1 sigue caído ahora');
+    expect(texto).toContain('📶 Disponibilidad: <b>99,1 %</b>');
+    expect(texto).toContain('✅ <b>54 de 56</b> recintos sin caídas');
+    expect(texto).not.toContain('sin enlace en total');
+    expect(texto).not.toMatch(/[█░]/);
   });
 
-  it('lista los de más tiempo sin enlace con barra proporcional y escapa el HTML de la hoja', () => {
-    const texto = tarjeta(stats([item('28', 'UE Ibarra', 3, 10), item('1207', 'Escuela <Guallupe> & Co', 1, 80, true)]));
+  it('primero los que siguen caídos con desde qué hora; después los que ya volvieron', () => {
+    const texto = tarjeta(
+      stats([
+        item('28', 'UE Ibarra', 1, 110),
+        { ...item('5939', 'UE República <del> Ecuador', 1, 743, true), canton: 'Otavalo', caidoDesde: '2026-10-14T13:15:00.000Z' },
+        { ...item('1440', 'UE Atahualpa', 0, 420, true), canton: 'Ibarra', caidoDesde: '2026-10-13T22:10:00.000Z' },
+      ]),
+    );
 
-    expect(texto).toContain('<b>Más tiempo sin enlace</b>');
-    expect(texto).toContain('1. Escuela &lt;Guallupe&gt; &amp; Co <i>(1207 · Cot)</i>\n██████████ 1 h 20 min · 1 caída 🔴');
-    expect(texto).toContain('2. UE Ibarra <i>(28 · Cot)</i>\n█░░░░░░░░░ 10 min · 3 caídas');
+    expect(texto).toContain(
+      '<b>🔴 Siguen caídos (2)</b>\n' +
+        '1. UE República &lt;del&gt; Ecuador <i>(5939 · Ota)</i>\n    caído desde las 08:15 · 12 h 23 min\n' +
+        '2. UE Atahualpa <i>(1440 · Iba)</i>\n    caído desde el 13/10 17:10 · 7 h en el día',
+    );
+    expect(texto).toContain('<b>✅ Ya volvieron (1)</b>\n3. UE Ibarra <i>(28 · Cot)</i> · 1 h 50 min, 1 caída');
+  });
+
+  it('uno que volvió y cuya caída venía de antes lo dice en vez de "0 caídas"', () => {
+    expect(tarjeta(stats([item('28', 'UE Ibarra', 0, 300)]))).toContain('· 5 h, desde antes de las 00:00');
   });
 
   it('muestra solo 5 y cuenta el resto', () => {
     const muchos = Array.from({ length: 8 }, (_, i) => item(String(100 + i), 'Recinto', 1, 50 - i));
     const texto = tarjeta(stats(muchos));
 
+    expect(texto).toContain('<b>✅ Ya volvieron (8)</b>');
     expect(texto).toContain('5. Recinto <i>(104 · Cot)</i>');
     expect(texto).not.toContain('6. Recinto');
-    expect(texto).toContain('… y 3 recintos más con caídas');
+    expect(texto).toContain('… y 3 recintos más');
   });
 
   it('sin caídas lo celebra y no muestra ranking', () => {
     const texto = tarjeta(stats([]));
 
-    expect(texto).toContain('✅ <b>56 de 56</b> recintos sin caídas (100 %)');
+    expect(texto).toContain('📶 Disponibilidad: <b>100 %</b>');
+    expect(texto).toContain('✅ <b>56 de 56</b> recintos sin caídas');
     expect(texto).toContain('🎉 Ningún enlace se cayó en este período');
-    expect(texto).not.toContain('Más tiempo sin enlace');
+    expect(texto).not.toContain('Siguen caídos');
+    expect(texto).not.toContain('Ya volvieron');
   });
 
   it.each([
@@ -424,11 +448,19 @@ describe('formato para Telegram', () => {
   });
 
   it('con 0 recintos no divide por cero', () => {
-    expect(tarjeta(stats([], { totalRecintos: 0, sinCaidas: [] }))).toContain('<b>0 de 0</b> recintos sin caídas (100 %)');
+    const texto = tarjeta(stats([], { totalRecintos: 0, sinCaidas: [] }));
+    expect(texto).toContain('<b>0 de 0</b> recintos sin caídas');
+    expect(texto).not.toContain('Disponibilidad');
   });
 
-  it('una caída recién abierta (0 min) va sin barra llena', () => {
-    expect(tarjeta(stats([item('1', 'A', 1, 0, true)]))).toContain('░░░░░░░░░░ 0 min · 1 caída 🔴');
+  it('una caída recién abierta (0 min) en una semana muestra la fecha de inicio', () => {
+    const texto = tarjeta(
+      stats([{ ...item('1', 'A', 1, 0, true), caidoDesde: '2026-10-16T15:00:00.000Z' }], {
+        periodo: 'semana',
+        hasta: '2026-10-19T05:00:00.000Z',
+      }),
+    );
+    expect(texto).toContain('caído desde el 16/10 10:00 · 0 min');
   });
 
   it('sin período anterior no compara', () => {
@@ -451,25 +483,11 @@ describe('formato para Telegram', () => {
     expect(mes).not.toContain('El registro empezó');
   });
 
-  it('una caída que venía del período anterior dice "venía caído" en vez de "0 caídas"', () => {
-    expect(tarjeta(stats([item('28', 'UE Ibarra', 0, 300)]))).toContain('5 h · venía caído');
-  });
-
   it('recorta nombres largos sin partir un emoji', () => {
     const texto = tarjeta(stats([item('1', 'A'.repeat(43) + '😀😀😀', 1, 5)]));
 
     expect(texto).toContain(`${'A'.repeat(43)}😀…`);
     expect(texto).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
-  });
-
-  it.each([
-    [0, 10, '░░░░░░░░░░'],
-    [1, 1000, '█░░░░░░░░░'],
-    [5, 10, '█████░░░░░'],
-    [10, 10, '██████████'],
-    [3, 0, '░░░░░░░░░░'],
-  ])('barra(%i, %i) → %s', (valor, maximo, esperado) => {
-    expect(barra(valor, maximo)).toBe(esperado);
   });
 
   it('los botones marcan el período que se está viendo', () => {

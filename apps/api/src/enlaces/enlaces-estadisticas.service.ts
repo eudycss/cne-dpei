@@ -131,7 +131,10 @@ export function calcularEstadisticas(
       } satisfies EstadisticaEnlace);
     if (empezoEnRango) e.caidas += 1;
     e.minutosCaido += Math.max(0, hasta - desde) / MS_MINUTO;
-    if (!c.fin) e.sigueCaido = true;
+    if (!c.fin) {
+      e.sigueCaido = true;
+      e.caidoDesde = c.inicio.toISOString();
+    }
     porRecinto.set(c.codigoRecinto, e);
   }
 
