@@ -32,6 +32,7 @@ describe('CuentasCdaService', () => {
     usuarioRol: { upsert: jest.fn(), deleteMany: jest.fn(), count: jest.fn() },
     rol: { findUnique: jest.fn() },
     refreshToken: { updateMany: jest.fn() },
+    bitacoraAuditoria: { create: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -45,6 +46,8 @@ describe('CuentasCdaService', () => {
     prisma.usuario.create.mockResolvedValue({ id: USR_ID });
     prisma.operadorCda.findMany.mockResolvedValue([]);
     prisma.usuarioRol.count.mockResolvedValue(0);
+    prisma.usuarioRol.deleteMany.mockResolvedValue({ count: 1 });
+    prisma.usuario.updateMany.mockResolvedValue({ count: 1 });
     const moduleRef = await Test.createTestingModule({
       providers: [CuentasCdaService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -170,38 +173,77 @@ describe('CuentasCdaService', () => {
   });
 
   describe('retirarCuenta', () => {
-    it('quita el rol, desactiva si era su único rol y cierra sus sesiones', async () => {
+    const CTX = { motivo: 'CAMBIO_CARGO_CDA' as const, hechoPorId: 'admin-1' };
+
+    it('quita el rol, desactiva si era su único rol, cierra sus sesiones y lo deja en la bitácora', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
       prisma.usuarioRol.count.mockResolvedValueOnce(0);
 
-      await service.retirarCuenta(prisma as never, OP_ID);
+      await expect(service.retirarCuenta(prisma as never, OP_ID, CTX)).resolves.toBe('DESACTIVADA');
 
       expect(prisma.usuarioRol.deleteMany).toHaveBeenCalledWith({ where: { usuarioId: USR_ID, rolId: ROL_ID } });
-      expect(prisma.usuario.update).toHaveBeenCalledWith({ where: { id: USR_ID }, data: { activo: false } });
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({ where: { id: USR_ID, activo: true }, data: { activo: false } });
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
         where: { usuarioId: USR_ID, revocadoEn: null },
         data: { revocadoEn: expect.any(Date) },
       });
+      expect(prisma.bitacoraAuditoria.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: 'admin-1',
+          accion: 'USER_DESACTIVADO_AUTO',
+          entidad: 'usuario',
+          entidadId: USR_ID,
+          datosDespues: { motivo: 'CAMBIO_CARGO_CDA', operadorCdaId: OP_ID, rolRetirado: 'OPERADOR_CDA', activo: false },
+        },
+      });
     });
 
-    it('si tiene otros roles (p. ej. Administrador) NO desactiva la cuenta', async () => {
+    it('si tiene otros roles (p. ej. Administrador) NO desactiva la cuenta y registra solo el retiro del rol', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
       prisma.usuarioRol.count.mockResolvedValueOnce(1);
 
-      await service.retirarCuenta(prisma as never, OP_ID);
+      await expect(service.retirarCuenta(prisma as never, OP_ID, CTX)).resolves.toBe('ROL_RETIRADO');
 
       expect(prisma.usuarioRol.deleteMany).toHaveBeenCalled();
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
       expect(prisma.refreshToken.updateMany).toHaveBeenCalled();
+      expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data).toMatchObject({
+        accion: 'ROLE_REVOKE_AUTO',
+        entidadId: USR_ID,
+        datosDespues: { rolRetirado: 'OPERADOR_CDA' },
+      });
+    });
+
+    it('si ya no tenía el rol ni estaba activa, no ensucia la bitácora', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuarioRol.deleteMany.mockResolvedValueOnce({ count: 0 });
+      prisma.usuario.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      // No se informa como "quedó desactivada": ya lo estaba.
+      await expect(service.retirarCuenta(prisma as never, OP_ID, CTX)).resolves.toBe('YA_INACTIVA');
+
+      expect(prisma.bitacoraAuditoria.create).not.toHaveBeenCalled();
+    });
+
+    it('sin autor (proceso interno) la bitácora queda con usuario vacío', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+
+      await service.retirarCuenta(prisma as never, OP_ID, { motivo: 'OCULTADO_CDA' });
+
+      expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data).toMatchObject({
+        usuarioId: null,
+        datosDespues: { motivo: 'OCULTADO_CDA' },
+      });
     });
 
     it('sin cuenta vinculada no hace nada', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: null }));
 
-      await service.retirarCuenta(prisma as never, OP_ID);
+      await expect(service.retirarCuenta(prisma as never, OP_ID, CTX)).resolves.toBe('SIN_CUENTA');
 
       expect(prisma.usuarioRol.deleteMany).not.toHaveBeenCalled();
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.bitacoraAuditoria.create).not.toHaveBeenCalled();
     });
   });
 

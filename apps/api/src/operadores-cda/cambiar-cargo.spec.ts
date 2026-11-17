@@ -117,6 +117,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
       desde: '2026-10-25',
       carnetVigente: false,
       actaVigente: false,
+      cuentaDesactivada: false,
       operador: { grupo: 'OPERADOR' },
     });
   });
@@ -164,11 +165,21 @@ describe('OperadoresCdaService.cambiarCargo', () => {
   });
 
   describe('cuenta de la app', () => {
-    it('de asistente a digitador: retira la cuenta en la misma transacción', async () => {
+    it('de asistente a digitador: retira la cuenta en la misma transacción, con autor y motivo para la bitácora', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'ASISTENTE' }));
-      await service.cambiarCargo(OP, 'DIGITADOR', USR);
-      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(tx, OP);
+      cuentas.retirarCuenta.mockResolvedValueOnce('DESACTIVADA');
+      const r = await service.cambiarCargo(OP, 'DIGITADOR', USR);
+      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(tx, OP, { motivo: 'CAMBIO_CARGO_CDA', hechoPorId: USR });
       expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
+      // La web avisa que la cuenta quedó desactivada en Usuarios.
+      expect(r.cuentaDesactivada).toBe(true);
+    });
+
+    it('si conserva otro rol, la cuenta no se informa como desactivada', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'ASISTENTE' }));
+      cuentas.retirarCuenta.mockResolvedValueOnce('ROL_RETIRADO');
+      const r = await service.cambiarCargo(OP, 'DIGITADOR', USR);
+      expect(r.cuentaDesactivada).toBe(false);
     });
 
     it('de digitador a operador: asegura la cuenta', async () => {

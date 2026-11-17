@@ -1650,6 +1650,11 @@ export interface CambiarCargoOperadorCdaResult {
   carnetVigente: boolean;
   /** Tenía acta de entrega (queda como documento del cargo anterior). */
   actaVigente: boolean;
+  /**
+   * El nuevo cargo no usa la app y esa era su única cuenta: quedó desactivada
+   * en Usuarios (para darle otro rol hay que activarla primero).
+   */
+  cuentaDesactivada: boolean;
 }
 
 export interface ImportOperadoresCdaResult {

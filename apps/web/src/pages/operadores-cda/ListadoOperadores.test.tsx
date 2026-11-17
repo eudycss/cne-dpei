@@ -233,6 +233,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
           desde: hoyEcuador(),
           carnetVigente: true,
           actaVigente: true,
+          cuentaDesactivada: false,
         },
       });
     renderPagina();
@@ -242,6 +243,8 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     const cargoCda = within(dialogo).getByRole('combobox', { name: 'Cargo CDA o CPE' });
     expect(cargoCda).toHaveDisplayValue('Asistentes CDA');
     await userEvent.selectOptions(cargoCda, 'Operadores CDA');
+    // Entre operador y asistente sigue usando la app: no se advierte la pérdida de acceso.
+    expect(within(dialogo).queryByText('Perderá el acceso a la app.')).not.toBeInTheDocument();
     expect(cargoCda).toHaveAccessibleDescription(
       'Pasará a Operadores CDA desde hoy (desde mañana si ya marcó entrada hoy). Su asistencia anterior queda en Asistentes CDA.',
     );
@@ -273,6 +276,7 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
           desde: '2999-01-01',
           carnetVigente: false,
           actaVigente: false,
+          cuentaDesactivada: false,
         },
       });
     renderPagina();
@@ -286,6 +290,39 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
     // Rige desde otro día (ya marcó entrada hoy): se dice en el aviso.
     expect(sileo.success).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'CHÁVEZ MORA LUCÍA ESTEFANÍA · desde mañana (hoy ya marcó entrada)' }),
+    );
+  });
+
+  it('editar: pasar a un cargo sin app advierte antes de guardar y avisa si la cuenta quedó desactivada', async () => {
+    getMock.mockResolvedValue({ data: [operador({})] });
+    patchMock
+      .mockResolvedValueOnce({ data: operador({}) })
+      .mockResolvedValueOnce({
+        data: {
+          operador: operador({ grupo: 'SUPERVISOR' }),
+          grupoAnterior: 'OPERADOR',
+          desde: hoyEcuador(),
+          carnetVigente: false,
+          actaVigente: false,
+          cuentaDesactivada: true,
+        },
+      });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar: CHÁVEZ MORA LUCÍA ESTEFANÍA' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    expect(within(dialogo).queryByText('Perderá el acceso a la app.')).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(within(dialogo).getByRole('combobox', { name: 'Cargo CDA o CPE' }), 'Supervisores');
+    const aviso = within(dialogo).getByRole('status');
+    expect(aviso).toHaveTextContent('Perderá el acceso a la app.');
+    expect(aviso).toHaveTextContent('Si no tiene otro rol en Usuarios, su cuenta quedará desactivada.');
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y pasar a Supervisores' }));
+    await waitFor(() =>
+      expect(sileo.warning).toHaveBeenCalledWith({
+        title: 'Su cuenta de usuario quedó desactivada',
+        description: 'Supervisores no usa la app. Para darle otro rol, actívela en Usuarios (marque "Mostrar inactivos").',
+      }),
     );
   });
 

@@ -107,8 +107,9 @@ export class OperadoresCdaController {
   cambiarActivo(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(cambiarActivoOperadorCdaSchema)) body: { activo: boolean },
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.operadores.cambiarActivo(id, body.activo);
+    return this.operadores.cambiarActivo(id, body.activo, user.sub);
   }
 
   @Patch(':id/dispositivo')
