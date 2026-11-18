@@ -726,6 +726,31 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('1050123412');
   });
 
+  it('foto nueva por revisar: queda si fue pendiente, y quién la aprobó o rechazó', async () => {
+    const subir = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/publico/foto-cda/cedula/subir',
+        body: { cedula: '1050123412', consentimiento: 'true', version: 'LOPDP-2026-10' },
+        operadorCdaId: OTRO,
+        fotoPendienteCda: true,
+      },
+      { ok: true },
+    );
+    expect(subir.data).toMatchObject({ datosDespues: { consentimientoVersion: 'LOPDP-2026-10', pendiente: true } });
+
+    for (const [decision, accion] of [
+      ['aprobar', 'FOTO_CDA_PENDIENTE_APROBAR'],
+      ['rechazar', 'FOTO_CDA_PENDIENTE_RECHAZAR'],
+    ] as const) {
+      const r = await auditar(
+        { method: 'POST', originalUrl: `/operadores-cda/${OTRO}/foto-pendiente/${decision}`, params: { id: OTRO }, user: ADMIN },
+        { id: OTRO },
+      );
+      expect(r.data).toMatchObject({ accion, entidad: 'operador_cda', entidadId: OTRO });
+    }
+  });
+
   it('simulador de digitación: configuración sin personas, quién empieza, y las actas no se auditan', async () => {
     const PRACTICA = '44444444-4444-4444-8444-444444444444';
     const crear = await auditar(

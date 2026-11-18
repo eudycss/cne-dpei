@@ -757,6 +757,13 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 12px;
   background: var(--f-bg-elevated);
 }
+/* Revisión de foto nueva: actual y nueva lado a lado (una debajo de otra en celular). */
+.ocda-revisar-fotos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; }
+.ocda-revisar-fotos figure { margin: 0; display: grid; gap: 0.4rem; }
+.ocda-revisar-fotos figcaption { font-size: 0.85rem; font-weight: 600; color: var(--f-text-muted); }
+.ocda-revisar-fotos img {
+  width: 100%; aspect-ratio: 3 / 4; object-fit: contain; border-radius: 12px; background: var(--f-bg-elevated);
+}
 .ocda-tarjeta-pie { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .tema-futurista .btn.ocda-btn-chico { min-height: 44px; padding: 0.35rem 0.8rem; font-size: 0.8rem; border-radius: 10px; }
 

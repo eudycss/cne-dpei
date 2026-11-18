@@ -401,6 +401,7 @@ export function toOperadorCdaDto(o: {
   unidad: string | null;
   fechaInicio: Date | null;
   fotoKey: string | null;
+  fotoPendienteKey?: string | null;
   activo: boolean;
   creadoEn: Date;
 }): OperadorCda {
@@ -415,6 +416,7 @@ export function toOperadorCdaDto(o: {
     unidad: o.unidad,
     fechaInicio: o.fechaInicio ? o.fechaInicio.toISOString().slice(0, 10) : null,
     tieneFoto: !!o.fotoKey,
+    fotoPendiente: !!o.fotoPendienteKey,
     activo: o.activo,
     creadoEn: o.creadoEn.toISOString(),
   };

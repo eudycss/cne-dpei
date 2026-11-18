@@ -838,6 +838,9 @@ model OperadorCda {
   /// Clave del archivo cifrado en Storage (null = aún no sube su foto).
   fotoKey          String?   @map("foto_key") @db.VarChar(255)
   fotoSubidaEn     DateTime? @map("foto_subida_en") @db.Timestamptz(6)
+  /// Foto nueva que subió la persona con su cédula teniendo ya una: espera la aprobación de la Delegación.
+  fotoPendienteKey String?   @map("foto_pendiente_key") @db.VarChar(255)
+  fotoPendienteEn  DateTime? @map("foto_pendiente_en") @db.Timestamptz(6)
   activo           Boolean   @default(true)
   /// Celular de la persona: ANDROID o IPHONE (la APK solo se instala en Android).
   dispositivo      String?   @db.VarChar(10)

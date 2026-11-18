@@ -15,6 +15,7 @@ import { Cargando } from '../../components/Cargando';
 import { cambiarActivoOperadorCda, getOperadoresCda, urlFotoCdaGeneral } from '../../lib/queries/operadores-cda';
 import { useFotoOperadorUrl } from './useFotoOperador';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
+import { RevisarFotoModal } from './RevisarFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
 import { useGrupoCda } from './grupo';
 import { EnOtroCargo } from './BuscadorGeneral';
@@ -100,6 +101,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const [carnets, setCarnets] = useState(false);
   const [cuentasApp, setCuentasApp] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
+  const [revisarPara, setRevisarPara] = useState<OperadorCda | null>(null);
   // null = cerrado; 'nuevo' = agregar; un operador = editarlo.
   const [formulario, setFormulario] = useState<OperadorCda | 'nuevo' | null>(null);
   const [ocultarA, setOcultarA] = useState<OperadorCda | null>(null);
@@ -176,6 +178,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '';
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
+  const porRevisar = data?.filter((o) => o.activo && o.fotoPendiente).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
 
   // Enlace único para todo el personal CDA/CPE: cada quien escribe su cédula.
@@ -330,6 +333,12 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
             </p>
           </div>
+          {puedeEnlaceFoto && porRevisar > 0 && (
+            <p className="banner" role="status">
+              {porRevisar === 1 ? '1 foto nueva por revisar' : `${porRevisar} fotos nuevas por revisar`}: pulse
+              «Revisar foto» en la tarjeta para aprobarla o rechazarla.
+            </p>
+          )}
           {rangoInvalido && (
             <p id="ingreso-rango-error" className="banner error" role="alert">
               La fecha “desde” es posterior a “hasta”: corrija el rango para filtrar por fecha de ingreso.
@@ -349,6 +358,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                   operador={o}
                   mostrarCuenta={conCuentaApp}
                   onEnlace={puedeEnlaceFoto ? () => setEnlacePara(o) : undefined}
+                  onRevisar={puedeEnlaceFoto && o.fotoPendiente ? () => setRevisarPara(o) : undefined}
                   admin={
                     isAdmin
                       ? {
@@ -382,6 +392,9 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         <CarnetsQrModal operadores={data.filter((o) => o.activo)} onClose={() => setCarnets(false)} />
       )}
       {enlacePara && <EnlaceFotoModal operador={enlacePara} onClose={() => setEnlacePara(null)} />}
+      {revisarPara && (
+        <RevisarFotoModal operador={revisarPara} onClose={() => setRevisarPara(null)} onRevisada={refrescar} />
+      )}
       {formulario && (
         <OperadorFormModal
           operador={formulario === 'nuevo' ? undefined : formulario}
@@ -477,6 +490,7 @@ function TarjetaOperador({
   operador: o,
   mostrarCuenta,
   onEnlace,
+  onRevisar,
   admin,
 }: {
   operador: OperadorCda;
@@ -484,6 +498,8 @@ function TarjetaOperador({
   mostrarCuenta: boolean;
   /** Sin permiso para crear enlaces de foto, no se muestra el botón. */
   onEnlace?: () => void;
+  /** Subió una foto nueva con su cédula: se aprueba o rechaza. */
+  onRevisar?: () => void;
   /** Solo el administrador agrega, edita u oculta. */
   admin?: AccionesAdmin;
 }) {
@@ -530,6 +546,17 @@ function TarjetaOperador({
             <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
               {o.tieneFoto ? 'Foto cargada' : 'Sin foto'}
             </span>
+            {o.fotoPendiente && <span className="ocda-estado pendiente">Foto nueva por revisar</span>}
+            {onRevisar && (
+              <button
+                type="button"
+                className="btn ocda-btn-chico"
+                onClick={onRevisar}
+                aria-label={`Revisar foto nueva: ${o.apellidosNombres}`}
+              >
+                Revisar foto
+              </button>
+            )}
             {onEnlace && (
               <button
                 type="button"

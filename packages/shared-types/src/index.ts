@@ -1214,6 +1214,8 @@ export interface OperadorCda {
   /** AAAA-MM-DD */
   fechaInicio: string | null;
   tieneFoto: boolean;
+  /** Subió una foto nueva con su cédula y espera la aprobación de la Delegación. */
+  fotoPendiente: boolean;
   activo: boolean;
   /**
    * Cuenta de la app (solo grupos OPERADOR y ASISTENTE; el resto, SIN_CUENTA).
@@ -1904,7 +1906,10 @@ export type EnlaceFotoCdaPublico =
  */
 export interface SubidaFotoCdaResult {
   ok: true;
-  cambio: EnlaceFotoCdaCreado;
+  /** null cuando la foto quedó pendiente de aprobación (no hay nada que cambiar aún). */
+  cambio: EnlaceFotoCdaCreado | null;
+  /** Ya tenía foto: la nueva espera la aprobación de la Delegación; la actual se mantiene. */
+  pendiente: boolean;
 }
 
 export interface FotoCdaPorCedula {
@@ -1912,7 +1917,7 @@ export interface FotoCdaPorCedula {
   /** Cédula enmascarada (p. ej. 1050xxxx12). */
   cedula: string;
   cargo: string;
-  /** Ya tiene foto: solo la Delegación puede cambiarla (con un enlace personal). */
+  /** Ya tiene foto: una nueva queda pendiente de aprobación de la Delegación. */
   tieneFoto: boolean;
 }
 

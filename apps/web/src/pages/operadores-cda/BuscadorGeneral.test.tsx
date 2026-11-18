@@ -34,6 +34,7 @@ function operador(o: Partial<OperadorCda>): OperadorCda {
     unidad: null,
     fechaInicio: null,
     tieneFoto: false,
+    fotoPendiente: false,
     activo: true,
     cuenta: 'SIN_CUENTA',
     creadoEn: '2026-10-22T10:00:00Z',
