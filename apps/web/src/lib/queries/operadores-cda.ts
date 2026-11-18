@@ -165,6 +165,17 @@ export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
   return data;
 }
 
+// Foto nueva que subió la persona teniendo ya una: la Delegación la aprueba o rechaza.
+
+export async function getFotoPendienteOperadorCda(operadorId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto-pendiente`, { responseType: 'blob' });
+  return data;
+}
+
+export async function revisarFotoPendienteCda(operadorId: string, decision: 'aprobar' | 'rechazar'): Promise<void> {
+  await api.post(`/operadores-cda/${operadorId}/foto-pendiente/${decision}`);
+}
+
 // Carnet QR: escanear (consultar y luego confirmar la marca) y, solo el administrador, emitir o anular.
 
 export async function consultarQrCda(token: string): Promise<ConsultaQrCda> {

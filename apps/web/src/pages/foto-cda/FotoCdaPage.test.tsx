@@ -256,14 +256,28 @@ describe('FotoCdaPage (enlace único: la persona escribe su cédula)', () => {
     expect(await screen.findByRole('heading', { name: 'El tiempo para cambiar la foto terminó' })).toBeInTheDocument();
   });
 
-  it('si ya tiene foto, no deja subir otra', async () => {
+  it('si ya tiene foto, puede subir una nueva que queda en revisión (sin "Cambiar foto")', async () => {
     postMock.mockResolvedValueOnce({ data: { ...POR_CEDULA, tieneFoto: true } });
-    await escribirCedula();
+    reducirMock.mockResolvedValue(new Blob([new Uint8Array(10)], { type: 'image/jpeg' }));
+    const user = await escribirCedula();
     expect(await screen.findByRole('heading', { name: 'Usted ya tiene una foto registrada' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Tomar foto' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Subir una foto nueva' }));
+    await screen.findByRole('heading', { name: 'Hola, Lucía' });
+    await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+    await user.upload(screen.getByTestId('galeria'), new File(['x'], 'foto.jpg', { type: 'image/jpeg' }));
+    await screen.findByRole('heading', { name: '¿Se ve bien?' });
+    postMock.mockResolvedValueOnce({ data: { ok: true, cambio: null, pendiente: true } });
+    await user.click(screen.getByRole('button', { name: 'Usar esta foto' }));
+
+    expect(await screen.findByRole('heading', { name: 'Foto enviada' })).toBeInTheDocument();
+    expect(screen.getByText(/La Delegación revisará su foto nueva/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cambiar foto' })).not.toBeInTheDocument();
+    expect(postMock.mock.calls[1][0]).toBe('/publico/foto-cda/cedula/subir');
   });
 
-  it('si otra subida ganó mientras tanto (409), muestra que ya tiene foto', async () => {
+  it('si otra subida ganó mientras tanto (409), muestra el aviso y deja reintentar', async () => {
     postMock.mockResolvedValueOnce({ data: POR_CEDULA });
     reducirMock.mockResolvedValue(new Blob([new Uint8Array(10)], { type: 'image/jpeg' }));
     const user = await escribirCedula();
@@ -271,9 +285,10 @@ describe('FotoCdaPage (enlace único: la persona escribe su cédula)', () => {
     await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
     await user.upload(screen.getByTestId('galeria'), new File(['x'], 'foto.jpg', { type: 'image/jpeg' }));
     await screen.findByRole('heading', { name: '¿Se ve bien?' });
-    postMock.mockRejectedValueOnce({ response: { status: 409, data: { message: 'ya tiene' } } });
+    postMock.mockRejectedValueOnce({ response: { status: 409, data: { message: 'Su foto se actualizó mientras subía' } } });
     await user.click(screen.getByRole('button', { name: 'Usar esta foto' }));
-    expect(await screen.findByRole('heading', { name: 'Usted ya tiene una foto registrada' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Su foto se actualizó mientras subía');
+    expect(screen.getByRole('button', { name: 'Usar esta foto' })).toBeEnabled();
   });
 
   it('cédula no registrada: muestra el mensaje de la API y deja corregirla', async () => {

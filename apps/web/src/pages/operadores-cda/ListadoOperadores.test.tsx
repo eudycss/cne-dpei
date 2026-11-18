@@ -37,6 +37,7 @@ const operador = (over: Partial<OperadorCda>): OperadorCda => ({
   unidad: null,
   fechaInicio: '2026-10-20',
   tieneFoto: false,
+  fotoPendiente: false,
   activo: true,
   creadoEn: '2026-10-22T10:00:00.000Z',
   ...over,
@@ -492,6 +493,47 @@ describe('iniciales', () => {
     await userEvent.click(within(dialogo).getByRole('button', { name: 'Cerrar' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(ver).toHaveFocus();
+  });
+
+  it('foto nueva por revisar: aviso, etiqueta y "Revisar foto" muestra ambas; aprobar llama a la API', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true, fotoPendiente: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    postMock.mockResolvedValue({ data: { id: 'o1' } });
+    renderPagina();
+    expect(await screen.findByText(/1 foto nueva por revisar/)).toBeInTheDocument();
+    expect(screen.getByText('Foto nueva por revisar')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar foto nueva: ANDRADE LÓPEZ MARÍA JOSÉ' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Revisar foto nueva' });
+    expect(await within(dialogo).findByRole('img', { name: 'Foto actual de ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    expect(await within(dialogo).findByRole('img', { name: 'Foto nueva de ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente', { responseType: 'blob' });
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Aprobar foto nueva' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente/aprobar'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(sileo.success).toHaveBeenCalledWith(expect.objectContaining({ title: 'Foto nueva aprobada' }));
+  });
+
+  it('rechazar la foto nueva llama a la API de rechazo', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ tieneFoto: true, fotoPendiente: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    postMock.mockResolvedValue({ data: { id: 'o1' } });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: /Revisar foto nueva/ }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Revisar foto nueva' });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Rechazar' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente/rechazar'));
   });
 
   it('sin foto no hay botón para ampliar', async () => {

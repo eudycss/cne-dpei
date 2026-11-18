@@ -178,14 +178,19 @@ function PorEnlace({ token }: { token: string }) {
 /** Enlace único: primero la cédula; si ya tiene foto, no se deja reemplazar desde aquí. */
 function PorCedula() {
   const [encontrada, setEncontrada] = useState<{ cedula: string; datos: FotoCdaPorCedula } | null>(null);
+  const [nueva, setNueva] = useState(false);
   if (!encontrada) return <PedirCedula onDatos={(cedula, datos) => setEncontrada({ cedula, datos })} />;
-  if (encontrada.datos.tieneFoto) return <YaTieneFoto />;
+  if (encontrada.datos.tieneFoto && !nueva) return <YaTieneFoto onNueva={() => setNueva(true)} />;
   return (
     <Flujo
       persona={dePorCedula(encontrada.datos)}
       enviar={(foto) => subirFotoCdaPorCedula(encontrada.cedula, foto)}
-      pantallaPorError={(s) => (s === 409 ? <YaTieneFoto /> : null)}
-      onVolver={() => setEncontrada(null)}
+      // Un 409 (otra subida a la vez) se muestra como aviso y deja reintentar.
+      pantallaPorError={() => null}
+      onVolver={() => {
+        setNueva(false);
+        setEncontrada(null);
+      }}
     />
   );
 }
@@ -314,6 +319,7 @@ function Flujo({
   const subir = useMutation({
     mutationFn: (foto: Blob) => (cambio ? subirFotoCda(cambio.token, foto) : enviar(foto)),
     onSuccess: (r, foto) => {
+      if (r.pendiente) return setFinal(<FotoEnRevision />);
       setCambio(r.cambio);
       setPaso({ tipo: 'listo', url: URL.createObjectURL(foto) });
     },
@@ -611,7 +617,7 @@ function CambioVencido() {
   );
 }
 
-function YaTieneFoto() {
+function YaTieneFoto({ onNueva }: { onNueva: () => void }) {
   return (
     <>
       <Cabecera />
@@ -622,9 +628,33 @@ function YaTieneFoto() {
           </svg>
         </span>
         <Titulo centrado>Usted ya tiene una foto registrada</Titulo>
+        <p id="fcda-nueva-ayuda" className="fcda-texto">
+          Si necesita cambiarla, suba una foto nueva. La Delegación la revisará y, mientras tanto, se mantiene la
+          actual.
+        </p>
+      </div>
+      <div className="fcda-acciones">
+        <button type="button" className="btn" aria-describedby="fcda-nueva-ayuda" onClick={onNueva}>
+          Subir una foto nueva
+        </button>
+      </div>
+    </>
+  );
+}
+
+function FotoEnRevision() {
+  return (
+    <>
+      <Cabecera paso={3} />
+      <div className="fcda-centro">
+        <span className="fcda-icono exito" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <Titulo centrado>Foto enviada</Titulo>
         <p className="fcda-texto">
-          No hace falta subirla de nuevo. Si necesita cambiarla, pida un enlace personal a la Unidad de Seguridad
-          Informática de la Delegación.
+          La Delegación revisará su foto nueva. Mientras tanto se mantiene la actual. Ya puede cerrar esta página.
         </p>
       </div>
     </>

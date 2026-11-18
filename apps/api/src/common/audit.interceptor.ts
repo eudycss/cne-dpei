@@ -421,10 +421,27 @@ const AUDIT_TABLE: Array<{
       const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
       return typeof id === 'string' ? id : undefined;
     },
+    // pendiente: ya tenía foto y la nueva espera aprobación (sirve para detectar subidas con cédula ajena).
     resumen: (_res, req) => {
       const v = (req.body as { version?: unknown } | undefined)?.version;
-      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
+      const pendiente = (req as Request & { fotoPendienteCda?: unknown }).fotoPendienteCda === true;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null, pendiente };
     },
+  },
+  // Revisión de la foto nueva: quién la aprobó o rechazó (sin datos de la imagen).
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/[^/]+\/foto-pendiente\/aprobar$/,
+    accion: 'FOTO_CDA_PENDIENTE_APROBAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => idUuid(req.params?.id),
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/[^/]+\/foto-pendiente\/rechazar$/,
+    accion: 'FOTO_CDA_PENDIENTE_RECHAZAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => idUuid(req.params?.id),
   },
   // Certificados Evatics. La subida es pública: el certificado sale de
   // req.certificadoEvaticsId (lo pone el controller), nunca la cédula; queda la

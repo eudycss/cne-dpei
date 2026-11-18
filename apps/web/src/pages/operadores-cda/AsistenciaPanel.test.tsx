@@ -33,6 +33,7 @@ const operador = (id: string, apellidosNombres: string, cedula: string): Operado
   unidad: null,
   fechaInicio: '2026-10-20',
   tieneFoto: false,
+  fotoPendiente: false,
   activo: true,
   creadoEn: '2026-10-20T10:00:00.000Z',
 });

@@ -59,6 +59,33 @@ export class FotoCdaController {
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(buf);
   }
+
+  @Get(':id/foto-pendiente')
+  @RequierePermiso('cda.fotos.enlace')
+  @UseGuards(PermisoGuard)
+  @ApiOperation({ summary: 'Foto nueva por revisar (descifrada; no se guarda en caché)' })
+  async fotoPendiente(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const buf = await this.fotos.fotoPendiente(id);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(buf);
+  }
+
+  @Post(':id/foto-pendiente/aprobar')
+  @RequierePermiso('cda.fotos.enlace')
+  @UseGuards(PermisoGuard)
+  @ApiOperation({ summary: 'La foto nueva pasa a la credencial; se borra la anterior' })
+  aprobarFotoPendiente(@Param('id', ParseUUIDPipe) id: string) {
+    return this.fotos.aprobarFotoPendiente(id);
+  }
+
+  @Post(':id/foto-pendiente/rechazar')
+  @RequierePermiso('cda.fotos.enlace')
+  @UseGuards(PermisoGuard)
+  @ApiOperation({ summary: 'Descarta la foto nueva; se mantiene la actual' })
+  rechazarFotoPendiente(@Param('id', ParseUUIDPipe) id: string) {
+    return this.fotos.rechazarFotoPendiente(id);
+  }
 }
 
 /**
@@ -93,7 +120,7 @@ export class FotoCdaPublicoController {
     const { operadorId, cambio } = await this.fotos.subir(body.token, file, body.version);
     // Para la bitácora (audit.interceptor), sin devolver el id a la página pública.
     (req as Request & { operadorCdaId?: string }).operadorCdaId = operadorId;
-    return { ok: true, cambio } satisfies SubidaFotoCdaResult;
+    return { ok: true, cambio, pendiente: false } satisfies SubidaFotoCdaResult;
   }
 
   // Enlace único (/foto-cda sin token): la cédula va en el cuerpo, nunca en la URL.
@@ -109,7 +136,7 @@ export class FotoCdaPublicoController {
   // La respuesta lleva el enlace de cambio (secreto): que ningún proxy la guarde.
   @Header('Cache-Control', 'no-store')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Sube la primera foto (JPG, hasta 1 MB) con el consentimiento LOPDP. Devuelve un enlace de cambio (30 min)' })
+  @ApiOperation({ summary: 'Sube la foto (JPG, hasta 1 MB) con el consentimiento LOPDP. La primera queda directa (con enlace de cambio de 30 min); si ya tenía, queda pendiente de aprobación' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 3 } }))
   async subirPorCedula(
@@ -117,8 +144,9 @@ export class FotoCdaPublicoController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body(new ZodValidationPipe(subirFotoCdaCedulaSchema)) body: { cedula: string; version: string },
   ) {
-    const { operadorId, cambio } = await this.fotos.subirPorCedula(body.cedula, file, body.version);
-    (req as Request & { operadorCdaId?: string }).operadorCdaId = operadorId;
-    return { ok: true, cambio } satisfies SubidaFotoCdaResult;
+    const { operadorId, cambio, pendiente } = await this.fotos.subirPorCedula(body.cedula, file, body.version);
+    (req as Request & { operadorCdaId?: string; fotoPendienteCda?: boolean }).operadorCdaId = operadorId;
+    (req as Request & { fotoPendienteCda?: boolean }).fotoPendienteCda = pendiente;
+    return { ok: true, cambio, pendiente } satisfies SubidaFotoCdaResult;
   }
 }
