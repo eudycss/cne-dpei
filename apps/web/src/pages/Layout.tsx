@@ -14,6 +14,7 @@ import {
   IdCard,
   SlidersHorizontal,
   Keyboard,
+  Fence,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -43,7 +44,7 @@ export function Layout() {
   const { puedeVer } = useModulos();
   const pasosVisibles = PASOS_PREPARACION.filter((p) => puedeVer(p.modulo));
   const verPreparacion = puedeVer('inicio') || pasosVisibles.length > 0;
-  const verOperacion = puedeVer('monitoreo') || puedeVer('incidencias') || puedeVer('alertas');
+  const verOperacion = puedeVer('monitoreo') || puedeVer('incidencias') || puedeVer('alertas') || puedeVer('plan-perimetro');
   const verPersonal = puedeVer('operadores-cda') || puedeVer('simulador-digitacion');
   const verInformes = puedeVer('cadena-custodia') || puedeVer('reportes') || puedeVer('powerbi-cdas');
 
@@ -90,6 +91,12 @@ export function Layout() {
                   <NavLink to="/alertas" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <Siren size={16} aria-hidden="true" />
                     <span>Alertas</span>
+                  </NavLink>
+                )}
+                {puedeVer('plan-perimetro') && (
+                  <NavLink to="/plan-perimetro" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <Fence size={16} aria-hidden="true" />
+                    <span>Plan de perímetro</span>
                   </NavLink>
                 )}
               </SeccionMenu>
