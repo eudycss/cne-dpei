@@ -16,6 +16,13 @@ export const LIMITE_JSON_GENERAL = '100kb';
 export const LIMITE_JSON_INCIDENCIAS = '12mb';
 
 /**
+ * POST /perimetro/planes y PUT /perimetro/planes/:id mandan el plan completo
+ * (hasta 1000 puestos, 2000 vallas y 200 zonas de 500 puntos): pasa de 100 KB
+ * en un plan grande pero real. Los topes de verdad los pone el schema Zod.
+ */
+export const LIMITE_JSON_PLAN_PERIMETRO = '2mb';
+
+/**
  * Registra los parsers de cuerpo. Requiere crear la app con
  * `bodyParser: false` para que Nest no registre los suyos antes que estos.
  * El parser de POST /incidencias va primero: una vez que consume el cuerpo,
@@ -30,6 +37,14 @@ export function configurarBodyParsers(app: NestExpressApplication): void {
     const esCrear = req.method === 'POST' && (req.path === '/' || req.path === '');
     const conToken = /^Bearer\s+\S+/i.test(req.headers.authorization ?? '');
     if (esCrear && conToken) return jsonIncidencias(req, res, next);
+    next();
+  });
+  const jsonPlan = json({ limit: LIMITE_JSON_PLAN_PERIMETRO });
+  app.use('/perimetro/planes', (req: Request, res: Response, next: NextFunction) => {
+    const esCrear = req.method === 'POST' && (req.path === '/' || req.path === '');
+    const esGuardar = req.method === 'PUT' && /^\/[^/]+\/?$/.test(req.path);
+    const conToken = /^Bearer\s+\S+/i.test(req.headers.authorization ?? '');
+    if ((esCrear || esGuardar) && conToken) return jsonPlan(req, res, next);
     next();
   });
   app.use(json({ limit: LIMITE_JSON_GENERAL }));

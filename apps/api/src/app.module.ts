@@ -29,6 +29,7 @@ import { CustodiaModule } from './custodia/custodia.module';
 import { PermisosModulosModule } from './permisos-modulos/permisos-modulos.module';
 import { SimuladorModule } from './simulador/simulador.module';
 import { EvaticsModule } from './evatics/evatics.module';
+import { PerimetroModule } from './perimetro/perimetro.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { EvaticsModule } from './evatics/evatics.module';
     PermisosModulosModule,
     SimuladorModule,
     EvaticsModule,
+    PerimetroModule,
   ],
   controllers: [AppController],
   providers: [

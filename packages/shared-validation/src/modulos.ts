@@ -19,6 +19,7 @@ export const MODULO_WEB_IDS = [
   'monitoreo',
   'incidencias',
   'alertas',
+  'plan-perimetro',
   'operadores-cda',
   'simulador-digitacion',
   'cadena-custodia',
@@ -56,6 +57,8 @@ const MODULOS_BASE: readonly Omit<ModuloWeb, 'rolesPermitidos'>[] = [
   { id: 'monitoreo', etiqueta: 'Monitoreo', seccion: 'Operación', ruta: '/operadores', rolesPorDefecto: TEC_LEC },
   { id: 'incidencias', etiqueta: 'Incidencias', seccion: 'Operación', ruta: '/incidencias', rolesPorDefecto: TEC_LEC },
   { id: 'alertas', etiqueta: 'Alertas', seccion: 'Operación', ruta: '/alertas', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
+  // Despliegue de personal CDA/CPE, vallas y zonas sobre el mapa de un evento.
+  { id: 'plan-perimetro', etiqueta: 'Plan de perímetro', seccion: 'Operación', ruta: '/plan-perimetro', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
   {
     id: 'operadores-cda',
     etiqueta: 'CDAs (Operadores y Asistentes)',
