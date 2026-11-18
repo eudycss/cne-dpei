@@ -204,8 +204,7 @@ function PedirCedula({ onDatos }: { onDatos: (cedula: string, datos: FotoCdaPorC
       <Cabecera paso={1} />
       <Titulo>Registro de foto</Titulo>
       <p className="fcda-texto">
-        Escriba su número de cédula. Si está registrado en el personal CDA o CPE, podrá subir su foto para la
-        credencial.
+        Ingrese su cédula para cargar su foto.
       </p>
       <div className="fcda-campo">
         <label htmlFor="fcda-cedula">Número de cédula</label>
