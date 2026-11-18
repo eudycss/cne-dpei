@@ -977,6 +977,21 @@ export const subirFotoCdaSchema = z.object({
   }),
 });
 
+// Enlace único de foto: la persona escribe su cédula (sin enlace personal).
+
+export const consultarFotoCdaCedulaSchema = z.object({ cedula: cedulaSchema }).strict();
+
+/** Campos de texto que acompañan a la foto (multipart). */
+export const subirFotoCdaCedulaSchema = z.object({
+  cedula: cedulaSchema,
+  consentimiento: z.literal('true', {
+    errorMap: () => ({ message: 'Debe autorizar el uso de su foto para continuar' }),
+  }),
+  version: z.literal(VERSION_AVISO_FOTO_CDA, {
+    errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
+  }),
+});
+
 // Actas de entrega de indumentaria y credencial (operadores CDA).
 
 export const estadoPrendaSchema = z.enum(['NUEVO', 'BUENO', 'REGULAR', 'MALO']);

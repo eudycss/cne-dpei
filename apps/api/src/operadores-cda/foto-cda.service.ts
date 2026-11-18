@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   GoneException,
   Injectable,
   Logger,
@@ -7,10 +8,11 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as crypto from 'node:crypto';
-import type { EnlaceFotoCdaCreado, EnlaceFotoCdaPublico } from '@cne/shared-types';
+import type { EnlaceFotoCdaCreado, EnlaceFotoCdaPublico, FotoCdaPorCedula } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { limpiarJpeg } from './jpeg';
+import { nombreCortoDeApellidosNombres } from '../evatics/nombre-evatics';
 
 export const VIGENCIA_ENLACE_MS = 48 * 60 * 60 * 1000;
 export const MAX_INTENTOS_FOTO = 5;
@@ -18,6 +20,10 @@ export const MAX_INTENTOS_FOTO = 5;
 export const MAX_FOTO_BYTES = 1024 * 1024;
 const CATEGORIA = 'fotos-operadores-cda';
 const ENLACE_INACTIVO = 'Este enlace ya no está activo. Pida uno nuevo a la Delegación.';
+export const CEDULA_NO_REGISTRADA_FOTO = 'Cédula no registrada en el personal CDA ni CPE';
+export const YA_TIENE_FOTO =
+  'Usted ya tiene una foto registrada. Para cambiarla, pida un enlace personal a la Delegación.';
+const FOTO_INVALIDA = 'La foto debe ser una imagen JPG válida de hasta 1 MB. Intente de nuevo.';
 
 /** En la BD solo se guarda el hash: quien lea la tabla no puede usar los enlaces. */
 export const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
@@ -111,7 +117,7 @@ export class FotoCdaService {
         data: { intentos: { increment: 1 } },
       });
       if (enlace.intentos + 1 >= MAX_INTENTOS_FOTO) await this.registrarBloqueo(enlace.operadorId);
-      throw new BadRequestException('La foto debe ser una imagen JPG válida de hasta 1 MB. Intente de nuevo.');
+      throw new BadRequestException(FOTO_INVALIDA);
     }
 
     const fotoKey = await this.storage.saveEncrypted({
@@ -151,6 +157,77 @@ export class FotoCdaService {
     }
     if (anterior) await this.borrarArchivo(anterior);
     return { operadorId: enlace.operadorId };
+  }
+
+  // ---------- Enlace único: la persona escribe su cédula ----------
+
+  /** Solo el nombre corto y la cédula enmascarada: cualquiera puede escribir una cédula ajena. */
+  async consultarPorCedula(cedula: string): Promise<FotoCdaPorCedula> {
+    const operador = await this.operadorActivo(cedula);
+    return {
+      nombreCorto: nombreCortoDeApellidosNombres(operador.apellidosNombres),
+      cedula: enmascararCedula(operador.cedula),
+      cargo: operador.cargo,
+      tieneFoto: !!operador.fotoKey,
+    };
+  }
+
+  /**
+   * Sube la primera foto de la persona. Si ya tiene una, no se reemplaza desde
+   * aquí (otra persona podría cambiarla con solo saber la cédula): para eso
+   * está el enlace personal que genera la Delegación. El consentimiento queda
+   * en enlaces_foto_cda como un enlace ya usado (sin creador).
+   */
+  async subirPorCedula(
+    cedula: string,
+    file: Express.Multer.File | undefined,
+    version: string,
+  ): Promise<{ operadorId: string }> {
+    const operador = await this.operadorActivo(cedula);
+    if (operador.fotoKey) throw new ConflictException(YA_TIENE_FOTO);
+
+    const jpeg = file?.buffer && file.size <= MAX_FOTO_BYTES ? limpiarJpeg(file.buffer) : null;
+    if (!jpeg) throw new BadRequestException(FOTO_INVALIDA);
+
+    const fotoKey = await this.storage.saveEncrypted({
+      categoria: CATEGORIA,
+      buffer: jpeg.limpio,
+      maxBytes: MAX_FOTO_BYTES,
+    });
+    const ahora = new Date();
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Condicionado: si dos envíos llegan a la vez, o justo se ocultó, solo vale uno.
+        const guardada = await tx.operadorCda.updateMany({
+          where: { id: operador.id, activo: true, fotoKey: null },
+          data: { fotoKey, fotoSubidaEn: ahora },
+        });
+        if (guardada.count === 0) throw new ConflictException(YA_TIENE_FOTO);
+        await tx.enlaceFotoCda.create({
+          data: {
+            operadorId: operador.id,
+            tokenHash: hashToken(crypto.randomBytes(32).toString('base64url')),
+            expiraEn: ahora,
+            usadoEn: ahora,
+            consentidoEn: ahora,
+            consentimientoVersion: version,
+          },
+        });
+      });
+    } catch (e) {
+      await this.borrarArchivo(fotoKey);
+      throw e;
+    }
+    return { operadorId: operador.id };
+  }
+
+  private async operadorActivo(cedula: string) {
+    const operador = await this.prisma.operadorCda.findUnique({
+      where: { cedula },
+      select: { id: true, cedula: true, apellidosNombres: true, cargo: true, fotoKey: true, activo: true },
+    });
+    if (!operador?.activo) throw new NotFoundException(CEDULA_NO_REGISTRADA_FOTO);
+    return operador;
   }
 
   /** La foto descifrada, para el listado y las actas. */

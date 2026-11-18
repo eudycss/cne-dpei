@@ -411,6 +411,21 @@ const AUDIT_TABLE: Array<{
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
     },
   },
+  // Enlace único de foto (por cédula): nunca la cédula, solo el operador y la versión del aviso.
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/foto-cda\/cedula\/subir$/,
+    accion: 'FOTO_CDA_SUBIR_CEDULA',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    resumen: (_res, req) => {
+      const v = (req.body as { version?: unknown } | undefined)?.version;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
+    },
+  },
   // Certificados Evatics. La subida es pública: el certificado sale de
   // req.certificadoEvaticsId (lo pone el controller), nunca la cédula; queda la
   // versión del aviso LOPDP y la IP. La revisión: solo la decisión.
