@@ -691,3 +691,21 @@ describe('celdas del Excel de convocatoria', () => {
     expect(leerFechaCelda('')).toBeNull();
   });
 });
+
+describe('sexo del personal CDA/CPE', () => {
+  const base = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+
+  it('acepta M, F o ausente', () => {
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'M' }).success).toBe(true);
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'F' }).success).toBe(true);
+    expect(operadorCdaFilaSchema.safeParse(base).success).toBe(true);
+    expect(editarOperadorCdaSchema.safeParse({ apellidosNombres: base.apellidosNombres, cargo: base.cargo, sexo: 'F' }).success).toBe(true);
+  });
+
+  it('rechaza cualquier otro valor con un mensaje claro', () => {
+    const r = operadorCdaFilaSchema.safeParse({ ...base, sexo: 'X' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].message).toBe('Sexo inválido (use M o F)');
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'm' }).success).toBe(false);
+  });
+});

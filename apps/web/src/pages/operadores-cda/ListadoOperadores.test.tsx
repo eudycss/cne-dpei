@@ -36,6 +36,7 @@ const operador = (over: Partial<OperadorCda>): OperadorCda => ({
   cargo: 'OPERADOR CDA',
   unidad: null,
   fechaInicio: '2026-10-20',
+  sexo: null,
   tieneFoto: false,
   fotoPendiente: false,
   activo: true,
@@ -83,6 +84,30 @@ describe('ListadoOperadores', () => {
     expect(within(tarjetas[0]).getByText('Sin foto')).toBeInTheDocument();
     expect(within(tarjetas[1]).getByText('Foto cargada')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('2 de 2 operadores · 1 con foto');
+  });
+
+  it('muestra el sexo en la tarjeta, cuenta hombres y mujeres activos y filtra por sexo', async () => {
+    getMock.mockResolvedValueOnce({
+      data: [
+        operador({ sexo: 'F' }),
+        operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000', sexo: 'M' }),
+        operador({ id: 'o3', apellidosNombres: 'VEGA TAPIA LUIS', cedula: '1002003001' }),
+      ],
+    });
+    renderPagina();
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(within(lista).getByText('Mujer')).toBeInTheDocument();
+    expect(within(lista).getByText('Hombre')).toBeInTheDocument();
+    expect(within(lista).getByText('Sin registrar')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('1 hombre · 1 mujer · 1 sin sexo registrado');
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sexo' }), 'M');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'RUIZ MORA JUAN' })).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sexo' }), 'SIN');
+    expect(screen.getByRole('heading', { name: 'VEGA TAPIA LUIS' })).toBeInTheDocument();
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
   });
 
   it('filtra sin importar tildes ni mayúsculas, y por cédula', async () => {
@@ -219,6 +244,32 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
       }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('agregar y editar: el sexo se elige en el formulario y se manda como M o F', async () => {
+    getMock.mockResolvedValue({ data: [operador({ sexo: 'F' })] });
+    postMock.mockResolvedValueOnce({ data: operador({ id: 'nuevo', apellidosNombres: 'RUIZ MORA JUAN', sexo: 'M' }) });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Agregar operador' }));
+    let dialogo = await screen.findByRole('dialog', { name: 'Agregar operador' });
+    await userEvent.type(within(dialogo).getByLabelText('Apellidos y nombres'), 'RUIZ MORA JUAN');
+    await userEvent.type(within(dialogo).getByLabelText('Cédula'), '1002003000');
+    await userEvent.selectOptions(within(dialogo).getByLabelText('Sexo (opcional)'), 'M');
+    fireEvent.change(within(dialogo).getByLabelText('Fecha de ingreso'), { target: { value: '2026-10-21' } });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Agregar operador' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda', expect.objectContaining({ sexo: 'M' })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    patchMock.mockResolvedValueOnce({ data: operador({ sexo: null }) });
+    await userEvent.click(screen.getByRole('button', { name: /^Editar/ }));
+    dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    const sexo = within(dialogo).getByLabelText('Sexo (opcional)');
+    expect(sexo).toHaveValue('F');
+    // Volver a "Sin registrar" no manda el campo: la API lo guarda vacío.
+    await userEvent.selectOptions(sexo, '');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(patchMock).toHaveBeenCalled());
+    expect(patchMock.mock.calls[0][1]).not.toHaveProperty('sexo');
   });
 
   it('agregar: si la API responde 409 muestra su mensaje y no cierra', async () => {

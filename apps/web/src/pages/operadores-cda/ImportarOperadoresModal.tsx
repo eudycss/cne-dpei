@@ -4,6 +4,7 @@ import { sileo } from 'sileo';
 import type { ImportOperadoresCdaResult } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { importarOperadoresCda } from '../../lib/queries/operadores-cda';
+import { SEXO } from './sexo';
 import { useGrupoCda } from './grupo';
 
 function mensajeError(e: unknown, porDefecto: string): string {
@@ -70,8 +71,8 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
         <h1 id="importar-ocda-titulo">Importar {titulo}</h1>
         <p className="muted">
           Suba el Excel de talento humano (.xlsx). Se detecta solo la fila de encabezados (N°, Apellidos Nombres,
-          Cédula, Teléfonos, Cargo, Unidad, Inicial). Si la cédula ya existe, se actualizan sus datos; si está
-          en el otro grupo, esa fila se marca como error.
+          Cédula, Teléfonos, Cargo, Unidad, Inicial y, si la trae, Sexo: M/F u Hombre/Mujer). Si la cédula ya existe,
+          se actualizan sus datos; si está en el otro grupo, esa fila se marca como error.
         </p>
 
         <div className="field">
@@ -137,6 +138,7 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
                       <th scope="col">Apellidos y nombres</th>
                       <th scope="col">Cédula</th>
                       <th scope="col">Teléfono</th>
+                      <th scope="col">Sexo</th>
                       <th scope="col">Acción</th>
                     </tr>
                   </thead>
@@ -147,6 +149,7 @@ export function ImportarOperadoresModal({ onClose }: { onClose: () => void }) {
                         <td>{f.apellidosNombres}</td>
                         <td className="mono">{f.cedula}</td>
                         <td className="mono">{f.telefono ?? '—'}</td>
+                        <td>{f.sexo ? SEXO[f.sexo] : '—'}</td>
                         <td>{f.accion === 'NUEVO' ? 'Nuevo' : 'Actualizar'}</td>
                       </tr>
                     ))}
