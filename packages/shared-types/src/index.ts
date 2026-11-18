@@ -2443,3 +2443,82 @@ export interface EstadisticasJornadaDto {
   unidades: UnidadEstadisticaJornada[];
   noCdas: NoCdaEstadisticaJornada[];
 }
+
+// --- Plan de perímetro (despliegue sobre el mapa por evento) ---
+
+export type TipoZonaPerimetro = 'peligro' | 'precaucion' | 'segura' | 'acceso';
+
+export interface ZonaPerimetro {
+  id: string;
+  tipo: TipoZonaPerimetro;
+  nombre: string;
+  /** Anillo [[lat, lng], ...]. */
+  coords: [number, number][];
+}
+
+export interface VallaPerimetro {
+  id: string;
+  lat: number;
+  lng: number;
+  angulo: number;
+}
+
+export interface AjustesPerimetro {
+  pctMujeres: number;
+  largoValla: number;
+  mostrarNombres: boolean;
+  alinearVallas: boolean;
+}
+
+export interface VistaPerimetro {
+  lat: number;
+  lng: number;
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+/** De la persona solo se muestra el nombre y, si ya la subió, la foto (nada de cédula, cargo ni sexo). */
+export interface PersonaPuestoPerimetro {
+  id: string;
+  nombre: string;
+  tieneFoto: boolean;
+}
+
+export interface PuestoPerimetro {
+  id: string;
+  /** 1, 2, 3...: el número del puesto. */
+  orden: number;
+  lat: number;
+  lng: number;
+  etiqueta: string | null;
+  persona: PersonaPuestoPerimetro | null;
+}
+
+export interface PlanPerimetroResumen {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  lugar: string | null;
+  puestos: number;
+  puestosConPersona: number;
+  actualizadoEn: string;
+}
+
+export interface PlanPerimetroDetalle {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  lugar: string | null;
+  perimetro: [number, number][] | null;
+  zonas: ZonaPerimetro[];
+  vallas: VallaPerimetro[];
+  ajustes: AjustesPerimetro;
+  vista: VistaPerimetro | null;
+  puestos: PuestoPerimetro[];
+  /** Se manda en el próximo guardado: si otra persona guardó antes, el API responde 409. */
+  version: number;
+  actualizadoEn: string;
+  /** Avisos que no bloquean, p. ej. una persona que también está en otro plan del evento. */
+  avisos: string[];
+}

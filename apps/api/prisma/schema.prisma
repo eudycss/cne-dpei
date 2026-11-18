@@ -163,6 +163,8 @@ model Usuario {
   dispositivos        Dispositivo[]
   kitsAsignados       KitElectoral[]
   parejasCdaCreadas   ParejaCda[]     @relation("ParejaCdaCreadaPor")
+  planesPerimetroCreados      PlanPerimetro[] @relation("PlanPerimetroCreadoPor")
+  planesPerimetroActualizados PlanPerimetro[] @relation("PlanPerimetroActualizadoPor")
 
   asistenciasCdaEntrada AsistenciaCda[]  @relation("AsistenciaCdaEntradaPor")
   asistenciasCdaSalida  AsistenciaCda[]  @relation("AsistenciaCdaSalidaPor")
@@ -367,6 +369,8 @@ model EventoElectoral {
   // Evento cerrado que se reabrió solo para consulta: la app móvil no puede
   // registrar y el cron de alertas lo ignora. Vuelve a null al cerrarlo.
   reabiertoEn  DateTime?           @map("reabierto_en") @db.Timestamptz(6)
+
+  planesPerimetro PlanPerimetro[]
 
   @@map("eventos_electorales")
 }
@@ -862,6 +866,7 @@ model OperadorCda {
   parejasComoAsistente ParejaCda[] @relation("ParejaCdaAsistente")
   practicasDigitacion  PracticaDigitacionPersona[]
   intentosDigitacion   IntentoDigitacion[]
+  puestosPerimetro     PuestoPerimetro[]
 
   @@index([grupo, activo])
   @@map("operadores_cda")
@@ -1255,4 +1260,60 @@ model ConfigEvatics {
   actualizadoEn DateTime  @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   @@map("config_evatics")
+}
+
+// ---- Plan de perímetro (despliegue sobre el mapa por evento) ----
+
+/// Plan de despliegue de un evento en un lugar libre (Delegación, CDA, coliseo...).
+/// Perímetro, zonas, vallas, ajustes y vista son dibujo: JSON validado con Zod
+/// (@cne/shared-validation) al guardar y al leer. Los puestos van en su tabla
+/// porque cada uno se enlaza con una persona real del personal CDA/CPE.
+model PlanPerimetro {
+  id               String   @id @default(uuid()) @db.Uuid
+  eventoId         String   @map("evento_id") @db.Uuid
+  nombre           String   @db.VarChar(120)
+  /// Nombre del lugar elegido en la búsqueda (solo para mostrar).
+  lugar            String?  @db.VarChar(200)
+  /// Anillo [[lat,lng],...] o null si aún no se dibuja.
+  perimetro        Json?
+  zonas            Json     @default("[]")
+  vallas           Json     @default("[]")
+  ajustes          Json
+  /// {lat,lng,zoom,bearing,pitch}: la vista girada/3D que se guardó.
+  vista            Json?
+  /// Sube en cada guardado: bloqueo optimista (si cambió desde que la web lo leyó, 409).
+  version          Int      @default(0)
+  creadoPorId      String?  @map("creado_por_id") @db.Uuid
+  actualizadoPorId String?  @map("actualizado_por_id") @db.Uuid
+  creadoEn         DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn    DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  evento         EventoElectoral   @relation(fields: [eventoId], references: [id], onDelete: Restrict)
+  creadoPor      Usuario?          @relation("PlanPerimetroCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPor Usuario?          @relation("PlanPerimetroActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  puestos        PuestoPerimetro[]
+
+  @@index([eventoId], map: "idx_planes_perimetro_evento")
+  @@map("planes_perimetro")
+}
+
+/// Un puesto del plan. De la persona solo se muestra el nombre y la foto.
+model PuestoPerimetro {
+  id            String  @id @default(uuid()) @db.Uuid
+  planId        String  @map("plan_id") @db.Uuid
+  orden         Int
+  lat           Float
+  lng           Float
+  /// null = puesto sin persona todavía.
+  operadorCdaId String? @map("operador_cda_id") @db.Uuid
+  /// Nombre libre de un puesto sin persona del sistema (p. ej. "Policía 1").
+  etiqueta      String? @db.VarChar(60)
+
+  plan     PlanPerimetro @relation(fields: [planId], references: [id], onDelete: Cascade)
+  operador OperadorCda?  @relation(fields: [operadorCdaId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, operadorCdaId], map: "uq_puestos_perimetro_plan_operador")
+  @@unique([planId, orden], map: "uq_puestos_perimetro_plan_orden")
+  @@index([operadorCdaId], map: "idx_puestos_perimetro_operador")
+  @@map("puestos_perimetro")
 }

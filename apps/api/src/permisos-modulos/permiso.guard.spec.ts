@@ -15,6 +15,7 @@ import { FotoCdaController } from '../operadores-cda/foto-cda.controller';
 import { OperadoresCdaController } from '../operadores-cda/operadores-cda.controller';
 import { ConvocatoriaCdaController } from '../operadores-cda/convocatoria-cda.controller';
 import { EvaticsController } from '../evatics/evatics.controller';
+import { PerimetroController } from '../perimetro/perimetro.controller';
 import { MODULO_KEY, ModuloGuard } from './modulo.guard';
 
 function contexto(roles: string[], permisos: PermisoId[] | undefined): ExecutionContext {
@@ -88,6 +89,9 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [ConvocatoriaCdaController, 'cargar', 'cda.convocatoria.gestionar'],
   [EvaticsController, 'foto', 'cda.evatics.ver'], // también la deja pasar 'cda.evatics.revisar'
   [EvaticsController, 'revisar', 'cda.evatics.revisar'],
+  [PerimetroController, 'crear', 'perimetro.planes.editar'],
+  [PerimetroController, 'guardar', 'perimetro.planes.editar'],
+  [PerimetroController, 'eliminar', 'perimetro.planes.editar'],
 ];
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -160,6 +164,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     FotoCdaController,
     ConvocatoriaCdaController,
     EvaticsController,
+    PerimetroController,
   ];
   const metodos = CONTROLADORES.flatMap((c: any) =>
     Object.getOwnPropertyNames(c.prototype)
@@ -179,7 +184,9 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     const lecturaDelModulo =
       Reflect.getMetadata(METHOD_METADATA, handler) === RequestMethod.GET &&
       guards.includes(ModuloGuard) &&
-      Reflect.getMetadata(MODULO_KEY, handler) === 'operadores-cda';
+      // Como lo resuelve ModuloGuard: primero el método, luego la clase.
+      new Reflector().getAllAndOverride<string>(MODULO_KEY, [handler, controlador]) ===
+        (controlador === PerimetroController ? 'plan-perimetro' : 'operadores-cda');
     expect({ conAccion, soloAdmin, lecturaDelModulo }).not.toEqual({ conAccion: false, soloAdmin: false, lecturaDelModulo: false });
   });
 });
