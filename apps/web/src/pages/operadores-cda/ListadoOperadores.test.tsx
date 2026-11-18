@@ -474,6 +474,32 @@ describe('iniciales', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Generar enlace' }));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/enlace-foto'));
   });
+
+  it('pulsar la foto la abre en grande y al cerrar el foco vuelve a la foto', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    renderPagina();
+    const ver = await screen.findByRole('button', { name: 'Ver foto ampliada: ANDRADE LÓPEZ MARÍA JOSÉ' });
+    await userEvent.click(ver);
+    const dialogo = await screen.findByRole('dialog', { name: 'ANDRADE LÓPEZ MARÍA JOSÉ' });
+    expect(within(dialogo).getByRole('img', { name: 'Foto de ANDRADE LÓPEZ MARÍA JOSÉ' })).toHaveAttribute('src', 'blob:foto');
+    expect(within(dialogo).getByText('1710034065')).toBeInTheDocument();
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(ver).toHaveFocus();
+  });
+
+  it('sin foto no hay botón para ampliar', async () => {
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.queryByRole('button', { name: /Ver foto ampliada/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('ListadoOperadores — fecha de ingreso', () => {

@@ -1,5 +1,7 @@
 import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Modal } from '../../components/Modal';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -412,11 +414,60 @@ function useVisible<T extends Element>() {
 function AvatarOperador({ operador: o }: { operador: OperadorCda }) {
   const { ref, visible } = useVisible<HTMLSpanElement>();
   const url = useFotoOperadorUrl(o, visible);
+  const [ampliada, setAmpliada] = useState(false);
+  const boton = useRef<HTMLButtonElement>(null);
 
   return (
-    <span ref={ref} className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
-      {url ? <img src={url} alt="" /> : iniciales(o.apellidosNombres)}
+    <span ref={ref} className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`}>
+      {url ? (
+        <button
+          ref={boton}
+          type="button"
+          className="ocda-avatar-boton"
+          aria-label={`Ver foto ampliada: ${o.apellidosNombres}`}
+          onClick={() => setAmpliada(true)}
+        >
+          <img src={url} alt="" />
+        </button>
+      ) : (
+        <span aria-hidden="true">{iniciales(o.apellidosNombres)}</span>
+      )}
+      {ampliada && url && (
+        <FotoAmpliadaModal
+          operador={o}
+          url={url}
+          onClose={() => {
+            setAmpliada(false);
+            boton.current?.focus();
+          }}
+        />
+      )}
     </span>
+  );
+}
+
+/** La foto en grande, para revisar que sea la persona y que sirva para la credencial. */
+function FotoAmpliadaModal({ operador: o, url, onClose }: { operador: OperadorCda; url: string; onClose: () => void }) {
+  const id = `foto-ampliada-${o.id}`;
+  // Al body: la tarjeta animada (transform) encerraría el fondo fijo del modal.
+  return createPortal(
+    <Modal labelledBy={id} onClose={onClose} maxWidth={560}>
+      <div className="ocda-modal">
+        <div className="ocda-modal-cabecera">
+          <div>
+            <h2 id={id}>{o.apellidosNombres}</h2>
+            <p className="muted">
+              <span className="mono">{o.cedula}</span> · {cargoCorto(o.cargo)}
+            </p>
+          </div>
+          <button type="button" className="ocda-modal-cerrar" onClick={onClose} aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <img className="ocda-foto-ampliada" src={url} alt={`Foto de ${o.apellidosNombres}`} />
+      </div>
+    </Modal>,
+    document.body,
   );
 }
 
