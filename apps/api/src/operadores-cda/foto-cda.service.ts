@@ -15,6 +15,8 @@ import { limpiarJpeg } from './jpeg';
 import { nombreCortoDeApellidosNombres } from '../evatics/nombre-evatics';
 
 export const VIGENCIA_ENLACE_MS = 48 * 60 * 60 * 1000;
+/** Tras subir, la persona puede cambiar su foto desde el mismo celular durante este tiempo. */
+export const VIGENCIA_CAMBIO_MS = 30 * 60 * 1000;
 export const MAX_INTENTOS_FOTO = 5;
 /** La página la reduce a ~200 KB; 1 MB deja margen sin aceptar fotos crudas de 8 MB. */
 export const MAX_FOTO_BYTES = 1024 * 1024;
@@ -106,7 +108,7 @@ export class FotoCdaService {
     token: string,
     file: Express.Multer.File | undefined,
     version: string,
-  ): Promise<{ operadorId: string }> {
+  ): Promise<{ operadorId: string; cambio: EnlaceFotoCdaCreado }> {
     const enlace = await this.enlaceActivo(token);
     if (!enlace) throw new GoneException(ENLACE_INACTIVO);
 
@@ -127,8 +129,9 @@ export class FotoCdaService {
     });
     const ahora = new Date();
     let anterior: string | null;
+    let cambio: EnlaceFotoCdaCreado;
     try {
-      anterior = await this.prisma.$transaction(async (tx) => {
+      [anterior, cambio] = await this.prisma.$transaction(async (tx) => {
         // Condicionado: si dos envíos llegan a la vez, solo uno gasta el enlace.
         const gastado = await tx.enlaceFotoCda.updateMany({
           where: {
@@ -149,14 +152,30 @@ export class FotoCdaService {
           where: { id: enlace.operadorId },
           data: { fotoKey, fotoSubidaEn: ahora },
         });
-        return previa;
+        return [previa, await this.crearEnlaceCambio(tx, enlace.operadorId, ahora)] as const;
       });
     } catch (e) {
       await this.borrarArchivo(fotoKey);
       throw e;
     }
     if (anterior) await this.borrarArchivo(anterior);
-    return { operadorId: enlace.operadorId };
+    return { operadorId: enlace.operadorId, cambio };
+  }
+
+  /**
+   * Enlace de un uso para cambiar la foto recién subida (30 min). Solo lo
+   * recibe el celular que subió la foto; nunca se muestra la foto a quien
+   * solo escribe una cédula.
+   */
+  private async crearEnlaceCambio(
+    tx: Pick<PrismaService, 'enlaceFotoCda'>,
+    operadorId: string,
+    ahora: Date,
+  ): Promise<EnlaceFotoCdaCreado> {
+    const token = crypto.randomBytes(32).toString('base64url');
+    const expiraEn = new Date(ahora.getTime() + VIGENCIA_CAMBIO_MS);
+    await tx.enlaceFotoCda.create({ data: { operadorId, tokenHash: hashToken(token), expiraEn } });
+    return { token, expiraEn: expiraEn.toISOString() };
   }
 
   // ---------- Enlace único: la persona escribe su cédula ----------
@@ -174,15 +193,16 @@ export class FotoCdaService {
 
   /**
    * Sube la primera foto de la persona. Si ya tiene una, no se reemplaza desde
-   * aquí (otra persona podría cambiarla con solo saber la cédula): para eso
-   * está el enlace personal que genera la Delegación. El consentimiento queda
-   * en enlaces_foto_cda como un enlace ya usado (sin creador).
+   * aquí (otra persona podría cambiarla con solo saber la cédula): solo con el
+   * enlace de cambio de 30 min que recibe quien la subió, o con el enlace
+   * personal que genera la Delegación. El consentimiento queda en
+   * enlaces_foto_cda como un enlace ya usado (sin creador).
    */
   async subirPorCedula(
     cedula: string,
     file: Express.Multer.File | undefined,
     version: string,
-  ): Promise<{ operadorId: string }> {
+  ): Promise<{ operadorId: string; cambio: EnlaceFotoCdaCreado }> {
     const operador = await this.operadorActivo(cedula);
     if (operador.fotoKey) throw new ConflictException(YA_TIENE_FOTO);
 
@@ -195,8 +215,9 @@ export class FotoCdaService {
       maxBytes: MAX_FOTO_BYTES,
     });
     const ahora = new Date();
+    let cambio: EnlaceFotoCdaCreado;
     try {
-      await this.prisma.$transaction(async (tx) => {
+      cambio = await this.prisma.$transaction(async (tx) => {
         // Condicionado: si dos envíos llegan a la vez, o justo se ocultó, solo vale uno.
         const guardada = await tx.operadorCda.updateMany({
           where: { id: operador.id, activo: true, fotoKey: null },
@@ -213,12 +234,13 @@ export class FotoCdaService {
             consentimientoVersion: version,
           },
         });
+        return this.crearEnlaceCambio(tx, operador.id, ahora);
       });
     } catch (e) {
       await this.borrarArchivo(fotoKey);
       throw e;
     }
-    return { operadorId: operador.id };
+    return { operadorId: operador.id, cambio };
   }
 
   private async operadorActivo(cedula: string) {

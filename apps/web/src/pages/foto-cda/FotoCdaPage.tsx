@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { cedulaSchema, tokenFotoCdaSchema } from '@cne/shared-validation';
-import type { EnlaceFotoCdaPublico, FotoCdaPorCedula } from '@cne/shared-types';
+import type {
+  EnlaceFotoCdaCreado,
+  EnlaceFotoCdaPublico,
+  FotoCdaPorCedula,
+  SubidaFotoCdaResult,
+} from '@cne/shared-types';
 import {
   consultarEnlaceFotoCda,
   consultarFotoCdaPorCedula,
@@ -75,6 +80,16 @@ function dePorCedula(d: FotoCdaPorCedula): Persona {
     credencial: { principal: d.nombreCorto, secundaria: null },
     pie: null,
   };
+}
+
+/** "14:35" en hora de Ecuador. */
+function hora(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-EC', {
+    timeZone: 'America/Guayaquil',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
 }
 
 /** Al terminar, el token sale de la barra de direcciones (historial, capturas de pantalla). */
@@ -282,26 +297,44 @@ function Flujo({
   onVolver,
 }: {
   persona: Persona;
-  enviar: (foto: Blob) => Promise<void>;
+  enviar: (foto: Blob) => Promise<SubidaFotoCdaResult>;
   /** Errores que terminan el flujo (enlace gastado, ya tiene foto): su pantalla, o null. */
   pantallaPorError: (status: number | undefined) => ReactNode;
   onVolver?: () => void;
 }) {
   const [paso, setPaso] = useState<Paso>({ tipo: 'datos' });
   const [final, setFinal] = useState<ReactNode>(null);
+  // Enlace de cambio (30 min) que devuelve cada subida: solo vive en esta pestaña.
+  const [cambio, setCambio] = useState<EnlaceFotoCdaCreado | null>(null);
 
   // Libera la vista previa anterior al cambiar de foto o salir.
   const url = paso.tipo === 'datos' ? null : paso.url;
   useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
 
   const subir = useMutation({
-    mutationFn: enviar,
-    onSuccess: (_r, foto) => setPaso({ tipo: 'listo', url: URL.createObjectURL(foto) }),
-    onError: (e) => setFinal(pantallaPorError(estado(e))),
+    mutationFn: (foto: Blob) => (cambio ? subirFotoCda(cambio.token, foto) : enviar(foto)),
+    onSuccess: (r, foto) => {
+      setCambio(r.cambio);
+      setPaso({ tipo: 'listo', url: URL.createObjectURL(foto) });
+    },
+    onError: (e) =>
+      setFinal(cambio && estado(e) === 410 ? <CambioVencido /> : pantallaPorError(estado(e))),
   });
 
   if (final) return <>{final}</>;
-  if (paso.tipo === 'listo') return <FotoRegistrada persona={persona} url={paso.url} />;
+  if (paso.tipo === 'listo') {
+    return (
+      <FotoRegistrada
+        persona={persona}
+        url={paso.url}
+        cambiarHasta={cambio?.expiraEn ?? null}
+        onCambiar={() => {
+          subir.reset();
+          setPaso({ tipo: 'datos' });
+        }}
+      />
+    );
+  }
   if (paso.tipo === 'vista') {
     return (
       <VistaPrevia
@@ -321,7 +354,7 @@ function Flujo({
     <ConfirmarDatos
       persona={persona}
       onFoto={(foto) => setPaso({ tipo: 'vista', foto, url: URL.createObjectURL(foto) })}
-      onVolver={onVolver}
+      onVolver={cambio ? undefined : onVolver}
     />
   );
 }
@@ -509,7 +542,17 @@ function VistaPrevia(props: {
   );
 }
 
-function FotoRegistrada({ persona, url }: { persona: Persona; url: string }) {
+function FotoRegistrada({
+  persona,
+  url,
+  cambiarHasta,
+  onCambiar,
+}: {
+  persona: Persona;
+  url: string;
+  cambiarHasta: string | null;
+  onCambiar: () => void;
+}) {
   const { principal, secundaria } = persona.credencial;
   useEffect(olvidarToken, []);
   return (
@@ -532,6 +575,37 @@ function FotoRegistrada({ persona, url }: { persona: Persona; url: string }) {
             <p className="mono">C.I. {persona.cedula}</p>
           </div>
         </div>
+        {cambiarHasta && (
+          <div className="fcda-acciones">
+            <p id="fcda-cambiar-hasta" className="fcda-nota">
+              ¿No es la foto correcta? Puede cambiarla desde este celular hasta las {hora(cambiarHasta)}.
+            </p>
+            <button type="button" className="btn secondary" aria-describedby="fcda-cambiar-hasta" onClick={onCambiar}>
+              Cambiar foto
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function CambioVencido() {
+  return (
+    <>
+      <Cabecera />
+      <div className="fcda-centro">
+        <span className="fcda-icono aviso" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <Titulo centrado>El tiempo para cambiar la foto terminó</Titulo>
+        <p className="fcda-texto">
+          Su foto anterior quedó guardada. Si necesita cambiarla, pida un enlace personal a la Unidad de Seguridad
+          Informática de la Delegación.
+        </p>
       </div>
     </>
   );

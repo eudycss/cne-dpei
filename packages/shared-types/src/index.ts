@@ -1898,6 +1898,15 @@ export type EnlaceFotoCdaPublico =
  * nombre corto ("Ana P.") y la cédula enmascarada: cualquiera puede escribir
  * una cédula ajena.
  */
+/**
+ * Respuesta al subir la foto. `cambio` es un enlace de un uso (30 min) para
+ * que quien la subió la cambie desde el mismo celular si se equivocó.
+ */
+export interface SubidaFotoCdaResult {
+  ok: true;
+  cambio: EnlaceFotoCdaCreado;
+}
+
 export interface FotoCdaPorCedula {
   nombreCorto: string;
   /** Cédula enmascarada (p. ej. 1050xxxx12). */
