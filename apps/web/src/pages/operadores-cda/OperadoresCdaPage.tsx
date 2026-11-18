@@ -14,6 +14,7 @@ import { FILTROS_INGRESO } from './filtroIngreso';
 import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCargo } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
+import { ResumenSexo } from './ResumenSexo';
 import { QuienFuePanel } from './QuienFuePanel';
 import { ConvocatoriaPanel } from './ConvocatoriaPanel';
 import { EvaticsPanel } from './EvaticsPanel';
@@ -90,6 +91,7 @@ export function OperadoresCdaPage() {
           <div className="ocda-acciones" ref={setAcciones} />
         </div>
         <BuscadorGeneral />
+        <ResumenSexo cargos={cargos} />
         {!enEvatics && (
           <div className="ocda-cargo-fila">
             <label className="ocda-cargo">

@@ -81,6 +81,15 @@ export class OperadoresCdaController {
     });
   }
 
+  @Get('resumen-sexo')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @ApiOperation({ summary: 'Hombres, mujeres y sin registrar por cargo CDA/CPE (solo personal activo)' })
+  resumenSexo() {
+    return this.operadores.resumenSexo();
+  }
+
   @Post()
   @Roles('ADMINISTRADOR')
   @ApiOperation({ summary: 'Agrega un operador a mano (alguien que no vino en el Excel)' })

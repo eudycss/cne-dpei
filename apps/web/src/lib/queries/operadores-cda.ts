@@ -41,6 +41,7 @@ import type {
   SubidaFotoCdaResult,
   AsistenciaCdaFila,
   CargoCda,
+  ResumenSexoCargoCda,
   CrearCargoCdaRequest,
   FormatoReporteCda,
   GrupoCda,
@@ -599,6 +600,12 @@ export async function descargarQrParejasCda(fecha: string, parejaIds?: string[])
 }
 
 // Gestión de cargos (combo "Cargo"): todos ven la lista; crear, renombrar y desactivar, solo el administrador.
+
+/** Hombres, mujeres y sin registrar por cargo (solo activos). */
+export async function getResumenSexoCda(): Promise<ResumenSexoCargoCda[]> {
+  const { data } = await api.get<ResumenSexoCargoCda[]>('/operadores-cda/resumen-sexo');
+  return data;
+}
 
 export async function getCargosCda(): Promise<CargoCda[]> {
   const { data } = await api.get<CargoCda[]>('/cargos-cda');

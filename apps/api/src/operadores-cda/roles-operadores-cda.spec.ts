@@ -33,6 +33,11 @@ describe('RBAC de Operadores CDA', () => {
     expect(rolesDe(OperadoresCdaController, 'importar')).toEqual(['ADMINISTRADOR']);
   });
 
+  it('resumen por sexo: los mismos tres roles que el listado y el módulo operadores-cda', () => {
+    expect(rolesDe(OperadoresCdaController, 'resumenSexo')).toEqual(TOMAN_ASISTENCIA);
+    expect(Reflect.getMetadata(MODULO_KEY, (OperadoresCdaController.prototype as any).resumenSexo)).toBe('operadores-cda');
+  });
+
   it('buscar en todos los cargos: los mismos tres roles; ocultos solo para el administrador', () => {
     expect(rolesDe(OperadoresCdaController, 'buscar')).toEqual(TOMAN_ASISTENCIA);
     const buscar = jest.fn();

@@ -17,7 +17,7 @@ import { OpcionesCargo } from './OpcionesCargo';
 import { hoyEcuador, mensajeError } from './utils';
 
 /** Orden en pantalla: el foco va al primero con error. */
-const ORDEN_CAMPOS = ['apellidosNombres', 'cedula', 'cargo', 'telefono', 'unidad', 'fechaInicio'] as const;
+const ORDEN_CAMPOS = ['apellidosNombres', 'cedula', 'cargo', 'telefono', 'sexo', 'unidad', 'fechaInicio'] as const;
 type CampoForm = (typeof ORDEN_CAMPOS)[number];
 type Formulario = Record<CampoForm, string>;
 
@@ -27,6 +27,7 @@ function inicial(cargoPorDefecto: string, o?: OperadorCda): Formulario {
     cedula: o?.cedula ?? '',
     cargo: o?.cargo ?? cargoPorDefecto,
     telefono: o?.telefono ?? '',
+    sexo: o?.sexo ?? '',
     unidad: o?.unidad ?? '',
     fechaInicio: o?.fechaInicio ?? '',
   };
@@ -202,6 +203,16 @@ export function OperadorFormModal({
               autoComplete="off"
             />,
             { opcional: true, ayuda: 'Celular: 0991234567 o +593991234567.' },
+          )}
+          {campo(
+            'sexo',
+            'Sexo',
+            <select value={f.sexo} onChange={(e) => cambiar({ sexo: e.target.value })}>
+              <option value="">Sin registrar</option>
+              <option value="M">Hombre (M)</option>
+              <option value="F">Mujer (F)</option>
+            </select>,
+            { opcional: true, ayuda: 'Como en la cédula.' },
           )}
           {editando && (
             <Campo

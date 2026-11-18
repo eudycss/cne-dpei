@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import { leerFilasOperadoresCda, normalizarFecha } from './excel-operadores-cda';
+import { leerFilasOperadoresCda, normalizarFecha, normalizarSexo } from './excel-operadores-cda';
 
 /** Hoja como la de talento humano: membrete arriba y encabezados en la fila 9. */
 function hojaConMembrete() {
@@ -77,5 +77,23 @@ describe('normalizarFecha', () => {
   it('deja el texto tal cual si no es una fecha reconocible', () => {
     expect(normalizarFecha('32 de octubre de 2026')).toBe('32 de octubre de 2026');
     expect(normalizarFecha('mañana')).toBe('mañana');
+  });
+});
+
+describe('normalizarSexo', () => {
+  it.each([
+    ['M', 'M'],
+    ['masculino', 'M'],
+    ['HOMBRE', 'M'],
+    ['h', 'M'],
+    ['F', 'F'],
+    ['Femenino', 'F'],
+    [' mujer ', 'F'],
+  ])('%s → %s', (entrada, esperado) => {
+    expect(normalizarSexo(entrada)).toBe(esperado);
+  });
+
+  it('deja el texto tal cual si no lo reconoce (la validación lo rechaza)', () => {
+    expect(normalizarSexo('Otro')).toBe('Otro');
   });
 });

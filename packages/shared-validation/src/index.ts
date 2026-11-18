@@ -707,6 +707,9 @@ const fechaIngresoCdaSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
 
+/** Sexo del personal CDA/CPE, como en la cédula: M (hombre) o F (mujer). */
+export const sexoCdaSchema = z.enum(['M', 'F'], { errorMap: () => ({ message: 'Sexo inválido (use M o F)' }) });
+
 // Una fila del Excel de talento humano ya normalizada por la API (encabezados
 // "N°, Apellidos Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial").
 export const operadorCdaFilaSchema = z.object({
@@ -721,6 +724,7 @@ export const operadorCdaFilaSchema = z.object({
   cargo: z.string().trim().min(1, 'Cargo requerido').max(160, 'Máximo 160 caracteres'),
   unidad: z.string().trim().max(200, 'Máximo 200 caracteres').optional(),
   fechaInicio: fechaIngresoCdaSchema.optional(),
+  sexo: sexoCdaSchema.optional(),
 });
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;

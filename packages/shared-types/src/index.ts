@@ -1213,6 +1213,8 @@ export interface OperadorCda {
   unidad: string | null;
   /** AAAA-MM-DD */
   fechaInicio: string | null;
+  /** M o F; null mientras no se registre. */
+  sexo: SexoCda | null;
   tieneFoto: boolean;
   /** Subió una foto nueva con su cédula y espera la aprobación de la Delegación. */
   fotoPendiente: boolean;
@@ -1237,6 +1239,17 @@ export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'PENDIENTE_EVENTO';
 
 /** Celular de la persona (la APK solo se instala en Android). */
 export type DispositivoCda = 'ANDROID' | 'IPHONE';
+
+/** Sexo del personal CDA/CPE, como en la cédula: M (hombre) o F (mujer). */
+export type SexoCda = 'M' | 'F';
+
+/** Conteo por sexo de un cargo (solo personal activo). */
+export interface ResumenSexoCargoCda {
+  grupo: GrupoCda;
+  hombres: number;
+  mujeres: number;
+  sinRegistrar: number;
+}
 
 export interface PersonaParejaCda {
   id: string;
@@ -1610,6 +1623,7 @@ export interface OperadorCdaFila {
   cargo: string;
   unidad?: string;
   fechaInicio?: string;
+  sexo?: SexoCda;
   /** NUEVO si la cédula no existe; ACTUALIZAR si ya estaba registrada. */
   accion: 'NUEVO' | 'ACTUALIZAR';
 }
@@ -1623,6 +1637,8 @@ export interface CrearOperadorCdaRequest {
   unidad?: string;
   /** Fecha de ingreso, AAAA-MM-DD: obligatoria al agregar a mano. */
   fechaInicio: string;
+  /** Opcional: en la edición, si no viene, queda sin registrar. */
+  sexo?: SexoCda;
   /** Por defecto OPERADOR. */
   grupo?: GrupoCda;
 }

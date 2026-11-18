@@ -99,7 +99,7 @@ describe('Buscador en todos los cargos', () => {
     expect(filtro).toHaveValue('1005201015');
     // El foco no se pierde: queda en el filtro del listado al que se llegó.
     await waitFor(() => expect(filtro).toHaveFocus());
-    expect(await screen.findByText('1 de 1 digitadores · 0 con foto')).toBeInTheDocument();
+    expect(await screen.findByText(/^1 de 1 digitadores · 0 con foto/)).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith('/operadores-cda?grupo=DIGITADOR');
     // El buscador se vacía al llegar.
     expect(buscador()).toHaveValue('');

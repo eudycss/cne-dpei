@@ -8,7 +8,8 @@ export type CampoOperadorCda =
   | 'telefono'
   | 'cargo'
   | 'unidad'
-  | 'fechaInicio';
+  | 'fechaInicio'
+  | 'sexo';
 
 export interface FilaLeida {
   /** Número de fila en la hoja (para mostrar errores). */
@@ -46,6 +47,7 @@ function campoDeEncabezado(texto: string): CampoOperadorCda | null {
   if (h === 'cargo') return 'cargo';
   if (h === 'unidad') return 'unidad';
   if (h === 'inicial' || h.startsWith('fecha')) return 'fechaInicio';
+  if (h === 'sexo' || h === 'genero') return 'sexo';
   return null;
 }
 
@@ -86,6 +88,17 @@ export function normalizarFecha(texto: string): string {
   return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
+/**
+ * "M", "Masculino", "Hombre", "H" → M; "F", "Femenino", "Mujer" → F. Lo demás
+ * se devuelve tal cual para que la validación muestre el error.
+ */
+export function normalizarSexo(texto: string): string {
+  const n = normalizarEncabezado(texto);
+  if (['m', 'h', 'masculino', 'hombre'].includes(n)) return 'M';
+  if (['f', 'femenino', 'mujer'].includes(n)) return 'F';
+  return texto;
+}
+
 // Excel guarda a veces cédulas y celulares como número y se pierde el 0
 // inicial (cédulas de provincias 01-09, celulares 09…).
 function conCeroInicial(texto: string): string {
@@ -101,6 +114,8 @@ function valorCampo(campo: CampoOperadorCda, texto: string): string | number {
       return conCeroInicial(texto.replace(/\s+/g, ''));
     case 'fechaInicio':
       return normalizarFecha(texto);
+    case 'sexo':
+      return normalizarSexo(texto);
     default:
       return texto;
   }

@@ -26,6 +26,7 @@ import { OcultarOperadorModal } from './OcultarOperadorModal';
 import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
 import { cargoCorto, fechaCorta, iniciales, mensajeError, partirNombre } from './utils';
+import { SEXO, contarSexo, cumpleSexo, textoSexo, type FiltroSexo } from './sexo';
 
 /**
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
@@ -66,6 +67,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const conCuentaApp = grupo === 'OPERADOR' || grupo === 'ASISTENTE';
   const [busqueda, setBusqueda] = useState('');
   const [filtroCuenta, setFiltroCuenta] = useState<EstadoCuentaCda | ''>('');
+  const [filtroSexo, setFiltroSexo] = useState<FiltroSexo>('');
   const [params, setParams] = useSearchParams();
   const filtro = {
     desde: fechaDeUrl(params.get('ingresoDesde')),
@@ -88,6 +90,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const limpiarFiltros = () => {
     setBusqueda('');
     setFiltroCuenta('');
+    setFiltroSexo('');
     setParams(
       (prev) => {
         const p = new URLSearchParams(prev);
@@ -171,15 +174,17 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       (o) =>
         coincideBusqueda([o.apellidosNombres, o.cedula], q) &&
         cumpleIngreso(o, f) &&
-        (!filtroCuenta || o.cuenta === filtroCuenta),
+        (!filtroCuenta || o.cuenta === filtroCuenta) &&
+        cumpleSexo(o, filtroSexo),
     );
     return ordenarPorIngreso(filtrados, orden);
-  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta]);
-  const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '';
+  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta, filtroSexo]);
+  const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '' || filtroSexo !== '';
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
   const porRevisar = data?.filter((o) => o.activo && o.fotoPendiente).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
+  const sexo = contarSexo(data ?? []);
 
   // Enlace único para todo el personal CDA/CPE: cada quien escribe su cédula.
   async function copiarEnlaceFotos() {
@@ -305,6 +310,15 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               </label>
             )}
             <label className="ocda-fecha">
+              <span>Sexo</span>
+              <select value={filtroSexo} onChange={(e) => setFiltroSexo(e.target.value as FiltroSexo)}>
+                <option value="">Todos</option>
+                <option value="M">Hombres</option>
+                <option value="F">Mujeres</option>
+                <option value="SIN">Sin registrar</option>
+              </select>
+            </label>
+            <label className="ocda-fecha">
               <span>Ordenar</span>
               <select value={orden} onChange={(e) => setOrden(e.target.value as OrdenListado)}>
                 <option value="lista">Como en la lista</option>
@@ -331,6 +345,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
             <p className="muted" role="status" style={{ margin: 0 }}>
               {visibles.length} de {data.length} {plural} · {conFoto} con foto
               {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
+              {` · ${textoSexo(sexo)}`}
             </p>
           </div>
           {puedeEnlaceFoto && porRevisar > 0 && (
@@ -526,6 +541,10 @@ function TarjetaOperador({
         <div>
           <dt>Cargo</dt>
           <dd title={o.cargo}>{cargoCorto(o.cargo)}</dd>
+        </div>
+        <div>
+          <dt>Sexo</dt>
+          <dd>{o.sexo ? SEXO[o.sexo] : <span className="muted">Sin registrar</span>}</dd>
         </div>
         <div>
           <dt>Ingreso</dt>
