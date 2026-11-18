@@ -38,6 +38,7 @@ import type {
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
   FotoCdaPorCedula,
+  SubidaFotoCdaResult,
   AsistenciaCdaFila,
   CargoCda,
   CrearCargoCdaRequest,
@@ -207,13 +208,16 @@ export async function consultarEnlaceFotoCda(token: string): Promise<EnlaceFotoC
   return data;
 }
 
-export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
+export async function subirFotoCda(token: string, foto: Blob): Promise<SubidaFotoCdaResult> {
   const fd = new FormData();
   fd.append('token', token);
   fd.append('consentimiento', 'true');
   fd.append('version', VERSION_AVISO_FOTO_CDA);
   fd.append('foto', foto, 'foto.jpg');
-  await api.post('/publico/foto-cda/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  const { data } = await api.post<SubidaFotoCdaResult>('/publico/foto-cda/subir', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
 }
 
 /** Enlace único que se comparte con todo el personal: cada quien escribe su cédula. */
@@ -228,13 +232,16 @@ export async function consultarFotoCdaPorCedula(cedula: string): Promise<FotoCda
   return data;
 }
 
-export async function subirFotoCdaPorCedula(cedula: string, foto: Blob): Promise<void> {
+export async function subirFotoCdaPorCedula(cedula: string, foto: Blob): Promise<SubidaFotoCdaResult> {
   const fd = new FormData();
   fd.append('cedula', cedula);
   fd.append('consentimiento', 'true');
   fd.append('version', VERSION_AVISO_FOTO_CDA);
   fd.append('foto', foto, 'foto.jpg');
-  await api.post('/publico/foto-cda/cedula/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  const { data } = await api.post<SubidaFotoCdaResult>('/publico/foto-cda/cedula/subir', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
 }
 
 // Actas de entrega de indumentaria y credencial.
