@@ -1893,6 +1893,20 @@ export type EnlaceFotoCdaPublico =
   /** Caducó, ya se usó, se generó otro, superó los intentos o no existe. */
   | { estado: 'INACTIVO' };
 
+/**
+ * Lo que ve quien escribe su cédula en el enlace único de foto. Solo el
+ * nombre corto ("Ana P.") y la cédula enmascarada: cualquiera puede escribir
+ * una cédula ajena.
+ */
+export interface FotoCdaPorCedula {
+  nombreCorto: string;
+  /** Cédula enmascarada (p. ej. 1050xxxx12). */
+  cedula: string;
+  cargo: string;
+  /** Ya tiene foto: solo la Delegación puede cambiarla (con un enlace personal). */
+  tieneFoto: boolean;
+}
+
 // Actas de entrega de indumentaria y credencial (peto, credencial y cordón).
 
 export type EstadoPrenda = 'NUEVO' | 'BUENO' | 'REGULAR' | 'MALO';

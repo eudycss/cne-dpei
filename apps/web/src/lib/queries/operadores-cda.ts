@@ -37,6 +37,7 @@ import type {
   PersonaEntregaCda,
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
+  FotoCdaPorCedula,
   AsistenciaCdaFila,
   CargoCda,
   CrearCargoCdaRequest,
@@ -213,6 +214,27 @@ export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
   fd.append('version', VERSION_AVISO_FOTO_CDA);
   fd.append('foto', foto, 'foto.jpg');
   await api.post('/publico/foto-cda/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+}
+
+/** Enlace único que se comparte con todo el personal: cada quien escribe su cédula. */
+export function urlFotoCdaGeneral(origen = window.location.origin): string {
+  return `${origen}/foto-cda`;
+}
+
+// La cédula va en el cuerpo, nunca en la URL de la API.
+
+export async function consultarFotoCdaPorCedula(cedula: string): Promise<FotoCdaPorCedula> {
+  const { data } = await api.post<FotoCdaPorCedula>('/publico/foto-cda/cedula/consultar', { cedula });
+  return data;
+}
+
+export async function subirFotoCdaPorCedula(cedula: string, foto: Blob): Promise<void> {
+  const fd = new FormData();
+  fd.append('cedula', cedula);
+  fd.append('consentimiento', 'true');
+  fd.append('version', VERSION_AVISO_FOTO_CDA);
+  fd.append('foto', foto, 'foto.jpg');
+  await api.post('/publico/foto-cda/cedula/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 }
 
 // Actas de entrega de indumentaria y credencial.

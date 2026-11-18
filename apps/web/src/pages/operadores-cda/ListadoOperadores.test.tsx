@@ -142,6 +142,20 @@ describe('ListadoOperadores', () => {
     await screen.findByRole('list', { name: 'Operadores CDA' });
     expect(screen.queryByRole('button', { name: 'Carnets QR' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Enlace de foto/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copiar enlace de fotos' })).not.toBeInTheDocument();
+  });
+
+  it('"Copiar enlace de fotos" copia el enlace único /foto-cda (sin token)', async () => {
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.fotos.enlace']);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar enlace de fotos' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/foto-cda`));
+    expect(sileo.success).toHaveBeenCalled();
   });
 });
 

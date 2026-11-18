@@ -150,3 +150,106 @@ describe('FotoCdaPage (enlace público de foto)', () => {
     expect(postMock).not.toHaveBeenCalled();
   });
 });
+
+describe('FotoCdaPage (enlace único: la persona escribe su cédula)', () => {
+  const POR_CEDULA = { nombreCorto: 'Lucía C.', cedula: '1050xxxx12', cargo: 'OPERADOR CDA', tieneFoto: false };
+  // Cédula ecuatoriana válida (dígito verificador correcto).
+  const CEDULA = '1710034065';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    postMock.mockReset();
+    reducirMock.mockReset();
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  async function escribirCedula(user = userEvent.setup(), cedula = CEDULA) {
+    abrir('');
+    expect(await screen.findByRole('heading', { name: 'Registro de foto' })).toHaveFocus();
+    await user.type(screen.getByLabelText('Número de cédula'), cedula);
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    return user;
+  }
+
+  it('sin token pide la cédula y no llama a la API si es inválida', async () => {
+    await escribirCedula(userEvent.setup(), '1234567890');
+    expect(await screen.findByText('Cédula ecuatoriana inválida')).toBeInTheDocument();
+    expect(screen.getByLabelText('Número de cédula')).toHaveAttribute('aria-invalid', 'true');
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it('consulta la cédula en el cuerpo y muestra solo el nombre corto, sin teléfono ni vencimiento', async () => {
+    postMock.mockResolvedValueOnce({ data: POR_CEDULA });
+    await escribirCedula();
+    expect(await screen.findByRole('heading', { name: 'Hola, Lucía' })).toBeInTheDocument();
+    expect(postMock).toHaveBeenCalledWith('/publico/foto-cda/cedula/consultar', { cedula: CEDULA });
+    expect(screen.getByText('Lucía C.')).toBeInTheDocument();
+    expect(screen.getByText('1050xxxx12')).toBeInTheDocument();
+    expect(screen.queryByText('Teléfono')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Enlace personal/)).not.toBeInTheDocument();
+  });
+
+  it('sube la foto con la cédula y el consentimiento', async () => {
+    postMock.mockResolvedValueOnce({ data: POR_CEDULA });
+    reducirMock.mockResolvedValue(new Blob([new Uint8Array(150 * 1024)], { type: 'image/jpeg' }));
+    const user = await escribirCedula();
+    await screen.findByRole('heading', { name: 'Hola, Lucía' });
+    await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+    await user.upload(screen.getByTestId('galeria'), new File(['x'], 'foto.jpg', { type: 'image/jpeg' }));
+    await screen.findByRole('heading', { name: '¿Se ve bien?' });
+
+    postMock.mockResolvedValueOnce({ data: { ok: true } });
+    await user.click(screen.getByRole('button', { name: 'Usar esta foto' }));
+    expect(await screen.findByRole('heading', { name: '¡Listo, foto registrada!' })).toBeInTheDocument();
+    const [ruta, fd] = postMock.mock.calls[1];
+    expect(ruta).toBe('/publico/foto-cda/cedula/subir');
+    expect((fd as FormData).get('cedula')).toBe(CEDULA);
+    expect((fd as FormData).get('consentimiento')).toBe('true');
+    expect((fd as FormData).get('version')).toBe('LOPDP-2026-10');
+    expect((fd as FormData).get('token')).toBeNull();
+  });
+
+  it('si ya tiene foto, no deja subir otra', async () => {
+    postMock.mockResolvedValueOnce({ data: { ...POR_CEDULA, tieneFoto: true } });
+    await escribirCedula();
+    expect(await screen.findByRole('heading', { name: 'Usted ya tiene una foto registrada' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tomar foto' })).not.toBeInTheDocument();
+  });
+
+  it('si otra subida ganó mientras tanto (409), muestra que ya tiene foto', async () => {
+    postMock.mockResolvedValueOnce({ data: POR_CEDULA });
+    reducirMock.mockResolvedValue(new Blob([new Uint8Array(10)], { type: 'image/jpeg' }));
+    const user = await escribirCedula();
+    await screen.findByRole('heading', { name: 'Hola, Lucía' });
+    await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+    await user.upload(screen.getByTestId('galeria'), new File(['x'], 'foto.jpg', { type: 'image/jpeg' }));
+    await screen.findByRole('heading', { name: '¿Se ve bien?' });
+    postMock.mockRejectedValueOnce({ response: { status: 409, data: { message: 'ya tiene' } } });
+    await user.click(screen.getByRole('button', { name: 'Usar esta foto' }));
+    expect(await screen.findByRole('heading', { name: 'Usted ya tiene una foto registrada' })).toBeInTheDocument();
+  });
+
+  it('cédula no registrada: muestra el mensaje de la API y deja corregirla', async () => {
+    postMock.mockRejectedValueOnce({
+      response: { status: 404, data: { message: 'Cédula no registrada en el personal CDA ni CPE' } },
+    });
+    await escribirCedula();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cédula no registrada en el personal CDA ni CPE');
+    expect(screen.getByLabelText('Número de cédula')).toBeEnabled();
+  });
+
+  it('demasiados intentos (429): mensaje en español', async () => {
+    postMock.mockRejectedValueOnce({ response: { status: 429, data: { message: 'ThrottlerException: Too Many Requests' } } });
+    await escribirCedula();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Demasiados intentos. Espere un minuto');
+  });
+
+  it('"No soy yo" vuelve a pedir la cédula', async () => {
+    postMock.mockResolvedValueOnce({ data: POR_CEDULA });
+    const user = await escribirCedula();
+    await screen.findByRole('heading', { name: 'Hola, Lucía' });
+    await user.click(screen.getByRole('button', { name: 'No soy yo: cambiar cédula' }));
+    expect(await screen.findByRole('heading', { name: 'Registro de foto' })).toBeInTheDocument();
+  });
+});

@@ -15,7 +15,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
-import { consultarEnlaceFotoCdaSchema, subirFotoCdaSchema } from '@cne/shared-validation';
+import {
+  consultarEnlaceFotoCdaSchema,
+  consultarFotoCdaCedulaSchema,
+  subirFotoCdaCedulaSchema,
+  subirFotoCdaSchema,
+} from '@cne/shared-validation';
 
 import { FotoCdaService, MAX_FOTO_BYTES } from './foto-cda.service';
 import { JwtAuthGuard, Public } from '../common/jwt-auth.guard';
@@ -83,6 +88,30 @@ export class FotoCdaPublicoController {
   ) {
     const { operadorId } = await this.fotos.subir(body.token, file, body.version);
     // Para la bitácora (audit.interceptor), sin devolver el id a la página pública.
+    (req as Request & { operadorCdaId?: string }).operadorCdaId = operadorId;
+    return { ok: true };
+  }
+
+  // Enlace único (/foto-cda sin token): la cédula va en el cuerpo, nunca en la URL.
+
+  @Post('cedula/consultar')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Valida la cédula: nombre corto, cargo y si ya tiene foto' })
+  consultarPorCedula(@Body(new ZodValidationPipe(consultarFotoCdaCedulaSchema)) body: { cedula: string }) {
+    return this.fotos.consultarPorCedula(body.cedula);
+  }
+
+  @Post('cedula/subir')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Sube la primera foto (JPG, hasta 1 MB) con el consentimiento LOPDP. No reemplaza una foto' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 3 } }))
+  async subirPorCedula(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body(new ZodValidationPipe(subirFotoCdaCedulaSchema)) body: { cedula: string; version: string },
+  ) {
+    const { operadorId } = await this.fotos.subirPorCedula(body.cedula, file, body.version);
     (req as Request & { operadorCdaId?: string }).operadorCdaId = operadorId;
     return { ok: true };
   }

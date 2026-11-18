@@ -10,7 +10,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
-import { cambiarActivoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
+import { cambiarActivoOperadorCda, getOperadoresCda, urlFotoCdaGeneral } from '../../lib/queries/operadores-cda';
 import { useFotoOperadorUrl } from './useFotoOperador';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
@@ -57,6 +57,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const isAdmin = actuaComoAdmin(user?.roles);
   const { puede } = useModulos();
   const puedeCarnets = puede('cda.carnets.emitir') || puede('cda.carnets.reimprimir');
+  const puedeEnlaceFoto = puede('cda.fotos.enlace');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   // Solo operadores y asistentes entran a la app de campo.
   const conCuentaApp = grupo === 'OPERADOR' || grupo === 'ASISTENTE';
@@ -175,10 +176,25 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
 
+  // Enlace único para todo el personal CDA/CPE: cada quien escribe su cédula.
+  async function copiarEnlaceFotos() {
+    try {
+      await navigator.clipboard.writeText(urlFotoCdaGeneral());
+      sileo.success({ title: 'Enlace copiado: envíelo al personal por WhatsApp', description: urlFotoCdaGeneral() });
+    } catch {
+      sileo.error({ title: `No se pudo copiar. El enlace es ${urlFotoCdaGeneral()}` });
+    }
+  }
+
   return (
     <>
-      {(isAdmin || puedeCarnets) && (
+      {(isAdmin || puedeCarnets || puedeEnlaceFoto) && (
         <AccionesEncabezado destino={acciones}>
+          {puedeEnlaceFoto && (
+            <button type="button" className="btn secondary" onClick={copiarEnlaceFotos}>
+              Copiar enlace de fotos
+            </button>
+          )}
           {isAdmin && (
             <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
               Importar Excel
@@ -330,7 +346,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 <TarjetaOperador
                   operador={o}
                   mostrarCuenta={conCuentaApp}
-                  onEnlace={puede('cda.fotos.enlace') ? () => setEnlacePara(o) : undefined}
+                  onEnlace={puedeEnlaceFoto ? () => setEnlacePara(o) : undefined}
                   admin={
                     isAdmin
                       ? {

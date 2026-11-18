@@ -706,6 +706,26 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
   });
 
+  it('foto por cédula (enlace único): el operador y la versión del aviso, nunca la cédula', async () => {
+    const subir = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/publico/foto-cda/cedula/subir',
+        body: { cedula: '1050123412', consentimiento: 'true', version: 'LOPDP-2026-10' },
+        operadorCdaId: OTRO,
+      },
+      { ok: true },
+    );
+    expect(subir.data).toMatchObject({
+      usuarioId: null,
+      accion: 'FOTO_CDA_SUBIR_CEDULA',
+      entidad: 'operador_cda',
+      entidadId: OTRO,
+      datosDespues: { consentimientoVersion: 'LOPDP-2026-10' },
+    });
+    expect(JSON.stringify(subir.data)).not.toContain('1050123412');
+  });
+
   it('simulador de digitación: configuración sin personas, quién empieza, y las actas no se auditan', async () => {
     const PRACTICA = '44444444-4444-4444-8444-444444444444';
     const crear = await auditar(
