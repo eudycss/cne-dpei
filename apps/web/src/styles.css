@@ -1234,3 +1234,88 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
     .estad-seccion { animation: estad-aparecer linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
   }
 }
+
+/* ---- Plan de perímetro (mapa tipo Google Earth) ---- */
+.pp-nuevo { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+.pp-nuevo .ocda-campo { flex: 1 1 280px; max-width: 480px; }
+.pp-nuevo input { width: 100%; }
+.pp-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; align-items: start; }
+@media (max-width: 960px) { .pp-cuerpo { grid-template-columns: minmax(0, 1fr); } }
+.pp-mapa-marco { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--f-border-subtle); }
+.pp-mapa { width: 100%; height: min(72vh, 760px); min-height: 420px; }
+.pp-controles {
+  position: absolute; top: 0.75rem; left: 0.75rem; z-index: 2; display: flex; flex-direction: column; gap: 0.5rem;
+  max-width: calc(100% - 4.5rem);
+}
+.pp-capas, .pp-botones {
+  display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0; padding: 0.3rem; border: 0; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 94%, transparent); backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.pp-capas label {
+  position: relative; padding: 0.35rem 0.7rem; border-radius: 7px; font-size: 0.8rem; font-weight: 600;
+  color: var(--f-text); cursor: pointer;
+}
+.pp-capas label.activo { background: var(--f-degradado); color: var(--f-text-on-accent); }
+.pp-capas input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pp-capas label:focus-within { box-shadow: var(--focus-ring); }
+.pp-btn {
+  display: inline-flex; align-items: center; gap: 0.35rem; min-height: 32px; min-width: 32px; justify-content: center;
+  padding: 0.3rem 0.6rem; border: 0; border-radius: 7px; background: transparent; color: var(--f-text);
+  font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+.pp-btn:hover { background: var(--f-bg-elevated); }
+.pp-btn[aria-pressed="true"] { background: var(--f-cian-suave); color: var(--f-cian); }
+.pp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-puesto {
+  /* Área de toque de 44 px aunque el círculo dibujado mida 24 px. */
+  display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; min-width: 44px; padding: 0 10px; border: 0;
+  background: transparent; cursor: pointer; font: inherit;
+}
+.pp-puesto .pp-puesto-numero { box-shadow: 0 0 0 2px #fff, 0 2px 8px rgb(0 0 0 / 0.45); }
+.pp-puesto-numero {
+  display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 0.3rem; border-radius: 99px;
+  background: var(--f-cian); color: #04151a; font-size: 0.75rem; font-weight: 800;
+}
+.pp-puesto--sin-persona .pp-puesto-numero { background: #94a3b8; }
+.pp-puesto--seleccionado .pp-puesto-numero { background: #facc15; transform: scale(1.2); }
+.pp-puesto-nombre {
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.4rem;
+  border-radius: 5px; background: rgb(2 6 23 / 0.72); color: #fff; font-size: 0.72rem; font-weight: 600;
+}
+.pp-puesto:focus-visible { outline: none; }
+.pp-puesto:focus-visible .pp-puesto-numero { box-shadow: 0 0 0 3px #facc15, 0 0 0 5px #04151a; }
+@media (prefers-reduced-motion: no-preference) { .pp-puesto-numero { transition: transform 150ms ease-out; } }
+.pp-leyenda {
+  position: absolute; left: 0.75rem; bottom: 2rem; z-index: 2; display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem;
+  max-width: calc(100% - 1.5rem); margin: 0; padding: 0.45rem 0.7rem; list-style: none; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 88%, transparent); font-size: 0.75rem; color: var(--f-text);
+}
+.pp-leyenda li { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pp-leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.pp-leyenda i.pp-leyenda-borde { background: transparent; border: 2px dashed; }
+.pp-panel {
+  display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; border-radius: 14px;
+  border: 1px solid var(--f-border-subtle); background: var(--f-bg-surface); max-height: min(72vh, 760px); overflow: auto;
+}
+.pp-panel-titulo { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1rem; }
+.pp-contador { padding: 0 0.5rem; border-radius: 99px; background: var(--f-bg-elevated); font-size: 0.8rem; }
+.pp-lista { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.pp-lista button {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 40px; padding: 0.35rem 0.5rem; border: 0;
+  border-radius: 8px; background: transparent; color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-lista button:hover { background: var(--f-bg-elevated); }
+.pp-lista button.activo { background: var(--f-cian-suave); }
+.pp-lista button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-sin-persona { color: var(--f-text-muted); font-style: italic; }
+.pp-tarjeta {
+  display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: center; padding: 0.75rem; border-radius: 12px;
+  background: var(--f-bg-elevated);
+}
+.pp-tarjeta .btn { grid-column: 1 / -1; justify-self: end; }
+.pp-tarjeta-puesto { margin: 0; font-size: 0.75rem; color: var(--f-text-muted); }
+.pp-tarjeta-nombre { margin: 0.15rem 0 0; font-weight: 700; }
+.pp-foto { width: 72px; height: 90px; border-radius: 10px; object-fit: cover; }
+.pp-foto--vacia { display: grid; place-items: center; background: var(--f-bg-surface); color: var(--f-text-muted); }
+.pp-avisos { margin: 0; padding-left: 1.1rem; }
