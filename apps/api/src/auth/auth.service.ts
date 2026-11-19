@@ -2,10 +2,12 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,9 +22,16 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora (HU16-CA3)
 /** Contraseñas erróneas seguidas antes de bloquear la cuenta. */
 export const MAX_INTENTOS_LOGIN = 5;
 export const BLOQUEO_LOGIN_MS = 15 * 60_000;
+/**
+ * Ventana en la que un refresh token recién rotado aún se acepta si el cliente
+ * no alcanzó a recibir su reemplazo (ver reemitirEnGracia).
+ */
+export const GRACIA_REFRESH_MS = 30_000;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -123,31 +132,92 @@ export class AuthService {
     const rec = await this.prisma.refreshToken.findUnique({
       where: { jti: payload.jti },
     });
-    if (!rec || rec.revocadoEn || rec.expiraEn < new Date()) {
+    if (!rec || rec.expiraEn < new Date()) {
       throw new UnauthorizedException('Refresh inválido');
     }
     const matches = await argon2.verify(rec.tokenHash, refreshToken);
     if (!matches) {
       throw new UnauthorizedException('Refresh inválido');
     }
-    // Rotación: invalidamos el anterior y emitimos uno nuevo. El where con
-    // revocadoEn: null hace que la revocación sea atómica a nivel de fila: si
-    // dos requests llegan en paralelo con el mismo refresh token, solo una
-    // actualiza 0 filas (perdedora) y la otra 1 (ganadora). Un update sin esa
-    // condición deja que ambas "ganen" y emitan tokens nuevos.
-    const revocado = await this.prisma.refreshToken.updateMany({
-      where: { jti: payload.jti, revocadoEn: null },
-      data: { revocadoEn: new Date() },
-    });
-    if (revocado.count === 0) {
+    if (rec.revocadoEn && !this.enGracia(rec)) {
       throw new UnauthorizedException('Refresh inválido');
     }
-    return this.issueTokens({
+    // Firmas y hash van fuera de la transacción (argon2 tarda): dentro solo
+    // quedan las escrituras, así la fila del token nuevo existe siempre que
+    // exista un puntero reemplazadoPorJti hacia ella.
+    const nuevos = await this.prepararTokens({
       sub: payload.sub,
       email: payload.email,
       roles: payload.roles,
       debeCambiarPwd: payload.debeCambiarPwd,
     });
+    await this.prisma.$transaction(async (tx) => {
+      if (rec.revocadoEn) {
+        await this.reemitirEnGracia(tx, rec, nuevos.fila.jti);
+        this.logger.warn(
+          `Refresh reemitido en margen de gracia: usuario=${rec.usuarioId} jti=${rec.jti} → ${nuevos.fila.jti}`,
+        );
+      } else {
+        // Rotación: el where con revocadoEn: null hace la revocación atómica a
+        // nivel de fila: de dos requests paralelas con el mismo token, solo una
+        // actualiza 1 fila (ganadora) y la otra 0 (perdedora, sin tokens).
+        const revocado = await tx.refreshToken.updateMany({
+          where: { jti: rec.jti, revocadoEn: null },
+          data: { revocadoEn: new Date(), reemplazadoPorJti: nuevos.fila.jti },
+        });
+        if (revocado.count === 0) {
+          throw new UnauthorizedException('Refresh inválido');
+        }
+      }
+      await tx.refreshToken.create({ data: nuevos.fila });
+    });
+    return { accessToken: nuevos.accessToken, refreshToken: nuevos.refreshToken };
+  }
+
+  /** Revocado por una rotación (no por logout/contraseña/desactivación) y hace poco. */
+  private enGracia(rec: { revocadoEn: Date | null; reemplazadoPorJti: string | null }): boolean {
+    if (!rec.revocadoEn || !rec.reemplazadoPorJti) return false;
+    const transcurrido = Date.now() - rec.revocadoEn.getTime();
+    return transcurrido >= 0 && transcurrido < GRACIA_REFRESH_MS;
+  }
+
+  /**
+   * Margen de gracia: el cliente reenvía un refresh que el servidor ya rotó
+   * pero cuya respuesta nunca le llegó (recargó la página o perdió señal a
+   * mitad de la petición: en Render se ve como 499 y luego 401). Sin esto el
+   * usuario queda fuera aunque nadie cerró su sesión.
+   *
+   * Solo se acepta si (1) lo revocó una rotación —no un logout, cambio de
+   * contraseña ni desactivación—, (2) hace menos de GRACIA_REFRESH_MS y
+   * (3) su reemplazo no fue revocado después (si lo fue, la sesión se cerró
+   * a propósito). El reemplazo que nunca se entregó se revoca. Corre dentro
+   * de la transacción de refresh(): cualquier excepción la revierte.
+   */
+  private async reemitirEnGracia(
+    tx: Prisma.TransactionClient,
+    rec: { jti: string; reemplazadoPorJti: string | null },
+    nuevoJti: string,
+  ): Promise<void> {
+    const anterior = rec.reemplazadoPorJti!;
+    // Compare-and-set sobre el original: de dos reintentos simultáneos solo
+    // uno cambia el puntero y sigue; el otro actualiza 0 filas.
+    const reapuntado = await tx.refreshToken.updateMany({
+      where: { jti: rec.jti, reemplazadoPorJti: anterior },
+      data: { reemplazadoPorJti: nuevoJti },
+    });
+    if (reapuntado.count === 0) {
+      throw new UnauthorizedException('Refresh inválido');
+    }
+    // El reemplazo se creó en la misma transacción que fijó el puntero, así
+    // que debe existir y seguir activo. Si ya está revocado (logout, cambio de
+    // contraseña, desactivación o él mismo rotó), la sesión no se reabre.
+    const revocado = await tx.refreshToken.updateMany({
+      where: { jti: anterior, revocadoEn: null },
+      data: { revocadoEn: new Date(), reemplazadoPorJti: nuevoJti },
+    });
+    if (revocado.count === 0) {
+      throw new UnauthorizedException('Refresh inválido');
+    }
   }
 
   async logout(userId: string) {
@@ -252,6 +322,13 @@ export class AuthService {
   // ---- internos ----------------------------------------------------------
 
   private async issueTokens(payload: JwtPayload) {
+    const { accessToken, refreshToken, fila } = await this.prepararTokens(payload);
+    await this.prisma.refreshToken.create({ data: fila });
+    return { accessToken, refreshToken };
+  }
+
+  /** Firma ambos tokens y arma la fila del refresh, sin escribir en la BD. */
+  private async prepararTokens(payload: JwtPayload) {
     const accessTtl = this.config.get<string>('JWT_ACCESS_TTL') ?? '15m';
     const refreshTtl = this.config.get<string>('JWT_REFRESH_TTL') ?? '7d';
     const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
@@ -266,17 +343,13 @@ export class AuthService {
       { ...payload, jti },
       { secret: refreshSecret, expiresIn: refreshTtl },
     );
-    const hash = await argon2.hash(refreshToken);
-    const expiraEn = new Date(Date.now() + ttlToMs(refreshTtl));
-    await this.prisma.refreshToken.create({
-      data: {
-        usuarioId: payload.sub,
-        jti,
-        tokenHash: hash,
-        expiraEn,
-      },
-    });
-    return { accessToken, refreshToken };
+    const fila = {
+      usuarioId: payload.sub,
+      jti,
+      tokenHash: await argon2.hash(refreshToken),
+      expiraEn: new Date(Date.now() + ttlToMs(refreshTtl)),
+    };
+    return { accessToken, refreshToken, fila };
   }
 }
 
