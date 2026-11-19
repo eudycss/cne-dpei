@@ -131,8 +131,11 @@ export class AuthService {
     }
     const rec = await this.prisma.refreshToken.findUnique({
       where: { jti: payload.jti },
+      include: { usuario: { select: { activo: true } } },
     });
-    if (!rec || rec.expiraEn < new Date()) {
+    // Un usuario desactivado no renueva sesión aunque su token siga vigente
+    // (p. ej. si se desactivó por una vía que no revoca sus tokens).
+    if (!rec || !rec.usuario.activo || rec.expiraEn < new Date()) {
       throw new UnauthorizedException('Refresh inválido');
     }
     const matches = await argon2.verify(rec.tokenHash, refreshToken);

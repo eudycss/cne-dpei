@@ -313,6 +313,7 @@ describe('AuthService', () => {
       prisma.refreshToken.findUnique.mockResolvedValueOnce({
         jti: 'jti-1',
         tokenHash: 'h',
+        usuario: { activo: true },
         revocadoEn: new Date(),
         expiraEn: new Date(Date.now() + 10000),
       });
@@ -324,6 +325,7 @@ describe('AuthService', () => {
       prisma.refreshToken.findUnique.mockResolvedValueOnce({
         jti: 'jti-1',
         tokenHash: 'h',
+        usuario: { activo: true },
         revocadoEn: null,
         expiraEn: new Date(Date.now() + 10000),
       });
@@ -331,11 +333,32 @@ describe('AuthService', () => {
       await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
     });
 
+    it('rechaza el refresh de un usuario desactivado aunque el token siga vigente', async () => {
+      jwt.verifyAsync.mockResolvedValueOnce(payload);
+      prisma.refreshToken.findUnique.mockResolvedValueOnce({
+        jti: 'jti-1',
+        tokenHash: 'h',
+        usuario: { activo: false },
+        revocadoEn: null,
+        expiraEn: new Date(Date.now() + 10000),
+      });
+      verifyMock.mockResolvedValueOnce(true);
+
+      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { jti: 'jti-1' },
+        include: { usuario: { select: { activo: true } } },
+      });
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
     it('rota el refresh: revoca el anterior (update atómico) y emite uno nuevo', async () => {
       jwt.verifyAsync.mockResolvedValueOnce(payload);
       prisma.refreshToken.findUnique.mockResolvedValueOnce({
         jti: 'jti-1',
         tokenHash: 'h',
+        usuario: { activo: true },
         revocadoEn: null,
         expiraEn: new Date(Date.now() + 10000),
       });
@@ -374,6 +397,7 @@ describe('AuthService', () => {
           jti: 'jti-1',
           usuarioId: payload.sub,
           tokenHash: 'h',
+          usuario: { activo: true },
           revocadoEn: new Date(AHORA - haceMs),
           reemplazadoPorJti,
           expiraEn,
@@ -507,6 +531,7 @@ describe('AuthService', () => {
       prisma.refreshToken.findUnique.mockResolvedValueOnce({
         jti: 'jti-1',
         tokenHash: 'h',
+        usuario: { activo: true },
         revocadoEn: null,
         expiraEn: new Date(Date.now() + 10000),
       });

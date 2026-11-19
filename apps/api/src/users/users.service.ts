@@ -126,17 +126,30 @@ export class UsersService {
       if (existsCed) throw new ConflictException(`Cédula ya registrada: ${parsed.cedula}`);
     }
     try {
-      const user = await this.prisma.usuario.update({
-        where: { id },
-        data: {
-          cedula: parsed.cedula ?? existing.cedula,
-          email: parsed.email ?? existing.email,
-          nombres: parsed.nombres ?? existing.nombres,
-          apellidos: parsed.apellidos ?? existing.apellidos,
-          telefono: parsed.telefono ?? existing.telefono,
-          activo: parsed.activo ?? existing.activo,
-        },
-        include: { roles: { include: { rol: true } } },
+      const user = await this.prisma.$transaction(async (tx) => {
+        const actualizado = await tx.usuario.update({
+          where: { id },
+          data: {
+            cedula: parsed.cedula ?? existing.cedula,
+            email: parsed.email ?? existing.email,
+            nombres: parsed.nombres ?? existing.nombres,
+            apellidos: parsed.apellidos ?? existing.apellidos,
+            telefono: parsed.telefono ?? existing.telefono,
+            activo: parsed.activo ?? existing.activo,
+          },
+          include: { roles: { include: { rol: true } } },
+        });
+        // Desactivar cierra sus sesiones: sin esto el refresh token seguía
+        // sirviendo hasta 7 días (igual que hacen las cuentas CDA al retirarse).
+        // Sin mirar `existing.activo` (leído fuera de la transacción): revocar
+        // es idempotente y así dos ediciones simultáneas no se la saltan.
+        if (parsed.activo === false) {
+          await tx.refreshToken.updateMany({
+            where: { usuarioId: id, revocadoEn: null },
+            data: { revocadoEn: new Date() },
+          });
+        }
+        return actualizado;
       });
       return toUserDto(user);
     } catch (e) {
