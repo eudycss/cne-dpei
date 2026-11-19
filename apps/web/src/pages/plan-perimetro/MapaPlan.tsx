@@ -7,6 +7,7 @@ import { estiloPlan, type CapaBase } from './estiloPlan';
 import { ControlesVista, PITCH_3D } from './ControlesVista';
 import { PuestoMarker } from './PuestoMarker';
 import { MarcadorArrastrable } from './MarcadorArrastrable';
+import { BuscadorLugar } from './BuscadorLugar';
 import type { AccionEditor, EstadoEditor, Objetivo } from './editorPlan';
 
 /** Delegación Provincial Electoral de Imbabura: donde abre un plan todavía vacío. */
@@ -61,7 +62,10 @@ export function MapaPlan({ plan, seleccionado, onSeleccionar, edicion, onVista }
       <IrAlPuesto plan={visible} puestoId={seleccionado} />
       {onVista && <InformarVista onVista={onVista} />}
       <PlanoAlEditar editando={!!edicion} vista3d={vista3d} onVista3d={setVista3d} />
-      <ControlesVista capa={capa} onCapa={setCapa} vista3d={vista3d} onVista3d={setVista3d} />
+      <div className="pp-superior">
+        <BuscadorLugar />
+        <ControlesVista capa={capa} onCapa={setCapa} vista3d={vista3d} onVista3d={setVista3d} />
+      </div>
       {edicion?.estado.dibujo && <ClicsDibujo despachar={edicion.despachar} />}
       {visible.puestos.map((p) => (
         <PuestoMarker

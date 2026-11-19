@@ -1243,10 +1243,35 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 @media (max-width: 960px) { .pp-cuerpo { grid-template-columns: minmax(0, 1fr); } }
 .pp-mapa-marco { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--f-border-subtle); }
 .pp-mapa { width: 100%; height: min(72vh, 760px); min-height: 420px; }
-.pp-controles {
-  position: absolute; top: 0.75rem; left: 0.75rem; z-index: 2; display: flex; flex-direction: column; gap: 0.5rem;
-  max-width: calc(100% - 4.5rem);
+.pp-superior {
+  position: absolute; top: 0.75rem; left: 0.75rem; z-index: 3; display: flex; flex-direction: column; gap: 0.5rem;
+  width: min(420px, calc(100% - 4.5rem));
 }
+.pp-controles { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.pp-buscador { position: relative; }
+.pp-buscador form {
+  display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 94%, transparent); backdrop-filter: blur(8px); box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.pp-buscador input {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 0 0.6rem; border: 0; border-radius: 7px; background: transparent;
+  color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-buscador input:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-buscador-resultados {
+  position: relative; margin-top: 0.35rem; padding: 0.4rem; border-radius: 10px; max-height: 280px; overflow: auto;
+  background: var(--f-bg-surface); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.pp-buscador-resultados ul { margin: 0; padding: 0; list-style: none; }
+.pp-buscador-resultados li button {
+  display: flex; flex-direction: column; gap: 0.1rem; width: 100%; min-height: 44px; padding: 0.4rem 2rem 0.4rem 0.5rem;
+  border: 0; border-radius: 7px; background: transparent; color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-buscador-resultados li button span { font-size: 0.75rem; color: var(--f-text-muted); }
+.pp-buscador-resultados li button:hover { background: var(--f-bg-elevated); }
+.pp-buscador-resultados li button:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-buscador-resultados .pp-ayuda { padding: 0.4rem 2rem 0.4rem 0.5rem; }
+.pp-buscador-cerrar { position: absolute; top: 0.3rem; right: 0.3rem; }
 .pp-capas, .pp-botones {
   display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0; padding: 0.3rem; border: 0; border-radius: 10px;
   background: color-mix(in srgb, var(--f-bg-surface) 94%, transparent); backdrop-filter: blur(8px);
