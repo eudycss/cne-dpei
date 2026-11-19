@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
@@ -9,7 +9,7 @@ jest.mock('argon2', () => ({
 }));
 import * as argon2 from 'argon2';
 
-import { AuthService } from './auth.service';
+import { AuthService, GRACIA_REFRESH_MS } from './auth.service';
 import { PrismaService } from '../db/prisma.service';
 import { NOTIFIER } from './notifier';
 
@@ -76,7 +76,10 @@ describe('AuthService', () => {
     jwt.signAsync.mockResolvedValue('signed.jwt.token');
     config.getOrThrow.mockReturnValue('secret');
     config.get.mockReturnValue(undefined);
-    prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
+    // Forma de arreglo y forma interactiva (callback con tx = el mismo mock).
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function' ? arg(prisma) : Promise.all(arg as Promise<unknown>[]),
+    );
     prisma.usuario.update.mockResolvedValue({ intentosFallidos: 1 });
 
     const moduleRef = await Test.createTestingModule({
@@ -343,10 +346,157 @@ describe('AuthService', () => {
 
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
         where: { jti: 'jti-1', revocadoEn: null },
-        data: { revocadoEn: expect.any(Date) },
+        data: { revocadoEn: expect.any(Date), reemplazadoPorJti: expect.any(String) },
       });
-      expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
+      // El puntero del revocado, la fila creada y el JWT firmado usan el mismo jti.
+      const nuevoJti = prisma.refreshToken.updateMany.mock.calls[0][0].data.reemplazadoPorJti;
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ jti: nuevoJti }),
+      });
+      expect(jwt.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ jti: nuevoJti }),
+        expect.anything(),
+      );
+      // Revocar y crear van en la misma transacción.
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
       expect(result.accessToken).toBe('signed.jwt.token');
+    });
+
+    describe('margen de gracia (respuesta del refresh perdida: 499 → 401)', () => {
+      const AHORA = new Date('2026-11-19T02:30:37Z').getTime();
+
+      function revocadoPorRotacion(
+        haceMs: number,
+        reemplazadoPorJti: string | null = 'jti-2',
+        expiraEn = new Date(AHORA + 10000),
+      ) {
+        return {
+          jti: 'jti-1',
+          usuarioId: payload.sub,
+          tokenHash: 'h',
+          revocadoEn: new Date(AHORA - haceMs),
+          reemplazadoPorJti,
+          expiraEn,
+        };
+      }
+
+      let warn: jest.SpyInstance;
+
+      /** Sin respuestas "Once" pendientes que se filtren de un caso a otro. */
+      function limpiarColas() {
+        prisma.refreshToken.findUnique.mockReset();
+        prisma.refreshToken.updateMany.mockReset();
+        prisma.refreshToken.create.mockReset();
+      }
+
+      beforeEach(() => {
+        // Solo se congela Date (también `new Date()`); los timers siguen reales.
+        jest.useFakeTimers({
+          now: AHORA,
+          doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'queueMicrotask'],
+        });
+        warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        limpiarColas();
+        jwt.verifyAsync.mockResolvedValueOnce(payload);
+        verifyMock.mockResolvedValueOnce(true);
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+        warn.mockRestore();
+        limpiarColas();
+      });
+
+      it('reemite si se rotó hace poco y el reemplazo sigue activo, y revoca ese reemplazo', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(2000));
+        prisma.refreshToken.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 1 });
+
+        const result = await service.refresh('token');
+
+        expect(result.accessToken).toBe('signed.jwt.token');
+        const nuevoJti = prisma.refreshToken.create.mock.calls[0][0].data.jti;
+        expect(prisma.refreshToken.updateMany).toHaveBeenNthCalledWith(1, {
+          where: { jti: 'jti-1', reemplazadoPorJti: 'jti-2' },
+          data: { reemplazadoPorJti: nuevoJti },
+        });
+        expect(prisma.refreshToken.updateMany).toHaveBeenNthCalledWith(2, {
+          where: { jti: 'jti-2', revocadoEn: null },
+          data: { revocadoEn: expect.any(Date), reemplazadoPorJti: nuevoJti },
+        });
+        expect(jwt.signAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ jti: nuevoJti }),
+          expect.anything(),
+        );
+        // Queda rastro (sin tokens) para detectar abuso.
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(payload.sub));
+        expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('signed.jwt.token'));
+      });
+
+      it('acepta justo antes del límite y rechaza en GRACIA_REFRESH_MS exacto', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(
+          revocadoPorRotacion(GRACIA_REFRESH_MS - 1),
+        );
+        prisma.refreshToken.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 1 });
+        await expect(service.refresh('token')).resolves.toBeDefined();
+
+        jwt.verifyAsync.mockResolvedValueOnce(payload);
+        verifyMock.mockResolvedValueOnce(true);
+        prisma.refreshToken.create.mockClear();
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(GRACIA_REFRESH_MS));
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      });
+
+      it('rechaza una revocación con fecha futura (desfase de reloj)', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(-5000));
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+      });
+
+      it('rechaza un original ya expirado aunque la revocación sea reciente', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(
+          revocadoPorRotacion(2000, 'jti-2', new Date(AHORA - 1)),
+        );
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('rechaza un token revocado por logout, contraseña o desactivación (sin reemplazo)', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(2000, null));
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+        expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      });
+
+      it('rechaza si el reemplazo ya no está activo (logout posterior, o él mismo ya rotó)', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(2000));
+        prisma.refreshToken.updateMany
+          .mockResolvedValueOnce({ count: 1 }) // CAS del original
+          .mockResolvedValueOnce({ count: 0 }); // reemplazo ya revocado o inexistente
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        // La excepción revierte la transacción: el token nuevo no se guarda.
+        expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      });
+
+      it('de dos reintentos simultáneos con el mismo token, solo uno reemite', async () => {
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(2000));
+        prisma.refreshToken.updateMany.mockResolvedValueOnce({ count: 0 }); // perdió el CAS
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+        expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      });
+
+      it('no aplica la gracia si el hash del token no coincide', async () => {
+        verifyMock.mockReset();
+        verifyMock.mockResolvedValueOnce(false);
+        prisma.refreshToken.findUnique.mockResolvedValueOnce(revocadoPorRotacion(2000));
+        await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+        expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      });
     });
 
     it('lanza UnauthorizedException si dos refresh concurrentes usan el mismo token (condición de carrera)', async () => {
