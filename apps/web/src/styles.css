@@ -1391,3 +1391,48 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 /* En el panel angosto del editor las 4 pestañas comparten el ancho sin cortarse. */
 .pp-panel .pestanas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 0; }
 .pp-panel .pestanas [role="tab"] { padding-left: 0.35rem; padding-right: 0.35rem; }
+
+/* Personal CDA/CPE en los puestos */
+.pp-fila-puesto { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.pp-lista--edicion li { flex-direction: column; align-items: stretch; }
+.pp-selector, .pp-completar {
+  display: flex; flex-direction: column; gap: 0.5rem; margin: 0.35rem 0 0.5rem 2rem; padding: 0.6rem; border-radius: 10px;
+  background: var(--f-bg-elevated);
+}
+.pp-completar { margin: 0; }
+.pp-completar h4 { margin: 0; font-size: 0.9rem; }
+.pp-selector input[type="search"], .pp-fila-campos select {
+  min-height: 40px; padding: 0 0.6rem; border-radius: 8px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-surface); color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-candidatos { display: flex; flex-direction: column; gap: 0.15rem; max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.pp-candidatos button {
+  width: 100%; min-height: 40px; padding: 0.35rem 0.5rem; border: 0; border-radius: 7px; background: transparent;
+  color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-candidatos button:hover { background: var(--f-bg-surface); }
+.pp-candidatos button:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-otro-plan { color: var(--f-aviso); font-size: 0.78rem; }
+.pp-barra-edicion .btn svg { vertical-align: -3px; }
+
+/* Hoja para imprimir: solo existe mientras se imprime. */
+.pp-impresion { display: none; }
+@media print {
+  body.pp-imprimiendo * { visibility: hidden; }
+  body.pp-imprimiendo .pp-impresion, body.pp-imprimiendo .pp-impresion * { visibility: visible; }
+  body.pp-imprimiendo .pp-impresion {
+    display: block; position: absolute; top: 0; left: 0; width: 100%; color: #000; background: #fff; font-size: 11pt;
+  }
+  .pp-impresion h1 { margin: 0 0 0.2rem; font-size: 16pt; }
+  .pp-impresion p { margin: 0 0 0.4rem; }
+  .pp-impresion img { display: block; width: 100%; max-height: 11cm; object-fit: contain; margin: 0.4rem 0; border: 1px solid #999; }
+  .pp-impresion table { width: 100%; border-collapse: collapse; }
+  .pp-impresion th, .pp-impresion td { border: 1px solid #999; padding: 2pt 4pt; text-align: left; }
+  .pp-impresion tr { break-inside: avoid; }
+  .pp-impresion-pie { margin-top: 0.4rem; font-size: 8pt; color: #444; }
+}
+
+/* Pantallas táctiles: botones de 44 px (guía del proyecto). */
+@media (pointer: coarse) {
+  .pp-btn { min-width: 44px; min-height: 44px; }
+}

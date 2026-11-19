@@ -1,4 +1,4 @@
-import type { AjustesPerimetro, PlanPerimetroDetalle, PuestoPerimetro, TipoZonaPerimetro, VistaPerimetro } from '@cne/shared-types';
+import type { AjustesPerimetro, PersonaPuestoPerimetro, PlanPerimetroDetalle, PuestoPerimetro, TipoZonaPerimetro, VistaPerimetro } from '@cne/shared-types';
 import { LIMITES_PERIMETRO, type GuardarPlanPerimetroInput } from '@cne/shared-validation';
 import { areaAnillo, distancia, puntosEquidistantes, tramoMasCercano, ZONAS_PERIMETRO } from './geometria';
 
@@ -54,6 +54,10 @@ export type AccionEditor =
   | { tipo: 'moverPuesto'; id: string; punto: Punto }
   | { tipo: 'quitarPuesto'; id: string }
   | { tipo: 'etiquetaPuesto'; id: string; etiqueta: string }
+  | { tipo: 'asignarPersona'; id: string; persona: PersonaPuestoPerimetro }
+  | { tipo: 'quitarPersona'; id: string }
+  /** Llena, en orden, los puestos sin persona ni nombre libre. */
+  | { tipo: 'completarPersonal'; personas: PersonaPuestoPerimetro[] }
   | { tipo: 'repartirPuestos'; total: number }
   | { tipo: 'repartirVallas'; total: number }
   | { tipo: 'moverValla'; id: string; punto: Punto }
@@ -70,6 +74,9 @@ export function nuevoId(): string {
 export function estadoInicial(plan: BorradorPlan): EstadoEditor {
   return { plan, dibujo: null, puntos: [], cambios: false, historial: [], arrastrando: false };
 }
+
+/** Puestos que "Completar puestos vacíos" llenaría: sin persona ni nombre libre. */
+export const puestosVacantes = (plan: BorradorPlan) => plan.puestos.filter((p) => !p.persona && !p.etiqueta).length;
 
 /** Puestos que tienen persona: repartir nunca los quita. */
 export const puestosConPersona = (plan: BorradorPlan) => plan.puestos.filter((p) => p.persona).length;
@@ -233,6 +240,26 @@ export function editorReducer(e: EstadoEditor, a: AccionEditor): EstadoEditor {
         puestos: plan.puestos.map((p) => (p.id === a.id ? { ...p, etiqueta: etiqueta.trim() ? etiqueta : null } : p)),
       });
     }
+    case 'asignarPersona': {
+      // Una persona no puede estar en dos puestos del mismo plan.
+      if (plan.puestos.some((p) => p.persona?.id === a.persona.id)) return e;
+      return conPlan(e, {
+        ...plan,
+        puestos: plan.puestos.map((p) => (p.id === a.id ? { ...p, persona: a.persona, etiqueta: null } : p)),
+      });
+    }
+    case 'quitarPersona':
+      return conPlan(e, { ...plan, puestos: plan.puestos.map((p) => (p.id === a.id ? { ...p, persona: null } : p)) });
+    case 'completarPersonal': {
+      const yaEstan = new Set(plan.puestos.flatMap((p) => (p.persona ? [p.persona.id] : [])));
+      // Sin repetidos (ni entre sí ni con quien ya está en el plan).
+      const cola = [...new Map(a.personas.map((x) => [x.id, x])).values()].filter((x) => !yaEstan.has(x.id));
+      if (cola.length === 0) return e;
+      return conPlan(e, {
+        ...plan,
+        puestos: plan.puestos.map((p) => (!p.persona && !p.etiqueta && cola.length ? { ...p, persona: cola.shift()! } : p)),
+      });
+    }
     case 'repartirPuestos':
       return plan.perimetro ? conPlan(e, repartirPuestos(plan, a.total)) : e;
     case 'repartirVallas':
@@ -303,6 +330,14 @@ export function describirAccion(a: AccionEditor, antes: EstadoEditor, despues: E
       return `Puesto ${antes.plan.puestos.find((p) => p.id === a.id)?.orden ?? ''} quitado. Ctrl+Z para deshacer`;
     case 'repartirPuestos':
       return `${despues.plan.puestos.length} puestos repartidos en el perímetro`;
+    case 'asignarPersona':
+      return `${a.persona.nombre} asignado al puesto ${despues.plan.puestos.find((p) => p.id === a.id)?.orden ?? ''}`;
+    case 'quitarPersona':
+      return `Puesto ${antes.plan.puestos.find((p) => p.id === a.id)?.orden ?? ''} sin persona. Ctrl+Z para deshacer`;
+    case 'completarPersonal': {
+      const n = despues.plan.puestos.filter((p) => p.persona).length - antes.plan.puestos.filter((p) => p.persona).length;
+      return `${n} ${n === 1 ? 'persona asignada' : 'personas asignadas'}. Ctrl+Z para deshacer`;
+    }
     case 'repartirVallas':
       return `${despues.plan.vallas.length} vallas repartidas en el perímetro`;
     case 'moverValla':

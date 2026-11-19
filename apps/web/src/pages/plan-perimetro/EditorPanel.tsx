@@ -1,6 +1,6 @@
 import { useState, type Dispatch } from 'react';
 import { useSearchParams } from 'react-router';
-import { Trash2 } from 'lucide-react';
+import { Trash2, UserMinus, UserPlus } from 'lucide-react';
 import type { TipoZonaPerimetro } from '@cne/shared-types';
 import { LIMITES_PERIMETRO } from '@cne/shared-validation';
 import { Pestanas } from '../../components/Pestanas';
@@ -8,6 +8,8 @@ import { areaAnillo, longitudAnillo, ZONAS_PERIMETRO } from './geometria';
 import { puestosConPersona, type AccionEditor, type Dibujo, type EstadoEditor } from './editorPlan';
 import { MAX_MANIJAS_VALLAS, type SeccionEditor } from './MapaPlan';
 import { nombrePuesto } from './PuestoMarker';
+import { SelectorPersona } from './SelectorPersona';
+import { CompletarPersonal } from './CompletarPersonal';
 
 const PARAMETRO = 'editar';
 const SECCIONES: { id: SeccionEditor; etiqueta: string }[] = [
@@ -31,6 +33,7 @@ export function useSeccionEditor(): SeccionEditor {
 }
 
 interface EditorPanelProps {
+  planId: string;
   estado: EstadoEditor;
   despachar: Dispatch<AccionEditor>;
   zonaId: string | null;
@@ -39,13 +42,13 @@ interface EditorPanelProps {
   centro: () => [number, number];
 }
 
-export function EditorPanel({ estado, despachar, zonaId, onZona, centro }: EditorPanelProps) {
+export function EditorPanel({ planId, estado, despachar, zonaId, onZona, centro }: EditorPanelProps) {
   return (
     <Pestanas pestanas={SECCIONES} porDefecto="perimetro" etiqueta="Qué editar" parametro={PARAMETRO}>
       {(seccion) => (
         <div className="pp-editor-seccion">
           {seccion === 'perimetro' && <Perimetro estado={estado} despachar={despachar} centro={centro} />}
-          {seccion === 'puestos' && <Puestos estado={estado} despachar={despachar} centro={centro} />}
+          {seccion === 'puestos' && <Puestos planId={planId} estado={estado} despachar={despachar} centro={centro} />}
           {seccion === 'vallas' && <Vallas estado={estado} despachar={despachar} />}
           {seccion === 'zonas' && <Zonas estado={estado} despachar={despachar} centro={centro} zonaId={zonaId} onZona={onZona} />}
         </div>
@@ -118,8 +121,15 @@ function Perimetro({ estado, despachar, centro }: PropsSeccion & { centro: () =>
   );
 }
 
-function Puestos({ estado, despachar, centro }: PropsSeccion & { centro: () => [number, number] }) {
+function Puestos({ planId, estado, despachar, centro }: PropsSeccion & { planId: string; centro: () => [number, number] }) {
   const { plan } = estado;
+  const [eligiendo, setEligiendo] = useState<string | null>(null);
+  /** Devuelve el foco al botón de persona del puesto (Asignar o Quitar) cuando el selector se cierra. */
+  const cerrarSelector = (puestoId: string) => {
+    setEligiendo(null);
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-persona-puesto="${CSS.escape(puestoId)}"]`)?.focus());
+  };
+  const enElPlan = new Set(plan.puestos.flatMap((p) => (p.persona ? [p.persona.id] : [])));
   const [total, setTotal] = useState(String(plan.puestos.length || 10));
   const minimo = puestosConPersona(plan);
   const n = entero(total);
@@ -171,25 +181,64 @@ function Puestos({ estado, despachar, centro }: PropsSeccion & { centro: () => [
         Mostrar nombres en el mapa
       </label>
       <p className="pp-ayuda">Arrastre los puestos, o enfóquelos con Tab y muévalos con las flechas. Supr quita un puesto.</p>
+      {plan.puestos.length > 0 && <CompletarPersonal planId={planId} estado={estado} despachar={despachar} />}
       {plan.puestos.length > 0 && (
         <ol className="pp-lista pp-lista--edicion">
           {plan.puestos.map((p) => (
             <li key={p.id}>
-              <span className="pp-puesto-numero">{p.orden}</span>
-              {p.persona ? (
-                <span className="pp-lista-nombre">{nombrePuesto(p)}</span>
-              ) : (
-                <input
-                  aria-label={`Nombre libre del puesto ${p.orden}`}
-                  placeholder="Sin asignar"
-                  maxLength={LIMITES_PERIMETRO.maxNombre}
-                  value={p.etiqueta ?? ''}
-                  onChange={(e) => despachar({ tipo: 'etiquetaPuesto', id: p.id, etiqueta: e.target.value })}
+              <div className="pp-fila-puesto">
+                <span className="pp-puesto-numero">{p.orden}</span>
+                {p.persona ? (
+                  <span className="pp-lista-nombre">{nombrePuesto(p)}</span>
+                ) : (
+                  <input
+                    aria-label={`Nombre libre del puesto ${p.orden}`}
+                    placeholder="Sin asignar"
+                    maxLength={LIMITES_PERIMETRO.maxNombre}
+                    value={p.etiqueta ?? ''}
+                    onChange={(e) => despachar({ tipo: 'etiquetaPuesto', id: p.id, etiqueta: e.target.value })}
+                  />
+                )}
+                {p.persona ? (
+                  <button
+                    type="button"
+                    className="pp-btn"
+                    data-persona-puesto={p.id}
+                    aria-label={`Quitar a ${p.persona.nombre} del puesto ${p.orden}`}
+                    title="Quitar persona"
+                    onClick={() => despachar({ tipo: 'quitarPersona', id: p.id })}
+                  >
+                    <UserMinus size={16} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="pp-btn"
+                    data-persona-puesto={p.id}
+                    aria-label={`Asignar persona al puesto ${p.orden}`}
+                    aria-expanded={eligiendo === p.id}
+                    title="Asignar persona"
+                    onClick={() => setEligiendo(eligiendo === p.id ? null : p.id)}
+                  >
+                    <UserPlus size={16} aria-hidden="true" />
+                  </button>
+                )}
+                <button type="button" className="pp-btn" aria-label={`Quitar el puesto ${p.orden}`} onClick={() => despachar({ tipo: 'quitarPuesto', id: p.id })}>
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
+              {eligiendo === p.id && !p.persona && (
+                <SelectorPersona
+                  planId={planId}
+                  orden={p.orden}
+                  excluir={enElPlan}
+                  onElegir={(persona) => {
+                    despachar({ tipo: 'asignarPersona', id: p.id, persona });
+                    cerrarSelector(p.id);
+                  }}
+                  onCerrar={() => cerrarSelector(p.id)}
                 />
               )}
-              <button type="button" className="pp-btn" aria-label={`Quitar el puesto ${p.orden}`} onClick={() => despachar({ tipo: 'quitarPuesto', id: p.id })}>
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
             </li>
           ))}
         </ol>

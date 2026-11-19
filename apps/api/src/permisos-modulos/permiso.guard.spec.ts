@@ -16,6 +16,7 @@ import { OperadoresCdaController } from '../operadores-cda/operadores-cda.contro
 import { ConvocatoriaCdaController } from '../operadores-cda/convocatoria-cda.controller';
 import { EvaticsController } from '../evatics/evatics.controller';
 import { PerimetroController } from '../perimetro/perimetro.controller';
+import { PerimetroPersonalController } from '../perimetro/perimetro-personal.controller';
 import { MODULO_KEY, ModuloGuard } from './modulo.guard';
 
 function contexto(roles: string[], permisos: PermisoId[] | undefined): ExecutionContext {
@@ -92,6 +93,9 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [PerimetroController, 'crear', 'perimetro.planes.editar'],
   [PerimetroController, 'guardar', 'perimetro.planes.editar'],
   [PerimetroController, 'eliminar', 'perimetro.planes.editar'],
+  [PerimetroPersonalController, 'cargos', 'perimetro.planes.editar'],
+  [PerimetroPersonalController, 'candidatos', 'perimetro.planes.editar'],
+  [PerimetroPersonalController, 'propuesta', 'perimetro.planes.editar'],
 ];
 
 // Lo mismo que resuelve RolesGuard: primero el método, luego la clase.
@@ -165,6 +169,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     ConvocatoriaCdaController,
     EvaticsController,
     PerimetroController,
+    PerimetroPersonalController,
   ];
   const metodos = CONTROLADORES.flatMap((c: any) =>
     Object.getOwnPropertyNames(c.prototype)
@@ -186,7 +191,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
       guards.includes(ModuloGuard) &&
       // Como lo resuelve ModuloGuard: primero el método, luego la clase.
       new Reflector().getAllAndOverride<string>(MODULO_KEY, [handler, controlador]) ===
-        (controlador === PerimetroController ? 'plan-perimetro' : 'operadores-cda');
+        (controlador === PerimetroController || controlador === PerimetroPersonalController ? 'plan-perimetro' : 'operadores-cda');
     expect({ conAccion, soloAdmin, lecturaDelModulo }).not.toEqual({ conAccion: false, soloAdmin: false, lecturaDelModulo: false });
   });
 });
