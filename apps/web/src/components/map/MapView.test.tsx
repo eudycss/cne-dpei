@@ -75,4 +75,25 @@ describe('MapView', () => {
     expect(instancias).toHaveLength(1);
     expect(instancias[0].setStyle).toHaveBeenLastCalledWith(ESTILO_OSCURO);
   });
+
+  it('con un estilo propio lo usa en vez del del tema y aplica sus cambios con setStyle', () => {
+    const propio = { version: 8, sources: {}, layers: [] } as const;
+    const otro = { version: 8, sources: {}, layers: [{ id: 'x', type: 'background' }] } as const;
+    const { rerender } = render(<MapView center={[0.35, -78.12]} zoom={11} estilo={propio as never} maxPitch={85} />);
+    expect(instancias[0].opciones.style).toBe(propio);
+    expect((instancias[0].opciones as { maxPitch?: number }).maxPitch).toBe(85);
+
+    temaActual = 'dark';
+    act(() => {
+      rerender(<MapView center={[0.35, -78.12]} zoom={11} estilo={propio as never} />);
+    });
+    // El tema no pisa un estilo propio.
+    expect(instancias[0].setStyle).not.toHaveBeenCalled();
+
+    act(() => {
+      rerender(<MapView center={[0.35, -78.12]} zoom={11} estilo={otro as never} />);
+    });
+    expect(instancias).toHaveLength(1);
+    expect(instancias[0].setStyle).toHaveBeenLastCalledWith(otro);
+  });
 });

@@ -20,6 +20,7 @@ import { MonitoreoPage } from './pages/operadores/MonitoreoPage';
 import { EstadisticasMonitoreoPage } from './pages/operadores/EstadisticasMonitoreoPage';
 import { IncidenciasPage } from './pages/incidencias/IncidenciasPage';
 import { AlertasPage } from './pages/alertas/AlertasPage';
+import { PlanPerimetroPage } from './pages/plan-perimetro/PlanPerimetroPage';
 import { ReporteNoCdaPage } from './pages/reportes/ReporteNoCdaPage';
 import { CadenaCustodiaPage } from './pages/reportes/CadenaCustodiaPage';
 import { Inicio } from './pages/Inicio';
@@ -196,6 +197,16 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR']} modulo="alertas">
               <AlertasPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Plan de perímetro: puestos del personal CDA/CPE, vallas y zonas sobre el mapa */}
+        <Route
+          path="/plan-perimetro"
+          element={
+            <ProtectedRoute roles={['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']} modulo="plan-perimetro">
+              <PlanPerimetroPage />
             </ProtectedRoute>
           }
         />
