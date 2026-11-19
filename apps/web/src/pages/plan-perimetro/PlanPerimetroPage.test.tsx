@@ -33,6 +33,8 @@ vi.mock('./MapaPlan', () => {
   };
 });
 const permiso = vi.hoisted(() => ({ editar: true }));
+const { excel } = vi.hoisted(() => ({ excel: vi.fn() }));
+vi.mock('./exportarPlan', async (original) => ({ ...(await original<typeof import('./exportarPlan')>()), descargarExcel: excel }));
 vi.mock('../../lib/useModulos', () => ({ useModulos: () => ({ puede: () => permiso.editar }) }));
 
 import { PlanPerimetroPage } from './PlanPerimetroPage';
@@ -74,6 +76,12 @@ const PLAN: PlanPerimetroDetalle = {
 };
 
 let planes: PlanPerimetroResumen[] = [];
+const ANA = '44444444-4444-4444-8444-444444444444';
+const LUIS = '55555555-5555-4555-8555-555555555555';
+const CANDIDATOS = [
+  { id: ANA, nombre: 'RUIZ ANA', enOtroPlan: false },
+  { id: LUIS, nombre: 'MORA LUIS', enOtroPlan: true },
+];
 
 function renderPagina() {
   render(
@@ -97,6 +105,8 @@ describe('PlanPerimetroPage', () => {
       if (url === '/perimetro/planes') return Promise.resolve({ data: planes });
       if (url === '/perimetro/planes/pl-1') return Promise.resolve({ data: PLAN });
       if (url === `/perimetro/planes/pl-1/personas/${OP1}/foto`) return Promise.resolve({ data: new Blob(['x']) });
+      if (url === '/perimetro/cargos') return Promise.resolve({ data: [{ clave: 'DIGITADOR', nombre: 'Digitadores', centro: 'CPE' }] });
+      if (url === '/perimetro/planes/pl-1/candidatos') return Promise.resolve({ data: CANDIDATOS });
       return Promise.reject(new Error(url));
     });
   });
@@ -328,6 +338,84 @@ describe('PlanPerimetroPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
       await waitFor(() => expect(putMock).toHaveBeenCalled());
       expect(putMock.mock.calls[0][1].puestos).toEqual([{ lat: 0.351, lng: -78.11, operadorCdaId: null, etiqueta: 'Policía 1' }]);
+    });
+  });
+
+  describe('personal y exportación', () => {
+    async function abrirPuestos() {
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: 'Editar plan' }));
+      const panel = within(screen.getByRole('complementary', { name: 'Editor del plan' }));
+      await userEvent.click(panel.getByRole('tab', { name: 'Puestos' }));
+      return panel;
+    }
+
+    it('asigna a mano desde el buscador: solo nombres, con aviso si ya está en otro plan', async () => {
+      putMock.mockResolvedValue({ data: PLAN });
+      const panel = await abrirPuestos();
+      await userEvent.click(panel.getByRole('button', { name: 'Asignar persona al puesto 2' }));
+      const selector = within(panel.getByRole('group', { name: 'Asignar persona al puesto 2' }));
+      expect(await selector.findByRole('button', { name: /MORA LUIS · ya está en otro plan/ })).toBeInTheDocument();
+      // El buscador consulta con los filtros elegidos.
+      await userEvent.selectOptions(selector.getByLabelText('Centro'), 'CPE');
+      await waitFor(() =>
+        expect(getMock).toHaveBeenCalledWith('/perimetro/planes/pl-1/candidatos', { params: { centro: 'CPE' } }),
+      );
+      await userEvent.click(await selector.findByRole('button', { name: 'RUIZ ANA' }));
+      expect(panel.getByText('RUIZ ANA')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(putMock).toHaveBeenCalled());
+      expect(putMock.mock.calls[0][1].puestos.map((x: { operadorCdaId: string | null }) => x.operadorCdaId)).toEqual([OP1, ANA]);
+    });
+
+    it('Esc cierra el buscador y el foco vuelve al botón de ese puesto', async () => {
+      const panel = await abrirPuestos();
+      const boton = panel.getByRole('button', { name: 'Asignar persona al puesto 2' });
+      await userEvent.click(boton);
+      expect(boton).toHaveAttribute('aria-expanded', 'true');
+      await userEvent.keyboard('{Escape}');
+      expect(panel.queryByRole('group', { name: 'Asignar persona al puesto 2' })).toBeNull();
+      await waitFor(() => expect(boton).toHaveFocus());
+    });
+
+    it('con más de 100 coincidencias pide afinar la búsqueda', async () => {
+      const muchos = Array.from({ length: 101 }, (_, i) => ({
+        id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+        nombre: `PERSONA ${i}`,
+        enOtroPlan: false,
+      }));
+      getMock.mockImplementation((url: string) => {
+        if (url === '/perimetro/planes/pl-1/candidatos') return Promise.resolve({ data: muchos });
+        if (url === '/eventos') return Promise.resolve({ data: [EV_ACTIVO] });
+        if (url === '/perimetro/planes') return Promise.resolve({ data: [RESUMEN] });
+        if (url === '/perimetro/planes/pl-1') return Promise.resolve({ data: PLAN });
+        if (url === '/perimetro/cargos') return Promise.resolve({ data: [] });
+        return Promise.reject(new Error(url));
+      });
+      const panel = await abrirPuestos();
+      await userEvent.click(panel.getByRole('button', { name: 'Asignar persona al puesto 2' }));
+      expect(await panel.findByText(/Mostrando las primeras 100/)).toBeInTheDocument();
+      expect(panel.getAllByRole('button', { name: /^PERSONA \d+$/ })).toHaveLength(100);
+    });
+
+    it('completar puestos vacíos pide la propuesta con el % y los ya asignados, y la pone en el borrador', async () => {
+      postMock.mockResolvedValue({ data: { personas: [{ id: LUIS, nombre: 'MORA LUIS', enOtroPlan: true }], faltan: 0 } });
+      const panel = await abrirPuestos();
+      await userEvent.clear(panel.getByLabelText('% de mujeres'));
+      await userEvent.type(panel.getByLabelText('% de mujeres'), '40');
+      await userEvent.click(panel.getByRole('button', { name: 'Completar 1 puesto vacío' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalled());
+      expect(postMock).toHaveBeenCalledWith('/perimetro/planes/pl-1/propuesta', { total: 1, pctMujeres: 40, excluir: [OP1] });
+      expect(await panel.findByText('MORA LUIS')).toBeInTheDocument();
+      expect(panel.getByText(/1 ya están en otro plan de este evento/)).toBeInTheDocument();
+    });
+
+    it('Descargar Excel está fuera de la edición, también para quien solo consulta', async () => {
+      permiso.editar = false;
+      renderPagina();
+      await userEvent.click(await screen.findByRole('button', { name: /Descargar Excel/ }));
+      expect(excel).toHaveBeenCalledWith(expect.objectContaining({ id: 'pl-1' }));
+      expect(screen.getByRole('button', { name: /Imprimir/ })).toBeInTheDocument();
     });
   });
 });

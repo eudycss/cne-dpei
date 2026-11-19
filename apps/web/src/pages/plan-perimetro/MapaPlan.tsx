@@ -36,9 +36,11 @@ interface MapaPlanProps {
   edicion?: EdicionMapa;
   /** La vista actual (centro, zoom, giro, inclinación), para guardarla con el plan. */
   onVista?: (v: VistaPerimetro) => void;
+  /** Entrega el mapa ya cargado (p. ej. para sacarle una imagen al imprimir). */
+  onMapa?: (m: maplibregl.Map | null) => void;
 }
 
-export function MapaPlan({ plan, seleccionado, onSeleccionar, edicion, onVista }: MapaPlanProps) {
+export function MapaPlan({ plan, seleccionado, onSeleccionar, edicion, onVista, onMapa }: MapaPlanProps) {
   // La ortofoto del IGM es la más nítida; donde no hay, se ve Esri debajo.
   const [capa, setCapa] = useState<CapaBase>('ortofoto');
   // Abre en 3D, como Google Earth, salvo que la vista guardada sea plana.
@@ -62,6 +64,7 @@ export function MapaPlan({ plan, seleccionado, onSeleccionar, edicion, onVista }
       <EncuadreInicial plan={plan} />
       <IrAlPuesto plan={visible} puestoId={seleccionado} />
       {onVista && <InformarVista onVista={onVista} />}
+      {onMapa && <EntregarMapa onMapa={onMapa} />}
       <PlanoAlEditar editando={!!edicion} vista3d={vista3d} onVista3d={setVista3d} />
       <div className="pp-superior">
         <BuscadorLugar />
@@ -182,6 +185,17 @@ function PlanoAlEditar({ editando, vista3d, onVista3d }: { editando: boolean; vi
     // Solo reacciona al entrar o salir de la edición.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editando, map]);
+  return null;
+}
+
+function EntregarMapa({ onMapa }: { onMapa: (m: maplibregl.Map | null) => void }) {
+  const map = useMapInstance();
+  useEffect(() => {
+    onMapa(map);
+    return () => onMapa(null);
+    // Solo al montar y desmontar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
   return null;
 }
 

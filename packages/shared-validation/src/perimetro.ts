@@ -134,3 +134,31 @@ export const listarPlanesPerimetroSchema = z.object({ eventoId: z.string().uuid(
 /** Lo guardado en la base (JSON) se vuelve a validar al leerlo: nunca se confía a ciegas. */
 export const zonasPerimetroGuardadasSchema = z.array(zonaPerimetroSchema).max(LIMITES_PERIMETRO.maxZonas);
 export const vallasPerimetroGuardadasSchema = z.array(vallaPerimetroSchema).max(LIMITES_PERIMETRO.maxVallas);
+
+// --- Personal CDA/CPE en los puestos (de la persona solo sale id y nombre) ---
+
+export const CENTROS_PERIMETRO = ['CDA', 'CPE'] as const;
+export const MAX_CANDIDATOS_PERIMETRO = 100;
+
+const claveCargo = z.string().regex(/^[A-Z0-9_]{1,40}$/, 'Cargo inválido');
+
+/** Filtros del buscador de personal (query string). */
+export const candidatosPerimetroSchema = z.object({
+  centro: z.enum(CENTROS_PERIMETRO).optional(),
+  cargo: claveCargo.optional(),
+  buscar: z.string().trim().max(100).optional(),
+});
+export type CandidatosPerimetroInput = z.infer<typeof candidatosPerimetroSchema>;
+
+/** Pedido de "Completar puestos vacíos": el servidor elige y ordena por % de mujeres. */
+export const propuestaPersonalPerimetroSchema = z
+  .object({
+    total: z.number().int().min(1).max(LIMITES_PERIMETRO.maxPuestos),
+    pctMujeres: z.number().int().min(0).max(100),
+    centro: z.enum(CENTROS_PERIMETRO).optional(),
+    cargo: claveCargo.optional(),
+    /** Quienes ya están en el borrador (aún sin guardar): no se vuelven a proponer. */
+    excluir: z.array(z.string().uuid()).max(LIMITES_PERIMETRO.maxPuestos).default([]),
+  })
+  .strict();
+export type PropuestaPersonalPerimetroInput = z.infer<typeof propuestaPersonalPerimetroSchema>;

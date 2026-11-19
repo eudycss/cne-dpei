@@ -8,6 +8,7 @@ import {
   estadoInicial,
   nuevoId,
   puestosConPersona,
+  puestosVacantes,
   type AccionEditor,
   type BorradorPlan,
   type EstadoEditor,
@@ -330,5 +331,50 @@ describe('describirAccion', () => {
     // Mientras se arrastra no se anuncia cada movimiento.
     const vivo: AccionEditor = { tipo: 'moverVertice', objetivo: { que: 'perimetro' }, indice: 0, punto: p(1, 1), vivo: true };
     expect(describirAccion(vivo, antes, editorReducer(antes, vivo))).toBeNull();
+  });
+});
+
+describe('personal en los puestos', () => {
+  const ANA = { id: '33333333-3333-4333-8333-333333333333', nombre: 'RUIZ ANA', tieneFoto: false };
+  const plan: BorradorPlan = {
+    ...BASE,
+    puestos: [
+      { id: 'a', orden: 1, lat: 0, lng: 0, etiqueta: null, persona: null },
+      { id: 'b', orden: 2, lat: 0, lng: 0, etiqueta: 'Policía', persona: null },
+      { id: 'c', orden: 3, lat: 0, lng: 0, etiqueta: null, persona: PERSONA },
+      { id: 'd', orden: 4, lat: 0, lng: 0, etiqueta: null, persona: null },
+    ],
+  };
+
+  it('asignar pone a la persona (y borra el nombre libre); no permite repetirla en otro puesto', () => {
+    const e = correr(plan, { tipo: 'asignarPersona', id: 'b', persona: ANA });
+    expect(e.plan.puestos[1]).toMatchObject({ persona: ANA, etiqueta: null });
+    const repetida = editorReducer(e, { tipo: 'asignarPersona', id: 'a', persona: ANA });
+    expect(repetida).toBe(e);
+  });
+
+  it('quitar persona deja el puesto vacío y se puede deshacer', () => {
+    const e = correr(plan, { tipo: 'quitarPersona', id: 'c' });
+    expect(e.plan.puestos[2].persona).toBeNull();
+    expect(editorReducer(e, { tipo: 'deshacer' }).plan.puestos[2].persona).toEqual(PERSONA);
+  });
+
+  it('completar llena en orden solo los vacíos sin nombre libre y salta a quien ya está', () => {
+    const OTRA = { id: '44444444-4444-4444-8444-444444444444', nombre: 'LUNA EVA', tieneFoto: false };
+    const e = correr(plan, { tipo: 'completarPersonal', personas: [PERSONA, ANA, OTRA] });
+    expect(e.plan.puestos.map((p) => p.persona?.nombre ?? p.etiqueta)).toEqual(['RUIZ ANA', 'Policía', 'PÉREZ JUAN', 'LUNA EVA']);
+    expect(puestosVacantes(e.plan)).toBe(0);
+    expect(describirAccion({ tipo: 'completarPersonal', personas: [ANA, OTRA] }, estadoInicial(plan), e)).toBe('2 personas asignadas. Ctrl+Z para deshacer');
+  });
+
+  it('cuenta las vacantes y completar sin nadie nuevo no cambia nada', () => {
+    expect(puestosVacantes(plan)).toBe(2);
+    expect(correr(plan, { tipo: 'completarPersonal', personas: [PERSONA] }).cambios).toBe(false);
+  });
+
+  it('completar no pone a la misma persona en dos puestos aunque venga repetida', () => {
+    const e = correr(plan, { tipo: 'completarPersonal', personas: [ANA, ANA] });
+    expect(e.plan.puestos.filter((p) => p.persona?.id === ANA.id)).toHaveLength(1);
+    expect(e.plan.puestos[3].persona).toBeNull();
   });
 });

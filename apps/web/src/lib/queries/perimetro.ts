@@ -1,5 +1,5 @@
-import type { PlanPerimetroDetalle, PlanPerimetroResumen } from '@cne/shared-types';
-import type { CrearPlanPerimetroInput, GuardarPlanPerimetroInput } from '@cne/shared-validation';
+import type { CandidatoPerimetro, CargoPerimetro, PlanPerimetroDetalle, PlanPerimetroResumen, PropuestaPersonalPerimetro } from '@cne/shared-types';
+import type { CandidatosPerimetroInput, CrearPlanPerimetroInput, GuardarPlanPerimetroInput, PropuestaPersonalPerimetroInput } from '@cne/shared-validation';
 import { api } from '../api';
 
 const BASE = '/perimetro/planes';
@@ -38,5 +38,26 @@ export async function guardarPlanPerimetro(id: string, body: GuardarPlanPerimetr
 
 export async function eliminarPlanPerimetro(id: string): Promise<{ id: string }> {
   const { data } = await api.delete<{ id: string }>(`${BASE}/${id}`);
+  return data;
+}
+
+export const CLAVE_CARGOS_PERIMETRO = ['perimetro', 'cargos'] as const;
+export const claveCandidatos = (planId: string, f: CandidatosPerimetroInput) => ['perimetro', 'candidatos', planId, f] as const;
+
+export async function getCargosPerimetro(): Promise<CargoPerimetro[]> {
+  const { data } = await api.get<CargoPerimetro[]>('/perimetro/cargos');
+  return data;
+}
+
+/** Personal activo para asignar a mano: solo id y nombre (máx. 100). */
+export async function getCandidatosPerimetro(planId: string, filtros: CandidatosPerimetroInput): Promise<CandidatoPerimetro[]> {
+  const params = Object.fromEntries(Object.entries(filtros).filter(([, v]) => v !== undefined && v !== ''));
+  const { data } = await api.get<CandidatoPerimetro[]>(`${BASE}/${planId}/candidatos`, { params });
+  return data;
+}
+
+/** Personas para los puestos vacíos según el % de mujeres (el servidor no guarda nada). */
+export async function pedirPropuestaPersonal(planId: string, body: PropuestaPersonalPerimetroInput): Promise<PropuestaPersonalPerimetro> {
+  const { data } = await api.post<PropuestaPersonalPerimetro>(`${BASE}/${planId}/propuesta`, body);
   return data;
 }

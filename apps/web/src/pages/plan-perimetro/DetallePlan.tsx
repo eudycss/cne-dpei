@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
 import type { PlanPerimetroDetalle, VistaPerimetro } from '@cne/shared-types';
@@ -18,6 +19,9 @@ import { ZONAS_PERIMETRO } from './geometria';
 import { COLOR_PERIMETRO, COLOR_VALLA } from './estiloPlan';
 import { cuerpoGuardar, describirAccion, editorReducer, estadoInicial, type AccionEditor, type EstadoEditor } from './editorPlan';
 import { EditorPanel, useSeccionEditor } from './EditorPanel';
+import type * as maplibregl from 'maplibre-gl';
+import { FileSpreadsheet, Printer } from 'lucide-react';
+import { capturarMapa, descargarExcel, ENCABEZADOS_PUESTOS, filasPuestos, resumenPlan } from './exportarPlan';
 
 const esConflicto = (e: unknown) => (e as { response?: { status?: number } })?.response?.status === 409;
 const VACIO = estadoInicial({
@@ -59,6 +63,9 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
   const [conflicto, setConflicto] = useState(false);
   const [confirmar, setConfirmar] = useState<'borrar' | 'descartar' | null>(null);
   const vista = useRef<VistaPerimetro | null>(null);
+  const mapa = useRef<maplibregl.Map | null>(null);
+  /** Imagen del mapa mientras se imprime (undefined = no se está imprimiendo; null = sin imagen). */
+  const [impresion, setImpresion] = useState<string | null | undefined>(undefined);
   // Versión e inclinación del plan al entrar a editar: el guardado usa estas, no las de un refetch.
   const base = useRef<{ version: number; pitch: number }>({ version: 0, pitch: 0 });
 
@@ -68,6 +75,32 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
   }, [seccion, despachar]);
 
   const pendiente = editando && estado.cambios;
+
+  // Al imprimir solo se ve la hoja del plan (clase en <body>); al terminar se vuelve a la pantalla.
+  const [hojaLista, setHojaLista] = useState(false);
+  useEffect(() => {
+    if (impresion === undefined || !hojaLista) return;
+    document.body.classList.add('pp-imprimiendo');
+    const terminar = () => {
+      setImpresion(undefined);
+      setHojaLista(false);
+    };
+    window.addEventListener('afterprint', terminar);
+    window.print();
+    // Respaldo: algunos navegadores (móviles) no avisan con afterprint.
+    const respaldo = setTimeout(terminar, 1000);
+    return () => {
+      clearTimeout(respaldo);
+      window.removeEventListener('afterprint', terminar);
+      document.body.classList.remove('pp-imprimiendo');
+    };
+  }, [impresion, hojaLista]);
+
+  async function imprimir() {
+    const imagen = mapa.current ? await capturarMapa(mapa.current) : null;
+    if (!imagen) sileo.error({ title: 'No se pudo incluir el mapa; se imprime solo la lista' });
+    setImpresion(imagen);
+  }
   // Avisar antes de cerrar o recargar la pestaña con cambios sin guardar.
   useEffect(() => {
     if (!pendiente) return;
@@ -176,10 +209,18 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
           </button>
         </div>
       )}
-      {editable && !editando && (
+      {!editando && (
         <div className="pp-barra-edicion">
-          <button type="button" className="btn" onClick={() => entrar(plan)}>
-            Editar plan
+          {editable && (
+            <button type="button" className="btn" onClick={() => entrar(plan)}>
+              Editar plan
+            </button>
+          )}
+          <button type="button" className="btn secondary" disabled={plan.puestos.length === 0} onClick={() => descargarExcel(plan)}>
+            <FileSpreadsheet size={16} aria-hidden="true" /> Descargar Excel
+          </button>
+          <button type="button" className="btn secondary" onClick={() => void imprimir()}>
+            <Printer size={16} aria-hidden="true" /> Imprimir
           </button>
         </div>
       )}
@@ -260,13 +301,14 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
             seleccionado={seleccionado}
             onSeleccionar={setSeleccionado}
             onVista={(v) => (vista.current = v)}
+            onMapa={(m) => (mapa.current = m)}
             edicion={editando ? { estado, despachar, seccion, zonaId } : undefined}
           />
           <Leyenda />
         </section>
         <aside className="pp-panel" aria-label={editando ? 'Editor del plan' : 'Puestos del plan'}>
           {editando ? (
-            <EditorPanel estado={estado} despachar={despachar} zonaId={zonaId} onZona={setZonaId} centro={centro} />
+            <EditorPanel planId={plan.id} estado={estado} despachar={despachar} zonaId={zonaId} onZona={setZonaId} centro={centro} />
           ) : (
             <>
               {puesto && <TarjetaPuesto plan={plan} puestoId={puesto.id} onCerrar={() => setSeleccionado(null)} />}
@@ -296,7 +338,45 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
           )}
         </aside>
       </div>
+      {/* En <body>: así ningún contenedor de la página la corre o la recorta al imprimir. */}
+      {impresion !== undefined && createPortal(<HojaImpresion plan={plan} imagen={impresion} onLista={() => setHojaLista(true)} />, document.body)}
     </>
+  );
+}
+
+/** Hoja para imprimir: nombre, resumen, imagen del mapa y la lista de puestos (sin datos personales de más). */
+function HojaImpresion({ plan, imagen, onLista }: { plan: PlanPerimetroDetalle; imagen: string | null; onLista: () => void }) {
+  // Se imprime cuando la imagen del mapa ya está cargada (o enseguida si no hay).
+  useEffect(() => {
+    if (!imagen) onLista();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <section className="pp-impresion" aria-hidden="true">
+      <h1>{plan.nombre}</h1>
+      {plan.lugar && <p>{plan.lugar}</p>}
+      <p>{resumenPlan(plan)}</p>
+      {imagen && <img src={imagen} alt="" onLoad={onLista} onError={onLista} />}
+      <table>
+        <thead>
+          <tr>
+            {ENCABEZADOS_PUESTOS.slice(0, 4).map((h) => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filasPuestos(plan, { seguro: false }).map((f) => (
+            <tr key={String(f[0])}>
+              {f.slice(0, 4).map((c, i) => (
+                <td key={i}>{String(c)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="pp-impresion-pie">Impreso el {new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' })}</p>
+    </section>
   );
 }
 

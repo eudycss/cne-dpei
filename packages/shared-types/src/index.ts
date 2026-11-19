@@ -2522,3 +2522,24 @@ export interface PlanPerimetroDetalle {
   /** Avisos que no bloquean, p. ej. una persona que también está en otro plan del evento. */
   avisos: string[];
 }
+
+/** Persona que se puede asignar a un puesto: solo id y nombre (el cargo y el centro sirven para filtrar). */
+export interface CandidatoPerimetro {
+  id: string;
+  nombre: string;
+  /** Ya está en otro plan del mismo evento (se permite, con aviso). */
+  enOtroPlan: boolean;
+}
+
+export interface CargoPerimetro {
+  clave: string;
+  nombre: string;
+  centro: 'CDA' | 'CPE';
+}
+
+/** Personas propuestas en el orden de los puestos vacíos (el sexo nunca sale del servidor). */
+export interface PropuestaPersonalPerimetro {
+  personas: CandidatoPerimetro[];
+  /** Puestos que no se pudieron llenar por falta de personal con esos filtros. */
+  faltan: number;
+}
