@@ -13,6 +13,7 @@ import {
 import { ComboFiltrable, textoRecinto } from './ParejaFormModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { mensajeError } from './utils';
+import { ConFoto } from './AvatarPersona';
 
 /**
  * Pareja que cede su lugar en cada recinto al asignarle una de reserva: la
@@ -56,9 +57,11 @@ function Integrante({
       <dd>
         {persona ? (
           <>
-            {persona.apellidosNombres}
-            <br />
-            <span className="muted mono">{persona.cedula}</span>
+            <ConFoto persona={{ operadorId: persona.id, nombre: persona.apellidosNombres, cedula: persona.cedula }}>
+              {persona.apellidosNombres}
+              <br />
+              <span className="muted mono">{persona.cedula}</span>
+            </ConFoto>
           </>
         ) : (
           <>

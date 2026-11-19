@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { AvatarPersona } from './AvatarPersona';
+import { AvatarPersona, ConFoto } from './AvatarPersona';
 import { getFotoOperadorCda, getIdsConFoto } from '../../lib/queries/operadores-cda';
 
 vi.mock('../../lib/queries/operadores-cda', () => ({ getIdsConFoto: vi.fn(), getFotoOperadorCda: vi.fn() }));
@@ -51,5 +51,30 @@ describe('AvatarPersona', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     // tieneFoto ya conocido: no hace falta la consulta de ids.
     expect(getIdsConFoto).not.toHaveBeenCalled();
+  });
+
+  it('ConFoto (tablas y listas): miniatura junto al nombre, sin botón para no duplicar el nombre de la fila', async () => {
+    const { container } = envolver(
+      <table>
+        <tbody>
+          <tr>
+            <th scope="row">
+              <ConFoto persona={{ operadorId: 'o1', nombre: 'PÉREZ JUAN' }}>PÉREZ JUAN</ConFoto>
+            </th>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+    expect(getFotoOperadorCda).toHaveBeenCalledWith('o1');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: 'PÉREZ JUAN' })).toBeInTheDocument();
+  });
+
+  it('ConFoto de una persona externa: iniciales, sin pedir nada', () => {
+    envolver(<ConFoto persona={{ operadorId: null, nombre: 'EXTERNA UNO' }}>EXTERNA UNO</ConFoto>);
+    expect(screen.getByText('EU')).toBeInTheDocument();
+    expect(getIdsConFoto).not.toHaveBeenCalled();
+    expect(getFotoOperadorCda).not.toHaveBeenCalled();
   });
 });
