@@ -284,4 +284,24 @@ describe('DistribucionDiasService', () => {
     expect(r.nombre).toBe('distribucion_personal_2026-11-20_2026-11-22.xlsx');
     expect(r.contenido.length).toBeGreaterThan(0);
   });
+
+  it('contactos: 400 si el día es ajeno; .vcf solo con las personas de ese día y el celular de la ficha', async () => {
+    prisma.distribucionDias.findUnique.mockImplementation(({ select }: { select: Record<string, unknown> }) =>
+      Promise.resolve(
+        select.personas
+          ? { ...BASE, nombre: 'Fin de semana', creadoEn: new Date('2026-11-18T12:00:00Z'), personas: [filaRegistrada(), filaRegistrada({ id: 'otra', fecha: fecha(DIAS[1]) })] }
+          : BASE,
+      ),
+    );
+    await expect(service.contactos(ID, '2026-11-23')).rejects.toBeInstanceOf(BadRequestException);
+    // Domingo: nadie con celular → no hay archivo que bajar.
+    await expect(service.contactos(ID, DIAS[2])).rejects.toThrow('Nadie de ese día tiene un celular válido');
+    const r = await service.contactos(ID, DIAS[0]);
+    expect(r.nombre).toBe('contactos-viernes-20.vcf');
+    expect(r.tipo).toBe('text/vcard; charset=utf-8');
+    const texto = r.contenido.toString('utf8');
+    expect(texto.match(/BEGIN:VCARD/g)).toHaveLength(1);
+    expect(texto).toContain('FN:VIE20 PÉREZ JUAN');
+    expect(texto).toContain('TEL;TYPE=CELL:+593991234567');
+  });
 });

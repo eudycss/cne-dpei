@@ -1524,3 +1524,31 @@ export const candidatosDistribucionSchema = z
   .object({ buscar: z.string().trim().max(60, 'Máximo 60 caracteres').default('') })
   .strict();
 export type CandidatosDistribucionInput = z.infer<typeof candidatosDistribucionSchema>;
+
+/**
+ * Celular en formato internacional (+5939XXXXXXXX) para importar contactos,
+ * o null si no es un celular ecuatoriano válido (misma regla que telefonoSchema).
+ */
+export function celularInternacional(tel: string | null | undefined): string | null {
+  const limpio = (tel ?? '').replace(/[\s\-()]/g, '');
+  const m = /^(?:\+593|0)(9\d{8})$/.exec(limpio);
+  return m ? `+593${m[1]}` : null;
+}
+
+const DIA_SEMANA_CORTO = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
+const DIA_SEMANA_ARCHIVO = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const diaSemana = (fecha: string) => new Date(`${fecha}T00:00:00Z`).getUTCDay();
+
+/** Prefijo de los contactos del día (YYYY-MM-DD): 2026-11-20 → "VIE20". */
+export function prefijoDia(fecha: string): string {
+  return `${DIA_SEMANA_CORTO[diaSemana(fecha)]}${fecha.slice(8, 10)}`;
+}
+
+/** Nombre del .vcf del día, sin tildes: 2026-11-21 → "contactos-sabado-21.vcf". */
+export function archivoContactosDia(fecha: string): string {
+  return `contactos-${DIA_SEMANA_ARCHIVO[diaSemana(fecha)]}-${fecha.slice(8, 10)}.vcf`;
+}
+
+/** Contactos (.vcf) de un día del reparto: el día es obligatorio. */
+export const contactosDistribucionSchema = z.object({ fecha: fechaParejaCdaSchema }).strict();
+export type ContactosDistribucionInput = z.infer<typeof contactosDistribucionSchema>;

@@ -5,12 +5,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { DistribucionDiasDetalle } from '@cne/shared-types';
 
 import { DistribucionDiasPanel } from './DistribucionDiasPanel';
-import { getDistribucion, getDistribuciones, pedirReporteDistribucion } from '../../lib/queries/distribucion-dias';
+import { getDistribucion, getDistribuciones, pedirContactosDistribucion, pedirReporteDistribucion } from '../../lib/queries/distribucion-dias';
 
 vi.mock('../../lib/queries/distribucion-dias', () => ({
   getDistribuciones: vi.fn(),
   getDistribucion: vi.fn(),
   pedirReporteDistribucion: vi.fn(),
+  pedirContactosDistribucion: vi.fn(),
   crearDistribucion: vi.fn(),
   regenerarDistribucion: vi.fn(),
   eliminarDistribucion: vi.fn(),
@@ -90,5 +91,17 @@ describe('DistribucionDiasPanel', () => {
     expect(screen.getByText(/Solo consulta/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agregar persona' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Editar a/ })).not.toBeInTheDocument();
+  });
+
+  it('baja los contactos .vcf de cada día y avisa quién no tiene celular', async () => {
+    (pedirContactosDistribucion as ReturnType<typeof vi.fn>).mockResolvedValue({ data: new Blob(['BEGIN:VCARD']) });
+    montar();
+    await screen.findByRole('table');
+    await userEvent.click(screen.getByRole('button', { name: 'Contactos VIE20 (.vcf, 1)' }));
+    expect(pedirContactosDistribucion).toHaveBeenCalledWith('d1', DIAS[0]);
+    // Sábado: su única persona no tiene celular → nada que bajar, y se avisa quién falta.
+    expect(screen.getByRole('button', { name: 'Contactos SAB21 (.vcf, 0)' })).toBeDisabled();
+    expect(screen.getByText('RUIZ ANA (sin celular válido)')).toBeInTheDocument();
+    expect(screen.queryByText(/VIE20: no van en el archivo/)).not.toBeInTheDocument();
   });
 });

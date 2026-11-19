@@ -7,6 +7,7 @@ import {
   eliminarDistribucion,
   getDistribucion,
   getDistribuciones,
+  pedirContactosDistribucion,
   pedirReporteDistribucion,
   quitarPersonaDistribucion,
   regenerarDistribucion,
@@ -16,7 +17,8 @@ import { useModulos } from '../../lib/useModulos';
 import { AgregarPersonaDistribucionModal } from './AgregarPersonaDistribucionModal';
 import { EditarPersonaDistribucionModal } from './EditarPersonaDistribucionModal';
 import { NuevaDistribucionModal } from './NuevaDistribucionModal';
-import { SEXO_TEXTO, desbalance, diaCorto, filtrarPersonas, valoresUnicos } from './distribucionDias';
+import { archivoContactosDia, prefijoDia } from '@cne/shared-validation';
+import { SEXO_TEXTO, contactosPorDia, desbalance, diaCorto, filtrarPersonas, valoresUnicos } from './distribucionDias';
 import { fechaLarga, mensajeError } from './utils';
 
 const CLAVE = ['distribuciones-dias'] as const;
@@ -117,6 +119,7 @@ function Detalle({ d, editable, onBorrada }: { d: DistribucionDiasDetalle; edita
   const filas = useMemo(() => filtrarPersonas(d.personas, { fecha, encargado, buscar }), [d.personas, fecha, encargado, buscar]);
   const desbal = desbalance(d.totales);
   const sinEncargado = d.personas.filter((p) => !p.encargado).length;
+  const contactos = useMemo(() => contactosPorDia(d.personas, d.fechas), [d.personas, d.fechas]);
 
   const refrescar = () => qc.invalidateQueries({ queryKey: CLAVE });
   const regenerar = useMutation({
@@ -249,6 +252,51 @@ function Detalle({ d, editable, onBorrada }: { d: DistribucionDiasDetalle; edita
           </>
         )}
       </div>
+
+      <section aria-labelledby="contactos-whatsapp-titulo" style={{ margin: '0 0 1rem' }}>
+        <h3 id="contactos-whatsapp-titulo" style={{ margin: '0 0 0.25rem', fontSize: '1rem' }}>
+          Contactos para WhatsApp
+        </h3>
+        <p className="muted" style={{ margin: '0 0 0.5rem' }}>
+          Baje el archivo del día y ábralo en el teléfono para guardar todos los contactos de una vez. Luego, en WhatsApp: Nuevo grupo y escriba el
+          prefijo del día{d.fechas[0] ? ` (por ejemplo, ${prefijoDia(d.fechas[0])})` : ''} para encontrarlos.
+        </p>
+        <div className="row" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+          {d.fechas.map((f) => {
+            const clave = `vcf-${f}`;
+            const n = contactos.get(f)?.incluidos ?? 0;
+            return (
+              <button
+                key={f}
+                type="button"
+                className="btn secondary"
+                disabled={!!descarga.descargando || n === 0}
+                aria-busy={descarga.descargando === clave}
+                onClick={() => void descarga.descargar(clave, () => pedirContactosDistribucion(d.id, f), archivoContactosDia(f))}
+              >
+                {descarga.descargando === clave ? 'Generando…' : `Contactos ${prefijoDia(f)} (.vcf, ${n})`}
+              </button>
+            );
+          })}
+        </div>
+        {d.fechas.map((f) => {
+          const c = contactos.get(f);
+          if (!c || (c.sinCelular.length === 0 && c.repetidos.length === 0)) return null;
+          return (
+            <div key={f} className="banner aviso" style={{ marginTop: '0.5rem' }}>
+              <strong>{prefijoDia(f)}: no van en el archivo, agréguelos a mano al grupo.</strong>
+              <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
+                {c.sinCelular.map((nombre) => (
+                  <li key={`s-${nombre}`}>{nombre} (sin celular válido)</li>
+                ))}
+                {c.repetidos.map((nombre) => (
+                  <li key={`r-${nombre}`}>{nombre} (mismo celular que otra persona del día)</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
 
       <p className="ocda-pie" role="status" style={{ marginTop: 0 }}>
         {filas.length} de {d.personas.length} personas{fecha || encargado || buscar ? ' (con filtros; el Excel y el PDF usan el día y el encargado elegidos)' : ''}

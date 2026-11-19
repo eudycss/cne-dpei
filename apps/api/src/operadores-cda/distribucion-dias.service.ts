@@ -9,6 +9,7 @@ import type {
 } from '@cne/shared-types';
 import {
   MAX_CANDIDATOS_DISTRIBUCION,
+  archivoContactosDia,
   type AgregarPersonaDistribucionInput,
   type CrearDistribucionDiasInput,
   type EditarPersonaDistribucionInput,
@@ -19,7 +20,7 @@ import { idsPorBusqueda } from '../common/busqueda-sql';
 import { PrismaService } from '../db/prisma.service';
 import { DistributivoTecnicosClient, tecnicosPorRecinto } from '../enlaces/distributivo-tecnicos.client';
 import { fechaDb } from './dia-ecuador';
-import { normalizarSexo, ordenarPersonas, repartirEnDias, reporteDistribucion, totalesPorDia } from './distribucion-dias';
+import { contactosVcard, normalizarSexo, ordenarPersonas, repartirEnDias, reporteDistribucion, totalesPorDia } from './distribucion-dias';
 import { type ArchivoReporte, generarReporte } from './reporte-cda';
 
 const AVISO_DISTRIBUTIVO = 'No se pudo leer el distributivo de técnicos (Drive): la columna Encargado del CDA quedó vacía. Puede llenarla a mano.';
@@ -243,6 +244,19 @@ export class DistribucionDiasService {
     const d = await this.detalle(id);
     if (filtro.fecha !== undefined) exigirDia(d, filtro.fecha);
     return generarReporte(reporteDistribucion(d, filtro), formato);
+  }
+
+  /** Contactos (.vcf) de un día para importarlos en el teléfono y armar el grupo de WhatsApp. */
+  async contactos(id: string, fecha: string): Promise<ArchivoReporte> {
+    const d = await this.detalle(id);
+    exigirDia(d, fecha);
+    const { contenido, incluidos } = contactosVcard(d.personas, fecha);
+    if (incluidos === 0) throw new BadRequestException('Nadie de ese día tiene un celular válido');
+    return {
+      nombre: archivoContactosDia(fecha),
+      tipo: 'text/vcard; charset=utf-8',
+      contenido: Buffer.from(contenido, 'utf8'),
+    };
   }
 
   /**

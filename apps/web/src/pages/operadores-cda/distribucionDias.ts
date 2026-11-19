@@ -1,5 +1,5 @@
 import type { PersonaDistribucionDias, TotalesDistribucionDia } from '@cne/shared-types';
-import { coincideBusqueda } from '@cne/shared-validation';
+import { celularInternacional, coincideBusqueda } from '@cne/shared-validation';
 
 /** Cargos que la distribución deja fuera de fábrica (se pueden agregar a mano). */
 export const EXCLUIDOS_POR_DEFECTO = ['SUPERVISOR', 'ASISTENTE_ARCHIVOS'] as const;
@@ -64,3 +64,31 @@ export function diaCorto(dia: string): string {
 }
 
 export const SEXO_TEXTO: Record<'M' | 'F', string> = { M: 'Hombre', F: 'Mujer' };
+
+export interface ContactosDia {
+  incluidos: number;
+  sinCelular: string[];
+  /** Comparten el celular con alguien del mismo día que ya va en el archivo. */
+  repetidos: string[];
+}
+
+/**
+ * Por día, cuántos van en el .vcf y quiénes quedan fuera. Misma regla que la
+ * API: recorre en el orden de la tabla (el de la API) y el primero con cada
+ * número se queda.
+ */
+export function contactosPorDia(personas: Pick<PersonaDistribucionDias, 'fecha' | 'nombres' | 'telefono'>[], fechas: string[]): Map<string, ContactosDia> {
+  const mapa = new Map(fechas.map((f) => [f, { incluidos: 0, sinCelular: [] as string[], repetidos: [] as string[], vistos: new Set<string>() }]));
+  for (const p of personas) {
+    const dia = mapa.get(p.fecha);
+    if (!dia) continue;
+    const tel = celularInternacional(p.telefono);
+    if (!tel) dia.sinCelular.push(p.nombres);
+    else if (dia.vistos.has(tel)) dia.repetidos.push(p.nombres);
+    else {
+      dia.vistos.add(tel);
+      dia.incluidos++;
+    }
+  }
+  return new Map([...mapa].map(([f, d]) => [f, { incluidos: d.incluidos, sinCelular: d.sinCelular, repetidos: d.repetidos }]));
+}

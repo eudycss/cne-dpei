@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   agregarPersonaDistribucionSchema,
   candidatosDistribucionSchema,
+  archivoContactosDia,
+  celularInternacional,
+  contactosDistribucionSchema,
   crearDistribucionDiasSchema,
   editarPersonaDistribucionSchema,
+  prefijoDia,
   reporteDistribucionSchema,
 } from './index';
 
@@ -66,5 +70,37 @@ describe('reporte y candidatos', () => {
     expect(reporteDistribucionSchema.safeParse({ fecha: 'hoy' }).success).toBe(false);
     expect(candidatosDistribucionSchema.parse({})).toEqual({ buscar: '' });
     expect(candidatosDistribucionSchema.safeParse({ buscar: 'x'.repeat(61) }).success).toBe(false);
+  });
+});
+
+describe('celularInternacional', () => {
+  it('pasa 09… y +593… a +5939… y quita espacios y guiones', () => {
+    expect(celularInternacional('0991234567')).toBe('+593991234567');
+    expect(celularInternacional('+593991234567')).toBe('+593991234567');
+    expect(celularInternacional(' 099-123 4567 ')).toBe('+593991234567');
+  });
+
+  it('devuelve null para fijos, vacíos u otros formatos', () => {
+    expect(celularInternacional('062123456')).toBeNull();
+    expect(celularInternacional('')).toBeNull();
+    expect(celularInternacional(null)).toBeNull();
+    expect(celularInternacional('09912345')).toBeNull();
+    expect(celularInternacional('5939912345678')).toBeNull();
+  });
+});
+
+describe('contactosDistribucionSchema', () => {
+  it('exige un día válido y nada más', () => {
+    expect(contactosDistribucionSchema.parse({ fecha: '2026-11-20' })).toEqual({ fecha: '2026-11-20' });
+    expect(contactosDistribucionSchema.safeParse({}).success).toBe(false);
+    expect(contactosDistribucionSchema.safeParse({ fecha: '2026-11-20', otro: 1 }).success).toBe(false);
+  });
+});
+
+describe('prefijoDia y archivoContactosDia', () => {
+  it('abreviatura del día + número; nombre de archivo sin tildes', () => {
+    expect(['2026-11-20', '2026-11-21', '2026-11-22', '2026-12-07'].map(prefijoDia)).toEqual(['VIE20', 'SAB21', 'DOM22', 'LUN07']);
+    expect(archivoContactosDia('2026-11-21')).toBe('contactos-sabado-21.vcf');
+    expect(archivoContactosDia('2026-11-25')).toBe('contactos-miercoles-25.vcf');
   });
 });
