@@ -35,7 +35,7 @@ function filaRegistrada(over: Record<string, unknown> = {}) {
 describe('DistribucionDiasService', () => {
   const prisma = {
     distribucionDias: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
-    distribucionDiasPersona: { findFirst: jest.fn(), create: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    distribucionDiasPersona: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
     operadorCda: { findMany: jest.fn(), findFirst: jest.fn() },
     cargoCda: { findMany: jest.fn() },
     $queryRaw: jest.fn(),
@@ -238,9 +238,35 @@ describe('DistribucionDiasService', () => {
   });
 
   describe('editar y quitar', () => {
+    it('mover sola: solo a un día con menos personas de su sexo (409 si rompe lo equitativo), con el candado', async () => {
+      prisma.distribucionDiasPersona.findFirst.mockResolvedValue({ id: FILA });
+      prisma.distribucionDiasPersona.update.mockResolvedValue(filaRegistrada());
+      // Viernes: FILA (H). Sábado: 1 hombre. Domingo: nadie.
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada(), filaRegistrada({ id: 'h2', fecha: fecha(DIAS[1]) })]);
+      await expect(service.editar(ID, FILA, { fecha: DIAS[1] })).rejects.toThrow(/no tiene cupo de hombres/);
+      expect(prisma.distribucionDiasPersona.update).not.toHaveBeenCalled();
+      await service.editar(ID, FILA, { fecha: DIAS[2] });
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+      expect(prisma.distribucionDiasPersona.update.mock.calls[0][0].data).toEqual({ fecha: fecha(DIAS[2]) });
+    });
+
+    it('si la quitaron mientras se editaba: 404 (no 500)', async () => {
+      prisma.distribucionDiasPersona.findFirst.mockResolvedValue({ id: FILA });
+      prisma.distribucionDiasPersona.update.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('no', { code: 'P2025', clientVersion: 'x' }));
+      await expect(service.editar(ID, FILA, { encargado: 'Willy' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('cambiar solo cantón o encargado no revisa cupo', async () => {
+      prisma.distribucionDiasPersona.findFirst.mockResolvedValue({ id: FILA });
+      prisma.distribucionDiasPersona.update.mockResolvedValue(filaRegistrada());
+      await service.editar(ID, FILA, { encargado: 'Willy' });
+      expect(prisma.distribucionDiasPersona.findMany).not.toHaveBeenCalled();
+    });
+
     it('cambia el día y deja el cantón vacío como null', async () => {
       prisma.distribucionDiasPersona.findFirst.mockResolvedValue({ id: FILA });
       prisma.distribucionDiasPersona.update.mockResolvedValue(filaRegistrada());
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada(), filaRegistrada({ id: 'h2' })]);
       await service.editar(ID, FILA, { fecha: DIAS[2], canton: '' });
       expect(prisma.distribucionDiasPersona.findFirst).toHaveBeenCalledWith({ where: { id: FILA, distribucionId: ID }, select: { id: true } });
       expect(prisma.distribucionDiasPersona.update.mock.calls[0][0].data).toEqual({ fecha: fecha(DIAS[2]), canton: null });
@@ -256,6 +282,36 @@ describe('DistribucionDiasService', () => {
 
     it('400 al mover a un día que no es de la distribución', async () => {
       await expect(service.editar(ID, FILA, { fecha: '2026-11-23' })).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('intercambiar', () => {
+    const OTRA = '66666666-6666-4666-8666-666666666666';
+    const mujer = { apellidosNombres: 'RUIZ ANA', cedula: '1003456785', telefono: null, sexo: 'F', cargoCda: { nombre: 'Digitadores' } };
+
+    it('cruza los días de dos personas del mismo sexo dentro del candado', async () => {
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada(), filaRegistrada({ id: OTRA, fecha: fecha(DIAS[1]), cedula: '1003456785' })]);
+      prisma.distribucionDiasPersona.update.mockImplementation(({ where, data }: { where: { id: string }; data: { fecha: Date } }) =>
+        Promise.resolve(filaRegistrada({ id: where.id, fecha: data.fecha })),
+      );
+      const r = await service.intercambiar(ID, FILA, { conId: OTRA });
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+      expect(prisma.distribucionDiasPersona.findMany.mock.calls[0][0].where).toEqual({ distribucionId: ID, id: { in: [FILA, OTRA] } });
+      expect(r.map((p) => [p.id, p.fecha])).toEqual([
+        [FILA, DIAS[1]],
+        [OTRA, DIAS[0]],
+      ]);
+    });
+
+    it('rechaza sexo distinto, mismo día, la misma persona o alguien de otra distribución', async () => {
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada(), filaRegistrada({ id: OTRA, fecha: fecha(DIAS[1]), operador: mujer })]);
+      await expect(service.intercambiar(ID, FILA, { conId: OTRA })).rejects.toThrow(/mismo sexo/);
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada(), filaRegistrada({ id: OTRA })]);
+      await expect(service.intercambiar(ID, FILA, { conId: OTRA })).rejects.toThrow(/mismo día/);
+      await expect(service.intercambiar(ID, FILA, { conId: FILA })).rejects.toBeInstanceOf(BadRequestException);
+      prisma.distribucionDiasPersona.findMany.mockResolvedValue([filaRegistrada()]);
+      await expect(service.intercambiar(ID, FILA, { conId: OTRA })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.distribucionDiasPersona.update).not.toHaveBeenCalled();
     });
   });
 

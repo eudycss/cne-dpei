@@ -372,6 +372,7 @@ const AUDIT_TABLE: Array<{
   { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/personas$/, accion: 'DISTRIBUCION_DIAS_PERSONA_ADD', entidad: 'distribucion_dias', campos: ['tipo', 'fecha'] },
   { method: 'PATCH', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_UPDATE', entidad: 'distribucion_dias', campos: ['fecha'] },
   { method: 'DELETE', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_DELETE', entidad: 'distribucion_dias' },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+\/intercambiar$/, accion: 'DISTRIBUCION_DIAS_PERSONA_INTERCAMBIO', entidad: 'distribucion_dias', campos: ['conId'] },
   {
     method: 'GET',
     pathRegex: /^\/distribuciones-dias\/[^/]+\/reporte\.(xlsx|pdf)$/,

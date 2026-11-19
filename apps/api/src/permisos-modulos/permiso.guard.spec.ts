@@ -98,6 +98,7 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [DistribucionDiasController, 'agregar', 'cda.distribucion.gestionar'],
   [DistribucionDiasController, 'editar', 'cda.distribucion.gestionar'],
   [DistribucionDiasController, 'quitar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'intercambiar', 'cda.distribucion.gestionar'],
   [PerimetroController, 'crear', 'perimetro.planes.editar'],
   [PerimetroController, 'guardar', 'perimetro.planes.editar'],
   [PerimetroController, 'eliminar', 'perimetro.planes.editar'],

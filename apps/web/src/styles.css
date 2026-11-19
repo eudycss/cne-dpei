@@ -700,6 +700,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   background: linear-gradient(135deg, var(--f-cian), var(--f-violeta));
 }
 .ocda-avatar.grande { width: 52px; height: 52px; font-size: 0.95rem; }
+.ocda-avatar.chico { width: 32px; height: 32px; font-size: 0.7rem; }
 
 /* Check de entrada (cian) / salida (violeta), 150 × 44 como en Figma. */
 .ocda-check {

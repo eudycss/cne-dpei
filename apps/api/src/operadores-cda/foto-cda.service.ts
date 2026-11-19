@@ -319,6 +319,15 @@ export class FotoCdaService {
     return operador;
   }
 
+  /**
+   * Ids de quienes tienen foto (también inactivos, igual que `foto()`): así
+   * cualquier listado sabe a quién pedirle la miniatura sin tocar su respuesta.
+   */
+  async idsConFoto(): Promise<string[]> {
+    const filas = await this.prisma.operadorCda.findMany({ where: { fotoKey: { not: null } }, select: { id: true } });
+    return filas.map((f) => f.id);
+  }
+
   /** La foto descifrada, para el listado y las actas. */
   async foto(operadorId: string): Promise<Buffer> {
     const operador = await this.prisma.operadorCda.findUnique({

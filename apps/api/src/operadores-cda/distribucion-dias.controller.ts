@@ -8,12 +8,14 @@ import {
   contactosDistribucionSchema,
   crearDistribucionDiasSchema,
   editarPersonaDistribucionSchema,
+  intercambiarPersonaDistribucionSchema,
   reporteDistribucionSchema,
   type AgregarPersonaDistribucionInput,
   type CandidatosDistribucionInput,
   type ContactosDistribucionInput,
   type CrearDistribucionDiasInput,
   type EditarPersonaDistribucionInput,
+  type IntercambiarPersonaDistribucionInput,
   type ReporteDistribucionInput,
 } from '@cne/shared-validation';
 
@@ -129,6 +131,18 @@ export class DistribucionDiasController {
     @Body(new ZodValidationPipe(editarPersonaDistribucionSchema)) body: EditarPersonaDistribucionInput,
   ) {
     return this.distribucion.editar(id, personaId, body);
+  }
+
+  @Post(':id/personas/:personaId/intercambiar')
+  @RequierePermiso('cda.distribucion.gestionar')
+  @UseGuards(PermisoGuard)
+  @ApiOperation({ summary: 'Intercambia el día con otra persona del mismo sexo (los totales no cambian)' })
+  intercambiar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+    @Body(new ZodValidationPipe(intercambiarPersonaDistribucionSchema)) body: IntercambiarPersonaDistribucionInput,
+  ) {
+    return this.distribucion.intercambiar(id, personaId, body);
   }
 
   @Delete(':id/personas/:personaId')

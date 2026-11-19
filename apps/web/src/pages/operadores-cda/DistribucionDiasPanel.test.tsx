@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { DistribucionDiasDetalle } from '@cne/shared-types';
 
 import { DistribucionDiasPanel } from './DistribucionDiasPanel';
+import { getFotoOperadorCda, getIdsConFoto } from '../../lib/queries/operadores-cda';
 import { getDistribucion, getDistribuciones, pedirContactosDistribucion, pedirReporteDistribucion } from '../../lib/queries/distribucion-dias';
 
 vi.mock('../../lib/queries/distribucion-dias', () => ({
@@ -22,6 +23,7 @@ vi.mock('../../lib/queries/distribucion-dias', () => ({
 }));
 vi.mock('../../lib/queries/custodia', () => ({ guardarArchivo: vi.fn() }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('../../lib/queries/operadores-cda', () => ({ getIdsConFoto: vi.fn(), getFotoOperadorCda: vi.fn() }));
 const permisos = { gestionar: true };
 vi.mock('../../lib/useModulos', () => ({
   useModulos: () => ({ puede: (id: string) => id === 'cda.distribucion.gestionar' && permisos.gestionar }),
@@ -64,6 +66,18 @@ describe('DistribucionDiasPanel', () => {
     (getDistribuciones as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'd1', nombre: 'Fin de semana', fechas: DIAS, total: 2, creadoEn: '' }]);
     (getDistribucion as ReturnType<typeof vi.fn>).mockResolvedValue(detalle);
     (pedirReporteDistribucion as ReturnType<typeof vi.fn>).mockResolvedValue({ data: new Blob(['x']) });
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    (getIdsConFoto as ReturnType<typeof vi.fn>).mockResolvedValue(['o1']);
+    (getFotoOperadorCda as ReturnType<typeof vi.fn>).mockResolvedValue(new Blob(['jpg'], { type: 'image/jpeg' }));
+  });
+
+  it('pide la foto solo de quien la tiene (la persona externa queda con iniciales)', async () => {
+    montar();
+    await screen.findByRole('table');
+    await waitFor(() => expect(getFotoOperadorCda).toHaveBeenCalledWith('o1'));
+    expect(getFotoOperadorCda).toHaveBeenCalledTimes(1);
+    expect(getIdsConFoto).toHaveBeenCalledTimes(1);
   });
 
   it('muestra la tabla con cargo, cantón, encargado y marca a las personas externas', async () => {

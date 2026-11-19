@@ -87,8 +87,30 @@ describe('distribución por días (PostgreSQL real)', () => {
       encargado: 'Willy',
     });
     expect(ext).toMatchObject({ operadorId: null, nombres: 'EXTERNA E2E', canton: null, encargado: 'Willy' });
-    const movida = await service.editar(id, ext.id, { fecha: DIAS[1], canton: 'OTAVALO' });
-    expect(movida).toMatchObject({ fecha: DIAS[1], canton: 'OTAVALO' });
+    // Moverla sola: solo a un día con menos mujeres que el suyo (el resto, 409).
+    const det = await service.detalle(id);
+    const mujeres = (d: string) => det.personas.filter((x) => x.fecha === d && x.sexo === 'F').length;
+    for (const d of DIAS.filter((x) => x !== DIAS[2])) {
+      if (mujeres(d) < mujeres(DIAS[2])) {
+        expect(await service.editar(id, ext.id, { fecha: d, canton: 'OTAVALO' })).toMatchObject({ fecha: d, canton: 'OTAVALO' });
+        await service.editar(id, ext.id, { fecha: DIAS[2] }).catch(() => undefined);
+      } else {
+        await expect(service.editar(id, ext.id, { fecha: d })).rejects.toBeInstanceOf(ConflictException);
+      }
+    }
+  });
+
+  it('intercambia de día a dos mujeres en una sola transacción y los totales no cambian', async () => {
+    const id = ids.distribucion as string;
+    const antes = await service.detalle(id);
+    const a = antes.personas.find((p) => p.operadorId === ids.cpe);
+    const b = antes.personas.find((p) => p.sexo === 'F' && p.fecha !== a?.fecha);
+    if (!a || !b) throw new Error('faltan datos para el intercambio');
+    const [na, nb] = await service.intercambiar(id, a.id, { conId: b.id });
+    expect([na.fecha, nb.fecha]).toEqual([b.fecha, a.fecha]);
+    expect((await service.detalle(id)).totales).toEqual(antes.totales);
+    const hombre = antes.personas.find((p) => p.sexo === 'M' && p.fecha !== b.fecha);
+    if (hombre) await expect(service.intercambiar(id, hombre.id, { conId: b.id })).rejects.toThrow(/mismo sexo/);
   });
 
   it('la base rechaza un externo sin nombre o sin sexo, y un sexo inválido', async () => {

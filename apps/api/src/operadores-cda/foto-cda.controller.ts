@@ -49,6 +49,14 @@ export class FotoCdaController {
     return this.fotos.crearEnlace(id, user.sub);
   }
 
+  @Get('fotos/con-foto')
+  @RequiereModulo('operadores-cda')
+  @UseGuards(ModuloGuard)
+  @ApiOperation({ summary: 'Ids del personal (también inactivo) que tiene foto, para la miniatura en cualquier listado' })
+  conFoto() {
+    return this.fotos.idsConFoto();
+  }
+
   @Get(':id/foto')
   @RequiereModulo('operadores-cda')
   @UseGuards(ModuloGuard)

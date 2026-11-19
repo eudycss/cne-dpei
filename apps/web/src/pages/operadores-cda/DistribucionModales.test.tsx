@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -13,14 +13,17 @@ import {
   crearDistribucion,
   editarPersonaDistribucion,
   getCandidatosDistribucion,
+  intercambiarPersonaDistribucion,
 } from '../../lib/queries/distribucion-dias';
 
 vi.mock('../../lib/queries/distribucion-dias', () => ({
   crearDistribucion: vi.fn(),
   agregarPersonaDistribucion: vi.fn(),
   editarPersonaDistribucion: vi.fn(),
+  intercambiarPersonaDistribucion: vi.fn(),
   getCandidatosDistribucion: vi.fn(),
 }));
+vi.mock('../../lib/queries/operadores-cda', () => ({ getIdsConFoto: vi.fn().mockResolvedValue([]), getFotoOperadorCda: vi.fn() }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('./utils', async (original) => ({ ...(await original<typeof import('./utils')>()), hoyEcuador: () => '2026-11-18' }));
 
@@ -99,7 +102,7 @@ describe('AgregarPersonaDistribucionModal', () => {
 });
 
 describe('EditarPersonaDistribucionModal', () => {
-  const persona: PersonaDistribucionDias = {
+  const p = (o: Partial<PersonaDistribucionDias>): PersonaDistribucionDias => ({
     id: 'p1',
     fecha: DIAS[0],
     operadorId: 'o1',
@@ -110,23 +113,57 @@ describe('EditarPersonaDistribucionModal', () => {
     cargo: 'Operadores CDA',
     canton: 'OTAVALO',
     encargado: null,
-  };
+    ...o,
+  });
+  const persona = p({});
+  // Viernes: PÉREZ (H) + otro H. Sábado: 2 H. Domingo: 1 H y 1 M.
+  const personas = [
+    persona,
+    p({ id: 'h2', nombres: 'GÓMEZ LUIS' }),
+    p({ id: 'h3', fecha: DIAS[1], nombres: 'MORA CARLOS', canton: 'IBARRA' }),
+    p({ id: 'h4', fecha: DIAS[1], nombres: 'VACA PEDRO' }),
+    p({ id: 'h5', fecha: DIAS[2], nombres: 'LARA RAÚL' }),
+    p({ id: 'm1', fecha: DIAS[2], nombres: 'RUIZ ANA', sexo: 'F' }),
+  ];
+  const montar = (onClose = vi.fn()) =>
+    envolver(<EditarPersonaDistribucionModal distribucionId="d1" persona={persona} personas={personas} fechas={DIAS} sugerencias={SUG} onClose={onClose} />);
 
   beforeEach(() => vi.clearAllMocks());
 
-  it('envía solo día, cantón y encargado', async () => {
+  it('solo deja mover sola a un día con cupo de su sexo y envía día, cantón y encargado', async () => {
     mock(editarPersonaDistribucion).mockResolvedValue(persona);
-    envolver(<EditarPersonaDistribucionModal distribucionId="d1" persona={persona} fechas={DIAS} sugerencias={SUG} onClose={vi.fn()} />);
-    await userEvent.selectOptions(screen.getByLabelText('Día'), DIAS[2]);
+    montar();
+    const dia = screen.getByLabelText('Día (moverla sola)');
+    expect(within(dia).getByRole('option', { name: /sáb 21.*2 hombres.*sin cupo/ })).toBeDisabled();
+    expect(within(dia).getByRole('option', { name: /dom 22.*1 hombres.*con cupo/ })).toBeEnabled();
+    await userEvent.selectOptions(dia, DIAS[2]);
     await userEvent.type(screen.getByLabelText('Encargado'), 'Willy');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(editarPersonaDistribucion).toHaveBeenCalledWith('d1', 'p1', { fecha: DIAS[2], canton: 'OTAVALO', encargado: 'Willy' }));
   });
 
+  it('intercambia solo con alguien del mismo sexo de otro día, con buscador', async () => {
+    mock(intercambiarPersonaDistribucion).mockResolvedValue([p({ fecha: DIAS[1] }), p({ id: 'h3', fecha: DIAS[0], nombres: 'MORA CARLOS' })]);
+    const onClose = vi.fn();
+    montar(onClose);
+    // Ni la otra persona del viernes ni la mujer del domingo.
+    expect(screen.queryByLabelText(/GÓMEZ LUIS/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/RUIZ ANA/)).not.toBeInTheDocument();
+    expect(screen.getByText('3 persona(s).')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/^Buscar/), 'ibarra{Enter}');
+    // Enter en el buscador solo busca: no guarda.
+    expect(editarPersonaDistribucion).not.toHaveBeenCalled();
+    expect(screen.getByText('1 persona(s).')).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/MORA CARLOS/));
+    await userEvent.click(screen.getByRole('button', { name: 'Intercambiar: PÉREZ JUAN → sáb 21/11, MORA CARLOS → vie 20/11' }));
+    await waitFor(() => expect(intercambiarPersonaDistribucion).toHaveBeenCalledWith('d1', 'p1', 'h3'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
   it('muestra el error de la API como alerta', async () => {
-    mock(editarPersonaDistribucion).mockRejectedValue({ response: { data: { message: 'Ese día no es parte de la distribución' } } });
-    envolver(<EditarPersonaDistribucionModal distribucionId="d1" persona={persona} fechas={DIAS} sugerencias={SUG} onClose={vi.fn()} />);
+    mock(editarPersonaDistribucion).mockRejectedValue({ response: { data: { message: 'Ese día no tiene cupo de hombres' } } });
+    montar();
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ese día no es parte de la distribución');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ese día no tiene cupo de hombres');
   });
 });

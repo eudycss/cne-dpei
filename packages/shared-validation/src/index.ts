@@ -1552,3 +1552,16 @@ export function archivoContactosDia(fecha: string): string {
 /** Contactos (.vcf) de un día del reparto: el día es obligatorio. */
 export const contactosDistribucionSchema = z.object({ fecha: fechaParejaCdaSchema }).strict();
 export type ContactosDistribucionInput = z.infer<typeof contactosDistribucionSchema>;
+
+/** Intercambiar de día a dos personas del mismo sexo de la distribución. */
+export const intercambiarPersonaDistribucionSchema = z.object({ conId: z.string().uuid('Persona inválida') }).strict();
+export type IntercambiarPersonaDistribucionInput = z.infer<typeof intercambiarPersonaDistribucionSchema>;
+
+/**
+ * Regla de cupo al mover a una persona sola de día: el día destino debe tener
+ * menos personas de su sexo que el día de origen. Así la diferencia entre días
+ * no crece (y si ya estaba desbalanceada, solo se puede corregir).
+ */
+export function tieneCupoDia(mismoSexoDestino: number, mismoSexoOrigen: number): boolean {
+  return mismoSexoDestino < mismoSexoOrigen;
+}
