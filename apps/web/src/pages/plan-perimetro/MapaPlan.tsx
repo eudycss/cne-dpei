@@ -39,7 +39,8 @@ interface MapaPlanProps {
 }
 
 export function MapaPlan({ plan, seleccionado, onSeleccionar, edicion, onVista }: MapaPlanProps) {
-  const [capa, setCapa] = useState<CapaBase>('satelite-calles');
+  // La ortofoto del IGM es la más nítida; donde no hay, se ve Esri debajo.
+  const [capa, setCapa] = useState<CapaBase>('ortofoto');
   // Abre en 3D, como Google Earth, salvo que la vista guardada sea plana.
   const [vista3d, setVista3d] = useState(plan.vista ? plan.vista.pitch > 0 : true);
   const visible = useMemo(() => (edicion ? { ...plan, ...edicion.estado.plan } : plan), [plan, edicion?.estado.plan]);
