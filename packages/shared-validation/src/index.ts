@@ -1443,3 +1443,84 @@ export const filtrosEvaticsSchema = z.object({
   q: z.string().trim().max(100).optional(),
 });
 export type FiltrosEvaticsInput = z.infer<typeof filtrosEvaticsSchema>;
+
+// ---- Distribución del personal por días ----
+
+export const MAX_DIAS_DISTRIBUCION = 7;
+export const MAX_CANDIDATOS_DISTRIBUCION = 20;
+
+/** Texto libre corto (va a Excel y PDF): sin caracteres de control; vacío = sin dato. */
+const textoDistribucion = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Máximo ${max} caracteres`)
+    // eslint-disable-next-line no-control-regex
+    .regex(/^[^\u0000-\u001f\u007f]*$/, 'Caracteres no permitidos')
+    .transform((s) => s.replace(/ +/g, ' '));
+
+/** Vacío o ausente = sin dato (la API lo guarda como null). */
+const textoOpcionalDistribucion = (max: number) => textoDistribucion(max).optional();
+
+const fechasDistribucionSchema = z
+  .array(fechaParejaCdaSchema)
+  .min(1, 'Elija al menos un día')
+  .max(MAX_DIAS_DISTRIBUCION, `Máximo ${MAX_DIAS_DISTRIBUCION} días`)
+  .refine((f) => new Set(f).size === f.length, 'Hay un día repetido')
+  .transform((f) => [...f].sort());
+
+/** Nueva distribución: se arma sola con el personal activo menos los cargos excluidos. */
+export const crearDistribucionDiasSchema = z
+  .object({
+    nombre: textoDistribucion(120).pipe(z.string().min(3, 'Mínimo 3 caracteres')),
+    fechas: fechasDistribucionSchema,
+    excluirCargos: z.array(grupoCdaSchema).max(50),
+    cantonCpe: textoOpcionalDistribucion(100),
+    encargadoCpe: textoOpcionalDistribucion(200),
+  })
+  .strict();
+export type CrearDistribucionDiasInput = z.infer<typeof crearDistribucionDiasSchema>;
+
+/** Agregar a mano: alguien del personal registrado (cualquier cargo) o una persona externa. */
+export const agregarPersonaDistribucionSchema = z.discriminatedUnion('tipo', [
+  z.object({ tipo: z.literal('REGISTRADA'), fecha: fechaParejaCdaSchema, operadorId: z.string().uuid('Persona inválida') }).strict(),
+  z
+    .object({
+      tipo: z.literal('EXTERNA'),
+      fecha: fechaParejaCdaSchema,
+      nombres: textoDistribucion(200).pipe(z.string().min(3, 'Apellidos y nombres requeridos')),
+      cedula: cedulaSchema,
+      telefono: telefonoSchema,
+      sexo: sexoCdaSchema,
+      cargo: textoDistribucion(160).pipe(z.string().min(1, 'Cargo requerido')),
+      canton: textoOpcionalDistribucion(100),
+      encargado: textoOpcionalDistribucion(200),
+    })
+    .strict(),
+]);
+export type AgregarPersonaDistribucionInput = z.infer<typeof agregarPersonaDistribucionSchema>;
+
+/** Editar una fila: cambiar de día, cantón o encargado (vacío = quitar el dato). */
+export const editarPersonaDistribucionSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema.optional(),
+    canton: textoDistribucion(100).optional(),
+    encargado: textoDistribucion(200).optional(),
+  })
+  .strict()
+  .refine((b) => b.fecha !== undefined || b.canton !== undefined || b.encargado !== undefined, 'No hay cambios');
+export type EditarPersonaDistribucionInput = z.infer<typeof editarPersonaDistribucionSchema>;
+
+/** Filtros del reporte: un día del reparto y/o un encargado (texto exacto de la columna). */
+export const reporteDistribucionSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema.optional(),
+    encargado: textoDistribucion(200).optional(),
+  })
+  .strict();
+export type ReporteDistribucionInput = z.infer<typeof reporteDistribucionSchema>;
+
+export const candidatosDistribucionSchema = z
+  .object({ buscar: z.string().trim().max(60, 'Máximo 60 caracteres').default('') })
+  .strict();
+export type CandidatosDistribucionInput = z.infer<typeof candidatosDistribucionSchema>;

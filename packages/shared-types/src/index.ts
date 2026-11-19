@@ -2543,3 +2543,54 @@ export interface PropuestaPersonalPerimetro {
   /** Puestos que no se pudieron llenar por falta de personal con esos filtros. */
   faltan: number;
 }
+
+// ---- Distribución del personal por días ----
+
+/** Hombres y mujeres de un día (o del total). `sinSexo`: fichas sin el dato. */
+export interface TotalesDistribucionDia {
+  fecha: string;
+  hombres: number;
+  mujeres: number;
+  sinSexo: number;
+  total: number;
+}
+
+export interface DistribucionDiasResumen {
+  id: string;
+  nombre: string;
+  fechas: string[];
+  total: number;
+  creadoEn: string;
+}
+
+export interface PersonaDistribucionDias {
+  id: string;
+  fecha: string;
+  /** null = persona externa (no está en el personal CDA/CPE). */
+  operadorId: string | null;
+  nombres: string;
+  cedula: string;
+  telefono: string | null;
+  sexo: 'M' | 'F' | null;
+  cargo: string;
+  canton: string | null;
+  encargado: string | null;
+}
+
+export interface DistribucionDiasDetalle extends DistribucionDiasResumen {
+  excluirCargos: string[];
+  cantonCpe: string | null;
+  encargadoCpe: string | null;
+  totales: TotalesDistribucionDia[];
+  personas: PersonaDistribucionDias[];
+  /** Avisos del armado (p. ej. no se pudo leer el distributivo de técnicos). */
+  avisos: string[];
+}
+
+/** Personal activo que todavía no está en la distribución (para "Agregar persona"). */
+export interface CandidatoDistribucion {
+  id: string;
+  nombre: string;
+  cedula: string;
+  cargo: string;
+}
