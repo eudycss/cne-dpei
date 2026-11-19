@@ -36,7 +36,16 @@ const raster = (tiles: string, maxzoom: number, attribution?: string): maplibreg
   ...(attribution ? { attribution } : {}),
 });
 
-export function estiloPlan(capa: CapaBase, relieve: boolean, capas: Capas): maplibregl.StyleSpecification {
+const SIN_DIBUJO: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+export const COLOR_DIBUJO = '#facc15';
+
+/** `dibujo`: vista previa del polígono que se está dibujando (línea y vértices). */
+export function estiloPlan(
+  capa: CapaBase,
+  relieve: boolean,
+  capas: Capas,
+  dibujo: GeoJSON.FeatureCollection = SIN_DIBUJO,
+): maplibregl.StyleSpecification {
   const conSatelite = capa !== 'calles';
   const fondo: maplibregl.LayerSpecification[] = conSatelite
     ? [{ id: 'satelite', type: 'raster', source: 'satelite' }]
@@ -65,6 +74,7 @@ export function estiloPlan(capa: CapaBase, relieve: boolean, capas: Capas): mapl
       'plan-perimetro': { type: 'geojson', data: capas.perimetro },
       'plan-zonas': { type: 'geojson', data: capas.zonas },
       'plan-vallas': { type: 'geojson', data: capas.vallas },
+      'plan-dibujo': { type: 'geojson', data: dibujo },
     },
     ...(relieve ? { terrain: { source: 'dem', exaggeration: 1.3 } } : {}),
     layers: [
@@ -86,6 +96,20 @@ export function estiloPlan(capa: CapaBase, relieve: boolean, capas: Capas): mapl
         source: 'plan-vallas',
         layout: { 'line-cap': 'round' },
         paint: { 'line-color': COLOR_VALLA, 'line-width': ['interpolate', ['linear'], ['zoom'], 16, 2, 20, 6] },
+      },
+      {
+        id: 'dibujo-linea',
+        type: 'line',
+        source: 'plan-dibujo',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: { 'line-color': COLOR_DIBUJO, 'line-width': 2.5, 'line-dasharray': [1, 1] },
+      },
+      {
+        id: 'dibujo-vertices',
+        type: 'circle',
+        source: 'plan-dibujo',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: { 'circle-radius': 5, 'circle-color': COLOR_DIBUJO, 'circle-stroke-color': '#04151a', 'circle-stroke-width': 2 },
       },
     ],
   };

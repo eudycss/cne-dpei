@@ -1,17 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sileo } from 'sileo';
-import type { EventoElectoral, PlanPerimetroDetalle } from '@cne/shared-types';
+import type { EventoElectoral } from '@cne/shared-types';
 import { LIMITES_PERIMETRO } from '@cne/shared-validation';
 import { api } from '../../lib/api';
 import { useModulos } from '../../lib/useModulos';
-import { clavePlan, clavePlanes, crearPlanPerimetro, getPlanPerimetro, getPlanesPerimetro } from '../../lib/queries/perimetro';
+import { clavePlanes, crearPlanPerimetro, getPlanesPerimetro } from '../../lib/queries/perimetro';
 import { mensajeError } from '../operadores-cda/utils';
-import { MapaPlan, CENTRO_DELEGACION } from './MapaPlan';
-import { FotoPersona } from './FotoPersona';
-import { nombrePuesto } from './PuestoMarker';
-import { ZONAS_PERIMETRO } from './geometria';
-import { COLOR_PERIMETRO, COLOR_VALLA } from './estiloPlan';
+import { CENTRO_DELEGACION } from './MapaPlan';
+import { DetallePlan } from './DetallePlan';
 
 /** Plan de perímetro: despliegue de puestos (personal CDA/CPE), vallas y zonas sobre el mapa de un evento. */
 export function PlanPerimetroPage() {
@@ -21,6 +18,9 @@ export function PlanPerimetroPage() {
   });
   const [eventoId, setEventoId] = useState('');
   const [planId, setPlanId] = useState<string | null>(null);
+  // Con cambios a medio editar no se cambia de evento ni de plan.
+  const [editando, setEditando] = useState(false);
+  const { puede } = useModulos();
 
   // Por defecto, el evento ACTIVO (o el primero de la lista).
   useEffect(() => {
@@ -41,6 +41,8 @@ export function PlanPerimetroPage() {
   }, [planes, planId]);
 
   const evento = eventos?.find((e) => e.id === eventoId);
+  const eventoEditable = !!evento && evento.estado !== 'CERRADO' && !evento.reabiertoEn;
+  const puedeEditar = puede('perimetro.planes.editar') && eventoEditable;
 
   return (
     <div className="tema-futurista ocda pp">
@@ -58,7 +60,7 @@ export function PlanPerimetroPage() {
       <div className="ocda-filtros">
         <label className="ocda-cargo pp-evento">
           Evento
-          <select value={eventoId} onChange={(e) => { setEventoId(e.target.value); setPlanId(null); }}>
+          <select value={eventoId} disabled={editando} onChange={(e) => { setEventoId(e.target.value); setPlanId(null); }}>
             {(eventos ?? []).map((e) => (
               <option key={e.id} value={e.id}>
                 {e.nombre}
@@ -70,7 +72,7 @@ export function PlanPerimetroPage() {
         {planes && planes.length > 0 && (
           <label className="ocda-cargo">
             Plan
-            <select value={planId ?? ''} onChange={(e) => setPlanId(e.target.value)}>
+            <select value={planId ?? ''} disabled={editando} onChange={(e) => setPlanId(e.target.value)}>
               {planes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre} · {p.puestosConPersona}/{p.puestos} con persona
@@ -81,7 +83,7 @@ export function PlanPerimetroPage() {
         )}
       </div>
 
-      {evento && evento.estado !== 'CERRADO' && <NuevoPlan eventoId={eventoId} onCreado={setPlanId} />}
+      {puedeEditar && !editando && <NuevoPlan eventoId={eventoId} onCreado={setPlanId} />}
 
       {errorEventos && <div className="banner error">No se pudieron cargar los eventos.</div>}
       {errorPlanes && <div className="banner error">No se pudieron cargar los planes de este evento.</div>}
@@ -89,13 +91,20 @@ export function PlanPerimetroPage() {
       {planes && planes.length === 0 && (
         <div className="banner info">Este evento todavía no tiene planes de perímetro.</div>
       )}
-      {planId && <DetallePlan key={planId} planId={planId} />}
+      {planId && (
+        <DetallePlan
+          key={planId}
+          planId={planId}
+          editable={puedeEditar}
+          onEditando={setEditando}
+          onEliminado={() => setPlanId(null)}
+        />
+      )}
     </div>
   );
 }
 
 function NuevoPlan({ eventoId, onCreado }: { eventoId: string; onCreado: (id: string) => void }) {
-  const { puede } = useModulos();
   const qc = useQueryClient();
   const [nombre, setNombre] = useState('');
   const crear = useMutation({
@@ -114,7 +123,6 @@ function NuevoPlan({ eventoId, onCreado }: { eventoId: string; onCreado: (id: st
     },
     onError: (e) => sileo.error({ title: mensajeError(e, 'No se pudo crear el plan') }),
   });
-  if (!puede('perimetro.planes.editar')) return null;
 
   function enviar(e: FormEvent) {
     e.preventDefault();
@@ -136,99 +144,5 @@ function NuevoPlan({ eventoId, onCreado }: { eventoId: string; onCreado: (id: st
         {crear.isPending ? 'Creando…' : 'Crear plan'}
       </button>
     </form>
-  );
-}
-
-function DetallePlan({ planId }: { planId: string }) {
-  const { data: plan, isLoading, isError } = useQuery({ queryKey: clavePlan(planId), queryFn: () => getPlanPerimetro(planId) });
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
-
-  if (isLoading) return <p className="ocda-subtitulo">Cargando el plan…</p>;
-  if (isError || !plan) return <div className="banner error">No se pudo cargar el plan.</div>;
-
-  const puesto = plan.puestos.find((p) => p.id === seleccionado) ?? null;
-  return (
-    <>
-      {plan.avisos.length > 0 && (
-        <div className="banner" role="status">
-          <ul className="pp-avisos">
-            {plan.avisos.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="pp-cuerpo">
-        <section className="pp-mapa-marco" aria-label={`Mapa del plan ${plan.nombre}`}>
-          <MapaPlan plan={plan} seleccionado={seleccionado} onSeleccionar={setSeleccionado} />
-          <Leyenda />
-        </section>
-        <aside className="pp-panel" aria-label="Puestos del plan">
-          {puesto && <TarjetaPuesto plan={plan} puestoId={puesto.id} onCerrar={() => setSeleccionado(null)} />}
-          <h3 className="pp-panel-titulo">
-            Puestos <span className="pp-contador">{plan.puestos.length}</span>
-          </h3>
-          {plan.puestos.length === 0 ? (
-            <p className="ocda-subtitulo">Aún no hay puestos en este plan.</p>
-          ) : (
-            <ol className="pp-lista">
-              {plan.puestos.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className={p.id === seleccionado ? 'activo' : undefined}
-                    aria-pressed={p.id === seleccionado}
-                    onClick={() => setSeleccionado(p.id)}
-                  >
-                    <span className="pp-puesto-numero">{p.orden}</span>
-                    <span className={p.persona ? undefined : 'pp-sin-persona'}>{nombrePuesto(p)}</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
-        </aside>
-      </div>
-    </>
-  );
-}
-
-function TarjetaPuesto({ plan, puestoId, onCerrar }: { plan: PlanPerimetroDetalle; puestoId: string; onCerrar: () => void }) {
-  const p = plan.puestos.find((x) => x.id === puestoId)!;
-  const nombre = nombrePuesto(p);
-  return (
-    <div className="pp-tarjeta" role="region" aria-label={`Puesto ${p.orden}`}>
-      {p.persona?.tieneFoto ? (
-        <FotoPersona key={p.persona.id} planId={plan.id} operadorId={p.persona.id} nombre={nombre} />
-      ) : null}
-      <div>
-        <p className="pp-tarjeta-puesto">Puesto {p.orden}</p>
-        <p className="pp-tarjeta-nombre">{nombre}</p>
-      </div>
-      <button type="button" className="btn secondary ocda-btn-chico" onClick={onCerrar}>
-        Cerrar
-      </button>
-    </div>
-  );
-}
-
-function Leyenda() {
-  return (
-    <ul className="pp-leyenda" aria-label="Leyenda">
-      <li>
-        <i style={{ borderColor: COLOR_PERIMETRO }} className="pp-leyenda-borde" aria-hidden="true" />
-        Perímetro
-      </li>
-      <li>
-        <i style={{ background: COLOR_VALLA }} aria-hidden="true" />
-        Valla
-      </li>
-      {Object.entries(ZONAS_PERIMETRO).map(([id, z]) => (
-        <li key={id}>
-          <i style={{ background: z.color }} aria-hidden="true" />
-          {z.etiqueta}
-        </li>
-      ))}
-    </ul>
   );
 }

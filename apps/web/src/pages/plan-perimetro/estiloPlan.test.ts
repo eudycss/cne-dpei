@@ -14,7 +14,7 @@ describe('estiloPlan', () => {
   it('satélite y calles: satélite de fondo, calles y nombres encima y el plan arriba de todo', () => {
     const e = estiloPlan('satelite-calles', false, CAPAS);
     expect(ids(e).slice(0, 3)).toEqual(['satelite', 'calles', 'lugares']);
-    expect(ids(e).at(-1)).toBe('vallas');
+    expect(ids(e).slice(-3)).toEqual(['vallas', 'dibujo-linea', 'dibujo-vertices']);
     expect(e.terrain).toBeUndefined();
   });
 

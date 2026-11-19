@@ -3,7 +3,13 @@ import { render } from '@testing-library/react';
 import type { PuestoPerimetro } from '@cne/shared-types';
 
 const { marcadores } = vi.hoisted(() => ({
-  marcadores: [] as Array<{ el: HTMLElement; lngLat: [number, number] }>,
+  marcadores: [] as Array<{
+    el: HTMLElement;
+    lngLat: [number, number];
+    arrastrable: boolean;
+    eventos: Record<string, () => void>;
+    getLngLat: () => { lng: number; lat: number };
+  }>,
 }));
 vi.mock('maplibre-gl', () => ({
   Marker: class {
@@ -20,10 +26,23 @@ vi.mock('maplibre-gl', () => ({
     addTo() {
       return this;
     }
+    arrastrable = false;
+    eventos: Record<string, () => void> = {};
     remove() {}
+    on(ev: string, cb: () => void) {
+      this.eventos[ev] = cb;
+      return this;
+    }
+    setDraggable(v: boolean) {
+      this.arrastrable = v;
+      return this;
+    }
+    getLngLat() {
+      return { lng: this.lngLat[0], lat: this.lngLat[1] };
+    }
   },
 }));
-vi.mock('../../components/map', () => ({ useMapInstance: () => ({}) }));
+vi.mock('../../components/map', () => ({ useMapInstance: () => ({ getBearing: () => 0, getCanvas: () => ({ focus() {} }) }) }));
 
 import { PuestoMarker, nombrePuesto } from './PuestoMarker';
 
@@ -62,5 +81,39 @@ describe('PuestoMarker', () => {
     expect(el.textContent).toBe('3');
     expect(el.getAttribute('aria-pressed')).toBe('true');
     expect(el.classList.contains('pp-puesto--sin-persona')).toBe(true);
+  });
+
+  it('en edición se arrastra, se mueve con las flechas y se quita con Supr', () => {
+    const onMover = vi.fn();
+    const onQuitar = vi.fn();
+    const onSeleccionar = vi.fn();
+    render(<PuestoMarker puesto={PUESTO} seleccionado={false} mostrarNombre editable onSeleccionar={onSeleccionar} onMover={onMover} onQuitar={onQuitar} />);
+    const m = marcadores.at(-1)!;
+    expect(m.arrastrable).toBe(true);
+    expect(m.el.getAttribute('aria-label')).toContain('flechas para mover');
+
+    m.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    const [id, [lat, lng]] = onMover.mock.calls[0];
+    expect(id).toBe('p1');
+    expect(lat).toBeGreaterThan(PUESTO.lat);
+    expect(lng).toBeCloseTo(PUESTO.lng, 10);
+    m.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(onQuitar).toHaveBeenCalledWith('p1');
+
+    // Soltar tras arrastrar mueve el puesto y el click que sigue no lo "elige".
+    m.lngLat = [-78.2, 0.4];
+    m.eventos.dragend();
+    expect(onMover).toHaveBeenLastCalledWith('p1', [0.4, -78.2]);
+    m.el.click();
+    expect(onSeleccionar).not.toHaveBeenCalled();
+  });
+
+  it('fuera de edición las flechas no mueven nada', () => {
+    const onMover = vi.fn();
+    render(<PuestoMarker puesto={PUESTO} seleccionado={false} mostrarNombre onSeleccionar={() => {}} onMover={onMover} />);
+    const m = marcadores.at(-1)!;
+    expect(m.arrastrable).toBe(false);
+    m.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(onMover).not.toHaveBeenCalled();
   });
 });

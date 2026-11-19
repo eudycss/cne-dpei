@@ -2,12 +2,19 @@ import * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import type { PuestoPerimetro } from '@cne/shared-types';
 import { useMapInstance } from '../../components/map';
+import { moverConTecla } from './MarcadorArrastrable';
+
+type Punto = [number, number];
 
 interface PuestoMarkerProps {
   puesto: PuestoPerimetro;
   seleccionado: boolean;
   mostrarNombre: boolean;
   onSeleccionar: (id: string) => void;
+  /** En edición: se arrastra, se mueve con las flechas y se quita con Supr. */
+  editable?: boolean;
+  onMover?: (id: string, p: Punto) => void;
+  onQuitar?: (id: string) => void;
 }
 
 /** Nombre que se muestra del puesto: la persona, la etiqueta libre o "Sin asignar". */
@@ -19,30 +26,66 @@ export function nombrePuesto(p: Pick<PuestoPerimetro, 'persona' | 'etiqueta'>): 
  * Puesto en el mapa: un botón (se enfoca con Tab y se activa con Enter) con su
  * número y, si se pide, el nombre. El texto va por textContent, nunca como HTML.
  */
-export function PuestoMarker({ puesto, seleccionado, mostrarNombre, onSeleccionar }: PuestoMarkerProps) {
+export function PuestoMarker({ puesto, seleccionado, mostrarNombre, onSeleccionar, editable = false, onMover, onQuitar }: PuestoMarkerProps) {
   const map = useMapInstance();
+  const props = useRef({ puesto, onSeleccionar, editable, onMover, onQuitar });
+  props.current = { puesto, onSeleccionar, editable, onMover, onQuitar };
   const boton = useRef<HTMLButtonElement | null>(null);
-  const alSeleccionar = useRef(onSeleccionar);
-  alSeleccionar.current = onSeleccionar;
+  const marcador = useRef<maplibregl.Marker | null>(null);
+  const recienArrastrado = useRef(false);
 
   if (!boton.current) {
-    boton.current = document.createElement('button');
-    boton.current.type = 'button';
-    boton.current.className = 'pp-puesto';
-    boton.current.addEventListener('click', (e) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pp-puesto';
+    b.addEventListener('click', (e) => {
       e.stopPropagation();
-      alSeleccionar.current(puesto.id);
+      // Soltar después de arrastrar también dispara click: no cuenta como elegir.
+      if (recienArrastrado.current) {
+        recienArrastrado.current = false;
+        return;
+      }
+      props.current.onSeleccionar(props.current.puesto.id);
     });
+    b.addEventListener('keydown', (e) => {
+      const { puesto: p, editable: ed, onMover: mover, onQuitar: quitar } = props.current;
+      if (!ed) return;
+      const nuevo = moverConTecla(e, [p.lat, p.lng], map.getBearing());
+      if (nuevo && mover) mover(p.id, nuevo);
+      else if (e.key === 'Delete' && quitar) {
+        map.getCanvas().focus();
+        quitar(p.id);
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    boton.current = b;
   }
 
   useEffect(() => {
-    const marcador = new maplibregl.Marker({ element: boton.current!, anchor: 'center' })
-      .setLngLat([puesto.lng, puesto.lat])
+    const m = new maplibregl.Marker({ element: boton.current!, anchor: 'center' })
+      .setLngLat([props.current.puesto.lng, props.current.puesto.lat])
       .addTo(map);
+    m.on('dragend', () => {
+      recienArrastrado.current = true;
+      // En táctil no llega el click después del arrastre: no descartar el próximo toque.
+      setTimeout(() => (recienArrastrado.current = false), 0);
+      const ll = m.getLngLat();
+      props.current.onMover?.(props.current.puesto.id, [ll.lat, ll.lng]);
+    });
+    marcador.current = m;
     return () => {
-      marcador.remove();
+      m.remove();
     };
-  }, [map, puesto.lat, puesto.lng]);
+  }, [map]);
+
+  useEffect(() => {
+    marcador.current?.setLngLat([puesto.lng, puesto.lat]);
+  }, [puesto.lat, puesto.lng]);
+
+  useEffect(() => {
+    marcador.current?.setDraggable(editable);
+  }, [editable]);
 
   useEffect(() => {
     const el = boton.current!;
@@ -59,11 +102,12 @@ export function PuestoMarker({ puesto, seleccionado, mostrarNombre, onSelecciona
       el.append(etiqueta);
     }
     // Empieza por lo que se ve (el número y el nombre), como pide WCAG 2.5.3.
-    el.setAttribute('aria-label', `${puesto.orden} ${nombre}, puesto`);
+    el.setAttribute('aria-label', `${puesto.orden} ${nombre}, puesto${editable ? ' (flechas para mover, Supr para quitar)' : ''}`);
     el.setAttribute('aria-pressed', String(seleccionado));
     el.classList.toggle('pp-puesto--sin-persona', !puesto.persona);
     el.classList.toggle('pp-puesto--seleccionado', seleccionado);
-  }, [puesto, seleccionado, mostrarNombre]);
+    el.classList.toggle('pp-puesto--editable', editable);
+  }, [puesto, seleccionado, mostrarNombre, editable]);
 
   return null;
 }

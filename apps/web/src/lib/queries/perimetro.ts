@@ -1,5 +1,5 @@
 import type { PlanPerimetroDetalle, PlanPerimetroResumen } from '@cne/shared-types';
-import type { CrearPlanPerimetroInput } from '@cne/shared-validation';
+import type { CrearPlanPerimetroInput, GuardarPlanPerimetroInput } from '@cne/shared-validation';
 import { api } from '../api';
 
 const BASE = '/perimetro/planes';
@@ -27,5 +27,16 @@ export async function crearPlanPerimetro(body: Pick<CrearPlanPerimetroInput, 'ev
 /** Foto descifrada de una persona del plan (solo si está en un puesto de ese plan). */
 export async function getFotoPersonaPlan(planId: string, operadorId: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`${BASE}/${planId}/personas/${operadorId}/foto`, { responseType: 'blob' });
+  return data;
+}
+
+/** Guarda el plan completo; si otra persona guardó antes, el API responde 409. */
+export async function guardarPlanPerimetro(id: string, body: GuardarPlanPerimetroInput): Promise<PlanPerimetroDetalle> {
+  const { data } = await api.put<PlanPerimetroDetalle>(`${BASE}/${id}`, body);
+  return data;
+}
+
+export async function eliminarPlanPerimetro(id: string): Promise<{ id: string }> {
+  const { data } = await api.delete<{ id: string }>(`${BASE}/${id}`);
   return data;
 }

@@ -1283,7 +1283,7 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.4rem;
   border-radius: 5px; background: rgb(2 6 23 / 0.72); color: #fff; font-size: 0.72rem; font-weight: 600;
 }
-.pp-puesto:focus-visible { outline: none; }
+
 .pp-puesto:focus-visible .pp-puesto-numero { box-shadow: 0 0 0 3px #facc15, 0 0 0 5px #04151a; }
 @media (prefers-reduced-motion: no-preference) { .pp-puesto-numero { transition: transform 150ms ease-out; } }
 .pp-leyenda {
@@ -1319,3 +1319,50 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .pp-foto { width: 72px; height: 90px; border-radius: 10px; object-fit: cover; }
 .pp-foto--vacia { display: grid; place-items: center; background: var(--f-bg-surface); color: var(--f-text-muted); }
 .pp-avisos { margin: 0; padding-left: 1.1rem; }
+/* Edición del plan */
+.pp-barra-edicion { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+.pp-nombre-plan { flex: 1 1 240px; max-width: 420px; }
+.pp-nombre-plan input { width: 100%; }
+.pp-estado-cambios { font-size: 0.8rem; color: var(--f-text-muted); }
+.pp-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.btn.pp-btn-peligro { background: var(--f-error); color: #fff; }
+.pp-btn-peligro-borde { box-shadow: inset 0 0 0 1px var(--f-error); }
+.pp-editor-seccion { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.75rem; }
+.pp-fila-botones, .pp-fila-campos { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
+.pp-fila-campos .ocda-cargo { margin-top: 0; }
+.pp-fila-campos input { width: 7.5rem; min-height: 40px; padding: 0 0.6rem; border-radius: 8px; border: 1px solid var(--f-borde-control); background: var(--f-bg-elevated); color: var(--f-text); font: inherit; }
+.pp-fila-campos input:focus-visible, .pp-lista--edicion input:focus-visible, .pp-zonas input:focus-visible, .pp-zonas select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-ayuda { margin: 0; font-size: 0.8rem; color: var(--f-text-muted); }
+.pp-dato { margin: 0; font-size: 0.85rem; }
+.pp-check { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 32px; font-size: 0.85rem; cursor: pointer; }
+.pp-check input { width: 18px; height: 18px; accent-color: var(--f-cian); }
+.pp-dibujo { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-radius: 10px; background: color-mix(in srgb, #facc15 14%, var(--f-bg-elevated)); }
+.pp-dibujo p { margin: 0; font-size: 0.85rem; }
+.pp-lista--edicion li { display: flex; align-items: center; gap: 0.5rem; min-height: 40px; }
+.pp-lista--edicion input, .pp-zonas input, .pp-zonas select {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 0 0.5rem; border-radius: 7px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-elevated); color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-lista-nombre { flex: 1 1 auto; font-size: 0.85rem; }
+.pp-zonas { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.pp-zonas li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.4rem; border-radius: 8px; }
+.pp-zonas li.activo { background: var(--f-cian-suave); }
+.pp-zonas li i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.pp-zonas select { flex: 0 1 9rem; }
+.pp-btn-zona { border: 2px solid transparent; }
+.pp-dibujando, .pp-dibujando canvas { cursor: crosshair !important; }
+.pp-puesto--editable { cursor: grab; }
+.pp-manija {
+  /* 44 px de área de toque; el punto dibujado mide 14 px. */
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: grab;
+}
+.pp-manija::before {
+  content: ''; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px #22d3ee, 0 2px 6px rgb(0 0 0 / 0.5);
+}
+.pp-manija--valla::before { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 3px #f97316, 0 2px 6px rgb(0 0 0 / 0.5); }
+/* outline transparente: en modo de alto contraste se vuelve visible (el box-shadow no). */
+.pp-manija:focus-visible, .pp-puesto:focus-visible { outline: 2px solid transparent; }
+.pp-manija:focus-visible::before { box-shadow: 0 0 0 3px #facc15, 0 0 0 6px #04151a; }
+/* En el panel angosto del editor las 4 pestañas comparten el ancho sin cortarse. */
+.pp-panel .pestanas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 0; }
+.pp-panel .pestanas [role="tab"] { padding-left: 0.35rem; padding-right: 0.35rem; }
