@@ -15,6 +15,7 @@ export const PERMISO_IDS = [
   'cda.convocatoria.gestionar',
   'cda.evatics.ver',
   'cda.evatics.revisar',
+  'cda.distribucion.gestionar',
   'perimetro.planes.editar',
 ] as const;
 export type PermisoId = (typeof PERMISO_IDS)[number];
@@ -49,6 +50,8 @@ const PERMISOS_BASE: readonly Omit<PermisoAccion, 'rolesPermitidos'>[] = [
   { id: 'cda.evatics.ver', modulo: 'operadores-cda', etiqueta: 'Ver las fotos de los certificados Evatics (solo ver)', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
   // Aprobar o rechazar: de fábrica, los técnicos supervisores. A Asistentes y Analistas solo los revisa el administrador.
   { id: 'cda.evatics.revisar', modulo: 'operadores-cda', etiqueta: 'Aprobar o rechazar certificados Evatics', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
+  // Armar, editar y borrar la distribución del personal por días.
+  { id: 'cda.distribucion.gestionar', modulo: 'operadores-cda', etiqueta: 'Armar y editar la distribución del personal por días', rolesPorDefecto: TEC_AET },
   // Crear, editar y borrar planes; sin esta acción el módulo queda en solo consulta.
   { id: 'perimetro.planes.editar', modulo: 'plan-perimetro', etiqueta: 'Crear, editar y borrar planes de perímetro', rolesPorDefecto: ['TECNICO_SUPERVISOR'] },
 ];

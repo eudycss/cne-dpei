@@ -364,6 +364,21 @@ const AUDIT_TABLE: Array<{
     entidad: 'pareja_cda',
     resumen: (_res, req) => resumenReporteTecnicos(req),
   },
+  // Distribución del personal por días: armar, regenerar, borrar y editar filas
+  // (solo el día y el tipo, sin datos personales) y descargas (llevan cédulas y celulares).
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias$/, accion: 'DISTRIBUCION_DIAS_CREATE', entidad: 'distribucion_dias', campos: ['fechas', 'excluirCargos'] },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/regenerar$/, accion: 'DISTRIBUCION_DIAS_REGENERAR', entidad: 'distribucion_dias' },
+  { method: 'DELETE', pathRegex: /^\/distribuciones-dias\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_DELETE', entidad: 'distribucion_dias' },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/personas$/, accion: 'DISTRIBUCION_DIAS_PERSONA_ADD', entidad: 'distribucion_dias', campos: ['tipo', 'fecha'] },
+  { method: 'PATCH', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_UPDATE', entidad: 'distribucion_dias', campos: ['fecha'] },
+  { method: 'DELETE', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_DELETE', entidad: 'distribucion_dias' },
+  {
+    method: 'GET',
+    pathRegex: /^\/distribuciones-dias\/[^/]+\/reporte\.(xlsx|pdf)$/,
+    accion: 'DISTRIBUCION_DIAS_EXPORTAR',
+    entidad: 'distribucion_dias',
+    resumen: (_res, req) => ({ formato: (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx', fecha: typeof req.query?.fecha === 'string' ? req.query.fecha.slice(0, 10) : null }),
+  },
   // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
   // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.
   {
