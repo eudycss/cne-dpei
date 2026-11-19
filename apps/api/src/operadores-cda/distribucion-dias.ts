@@ -1,4 +1,5 @@
 import type { PersonaDistribucionDias, TotalesDistribucionDia } from '@cne/shared-types';
+import { celularInternacional, prefijoDia } from '@cne/shared-validation';
 
 import { type ColumnaReporte, type ReporteCda, type TablaReporte, diaCorto, diaLargo } from './reporte-cda';
 
@@ -141,4 +142,43 @@ function resumen(totales: TotalesDistribucionDia[]): TablaReporte {
 
 function capitalizar(s: string): string {
   return s.charAt(0).toLocaleUpperCase('es') + s.slice(1);
+}
+
+/** Escapa un valor de texto de vCard 3.0 (RFC 2426 §4). */
+function escaparVcard(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/\r\n|\r|\n/g, '\\n').replace(/([,;])/g, '\\$1');
+}
+
+export interface ContactosVcard {
+  contenido: string;
+  incluidos: number;
+  /** Nombres sin celular válido o con el número repetido de otra persona del día. */
+  omitidos: { nombres: string; motivo: 'SIN_CELULAR' | 'REPETIDO' }[];
+}
+
+/**
+ * Contactos de un día en vCard 3.0 para importarlos de golpe en el teléfono y
+ * armar el grupo de WhatsApp. Cada contacto se llama "VIE20 APELLIDOS NOMBRES"
+ * para encontrarlos todos escribiendo el prefijo.
+ */
+export function contactosVcard(personas: Pick<PersonaDistribucionDias, 'fecha' | 'nombres' | 'telefono' | 'encargado' | 'canton'>[], fecha: string): ContactosVcard {
+  const prefijo = prefijoDia(fecha);
+  const vistos = new Set<string>();
+  const tarjetas: string[] = [];
+  const omitidos: ContactosVcard['omitidos'] = [];
+  for (const p of ordenarPersonas(personas.filter((x) => x.fecha === fecha))) {
+    const tel = celularInternacional(p.telefono);
+    if (!tel) {
+      omitidos.push({ nombres: p.nombres, motivo: 'SIN_CELULAR' });
+      continue;
+    }
+    if (vistos.has(tel)) {
+      omitidos.push({ nombres: p.nombres, motivo: 'REPETIDO' });
+      continue;
+    }
+    vistos.add(tel);
+    const nombre = escaparVcard(`${prefijo} ${p.nombres}`.replace(/\s+/g, ' ').trim());
+    tarjetas.push(['BEGIN:VCARD', 'VERSION:3.0', `N:;${nombre};;;`, `FN:${nombre}`, `TEL;TYPE=CELL:${tel}`, 'END:VCARD'].join('\r\n'));
+  }
+  return { contenido: tarjetas.length ? `${tarjetas.join('\r\n')}\r\n` : '', incluidos: tarjetas.length, omitidos };
 }

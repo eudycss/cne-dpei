@@ -67,3 +67,8 @@ export function pedirReporteDistribucion(id: string, formato: FormatoReporteCda,
   if (filtro.encargado) params.encargado = filtro.encargado;
   return api.get<Blob>(`${BASE}/${id}/reporte.${formato}`, { params, responseType: 'blob' });
 }
+
+/** Contactos (.vcf) de un día para importarlos en el teléfono y armar el grupo de WhatsApp. */
+export function pedirContactosDistribucion(id: string, fecha: string) {
+  return api.get<Blob>(`${BASE}/${id}/contactos.vcf`, { params: { fecha }, responseType: 'blob' });
+}

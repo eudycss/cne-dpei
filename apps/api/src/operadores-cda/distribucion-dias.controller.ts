@@ -5,11 +5,13 @@ import type { Response } from 'express';
 import {
   agregarPersonaDistribucionSchema,
   candidatosDistribucionSchema,
+  contactosDistribucionSchema,
   crearDistribucionDiasSchema,
   editarPersonaDistribucionSchema,
   reporteDistribucionSchema,
   type AgregarPersonaDistribucionInput,
   type CandidatosDistribucionInput,
+  type ContactosDistribucionInput,
   type CrearDistribucionDiasInput,
   type EditarPersonaDistribucionInput,
   type ReporteDistribucionInput,
@@ -75,6 +77,14 @@ export class DistribucionDiasController {
   @ApiOperation({ summary: 'PDF de la distribución (?fecha= un día, ?encargado=)' })
   async reportePdf(@Param('id', ParseUUIDPipe) id: string, @Query(new ZodValidationPipe(reporteDistribucionSchema)) q: ReporteDistribucionInput, @Res() res: Response) {
     enviarReporte(res, await this.distribucion.reporte(id, q, 'pdf'));
+  }
+
+  @Get(':id/contactos.vcf')
+  @UseGuards(ModuloGuard)
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Contactos (.vcf) de un día para importarlos en el teléfono y armar el grupo de WhatsApp (?fecha= obligatorio)' })
+  async contactos(@Param('id', ParseUUIDPipe) id: string, @Query(new ZodValidationPipe(contactosDistribucionSchema)) q: ContactosDistribucionInput, @Res() res: Response) {
+    enviarReporte(res, await this.distribucion.contactos(id, q.fecha));
   }
 
   @Post()

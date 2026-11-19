@@ -1,5 +1,5 @@
 import type { PersonaDistribucionDias } from '@cne/shared-types';
-import { claveEncargado, ordenarPersonas, repartirEnDias, reporteDistribucion, totalesPorDia } from './distribucion-dias';
+import { claveEncargado, contactosVcard, ordenarPersonas, repartirEnDias, reporteDistribucion, totalesPorDia } from './distribucion-dias';
 
 const DIAS = ['2026-11-20', '2026-11-21', '2026-11-22'];
 
@@ -148,5 +148,51 @@ describe('reporteDistribucion', () => {
     const filas = r.tablas.slice(1).flatMap((t) => t.filas.filter((f) => f[0] !== ''));
     expect(filas).toHaveLength(2);
     expect(r.detalle).toContain('Encargado: WILLY');
+  });
+});
+
+describe('contactosVcard', () => {
+  it('un vCard 3.0 por persona del día, con CRLF, +593 y el prefijo en el nombre', () => {
+    const r = contactosVcard(
+      [persona({ nombres: 'RUIZ ANA', telefono: '0987654321' }), persona({ nombres: 'OTRO DÍA', fecha: DIAS[1], telefono: '0981111111' })],
+      DIAS[0],
+    );
+    expect(r.incluidos).toBe(1);
+    expect(r.omitidos).toEqual([]);
+    expect(r.contenido).toBe('BEGIN:VCARD\r\nVERSION:3.0\r\nN:;VIE20 RUIZ ANA;;;\r\nFN:VIE20 RUIZ ANA\r\nTEL;TYPE=CELL:+593987654321\r\nEND:VCARD\r\n');
+  });
+
+  it('omite sin celular válido y números repetidos, y escapa comas, punto y coma y saltos de línea', () => {
+    const r = contactosVcard(
+      [
+        persona({ nombres: 'A, B; C\nD', telefono: '+593991234567' }),
+        persona({ nombres: 'SIN CEL', telefono: null }),
+        persona({ nombres: 'FIJO', telefono: '062123456' }),
+        persona({ nombres: 'ZZ REPETIDO', telefono: '0991234567' }),
+      ],
+      DIAS[0],
+    );
+    expect(r.incluidos).toBe(1);
+    expect(r.contenido).toContain('FN:VIE20 A\\, B\\; C D\r\n');
+    expect(r.contenido.match(/BEGIN:VCARD/g)).toHaveLength(1);
+    expect(r.omitidos).toEqual(
+      expect.arrayContaining([
+        { nombres: 'SIN CEL', motivo: 'SIN_CELULAR' },
+        { nombres: 'FIJO', motivo: 'SIN_CELULAR' },
+        { nombres: 'ZZ REPETIDO', motivo: 'REPETIDO' },
+      ]),
+    );
+  });
+
+  it('un nombre con barras o saltos de línea no puede inyectar propiedades ni cerrar la tarjeta', () => {
+    const r = contactosVcard([persona({ nombres: 'A\\B\r\nEND:VCARD\rBEGIN:VCARD\nTEL:+1' })], DIAS[0]);
+    expect(r.contenido).toContain('FN:VIE20 A\\\\B END:VCARD BEGIN:VCARD TEL:+1\r\n');
+    expect(r.contenido.match(/^BEGIN:VCARD/gm)).toHaveLength(1);
+    expect(r.contenido.match(/^END:VCARD/gm)).toHaveLength(1);
+    expect(r.contenido.match(/^TEL/gm)).toEqual(['TEL']);
+  });
+
+  it('día sin nadie: archivo vacío', () => {
+    expect(contactosVcard([], DIAS[2])).toEqual({ contenido: '', incluidos: 0, omitidos: [] });
   });
 });

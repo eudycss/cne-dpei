@@ -34,7 +34,7 @@ describe('distribución por días (PostgreSQL real)', () => {
   beforeAll(async () => {
     recinto = await prisma.recinto.findFirstOrThrow({ select: { id: true, codigoRecinto: true, canton: { select: { nombre: true } } } });
     const cda = await prisma.operadorCda.create({
-      data: { apellidosNombres: 'PRUEBA E2E CDA', cedula: `92${sufijo}01`, cargo: 'OPERADOR (e2e)', grupo: 'OPERADOR', sexo: 'M' },
+      data: { apellidosNombres: 'PRUEBA E2E CDA', cedula: `92${sufijo}01`, cargo: 'OPERADOR (e2e)', grupo: 'OPERADOR', sexo: 'M', telefono: '0990000001' },
     });
     const cpe = await prisma.operadorCda.create({
       data: { apellidosNombres: 'PRUEBA E2E CPE', cedula: `92${sufijo}02`, cargo: 'DIGITADOR (e2e)', grupo: 'DIGITADOR', sexo: 'F' },
@@ -102,6 +102,17 @@ describe('distribución por días (PostgreSQL real)', () => {
     const pdf = await service.reporte(ids.distribucion as string, { fecha: DIAS[0] }, 'pdf');
     expect(xlsx.contenido.subarray(0, 2).toString()).toBe('PK');
     expect(pdf.contenido.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('los contactos .vcf del día: nombre de archivo, tipo y solo celulares en +593', async () => {
+    const id = ids.distribucion as string;
+    const dia = (await service.detalle(id)).personas.find((p) => p.operadorId === ids.cda)?.fecha as string;
+    const r = await service.contactos(id, dia);
+    expect(r.nombre).toMatch(/^contactos-(viernes-04|sabado-05|domingo-06)\.vcf$/);
+    expect(r.tipo).toBe('text/vcard; charset=utf-8');
+    const texto = r.contenido.toString('utf8');
+    expect(texto).toContain('PRUEBA E2E CDA\r\nTEL;TYPE=CELL:+593990000001\r\n');
+    for (const t of texto.match(/^TEL;TYPE=CELL:.*$/gm) ?? []) expect(t).toMatch(/^TEL;TYPE=CELL:\+5939\d{8}\r?$/);
   });
 
   it('borrar la distribución borra sus filas (cascada) y no toca al personal', async () => {

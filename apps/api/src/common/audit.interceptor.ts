@@ -379,6 +379,13 @@ const AUDIT_TABLE: Array<{
     entidad: 'distribucion_dias',
     resumen: (_res, req) => ({ formato: (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx', fecha: typeof req.query?.fecha === 'string' ? req.query.fecha.slice(0, 10) : null }),
   },
+  {
+    method: 'GET',
+    pathRegex: /^\/distribuciones-dias\/[^/]+\/contactos\.vcf$/,
+    accion: 'DISTRIBUCION_DIAS_CONTACTOS',
+    entidad: 'distribucion_dias',
+    resumen: (_res, req) => ({ fecha: typeof req.query?.fecha === 'string' ? req.query.fecha.slice(0, 10) : null }),
+  },
   // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
   // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.
   {
