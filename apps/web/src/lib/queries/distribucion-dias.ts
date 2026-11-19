@@ -72,3 +72,9 @@ export function pedirReporteDistribucion(id: string, formato: FormatoReporteCda,
 export function pedirContactosDistribucion(id: string, fecha: string) {
   return api.get<Blob>(`${BASE}/${id}/contactos.vcf`, { params: { fecha }, responseType: 'blob' });
 }
+
+/** Intercambia el día con otra persona del mismo sexo; devuelve las dos ya cambiadas. */
+export async function intercambiarPersonaDistribucion(id: string, personaId: string, conId: string): Promise<PersonaDistribucionDias[]> {
+  const { data } = await api.post<PersonaDistribucionDias[]>(`${BASE}/${id}/personas/${personaId}/intercambiar`, { conId });
+  return data;
+}

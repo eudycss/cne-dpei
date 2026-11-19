@@ -15,6 +15,7 @@ import {
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import { useModulos } from '../../lib/useModulos';
 import { AgregarPersonaDistribucionModal } from './AgregarPersonaDistribucionModal';
+import { AvatarPersona } from './AvatarPersona';
 import { EditarPersonaDistribucionModal } from './EditarPersonaDistribucionModal';
 import { NuevaDistribucionModal } from './NuevaDistribucionModal';
 import { archivoContactosDia, prefijoDia } from '@cne/shared-validation';
@@ -325,8 +326,13 @@ function Detalle({ d, editable, onBorrada }: { d: DistribucionDiasDetalle; edita
                 <td>{i + 1}</td>
                 <td>{diaCorto(p.fecha)}</td>
                 <th scope="row" style={{ fontWeight: 'normal' }}>
-                  {p.nombres}
-                  {p.operadorId === null && <span className="ocda-estado pendiente" style={{ marginLeft: '0.4rem' }}>Externa</span>}
+                  <span className="row" style={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'nowrap' }}>
+                    <AvatarPersona persona={{ operadorId: p.operadorId, nombre: p.nombres, cedula: p.cedula, cargo: p.cargo }} tamano="chico" />
+                    <span>
+                      {p.nombres}
+                      {p.operadorId === null && <span className="ocda-estado pendiente" style={{ marginLeft: '0.4rem' }}>Externa</span>}
+                    </span>
+                  </span>
                 </th>
                 <td>{p.cedula}</td>
                 <td>{p.telefono ?? '—'}</td>
@@ -369,7 +375,7 @@ function Detalle({ d, editable, onBorrada }: { d: DistribucionDiasDetalle; edita
 
       {agregando && <AgregarPersonaDistribucionModal distribucionId={d.id} fechas={d.fechas} sugerencias={sugerencias} onClose={() => setAgregando(false)} />}
       {editando && (
-        <EditarPersonaDistribucionModal distribucionId={d.id} persona={editando} fechas={d.fechas} sugerencias={sugerencias} onClose={() => setEditando(null)} />
+        <EditarPersonaDistribucionModal distribucionId={d.id} persona={editando} personas={d.personas} fechas={d.fechas} sugerencias={sugerencias} onClose={() => setEditando(null)} />
       )}
     </div>
   );

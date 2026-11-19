@@ -10,9 +10,11 @@ import type {
 import {
   MAX_CANDIDATOS_DISTRIBUCION,
   archivoContactosDia,
+  tieneCupoDia,
   type AgregarPersonaDistribucionInput,
   type CrearDistribucionDiasInput,
   type EditarPersonaDistribucionInput,
+  type IntercambiarPersonaDistribucionInput,
   type ReporteDistribucionInput,
 } from '@cne/shared-validation';
 
@@ -222,16 +224,62 @@ export class DistribucionDiasService {
     const d = await this.base(id);
     if (body.fecha !== undefined) exigirDia(d, body.fecha);
     await this.fila(id, personaId);
-    const fila = await this.prisma.distribucionDiasPersona.update({
-      where: { id: personaId },
-      data: {
-        ...(body.fecha !== undefined ? { fecha: fechaDb(body.fecha) } : {}),
-        ...(body.canton !== undefined ? { canton: body.canton || null } : {}),
-        ...(body.encargado !== undefined ? { encargado: body.encargado || null } : {}),
-      },
-      select: SELECT_PERSONA,
+    const actualizar = (tx: Prisma.TransactionClient) =>
+      tx.distribucionDiasPersona
+        .update({
+        where: { id: personaId },
+        data: {
+          ...(body.fecha !== undefined ? { fecha: fechaDb(body.fecha) } : {}),
+          ...(body.canton !== undefined ? { canton: body.canton || null } : {}),
+          ...(body.encargado !== undefined ? { encargado: body.encargado || null } : {}),
+        },
+        select: SELECT_PERSONA,
+      })
+        .catch((e: unknown) => {
+          // La quitaron mientras se editaba: 404, no 500.
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new NotFoundException('Esa persona no está en esta distribución');
+          throw e;
+        });
+    if (body.fecha === undefined) return aPersona(await actualizar(this.prisma));
+    const destino = body.fecha;
+    // Mover de día solo hacia un día con cupo para su sexo (con el candado, para que dos cambios a la vez no lo salten).
+    return aPersona(
+      await this.conCandado(id, async (tx) => {
+        const personas = (await tx.distribucionDiasPersona.findMany({ where: { distribucionId: id }, select: SELECT_PERSONA })).map(aPersona);
+        const p = personas.find((x) => x.id === personaId);
+        if (!p) throw new NotFoundException('Esa persona no está en esta distribución');
+        if (p.fecha !== destino && p.sexo) {
+          const mismo = (f: string) => personas.filter((x) => x.fecha === f && x.sexo === p.sexo).length;
+          if (!tieneCupoDia(mismo(destino), mismo(p.fecha))) {
+            throw new ConflictException(
+              `Ese día no tiene cupo de ${p.sexo === 'M' ? 'hombres' : 'mujeres'}: rompería lo equitativo. Intercambie con alguien de ese día.`,
+            );
+          }
+        }
+        return actualizar(tx);
+      }),
+    );
+  }
+
+  /** Intercambia el día de dos personas del mismo sexo: los totales de cada día no cambian. */
+  async intercambiar(id: string, personaId: string, body: IntercambiarPersonaDistribucionInput): Promise<PersonaDistribucionDias[]> {
+    if (personaId === body.conId) throw new BadRequestException('Elija a otra persona');
+    await this.base(id);
+    return this.conCandado(id, async (tx) => {
+      const filas = await tx.distribucionDiasPersona.findMany({ where: { distribucionId: id, id: { in: [personaId, body.conId] } }, select: SELECT_PERSONA });
+      const a = filas.find((f) => f.id === personaId);
+      const b = filas.find((f) => f.id === body.conId);
+      if (!a || !b) throw new NotFoundException('Esa persona no está en esta distribución');
+      const pa = aPersona(a);
+      const pb = aPersona(b);
+      if (pa.fecha === pb.fecha) throw new BadRequestException('Las dos personas ya van el mismo día');
+      if (pa.sexo !== pb.sexo) throw new BadRequestException('Solo se intercambia con alguien del mismo sexo, para no romper lo equitativo');
+      const [na, nb] = [
+        await tx.distribucionDiasPersona.update({ where: { id: a.id }, data: { fecha: b.fecha }, select: SELECT_PERSONA }),
+        await tx.distribucionDiasPersona.update({ where: { id: b.id }, data: { fecha: a.fecha }, select: SELECT_PERSONA }),
+      ];
+      return [aPersona(na), aPersona(nb)];
     });
-    return aPersona(fila);
   }
 
   async quitar(id: string, personaId: string): Promise<{ ok: true }> {

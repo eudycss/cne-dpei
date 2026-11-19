@@ -7,6 +7,8 @@ import {
   contactosDistribucionSchema,
   crearDistribucionDiasSchema,
   editarPersonaDistribucionSchema,
+  intercambiarPersonaDistribucionSchema,
+  tieneCupoDia,
   prefijoDia,
   reporteDistribucionSchema,
 } from './index';
@@ -102,5 +104,19 @@ describe('prefijoDia y archivoContactosDia', () => {
     expect(['2026-11-20', '2026-11-21', '2026-11-22', '2026-12-07'].map(prefijoDia)).toEqual(['VIE20', 'SAB21', 'DOM22', 'LUN07']);
     expect(archivoContactosDia('2026-11-21')).toBe('contactos-sabado-21.vcf');
     expect(archivoContactosDia('2026-11-25')).toBe('contactos-miercoles-25.vcf');
+  });
+});
+
+describe('intercambio y cupo', () => {
+  it('intercambiar exige un uuid y nada más', () => {
+    expect(intercambiarPersonaDistribucionSchema.safeParse({ conId: '22222222-2222-4222-8222-222222222222' }).success).toBe(true);
+    expect(intercambiarPersonaDistribucionSchema.safeParse({ conId: 'x' }).success).toBe(false);
+    expect(intercambiarPersonaDistribucionSchema.safeParse({ conId: '22222222-2222-4222-8222-222222222222', otro: 1 }).success).toBe(false);
+  });
+
+  it('tieneCupoDia: solo hacia un día con menos personas de ese sexo', () => {
+    expect(tieneCupoDia(21, 22)).toBe(true);
+    expect(tieneCupoDia(22, 22)).toBe(false);
+    expect(tieneCupoDia(23, 22)).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PersonaDistribucionDias } from '@cne/shared-types';
-import { claveTexto, contactosPorDia, desbalance, diaCorto, filtrarPersonas, proximoFinDeSemana, valoresUnicos } from './distribucionDias';
+import { candidatosIntercambio, claveTexto, contactosPorDia, cupoPorDia, desbalance, diaCorto, filtrarPersonas, proximoFinDeSemana, valoresUnicos } from './distribucionDias';
 
 const p = (o: Partial<PersonaDistribucionDias>): PersonaDistribucionDias => ({
   id: 'x',
@@ -53,6 +53,20 @@ describe('distribucionDias', () => {
 
   it('diaCorto', () => {
     expect(diaCorto('2026-11-20')).toMatch(/^vie 20\/11$/);
+  });
+
+  it('cupoPorDia y candidatosIntercambio: misma regla que la API, solo mismo sexo y otro día', () => {
+    const a = p({ id: 'a' });
+    const lista = [a, p({ id: 'b' }), p({ id: 'c', fecha: '2026-11-21' }), p({ id: 'd', fecha: '2026-11-21' }), p({ id: 'm', fecha: '2026-11-22', sexo: 'F' })];
+    const dias = ['2026-11-20', '2026-11-21', '2026-11-22'];
+    expect(cupoPorDia(lista, a, dias)).toEqual([
+      { fecha: '2026-11-20', mismoSexo: 2, conCupo: true },
+      { fecha: '2026-11-21', mismoSexo: 2, conCupo: false },
+      { fecha: '2026-11-22', mismoSexo: 0, conCupo: true },
+    ]);
+    expect(candidatosIntercambio(lista, a).map((x) => x.id)).toEqual(['c', 'd']);
+    // Sin dato de sexo: cualquier día.
+    expect(cupoPorDia(lista, p({ id: 'x', sexo: null }), dias).every((c) => c.conCupo)).toBe(true);
   });
 
   it('contactosPorDia: cuántos van al .vcf y quién queda fuera (sin celular o número repetido)', () => {

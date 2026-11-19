@@ -1,7 +1,5 @@
 import { actuaComoAdmin } from '../../lib/roles';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Modal } from '../../components/Modal';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -13,7 +11,7 @@ import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { cambiarActivoOperadorCda, getOperadoresCda, urlFotoCdaGeneral } from '../../lib/queries/operadores-cda';
-import { useFotoOperadorUrl } from './useFotoOperador';
+import { AvatarPersona } from './AvatarPersona';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { RevisarFotoModal } from './RevisarFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
@@ -25,7 +23,7 @@ import { OperadorFormModal } from './OperadorFormModal';
 import { OcultarOperadorModal } from './OcultarOperadorModal';
 import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
-import { cargoCorto, fechaCorta, iniciales, mensajeError, partirNombre } from './utils';
+import { cargoCorto, fechaCorta, mensajeError, partirNombre } from './utils';
 import { SEXO, contarSexo, cumpleSexo, textoSexo, type FiltroSexo } from './sexo';
 
 /**
@@ -422,83 +420,6 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   );
 }
 
-/** true cuando el elemento entra (o está por entrar) en pantalla; luego se queda en true. */
-function useVisible<T extends Element>() {
-  const ref = useRef<T>(null);
-  const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
-  useEffect(() => {
-    if (visible || !ref.current) return;
-    const obs = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true), { rootMargin: '200px' });
-    obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, [visible]);
-  return { ref, visible };
-}
-
-/**
- * Foto descifrada (blob) o, mientras no haya, las iniciales. Solo se pide al
- * acercarse a la pantalla: cada foto se descifra en la API (Render, 0.1 vCPU).
- */
-function AvatarOperador({ operador: o }: { operador: OperadorCda }) {
-  const { ref, visible } = useVisible<HTMLSpanElement>();
-  const url = useFotoOperadorUrl(o, visible);
-  const [ampliada, setAmpliada] = useState(false);
-  const boton = useRef<HTMLButtonElement>(null);
-
-  return (
-    <span ref={ref} className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`}>
-      {url ? (
-        <button
-          ref={boton}
-          type="button"
-          className="ocda-avatar-boton"
-          aria-label={`Ver foto ampliada: ${o.apellidosNombres}`}
-          onClick={() => setAmpliada(true)}
-        >
-          <img src={url} alt="" />
-        </button>
-      ) : (
-        <span aria-hidden="true">{iniciales(o.apellidosNombres)}</span>
-      )}
-      {ampliada && url && (
-        <FotoAmpliadaModal
-          operador={o}
-          url={url}
-          onClose={() => {
-            setAmpliada(false);
-            boton.current?.focus();
-          }}
-        />
-      )}
-    </span>
-  );
-}
-
-/** La foto en grande, para revisar que sea la persona y que sirva para la credencial. */
-function FotoAmpliadaModal({ operador: o, url, onClose }: { operador: OperadorCda; url: string; onClose: () => void }) {
-  const id = `foto-ampliada-${o.id}`;
-  // Al body: la tarjeta animada (transform) encerraría el fondo fijo del modal.
-  return createPortal(
-    <Modal labelledBy={id} onClose={onClose} maxWidth={560}>
-      <div className="ocda-modal">
-        <div className="ocda-modal-cabecera">
-          <div>
-            <h2 id={id}>{o.apellidosNombres}</h2>
-            <p className="muted">
-              <span className="mono">{o.cedula}</span> · {cargoCorto(o.cargo)}
-            </p>
-          </div>
-          <button type="button" className="ocda-modal-cerrar" onClick={onClose} aria-label="Cerrar">
-            ×
-          </button>
-        </div>
-        <img className="ocda-foto-ampliada" src={url} alt={`Foto de ${o.apellidosNombres}`} />
-      </div>
-    </Modal>,
-    document.body,
-  );
-}
-
 type AccionesAdmin = { onEditar: () => void; onOcultar: () => void; onReactivar: () => void; reactivando: boolean };
 
 function TarjetaOperador({
@@ -523,7 +444,7 @@ function TarjetaOperador({
   return (
     <>
       <div className="ocda-tarjeta-top">
-        <AvatarOperador operador={o} />
+        <AvatarPersona persona={{ operadorId: o.id, nombre: o.apellidosNombres, cedula: o.cedula, cargo: o.cargo, tieneFoto: o.tieneFoto }} tamano="grande" />
         <h3 className="ocda-nombre" aria-label={o.apellidosNombres}>
           <span className="ocda-nombre-apellidos">{apellidos}</span>
           {nombres && <span className="ocda-nombre-nombres">{nombres}</span>}

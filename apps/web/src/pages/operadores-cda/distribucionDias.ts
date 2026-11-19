@@ -1,5 +1,5 @@
 import type { PersonaDistribucionDias, TotalesDistribucionDia } from '@cne/shared-types';
-import { celularInternacional, coincideBusqueda } from '@cne/shared-validation';
+import { celularInternacional, coincideBusqueda, tieneCupoDia } from '@cne/shared-validation';
 
 /** Cargos que la distribución deja fuera de fábrica (se pueden agregar a mano). */
 export const EXCLUIDOS_POR_DEFECTO = ['SUPERVISOR', 'ASISTENTE_ARCHIVOS'] as const;
@@ -91,4 +91,28 @@ export function contactosPorDia(personas: Pick<PersonaDistribucionDias, 'fecha' 
     }
   }
   return new Map([...mapa].map(([f, d]) => [f, { incluidos: d.incluidos, sinCelular: d.sinCelular, repetidos: d.repetidos }]));
+}
+
+export interface CupoDia {
+  fecha: string;
+  /** Personas de su mismo sexo que van ese día hoy (contándola a ella en su día). */
+  mismoSexo: number;
+  /** Se puede mover ahí sin romper lo equitativo (el día actual siempre se puede). */
+  conCupo: boolean;
+}
+
+/** Para el selector de día al mover a una persona sola (misma regla que la API). */
+export function cupoPorDia(personas: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>[], persona: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>, fechas: string[]): CupoDia[] {
+  const mismo = (f: string) => personas.filter((x) => x.fecha === f && x.sexo === persona.sexo).length;
+  const origen = mismo(persona.fecha);
+  return fechas.map((f) => ({
+    fecha: f,
+    mismoSexo: mismo(f),
+    conCupo: f === persona.fecha || !persona.sexo || tieneCupoDia(mismo(f), origen),
+  }));
+}
+
+/** Con quién se puede intercambiar: mismo sexo, otro día. */
+export function candidatosIntercambio<T extends Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>>(personas: T[], persona: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>): T[] {
+  return personas.filter((x) => x.id !== persona.id && x.fecha !== persona.fecha && x.sexo === persona.sexo);
 }
