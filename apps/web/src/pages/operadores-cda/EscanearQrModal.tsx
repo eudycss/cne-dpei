@@ -13,6 +13,30 @@ import { useCargosCda, useGrupoCda } from './grupo';
 
 type Confirmacion = { token: string; consulta: ConsultaQrCda };
 
+/**
+ * Tarjeta de la última marca: foto, nombre, cédula y hora, para ver de un
+ * vistazo a quién se registró. El anuncio para el lector de pantalla ya lo
+ * hace el role="status" del modal; aquí no se repite.
+ */
+function UltimaMarca({ fila, texto }: { fila: AsistenciaCdaFila; texto: string }) {
+  const o = fila.operador;
+  const foto = useFotoOperadorUrl(o);
+  return (
+    <section className="ocda-qr-persona ocda-qr-marcada" aria-label={`Última marca: ${o.apellidosNombres}`}>
+      <span className={`ocda-qr-foto${o.tieneFoto ? ' con-foto' : ''}`}>
+        {foto ? <img src={foto} alt={`Foto de ${o.apellidosNombres}`} /> : <span aria-hidden="true">{iniciales(o.apellidosNombres)}</span>}
+      </span>
+      <div>
+        <p className="ocda-qr-nombre">{o.apellidosNombres}</p>
+        <p className="muted">
+          C.I. {o.cedula} · {cargoCorto(o.cargo)}
+        </p>
+        <p className="ocda-qr-marcada-texto">✓ {texto}</p>
+      </div>
+    </section>
+  );
+}
+
 const ETIQUETA: Record<TipoMarcaAsistenciaCda, string> = { ENTRADA: 'entrada', SALIDA: 'salida' };
 /** La cámara lee el mismo código varias veces por segundo: se ignora si se repite en este lapso. */
 const REPETIDO_MS = 4000;
@@ -35,6 +59,8 @@ export function EscanearQrModal({
   const [error, setError] = useState<string | null>(null);
   const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
   const [ultima, setUltima] = useState<string | null>(null);
+  /** Última persona marcada: queda a la vista (foto y nombre) hasta el siguiente carnet. */
+  const [ultimaMarca, setUltimaMarca] = useState<{ fila: AsistenciaCdaFila; texto: string } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const enLinea = useEnLinea();
   const [camara, setCamara] = useState(false);
@@ -67,6 +93,7 @@ export function EscanearQrModal({
       const texto = `${tipo === 'ENTRADA' ? 'Entrada' : 'Salida'} registrada a las ${hora}`;
       sileo.success({ title: texto, description: fila.operador.apellidosNombres });
       setUltima(`${texto}: ${fila.operador.apellidosNombres}`);
+      setUltimaMarca({ fila, texto });
       onMarcado(fila);
       volverAEsperar();
     },
@@ -146,6 +173,7 @@ export function EscanearQrModal({
             onCancelar={volverAEsperar}
           />
         )}
+        {!confirmacion && ultimaMarca && <UltimaMarca fila={ultimaMarca.fila} texto={ultimaMarca.texto} />}
         {!confirmacion && (
           <form onSubmit={enviar} className="ocda-qr-lector">
             <label htmlFor="escanear-qr-codigo">Código del carnet</label>
