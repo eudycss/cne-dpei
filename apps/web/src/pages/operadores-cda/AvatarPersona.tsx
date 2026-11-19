@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Modal } from '../../components/Modal';
@@ -119,5 +119,19 @@ function FotoAmpliadaModal({ persona: p, url, onClose }: { persona: PersonaAvata
       </div>
     </Modal>,
     document.body,
+  );
+}
+
+/**
+ * Miniatura chica junto al nombre, para celdas de tablas y listas. No se pulsa
+ * (ampliable=false por defecto): dentro de un <th> o junto a casillas, un botón
+ * duplicaría el nombre para el lector de pantalla y sumaría una parada de Tab.
+ */
+export function ConFoto({ persona, ampliable = false, children }: { persona: PersonaAvatar; ampliable?: boolean; children: ReactNode }) {
+  return (
+    <span className="ocda-con-foto">
+      <AvatarPersona persona={persona} tamano="chico" ampliable={ampliable} />
+      <span>{children}</span>
+    </span>
   );
 }

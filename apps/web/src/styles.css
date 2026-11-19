@@ -701,6 +701,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 }
 .ocda-avatar.grande { width: 52px; height: 52px; font-size: 0.95rem; }
 .ocda-avatar.chico { width: 32px; height: 32px; font-size: 0.7rem; }
+.ocda-con-foto { display: inline-flex; gap: 0.5rem; align-items: center; vertical-align: middle; }
+/* Buscador: con la miniatura, los datos quedan pegados a ella (el botón al final). */
+.ocda-personas .ocda-persona-datos { flex: 1; }
 
 /* Check de entrada (cian) / salida (violeta), 150 × 44 como en Figma. */
 .ocda-check {
