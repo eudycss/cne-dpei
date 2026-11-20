@@ -27,7 +27,7 @@ const RESPONSE_SCHEMA = {
     },
     esCertificadoEvatics: {
       type: 'BOOLEAN',
-      description: 'true solo si la imagen es el Certificado de Aprobación del curso EVATICS',
+      description: 'true si la imagen es un Certificado de Aprobación del CNE (certifica que + ha aprobado el curso con modalidad e-learning); el documento no dice EVATICS',
     },
     legible: {
       type: 'BOOLEAN',

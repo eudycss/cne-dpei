@@ -40,7 +40,14 @@ import { limpiarJpeg } from '../operadores-cda/jpeg';
 import { diaDeFechaDb, diaEcuador, fechaDb } from '../operadores-cda/dia-ecuador';
 import { LectorNoConfigurado, LectorRespuestaInvalida, type LecturaCertificado } from './lector-certificado';
 import { LectorCertificadoService } from './lector-certificado.service';
-import { nombreCoincide, nombreCorto, nombreCortoDeApellidosNombres } from './nombre-evatics';
+import {
+  nombreCoincide,
+  nombreCorto,
+  nombreCortoDeApellidosNombres,
+  nombreDeCuenta,
+  separarApellidosNombres,
+  type NombreEsperado,
+} from './nombre-evatics';
 
 /** La página la reduce a ~1600 px (unos 400 KB): 2 MB deja margen sin aceptar fotos crudas. */
 export const MAX_CERTIFICADO_BYTES = 2 * 1024 * 1024;
@@ -110,6 +117,8 @@ export interface ActorEvatics {
 export interface PersonaEvatics {
   cedula: string;
   apellidosNombres: string;
+  /** Para comparar con el certificado: un nombre y un apellido. */
+  nombreEsperado: NombreEsperado;
   nombreCorto: string;
   cargo: string;
   centro: CentroEvatics;
@@ -355,7 +364,7 @@ export class EvaticsService {
     // La foto ya quedó guardada: un fallo al leerla no cambia la respuesta (queda en cola).
     const lectura = this.lector.disponible()
       ? await conTope(
-          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.apellidosNombres).catch((e) => {
+          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.nombreEsperado).catch((e) => {
             this.log.warn(`Análisis Evatics al subir no disponible: ${nombreError(e)}`);
             return null;
           }),
@@ -610,7 +619,7 @@ export class EvaticsService {
             continue;
           }
           const jpeg = await this.storage.readDecrypted(p.fotoKey);
-          const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.apellidosNombres);
+          const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.nombreEsperado);
           if (!lectura) break; // proveedores sin respuesta o tope por minuto: la próxima vuelta
           analizados++;
         } catch (e) {
@@ -631,7 +640,7 @@ export class EvaticsService {
    * Analiza una foto y guarda lo leído (solo si sigue siendo la misma foto).
    * Devuelve la lectura, o null si quedó en cola o sin análisis.
    */
-  private async analizar(id: string, fotoKey: string, jpeg: Buffer, esperado: string): Promise<LecturaCertificado | null> {
+  private async analizar(id: string, fotoKey: string, jpeg: Buffer, esperado: NombreEsperado): Promise<LecturaCertificado | null> {
     if (!this.tomarCupo()) {
       // Tope por minuto: espera en cola sin llamar a la IA y sin gastar un intento.
       await this.prisma.certificadoEvatics.updateMany({
@@ -770,6 +779,7 @@ export class EvaticsService {
     return {
       cedula: o.cedula,
       apellidosNombres: o.apellidosNombres,
+      nombreEsperado: separarApellidosNombres(o.apellidosNombres),
       nombreCorto: nombreCortoDeApellidosNombres(o.apellidosNombres),
       cargo: o.cargoCda.nombre,
       centro: o.cargoCda.centro === 'CPE' ? 'CPE' : 'CDA',
@@ -782,6 +792,7 @@ export class EvaticsService {
     return {
       cedula: u.cedula,
       apellidosNombres: `${u.apellidos} ${u.nombres}`.trim().toUpperCase(),
+      nombreEsperado: nombreDeCuenta(u.nombres, u.apellidos),
       nombreCorto: nombreCorto(u.nombres, u.apellidos),
       cargo: 'Asistente Transversal',
       centro: 'AT',

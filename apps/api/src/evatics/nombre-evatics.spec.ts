@@ -1,4 +1,11 @@
-import { nombreCoincide, nombreCorto, nombreCortoDeApellidosNombres, palabrasNombre } from './nombre-evatics';
+import {
+  nombreCoincide,
+  nombreCorto,
+  nombreCortoDeApellidosNombres,
+  nombreDeCuenta,
+  palabrasNombre,
+  separarApellidosNombres,
+} from './nombre-evatics';
 
 describe('nombre del certificado Evatics', () => {
   const ANA = 'PÉREZ LÓPEZ ANA MARÍA';
@@ -7,66 +14,57 @@ describe('nombre del certificado Evatics', () => {
     ['el mismo nombre, sin tildes ni mayúsculas', 'perez lopez ana maria'],
     ['nombres antes de los apellidos (como en el certificado)', 'Ana María Pérez López'],
     ['con título y conector', 'Ing. Ana María de Pérez López'],
+    ['basta un nombre y un apellido', 'Ana Pérez'],
+    ['el segundo nombre y el segundo apellido', 'María López'],
+    ['el certificado trae una palabra de más', 'Ana María Pérez López Vega'],
+    ['falta un nombre', 'Ana Pérez López'],
+    ['otra palabra mal leída no estorba', 'Ana Mariaa Pérez López'],
   ])('coincide: %s', (_caso, leido) => {
     expect(nombreCoincide(leido, ANA)).toBe(true);
   });
 
   it.each([
-    ['falta un nombre', 'Ana Pérez López'],
-    ['falta un apellido', 'Ana María Pérez'],
-    ['solo un nombre y un apellido', 'Ana Pérez'],
-    ['una palabra de más', 'Ana María Pérez López Vega'],
+    ['solo apellidos (un hermano)', 'Luis Pérez López'],
+    ['solo nombres', 'Ana María'],
     ['otra persona con un apellido igual', 'Luis Pérez Tapia'],
     ['una sola palabra', 'Ana'],
     ['vacío', ''],
     ['nada leído', null],
     ['otra persona', 'Juan Carlos Vega Mora'],
-    ['dos nombres de pila sin apellido', 'Ana María'],
-    ['un apellido corto con una letra cambiada', 'Ana María Peres López'],
+    ['un apellido corto con una letra cambiada', 'Ana Peres'],
   ])('no coincide: %s', (_caso, leido) => {
     expect(nombreCoincide(leido, ANA)).toBe(false);
   });
 
-  it('el certificado de la imagen de ejemplo coincide con el personal (apellidos primero)', () => {
+  it('los certificados del 20-nov: cuentas de Asistente Transversal con el nombre incompleto', () => {
+    expect(nombreCoincide('CARLOS DANIEL CAÑARES DIAZ', nombreDeCuenta('Carlos', 'Cañares Diaz'))).toBe(true);
+    expect(nombreCoincide('JAIRO HUMBERTO LEAL AVILÉS', nombreDeCuenta('Jairo Leal', 'Aviles'))).toBe(true);
+    expect(nombreCoincide('CARLOS DANIEL VEGA MORA', nombreDeCuenta('Carlos', 'Cañares Diaz'))).toBe(false);
+  });
+
+  it('el ejemplo de la imagen y "DE LA TORRE"', () => {
     expect(nombreCoincide('EDWIN SEBASTIAN CABASCANGO SALAZAR', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
-    expect(nombreCoincide('EDWIN SEBASTIAN CABASCANGO SALAZAR', 'CABASCANGO SALAZAR EDWIN DAVID')).toBe(false);
-  });
-
-  it('una letra mal leída solo se tolera en palabras de 7 letras o más', () => {
-    expect(nombreCoincide('Ana Gabriella Pérez López', 'PÉREZ LÓPEZ ANA GABRIELA')).toBe(true);
-    expect(nombreCoincide('Edwin Sebastian Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
-    expect(nombreCoincide('Anna María Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
-    expect(nombreCoincide('Ana Mariq Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
-  });
-
-  it('la letra de diferencia no vale en la última letra (otra persona u otra familia)', () => {
-    expect(nombreCoincide('Fernanda Sofía Andrade Vega', 'ANDRADE VEGA FERNANDO SOFIA')).toBe(false);
-    expect(nombreCoincide('Luis Alberto Martines Vega', 'MARTINEZ VEGA LUIS ALBERTO')).toBe(false);
-  });
-
-  it('la letra de diferencia se tolera en una sola palabra', () => {
-    expect(nombreCoincide('Edwin Sebastien Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(false);
-  });
-
-  it('nombres de 3 y de 5 palabras, y apellidos compuestos', () => {
-    expect(nombreCoincide('Luis Vega Tapia', 'VEGA TAPIA LUIS')).toBe(true);
-    expect(nombreCoincide('Luis Vega', 'VEGA TAPIA LUIS')).toBe(false);
-    expect(nombreCoincide('María José Ana Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(true);
-    expect(nombreCoincide('María José Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(false);
     expect(nombreCoincide('Ana María de la Torre Vega', 'DE LA TORRE VEGA ANA MARÍA')).toBe(true);
   });
 
-  it('una sola palabra en el personal nunca coincide', () => {
+  it('tolerancia: una letra en una sola palabra de 7 o más, nunca en la última letra', () => {
+    expect(nombreCoincide('Edwin Cabascanfo', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
+    expect(nombreCoincide('Sebastien Cabascanfo', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(false);
+    expect(nombreCoincide('Fernanda Andrade', 'ANDRADE VEGA FERNANDO SOFIA')).toBe(false);
+    expect(nombreCoincide('Luis Martines', 'MARTINEZ VEGA LUIS ALBERTO')).toBe(false);
+    expect(nombreCoincide('Mario Pérez', ANA)).toBe(false);
+  });
+
+  it('el nombre y el apellido deben ser palabras distintas del certificado', () => {
+    expect(nombreCoincide('Pérez Juan', { nombres: ['PEREZ'], apellidos: ['PEREZ'] })).toBe(false);
+    expect(nombreCoincide('Pérez Pérez', { nombres: ['PEREZ'], apellidos: ['PEREZ'] })).toBe(true);
+  });
+
+  it('separa apellidos y nombres del personal (apellidos primero)', () => {
+    expect(separarApellidosNombres(ANA)).toEqual({ apellidos: ['PEREZ', 'LOPEZ'], nombres: ['ANA', 'MARIA'] });
+    expect(separarApellidosNombres('VEGA TAPIA LUIS')).toEqual({ apellidos: ['VEGA', 'TAPIA'], nombres: ['LUIS'] });
+    expect(separarApellidosNombres('VEGA LUIS')).toEqual({ apellidos: ['VEGA'], nombres: ['LUIS'] });
     expect(nombreCoincide('Ana', 'ANA')).toBe(false);
-  });
-
-  it('"Mario" no pasa por "María"', () => {
-    expect(nombreCoincide('Mario Ana Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
-  });
-
-  it('no se cuenta dos veces la misma palabra', () => {
-    expect(nombreCoincide('Ana Ana Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
-    expect(nombreCoincide('Pérez Pérez Ana María', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
   });
 
   it('quita símbolos y palabras que no identifican', () => {
