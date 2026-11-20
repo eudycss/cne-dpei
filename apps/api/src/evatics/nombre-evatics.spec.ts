@@ -5,50 +5,68 @@ describe('nombre del certificado Evatics', () => {
 
   it.each([
     ['el mismo nombre, sin tildes ni mayúsculas', 'perez lopez ana maria'],
-    ['nombres antes de los apellidos', 'Ana María Pérez López'],
-    ['solo un nombre y un apellido', 'Ana Pérez'],
-    ['solo el segundo apellido y un nombre', 'María López'],
+    ['nombres antes de los apellidos (como en el certificado)', 'Ana María Pérez López'],
     ['con título y conector', 'Ing. Ana María de Pérez López'],
   ])('coincide: %s', (_caso, leido) => {
     expect(nombreCoincide(leido, ANA)).toBe(true);
   });
 
   it.each([
+    ['falta un nombre', 'Ana Pérez López'],
+    ['falta un apellido', 'Ana María Pérez'],
+    ['solo un nombre y un apellido', 'Ana Pérez'],
+    ['una palabra de más', 'Ana María Pérez López Vega'],
     ['otra persona con un apellido igual', 'Luis Pérez Tapia'],
     ['una sola palabra', 'Ana'],
     ['vacío', ''],
     ['nada leído', null],
     ['otra persona', 'Juan Carlos Vega Mora'],
     ['dos nombres de pila sin apellido', 'Ana María'],
-    ['dos apellidos sin nombre', 'Pérez López'],
-    ['un apellido con una letra cambiada no cuenta como exacto', 'Ana Peres'],
+    ['un apellido corto con una letra cambiada', 'Ana María Peres López'],
   ])('no coincide: %s', (_caso, leido) => {
     expect(nombreCoincide(leido, ANA)).toBe(false);
   });
 
-  it('homónimo: "Juan Pérez" es de Pérez Gómez Juan Carlos, no de otro Juan ni de otro Pérez', () => {
-    expect(nombreCoincide('JUAN PEREZ', 'PEREZ GOMEZ JUAN CARLOS')).toBe(true);
-    expect(nombreCoincide('JUAN PEREZ', 'PEREZ GOMEZ LUIS CARLOS')).toBe(false);
-    expect(nombreCoincide('JUAN PEREZ', 'VEGA GOMEZ JUAN CARLOS')).toBe(false);
+  it('el certificado de la imagen de ejemplo coincide con el personal (apellidos primero)', () => {
+    expect(nombreCoincide('EDWIN SEBASTIAN CABASCANGO SALAZAR', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
+    expect(nombreCoincide('EDWIN SEBASTIAN CABASCANGO SALAZAR', 'CABASCANGO SALAZAR EDWIN DAVID')).toBe(false);
+  });
+
+  it('una letra mal leída solo se tolera en palabras de 7 letras o más', () => {
+    expect(nombreCoincide('Ana Gabriella Pérez López', 'PÉREZ LÓPEZ ANA GABRIELA')).toBe(true);
+    expect(nombreCoincide('Edwin Sebastian Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
+    expect(nombreCoincide('Anna María Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+    expect(nombreCoincide('Ana Mariq Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+  });
+
+  it('la letra de diferencia no vale en la última letra (otra persona u otra familia)', () => {
+    expect(nombreCoincide('Fernanda Sofía Andrade Vega', 'ANDRADE VEGA FERNANDO SOFIA')).toBe(false);
+    expect(nombreCoincide('Luis Alberto Martines Vega', 'MARTINEZ VEGA LUIS ALBERTO')).toBe(false);
+  });
+
+  it('la letra de diferencia se tolera en una sola palabra', () => {
+    expect(nombreCoincide('Edwin Sebastien Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(false);
+  });
+
+  it('nombres de 3 y de 5 palabras, y apellidos compuestos', () => {
+    expect(nombreCoincide('Luis Vega Tapia', 'VEGA TAPIA LUIS')).toBe(true);
+    expect(nombreCoincide('Luis Vega', 'VEGA TAPIA LUIS')).toBe(false);
+    expect(nombreCoincide('María José Ana Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(true);
+    expect(nombreCoincide('María José Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(false);
+    expect(nombreCoincide('Ana María de la Torre Vega', 'DE LA TORRE VEGA ANA MARÍA')).toBe(true);
+  });
+
+  it('una sola palabra en el personal nunca coincide', () => {
+    expect(nombreCoincide('Ana', 'ANA')).toBe(false);
   });
 
   it('"Mario" no pasa por "María"', () => {
-    expect(nombreCoincide('Mario Pérez', 'PÉREZ LÓPEZ MARÍA')).toBe(false);
-  });
-
-  it('una letra mal leída solo se tolera en palabras de 7 letras o más y nunca en el primer nombre', () => {
-    // GABRIELLA por GABRIELA, pero es el primer nombre: no.
-    expect(nombreCoincide('Gabriella Pérez', 'PÉREZ LÓPEZ GABRIELA ANA')).toBe(false);
-    // El segundo nombre, largo, con una letra de más: sí.
-    expect(nombreCoincide('Ana Gabriella Pérez', 'PÉREZ LÓPEZ ANA GABRIELA')).toBe(true);
-    // Palabra corta con una letra cambiada: no cuenta (aquí siguen coincidiendo 3 de 4).
-    expect(nombreCoincide('Ana Mariq Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(true);
-    expect(nombreCoincide('Anna Pérez', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+    expect(nombreCoincide('Mario Ana Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
   });
 
   it('no se cuenta dos veces la misma palabra', () => {
-    expect(nombreCoincide('Ana Ana', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
-    expect(nombreCoincide('Pérez Pérez', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+    expect(nombreCoincide('Ana Ana Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+    expect(nombreCoincide('Pérez Pérez Ana María', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
   });
 
   it('quita símbolos y palabras que no identifican', () => {
@@ -60,16 +78,5 @@ describe('nombre del certificado Evatics', () => {
     expect(nombreCortoDeApellidosNombres('VEGA TAPIA LUIS')).toBe('Luis V.');
     expect(nombreCortoDeApellidosNombres('VEGA LUIS')).toBe('Luis V.');
     expect(nombreCorto('carlos andrés', 'Pozo Ruiz')).toBe('Carlos P.');
-  });
-});
-
-describe('nombreCoincide con la captura del Área personal', () => {
-  it('"Usted se ha identificado como…" (nombres primero) coincide con el personal (apellidos primero)', () => {
-    expect(nombreCoincide('JORGE ALEXANDER VASQUEZ CADENA', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(true);
-  });
-
-  it('un nombre de pila suelto (el saludo "¡Hola, JORGE!") nunca coincide', () => {
-    expect(nombreCoincide('JORGE', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(false);
-    expect(nombreCoincide('JORGE ALEXANDER', 'VASQUEZ CADENA JORGE ALEXANDER')).toBe(false);
   });
 });

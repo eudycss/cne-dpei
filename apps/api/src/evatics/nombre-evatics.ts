@@ -51,41 +51,37 @@ function distancia(a: string, b: string): number {
   return fila[b.length];
 }
 
-/** Una letra de diferencia (error de lectura), solo en palabras de 7 letras o más. */
+/**
+ * Una letra de diferencia (error de lectura), solo en palabras de 7 letras o
+ * más y nunca en la última: FERNANDO/FERNANDA o MARTINEZ/MARTINES son otras
+ * personas o familias, no un error de lectura.
+ */
 function casiIgual(a: string, b: string): boolean {
-  return a.length >= 7 && b.length >= 7 && distancia(a, b) <= 1;
+  return a.length >= 7 && b.length >= 7 && a.at(-1) === b.at(-1) && distancia(a, b) <= 1;
 }
 
 /**
- * ¿El nombre del certificado es el de esta persona? Sin importar tildes,
- * mayúsculas ni el orden (nombres antes o después de los apellidos). Exige al
- * menos un apellido exacto (de las 2 primeras palabras, o la primera si solo
- * hay 2) y al menos un nombre, y que coincidan las 3/4 partes de lo leído: un
- * certificado puede traer solo un nombre y un apellido. La letra de diferencia
- * se tolera en palabras largas, nunca en el primer nombre ni para el apellido
- * exigido. Así "Juan Pérez" no pasa por otro Pérez ni "Mario" por "María".
+ * ¿El nombre del certificado es el de esta persona? El Certificado de
+ * Aprobación trae el nombre completo, así que deben coincidir TODAS las
+ * palabras: cada nombre y apellido del personal está en el certificado y el
+ * certificado no trae palabras de más. Sin importar tildes, mayúsculas ni el
+ * orden (nombres antes o después de los apellidos). Se tolera una letra mal
+ * leída en UNA sola palabra (ver casiIgual); cada palabra se usa una sola vez.
  */
 export function nombreCoincide(leido: string | null | undefined, esperado: string): boolean {
   const deLeido = palabrasNombre(leido);
-  const todas = palabrasNombre(esperado);
-  if (deLeido.length < 2 || todas.length < 2) return false;
-  const apellidos = todas.length >= 3 ? 2 : 1;
-  const esperadas = todas.map((p, i) => ({ p, apellido: i < apellidos, primerNombre: i === apellidos, usada: false }));
-
-  let iguales = 0;
-  let apellidoExacto = false;
-  let nombres = 0;
-  for (const p of deLeido) {
-    const e =
-      esperadas.find((x) => !x.usada && x.p === p) ??
-      esperadas.find((x) => !x.usada && !x.primerNombre && casiIgual(p, x.p));
-    if (!e) continue;
-    e.usada = true;
-    iguales++;
-    if (e.apellido && e.p === p) apellidoExacto = true;
-    if (!e.apellido) nombres++;
-  }
-  return apellidoExacto && nombres >= 1 && iguales >= Math.ceil(deLeido.length * 0.75);
+  const esperadas = palabrasNombre(esperado);
+  if (esperadas.length < 2 || deLeido.length !== esperadas.length) return false;
+  const libres = [...deLeido];
+  // Primero las exactas, para que la tolerancia no "robe" la palabra de otra.
+  const pendientes = esperadas.filter((e) => {
+    const i = libres.indexOf(e);
+    if (i < 0) return true;
+    libres.splice(i, 1);
+    return false;
+  });
+  if (pendientes.length === 0) return true;
+  return pendientes.length === 1 && libres.some((p) => casiIgual(p, pendientes[0]));
 }
 
 const titulo = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();

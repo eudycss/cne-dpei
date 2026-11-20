@@ -14,18 +14,11 @@ const estadoHttp = (e: unknown) => (e as { response?: { status?: number } })?.re
 export function sugerenciaIa(a: AnalisisCertificadoEvatics | null): { texto: string; clase: string } {
   if (!a || a.estado === 'EN_COLA') return { texto: 'Aún sin leer', clase: 'vacio' };
   if (a.estado === 'NO_DISPONIBLE') return { texto: 'Sin IA', clase: 'vacio' };
-  if (a.esCertificado === false) return { texto: 'No parece un certificado', clase: 'error' };
+  if (a.esCertificado === false) return { texto: 'No es el Certificado de Aprobación', clase: 'error' };
   if (a.legible === false) return { texto: 'No se lee bien', clase: 'aviso' };
   if (a.nombreCoincide === true) return { texto: 'El nombre coincide', clase: 'ok' };
   if (a.nombreCoincide === false) return { texto: 'El nombre no coincide', clase: 'error' };
   return { texto: 'No se leyó el nombre', clase: 'aviso' };
-}
-
-/** Notas de cuestionario >= 7 según la IA: solo informa, no decide. */
-export function textoNotasAprobadas(v: boolean | null | undefined): string {
-  if (v === true) return 'Visto por la IA';
-  if (v === false) return 'No visto';
-  return 'Sin dato';
 }
 
 /** URL local (blob:) de la foto; se libera al cambiar o cerrar. */
@@ -166,12 +159,6 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
               <dd>{a.nombreLeido ?? '—'}</dd>
             </div>
           )}
-          {a?.estado === 'LISTO' && (
-            <div>
-              <dt>Notas de cuestionarios ≥ 7</dt>
-              <dd>{textoNotasAprobadas(a.notasAprobadas)}</dd>
-            </div>
-          )}
           {a?.proveedor && (
             <div>
               <dt>Leído por</dt>
@@ -180,7 +167,7 @@ export function RevisarEvaticsModal({ fila, onClose }: { fila: FilaEvatics; onCl
           )}
         </dl>
         <p className="ocda-enlace-aviso">
-          La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. Las notas de una captura se pueden alterar: no las tome como prueba.
+          La IA solo sugiere: compare usted el nombre con el de la persona antes de decidir. Solo vale el Certificado de Aprobación; rechace capturas del curso o de las notas.
         </p>
 
         {soloLectura ? (

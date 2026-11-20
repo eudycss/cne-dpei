@@ -27,18 +27,14 @@ const RESPONSE_SCHEMA = {
     },
     esCertificadoEvatics: {
       type: 'BOOLEAN',
-      description: 'true si la imagen es prueba de la evaluación EVATICS (certificado, Área personal o calificaciones)',
+      description: 'true solo si la imagen es el Certificado de Aprobación del curso EVATICS',
     },
     legible: {
       type: 'BOOLEAN',
       description: 'true si el texto de la imagen se lee con claridad',
     },
-    notasAprobadas: {
-      type: 'BOOLEAN',
-      description: 'true si se ven las notas de los cuestionarios y todas son de 7 o más sobre 10; false si alguna es menor, o no se ven',
-    },
   },
-  required: ['nombreLeido', 'esCertificadoEvatics', 'legible', 'notasAprobadas'],
+  required: ['nombreLeido', 'esCertificadoEvatics', 'legible'],
 } as const;
 
 /**

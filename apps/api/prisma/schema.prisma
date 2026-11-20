@@ -1218,7 +1218,7 @@ model CertificadoEvatics {
   subidoEn              DateTime  @map("subido_en") @db.Timestamptz(6)
   /// Versión del aviso LOPDP que aceptó al subir.
   consentimientoVersion String    @map("consentimiento_version") @db.VarChar(40)
-  /// PENDIENTE, APROBADO o RECHAZADO.
+  /// PENDIENTE, APROBADO, RECHAZADO o SIN_SUBIR (guarda una captura antigua; se muestra como «Sin subir»).
   estado                String    @default("PENDIENTE") @db.VarChar(12)
   motivoRechazo         String?   @map("motivo_rechazo") @db.VarChar(300)
   revisadoPorId         String?   @map("revisado_por_id") @db.Uuid
