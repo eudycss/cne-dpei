@@ -12,7 +12,6 @@ const LECTURA = {
   nombreLeido: 'Ana María Pérez López',
   esCertificadoEvatics: true,
   legible: true,
-  notasAprobadas: true,
 };
 
 const respuesta = (status: number, cuerpo: unknown, headers: Record<string, string> = {}) =>
@@ -61,10 +60,15 @@ describe.each(CASOS)('cliente $nombre del certificado', ({ variable, crear, exit
     await expect(crear().leer(IMAGEN, 'image/jpeg')).resolves.toEqual(LECTURA);
   });
 
-  it('si el modelo omite notasAprobadas, cuenta como false (no se da por completo)', async () => {
-    const { notasAprobadas: _omitido, ...sinCampo } = LECTURA;
-    fetchMock.mockResolvedValueOnce(respuesta(200, exito(JSON.stringify(sinCampo))));
-    expect((await crear().leer(IMAGEN, 'image/jpeg')).notasAprobadas).toBe(false);
+  it('ya no pide notas: un notasAprobadas que llegue de más se descarta', async () => {
+    fetchMock.mockResolvedValueOnce(respuesta(200, exito(JSON.stringify({ ...LECTURA, notasAprobadas: true }))));
+    expect(await crear().leer(IMAGEN, 'image/jpeg')).toEqual(LECTURA);
+  });
+
+  it('las instrucciones piden solo el Certificado de Aprobación, no capturas del curso', () => {
+    expect(INSTRUCCIONES_LECTOR).toMatch(/CERTIFICADO DE APROBACIÓN/);
+    expect(INSTRUCCIONES_LECTOR).toMatch(/NO son el certificado/);
+    expect(INSTRUCCIONES_LECTOR).not.toMatch(/notasAprobadas/);
   });
 
   it('limpia el nombre: solo letras, sin etiquetas ni código', async () => {
@@ -106,7 +110,7 @@ describe.each(CASOS)('cliente $nombre del certificado', ({ variable, crear, exit
     ['texto que no es JSON', 'Claro, la persona es Ana'],
     ['JSON sin las claves pedidas', JSON.stringify({ aprobado: true })],
     ['tipos equivocados', JSON.stringify({ ...LECTURA, legible: 'sí' })],
-    ['notasAprobadas como texto', JSON.stringify({ ...LECTURA, notasAprobadas: 'true' })],
+    ['esCertificadoEvatics como texto', JSON.stringify({ ...LECTURA, esCertificadoEvatics: 'true' })],
   ])('respuesta inválida: %s', async (_caso, texto) => {
     fetchMock.mockResolvedValueOnce(respuesta(200, exito(texto)));
     await expect(crear().leer(IMAGEN, 'image/jpeg')).rejects.toBeInstanceOf(LectorRespuestaInvalida);

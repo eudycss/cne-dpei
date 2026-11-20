@@ -218,22 +218,19 @@ function analisisDto(c: CertificadoGuardado): AnalisisCertificadoEvatics {
 }
 
 /** Qué decirle a la persona justo después de subir, según lo que leyó la IA (nunca el nombre leído). */
-/** Nombre visible y todas las notas >= 7: el único aviso que no es una advertencia. */
-export const MENSAJE_ENVIADO = 'Enviado correctamente';
+/** Certificado legible con nombre: el único aviso que no es una advertencia. */
+export const MENSAJE_ENVIADO = 'Enviado correctamente. Un supervisor lo revisará.';
 
 export function avisoParaLaPersona(lectura: LecturaCertificado | null): string | null {
-  if (!lectura) return 'Enviado a revisión.';
+  if (!lectura) return 'Enviado a revisión. Un supervisor lo revisará.';
   if (!lectura.esCertificadoEvatics) {
-    return 'La imagen no parece una prueba de Evatics (certificado o captura del curso). Revise que sea la correcta y vuelva a subirla.';
+    return 'Esto no parece el Certificado de Aprobación de Evatics. Un supervisor lo revisará; si se equivocó de archivo, suba el certificado (foto o PDF).';
   }
   if (!lectura.legible) {
-    return 'No se lee bien la imagen. Súbala otra vez con buena luz, sin reflejos y completa.';
+    return 'No se lee bien el certificado. Un supervisor lo revisará; si puede, súbalo otra vez con buena luz, sin reflejos y completo, o en PDF.';
   }
   if (!lectura.nombreLeido) {
-    return 'Recibida, pero no se ve su nombre en la imagen. Un supervisor la revisará; si puede, suba una captura donde aparezca su nombre.';
-  }
-  if (!lectura.notasAprobadas) {
-    return 'Enviado a revisión.';
+    return 'Recibido, pero no se ve su nombre en el certificado. Un supervisor lo revisará; si puede, suba el certificado completo donde aparezca su nombre.';
   }
   return MENSAJE_ENVIADO;
 }
@@ -652,7 +649,7 @@ export class EvaticsService {
           nombreCoincide: lectura.nombreLeido ? nombreCoincide(lectura.nombreLeido, esperado) : null,
           esCertificado: lectura.esCertificadoEvatics,
           legible: lectura.legible,
-          notasAprobadas: lectura.notasAprobadas,
+          notasAprobadas: null,
           analizadoEn: new Date(),
           analisisProveedor: proveedor,
         },
