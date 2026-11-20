@@ -412,8 +412,8 @@ describe('ordenarGrupos', () => {
   });
 
   it('con 0 aprobados todos empatan: más personas primero, luego nombre; un grupo vacío no rompe', () => {
-    expect(ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
-      'CPE',
+    expect(ordenarGrupos([g('Urcuquí', 2), g('Antonio Ante', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
+      'Antonio Ante',
       'Ibarra',
       'Urcuquí',
       'Vacío',
@@ -498,6 +498,23 @@ describe('AvanceEvatics: medallas y «Póngase pilas»', () => {
     expect(screen.getByRole('columnheader', { name: 'Lugar' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '🥇 Primer lugar' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '🥈 Segundo lugar' })).toBeInTheDocument();
+  });
+
+  it('el CPE se ve al final, «Fuera de competencia», y no quita medallas', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('CPE', 10, 10), g('Ibarra', 10, 8), g('Otavalo', 10, 6), g('Cotacachi', 10, 4), g('Urcuquí', 10, 1)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    const nombres = [...document.querySelectorAll('.evx-barras .evx-nombre')].map((n) => n.textContent);
+    expect(nombres).toEqual(['Ibarra', 'Otavalo', 'Cotacachi', 'Urcuquí', 'CPE']);
+    expect(screen.getByRole('button', { name: /^Ibarra:.*Primer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cotacachi:.*Tercer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^CPE:.*Fuera de competencia/ })).toBeInTheDocument();
+    expect(distintivo(g('CPE', 10, 10), 0)).toEqual({ tipo: 'fuera' });
   });
 });
 

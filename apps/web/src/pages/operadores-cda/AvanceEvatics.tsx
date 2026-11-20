@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ConteoEvatics, GrupoConteoEvatics } from '@cne/shared-types';
+import { SIN_CANTON_EVATICS, SIN_TECNICO_EVATICS } from '@cne/shared-validation';
 import { NumeroAnimado } from '../../components/NumeroAnimado';
 
 /**
@@ -18,14 +19,19 @@ type Vista = 'canton' | 'tecnico';
 
 export const pct = (parte: number, total: number) => (total > 0 ? Math.round((parte / total) * 100) : 0);
 
+/** El grupo «CPE» (sin cantón o sin asistente) se ve, pero no compite por lugares. */
+export const esFueraDeCompetencia = (g: GrupoConteoEvatics) =>
+  g.nombre === SIN_CANTON_EVATICS || g.nombre === SIN_TECNICO_EVATICS;
+
 /**
  * Del mayor al menor porcentaje de aprobados (el que más avanzó, primero). Se
  * compara la fracción exacta, no la redondeada; a igual porcentaje, el grupo
- * con más personas y, si sigue el empate, por nombre.
+ * con más personas y, si sigue el empate, por nombre. El CPE va siempre al final.
  */
 export function ordenarGrupos(grupos: GrupoConteoEvatics[]): GrupoConteoEvatics[] {
   return [...grupos].sort(
     (a, b) =>
+      Number(esFueraDeCompetencia(a)) - Number(esFueraDeCompetencia(b)) ||
       b.aprobados * a.total - a.aprobados * b.total || // a.total o b.total en 0 compara 0 con 0
       b.total - a.total ||
       a.nombre.localeCompare(b.nombre, 'es'),
@@ -38,15 +44,21 @@ export const MEDALLAS = {
   3: { icono: '🥉', texto: 'Tercer lugar' },
 } as const;
 
-export type Distintivo = { tipo: 'medalla'; lugar: 1 | 2 | 3 } | { tipo: 'completo' } | { tipo: 'pilas' };
+export type Distintivo =
+  | { tipo: 'medalla'; lugar: 1 | 2 | 3 }
+  | { tipo: 'completo' }
+  | { tipo: 'pilas' }
+  | { tipo: 'fuera' };
 
 /**
  * Lo que gana cada grupo según su puesto (0 = primero, ya ordenado con
  * ordenarGrupos): medalla los 3 primeros con al menos un aprobado; desde ahí,
- * «¡Completo!» al llegar al 100 % y «¡Póngase pilas!» mientras no.
+ * «¡Completo!» al llegar al 100 % y «¡Póngase pilas!» mientras no. El CPE
+ * queda «Fuera de competencia» (va al final, así no ocupa puesto de nadie).
  */
 export function distintivo(g: GrupoConteoEvatics, puesto: number): Distintivo | null {
   if (g.total === 0) return null;
+  if (esFueraDeCompetencia(g)) return { tipo: 'fuera' };
   if (puesto < 3 && g.aprobados > 0) return { tipo: 'medalla', lugar: (puesto + 1) as 1 | 2 | 3 };
   return g.aprobados >= g.total ? { tipo: 'completo' } : { tipo: 'pilas' };
 }
@@ -54,6 +66,7 @@ export function distintivo(g: GrupoConteoEvatics, puesto: number): Distintivo | 
 export function textoDistintivo(d: Distintivo | null): string {
   if (!d) return '';
   if (d.tipo === 'medalla') return `${MEDALLAS[d.lugar].icono} ${MEDALLAS[d.lugar].texto}`;
+  if (d.tipo === 'fuera') return 'Fuera de competencia';
   return d.tipo === 'completo' ? '✅ ¡Completo!' : '¡Póngase pilas!';
 }
 
