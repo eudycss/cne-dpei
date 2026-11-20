@@ -7,7 +7,7 @@ import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName 
 
 import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
 import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
-import { sugerenciaIa, textoNotasAprobadas } from './RevisarEvaticsModal';
+import { sugerenciaIa } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -375,7 +375,7 @@ describe('sugerenciaIa', () => {
     [null, 'Aún sin leer'],
     [{ ...LISTO, estado: 'EN_COLA' as const }, 'Aún sin leer'],
     [{ ...LISTO, estado: 'NO_DISPONIBLE' as const }, 'Sin IA'],
-    [{ ...LISTO, esCertificado: false }, 'No parece un certificado'],
+    [{ ...LISTO, esCertificado: false }, 'No es el Certificado de Aprobación'],
     [{ ...LISTO, legible: false }, 'No se lee bien'],
     [LISTO, 'El nombre coincide'],
     [{ ...LISTO, nombreCoincide: false }, 'El nombre no coincide'],
@@ -463,16 +463,7 @@ describe('EvaticsPanel: refresco automático', () => {
   });
 });
 
-describe('textoNotasAprobadas', () => {
-  it('visto, no visto o sin dato (filas anteriores)', () => {
-    expect(textoNotasAprobadas(true)).toBe('Visto por la IA');
-    expect(textoNotasAprobadas(false)).toBe('No visto');
-    expect(textoNotasAprobadas(null)).toBe('Sin dato');
-    expect(textoNotasAprobadas(undefined)).toBe('Sin dato');
-  });
-});
-
-describe('modal de revisión: Notas de cuestionarios ≥ 7', () => {
+describe('modal de revisión: solo el Certificado de Aprobación', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     permisos.actuales = new Set(PERMISO_IDS);
@@ -492,14 +483,16 @@ describe('modal de revisión: Notas de cuestionarios ≥ 7', () => {
     await user.click(await screen.findByRole('button', { name: 'Revisar certificado de ANDRADE LÓPEZ ANA' }));
   }
 
-  it.each([
-    [true, 'Visto por la IA'],
-    [false, 'No visto'],
-    [null, 'Sin dato'],
-  ])('lectura lista con notasAprobadas=%s → %s', async (valor, texto) => {
-    await abrir({ ...LISTO, notasAprobadas: valor });
-    expect(await screen.findByText('Notas de cuestionarios ≥ 7')).toBeInTheDocument();
-    expect(screen.getByText(texto)).toBeInTheDocument();
+  it('ya no muestra la fila de notas de cuestionarios', async () => {
+    await abrir({ ...LISTO, notasAprobadas: true });
+    await screen.findByText('Sugerencia de la IA');
+    expect(screen.queryByText(/Notas de cuestionarios/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Solo vale el Certificado de Aprobación/)).toBeInTheDocument();
+  });
+
+  it('si la IA dice que no es el certificado, lo marca para rechazar', async () => {
+    await abrir({ ...LISTO, esCertificado: false });
+    expect((await screen.findAllByText('No es el Certificado de Aprobación')).length).toBeGreaterThan(0);
   });
 
   it('sin lectura lista (en cola) no se muestra la fila', async () => {
