@@ -7,6 +7,11 @@
 -- Corre una sola vez (prisma migrate deploy): no ejecutar a mano de nuevo,
 -- revertiría las aprobaciones nuevas. Quién aprobó antes queda en la bitácora.
 
+-- SIN_SUBIR pasa a ser un estado guardado: hay que permitirlo en la restricción.
+ALTER TABLE certificados_evatics DROP CONSTRAINT IF EXISTS ck_certificados_evatics_estado;
+ALTER TABLE certificados_evatics ADD CONSTRAINT ck_certificados_evatics_estado
+    CHECK (estado IN ('PENDIENTE', 'APROBADO', 'RECHAZADO', 'SIN_SUBIR'));
+
 UPDATE certificados_evatics
 SET estado = 'SIN_SUBIR',
     motivo_rechazo = NULL,
