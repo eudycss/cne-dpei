@@ -65,14 +65,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
-    tokenStore.clear();
     // Sin recargar la página, la caché seguiría con datos de la sesión (fotos
     // del personal, cédulas, teléfonos) y quien entre después en este equipo
     // podría verlos. cancel antes de clear: una consulta en vuelo no la vuelve a llenar.
-    if (queryClient) {
-      await queryClient.cancelQueries();
-      queryClient.clear();
-    }
+    if (queryClient) await queryClient.cancelQueries();
+    // Desde aquí, todo síncrono: sin tokens y sin usuario en el mismo paso, para
+    // que ninguna consulta salga sin token (401 → recarga) entre medio.
+    queryClient?.clear();
+    tokenStore.clear();
     setUser(null);
   }, [queryClient]);
 
