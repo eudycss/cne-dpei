@@ -1,16 +1,20 @@
 -- Desde ahora solo vale el Certificado de Aprobación de Evatics (no capturas
--- del Área personal ni de calificaciones). Todos los APROBADOS vuelven a
--- RECHAZADO para que suban el certificado; los PENDIENTES se vuelven a
--- analizar con la regla nueva. Las fotos se conservan (no se borra nada).
+-- del Área personal ni de calificaciones). Todos los APROBADOS y RECHAZADOS
+-- vuelven a «Sin subir» para que suban el certificado; los PENDIENTES se
+-- vuelven a analizar con la regla nueva. Las capturas se conservan (no se
+-- borra nada): con estado SIN_SUBIR el panel las trata como si no hubiera
+-- registro, y al subir el certificado la captura pasa a ser la «foto anterior».
 -- Corre una sola vez (prisma migrate deploy): no ejecutar a mano de nuevo,
 -- revertiría las aprobaciones nuevas. Quién aprobó antes queda en la bitácora.
 
 UPDATE certificados_evatics
-SET estado = 'RECHAZADO',
-    motivo_rechazo = 'Ahora se pide el Certificado de Aprobación de Evatics. Súbalo en foto o PDF.',
+SET estado = 'SIN_SUBIR',
+    motivo_rechazo = NULL,
     revisado_por_id = NULL,
-    revisado_en = now(),
-    -- La lectura vieja era de una captura: que el panel no diga "El nombre coincide".
+    revisado_en = NULL,
+    -- Puede subir hoy mismo aunque haya gastado sus subidas del día.
+    subidas_hoy = 0,
+    -- La lectura vieja era de una captura: que nadie la vuelva a analizar.
     analisis_estado = 'NO_DISPONIBLE',
     analisis_siguiente = NULL,
     nombre_leido = NULL,
@@ -19,7 +23,7 @@ SET estado = 'RECHAZADO',
     legible = NULL,
     notas_aprobadas = NULL,
     actualizado_en = now()
-WHERE estado = 'APROBADO';
+WHERE estado IN ('APROBADO', 'RECHAZADO');
 
 UPDATE certificados_evatics
 SET analisis_estado = 'EN_COLA',

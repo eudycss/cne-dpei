@@ -365,6 +365,20 @@ describe('EvaticsService', () => {
       expect(storage.remove.mock.calls).toEqual([['clave-mas-vieja']]);
     });
 
+    it('SIN_SUBIR con captura antigua: puede subir, la captura pasa a ser la anterior', async () => {
+      anaEnElPersonal();
+      prisma.certificadoEvatics.findUnique
+        .mockResolvedValueOnce({ estado: 'SIN_SUBIR', subidasDia: HOY, subidasHoy: 0 })
+        .mockResolvedValueOnce(filaActual({ estado: 'SIN_SUBIR', subidasHoy: 0 }));
+
+      await service.subir(CED_ANA, ARCHIVO, 'v');
+
+      const { where, data } = prisma.certificadoEvatics.updateMany.mock.calls[0][0];
+      expect(where).toMatchObject({ estado: 'SIN_SUBIR', fotoKey: 'clave-vieja' });
+      expect(data).toMatchObject({ estado: 'PENDIENTE', fotoKey: 'clave-nueva', fotoAnteriorKey: 'clave-vieja' });
+      expect(storage.remove.mock.calls).toEqual([['clave-mas-vieja']]);
+    });
+
     it('reemplazo de una foto PENDIENTE con anterior: la anterior se conserva y se borra la intermedia', async () => {
       anaEnElPersonal();
       prisma.certificadoEvatics.findUnique
@@ -852,6 +866,15 @@ describe('EvaticsService', () => {
       await expect(service.foto('cert-ana', true)).rejects.toThrow(NotFoundException);
     });
 
+    it('SIN_SUBIR (captura antigua): ni foto ni revisión, 404', async () => {
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce(fotos({ estado: 'SIN_SUBIR' }));
+      await expect(service.foto('cert-ana')).rejects.toThrow(NotFoundException);
+      prisma.certificadoEvatics.findUnique.mockResolvedValueOnce({ cedula: CED_ANA, estado: 'SIN_SUBIR' });
+      await expect(service.revisar('cert-ana', 'APROBADO', undefined, SUBIDO_EN, SUPERVISOR)).rejects.toThrow(NotFoundException);
+      expect(prisma.certificadoEvatics.updateMany).not.toHaveBeenCalled();
+      expect(storage.readDecrypted).not.toHaveBeenCalled();
+    });
+
     it('?v: si la foto que muestra la web ya no es la actual (o la anterior), 409', async () => {
       prisma.certificadoEvatics.findUnique.mockResolvedValue(fotos());
       storage.readDecrypted.mockResolvedValue(Buffer.from('img'));
@@ -929,6 +952,19 @@ describe('EvaticsService', () => {
       expect(r.porCanton[1]).toMatchObject({ nombre: 'Ibarra', total: 1, aprobados: 1 });
       expect(r.porTecnico.find((g) => g.nombre === 'Jairo Leal')).toMatchObject({ total: 1, aprobados: 1 });
       expect(r.distributivoDisponible).toBe(true);
+    });
+
+    it('un registro SIN_SUBIR (captura antigua) se lista como si no hubiera subido nada', async () => {
+      prisma.certificadoEvatics.findMany.mockResolvedValue([certificado({ estado: 'SIN_SUBIR', reemplazos: 1 })]);
+      const r = await service.listado({}, ADMIN);
+      expect(r.filas.find((f) => f.cedula === CED_ANA)).toMatchObject({
+        certificadoId: null,
+        estado: 'SIN_SUBIR',
+        subidoEn: null,
+        reemplazos: 0,
+        analisis: null,
+      });
+      expect(r.totales).toMatchObject({ sinSubir: 3, aprobados: 0 });
     });
 
     it('filtros: cantón, estado, cargo y técnico (sin tildes) y búsqueda; los conteos siguen siendo de todos', async () => {

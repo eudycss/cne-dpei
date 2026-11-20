@@ -409,7 +409,8 @@ export class EvaticsService {
     if (actual.subidasDia === hoy && actual.subidasHoy >= MAX_SUBIDAS_POR_DIA) {
       throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
     }
-    const rotar = actual.estado === 'RECHAZADO' || !actual.fotoAnteriorKey;
+    // Rechazado o SIN_SUBIR (captura antigua): la foto actual pasa a ser la anterior.
+    const rotar = actual.estado === 'RECHAZADO' || actual.estado === 'SIN_SUBIR' || !actual.fotoAnteriorKey;
     const reemplazo = actual.reemplazos + 1;
     const r = await tx.certificadoEvatics.updateMany({
       where: {
@@ -443,7 +444,8 @@ export class EvaticsService {
       this.tecnicosPorRecinto(),
     ]);
     const ubicaciones = await this.ubicaciones(personas.flatMap((p) => (p.operadorId ? [p.operadorId] : [])));
-    const porCedula = new Map(certificados.map((c) => [c.cedula, c]));
+    // Un registro en SIN_SUBIR guarda una captura antigua: se lista como si no hubiera subido nada.
+    const porCedula = new Map(certificados.filter((c) => c.estado !== 'SIN_SUBIR').map((c) => [c.cedula, c]));
 
     const todas: FilaEvatics[] = personas.map((p) => {
       const c = porCedula.get(p.cedula);
@@ -504,9 +506,9 @@ export class EvaticsService {
   async foto(id: string, anterior = false, version?: Date): Promise<Buffer> {
     const c = await this.prisma.certificadoEvatics.findUnique({
       where: { id },
-      select: { fotoKey: true, subidoEn: true, fotoAnteriorKey: true, fotoAnteriorSubidaEn: true },
+      select: { estado: true, fotoKey: true, subidoEn: true, fotoAnteriorKey: true, fotoAnteriorSubidaEn: true },
     });
-    if (!c) throw new NotFoundException('Certificado no encontrado');
+    if (!c || c.estado === 'SIN_SUBIR') throw new NotFoundException('Certificado no encontrado');
     const clave = anterior ? c.fotoAnteriorKey : c.fotoKey;
     if (!clave) throw new NotFoundException('Este certificado no tiene foto anterior');
     const subidaEn = anterior ? c.fotoAnteriorSubidaEn : c.subidoEn;
@@ -526,8 +528,8 @@ export class EvaticsService {
     subidoEn: string,
     actor: ActorEvatics,
   ): Promise<{ id: string; estado: DecisionEvatics; revisadoEn: string }> {
-    const c = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { cedula: true } });
-    if (!c) throw new NotFoundException('Certificado no encontrado');
+    const c = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { cedula: true, estado: true } });
+    if (!c || c.estado === 'SIN_SUBIR') throw new NotFoundException('Certificado no encontrado');
     if ((await this.cedulasPropias(actor)).has(c.cedula)) {
       throw new ForbiddenException('No puede revisar su propio certificado: lo revisa otro supervisor');
     }
