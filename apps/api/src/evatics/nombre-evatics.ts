@@ -60,28 +60,58 @@ function casiIgual(a: string, b: string): boolean {
   return a.length >= 7 && b.length >= 7 && a.at(-1) === b.at(-1) && distancia(a, b) <= 1;
 }
 
+/** Nombres y apellidos del personal por separado (palabras ya normalizadas). */
+export interface NombreEsperado {
+  nombres: string[];
+  apellidos: string[];
+}
+
 /**
- * ¿El nombre del certificado es el de esta persona? El Certificado de
- * Aprobación trae el nombre completo, así que deben coincidir TODAS las
- * palabras: cada nombre y apellido del personal está en el certificado y el
- * certificado no trae palabras de más. Sin importar tildes, mayúsculas ni el
- * orden (nombres antes o después de los apellidos). Se tolera una letra mal
- * leída en UNA sola palabra (ver casiIgual); cada palabra se usa una sola vez.
+ * "PÉREZ LÓPEZ ANA MARÍA" (apellidos primero, como en el personal) → apellidos
+ * y nombres. Con 3 palabras se asumen dos apellidos y un nombre; con 2, uno y uno.
  */
-export function nombreCoincide(leido: string | null | undefined, esperado: string): boolean {
+export function separarApellidosNombres(apellidosNombres: string): NombreEsperado {
+  const p = palabrasNombre(apellidosNombres);
+  const corte = p.length >= 3 ? 2 : 1;
+  return { apellidos: p.slice(0, corte), nombres: p.slice(corte) };
+}
+
+/** Cuentas de usuario: nombres y apellidos vienen en campos separados. */
+export function nombreDeCuenta(nombres: string, apellidos: string): NombreEsperado {
+  return { nombres: palabrasNombre(nombres), apellidos: palabrasNombre(apellidos) };
+}
+
+/**
+ * ¿El nombre del certificado es el de esta persona? Basta con que esté UN
+ * nombre y UN apellido del personal (el personal a veces está incompleto, p.
+ * ej. sin el segundo nombre). Sin importar tildes, mayúsculas ni el orden.
+ * Cada palabra del certificado se usa una sola vez y se tolera una letra mal
+ * leída en una sola de las dos (ver casiIgual).
+ */
+export function nombreCoincide(leido: string | null | undefined, esperado: string | NombreEsperado): boolean {
+  const { nombres, apellidos } = typeof esperado === 'string' ? separarApellidosNombres(esperado) : esperado;
   const deLeido = palabrasNombre(leido);
-  const esperadas = palabrasNombre(esperado);
-  if (esperadas.length < 2 || deLeido.length !== esperadas.length) return false;
-  const libres = [...deLeido];
-  // Primero las exactas, para que la tolerancia no "robe" la palabra de otra.
-  const pendientes = esperadas.filter((e) => {
-    const i = libres.indexOf(e);
-    if (i < 0) return true;
-    libres.splice(i, 1);
-    return false;
-  });
-  if (pendientes.length === 0) return true;
-  return pendientes.length === 1 && libres.some((p) => casiIgual(p, pendientes[0]));
+  if (nombres.length === 0 || apellidos.length === 0 || deLeido.length < 2) return false;
+  // Pares (nombre, apellido) en palabras distintas del certificado; primero sin tolerancia.
+  for (const tolerancia of [false, true]) {
+    for (const n of nombres) {
+      for (const a of apellidos) {
+        for (let i = 0; i < deLeido.length; i++) {
+          for (let j = 0; j < deLeido.length; j++) {
+            if (i === j) continue;
+            const exactoN = deLeido[i] === n;
+            const exactoA = deLeido[j] === a;
+            if (exactoN && exactoA) return true;
+            if (!tolerancia) continue;
+            const okN = exactoN || casiIgual(deLeido[i], n);
+            const okA = exactoA || casiIgual(deLeido[j], a);
+            if (okN && okA && (exactoN || exactoA)) return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
 }
 
 const titulo = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
