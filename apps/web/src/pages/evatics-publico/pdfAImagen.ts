@@ -9,6 +9,8 @@
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
 /** Lado mayor de la imagen: el nombre debe leerse bien antes de reducirla. */
 export const LADO_PDF = 2000;
+/** Un PDF pesado no debe dejar la pantalla en «Preparando…» para siempre. */
+export const TIEMPO_PDF_MS = 30_000;
 
 export class PdfIlegibleError extends Error {
   constructor(mensaje = 'No se pudo abrir el PDF. Elija otro archivo o tome una foto del certificado.', causa?: unknown) {
@@ -44,16 +46,34 @@ async function cargarPdfjs(): Promise<Pdfjs> {
 }
 
 /** Primera página del PDF como PNG (luego reducirFoto la pasa a JPEG sin metadatos). */
-export async function pdfAImagen(archivo: Blob, cargar: () => Promise<Pdfjs> = cargarPdfjs): Promise<Blob> {
+export async function pdfAImagen(
+  archivo: Blob,
+  cargar: () => Promise<Pdfjs> = cargarPdfjs,
+  tiempoMs = TIEMPO_PDF_MS,
+): Promise<Blob> {
   if (archivo.size > MAX_PDF_BYTES) {
     throw new PdfIlegibleError('El PDF pesa más de 10 MB. Elija el certificado o tome una foto.');
   }
   let tarea: ReturnType<Pdfjs['getDocument']> | undefined;
+  let reloj: ReturnType<typeof setTimeout> | undefined;
+  const agotado = new Promise<never>((_, mal) => {
+    reloj = setTimeout(() => mal(new PdfIlegibleError('El PDF tarda demasiado en abrirse. Tome una foto del certificado.')), tiempoMs);
+  });
   try {
+    return await Promise.race([convertir(), agotado]);
+  } catch (e) {
+    if (e instanceof PdfIlegibleError) throw e;
+    throw new PdfIlegibleError(undefined, e);
+  } finally {
+    clearTimeout(reloj);
+    await tarea?.destroy().catch(() => undefined);
+  }
+
+  async function convertir(): Promise<Blob> {
     const pdfjs = await cargar();
     const datos = await leerBytes(archivo);
     // Sin formularios XFA: el PDF lo trae cualquiera (pdf.js 6 ya no usa eval).
-    tarea = pdfjs.getDocument({ data: datos, enableXfa: false });
+    tarea = pdfjs.getDocument({ data: datos, enableXfa: false, stopAtErrors: true });
     const doc = await tarea.promise;
     const pagina = await doc.getPage(1);
     const base = pagina.getViewport({ scale: 1 });
@@ -66,10 +86,5 @@ export async function pdfAImagen(archivo: Blob, cargar: () => Promise<Pdfjs> = c
     return await new Promise<Blob>((ok, mal) =>
       canvas.toBlob((b) => (b ? ok(b) : mal(new PdfIlegibleError())), 'image/png'),
     );
-  } catch (e) {
-    if (e instanceof PdfIlegibleError) throw e;
-    throw new PdfIlegibleError(undefined, e);
-  } finally {
-    await tarea?.destroy().catch(() => undefined);
   }
 }

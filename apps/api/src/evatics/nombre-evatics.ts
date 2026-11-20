@@ -51,9 +51,13 @@ function distancia(a: string, b: string): number {
   return fila[b.length];
 }
 
-/** Una letra de diferencia (error de lectura), solo en palabras de 7 letras o más. */
+/**
+ * Una letra de diferencia (error de lectura), solo en palabras de 7 letras o
+ * más y nunca en la última: FERNANDO/FERNANDA o MARTINEZ/MARTINES son otras
+ * personas o familias, no un error de lectura.
+ */
 function casiIgual(a: string, b: string): boolean {
-  return a.length >= 7 && b.length >= 7 && distancia(a, b) <= 1;
+  return a.length >= 7 && b.length >= 7 && a.at(-1) === b.at(-1) && distancia(a, b) <= 1;
 }
 
 /**
@@ -62,7 +66,7 @@ function casiIgual(a: string, b: string): boolean {
  * palabras: cada nombre y apellido del personal está en el certificado y el
  * certificado no trae palabras de más. Sin importar tildes, mayúsculas ni el
  * orden (nombres antes o después de los apellidos). Se tolera una letra mal
- * leída en palabras de 7 letras o más; cada palabra se usa una sola vez.
+ * leída en UNA sola palabra (ver casiIgual); cada palabra se usa una sola vez.
  */
 export function nombreCoincide(leido: string | null | undefined, esperado: string): boolean {
   const deLeido = palabrasNombre(leido);
@@ -76,12 +80,8 @@ export function nombreCoincide(leido: string | null | undefined, esperado: strin
     libres.splice(i, 1);
     return false;
   });
-  return pendientes.every((e) => {
-    const i = libres.findIndex((p) => casiIgual(p, e));
-    if (i < 0) return false;
-    libres.splice(i, 1);
-    return true;
-  });
+  if (pendientes.length === 0) return true;
+  return pendientes.length === 1 && libres.some((p) => casiIgual(p, pendientes[0]));
 }
 
 const titulo = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();

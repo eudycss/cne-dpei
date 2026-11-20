@@ -53,6 +53,28 @@ describe('pdfAImagen (primera página del certificado en PDF)', () => {
     expect(f.destroy).toHaveBeenCalled();
   });
 
+  it('si el navegador no logra crear la imagen, da el error claro', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) {
+      cb(null);
+    });
+    const f = pdfjsFalso();
+    await expect(pdfAImagen(PDF, f.cargar)).rejects.toThrow(PdfIlegibleError);
+    expect(f.destroy).toHaveBeenCalled();
+  });
+
+  it('se rinde si el PDF tarda demasiado y libera pdf.js', async () => {
+    const f = pdfjsFalso();
+    f.render.mockReturnValue({ promise: new Promise<void>(() => {}) });
+    await expect(pdfAImagen(PDF, f.cargar, 20)).rejects.toThrow(/tarda demasiado/);
+    expect(f.destroy).toHaveBeenCalled();
+  });
+
+  it('abre el PDF parando en el primer error', async () => {
+    const f = pdfjsFalso();
+    await pdfAImagen(PDF, f.cargar);
+    expect(f.getDocument).toHaveBeenCalledWith(expect.objectContaining({ stopAtErrors: true }));
+  });
+
   it('no abre PDF de más de 10 MB', async () => {
     const f = pdfjsFalso();
     const grande = new File([new Uint8Array(MAX_PDF_BYTES + 1)], 'g.pdf', { type: 'application/pdf' });

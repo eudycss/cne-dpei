@@ -34,9 +34,30 @@ describe('nombre del certificado Evatics', () => {
 
   it('una letra mal leída solo se tolera en palabras de 7 letras o más', () => {
     expect(nombreCoincide('Ana Gabriella Pérez López', 'PÉREZ LÓPEZ ANA GABRIELA')).toBe(true);
-    expect(nombreCoincide('Edwin Sebastian Cabascanga Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
+    expect(nombreCoincide('Edwin Sebastian Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(true);
     expect(nombreCoincide('Anna María Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
     expect(nombreCoincide('Ana Mariq Pérez López', 'PÉREZ LÓPEZ ANA MARÍA')).toBe(false);
+  });
+
+  it('la letra de diferencia no vale en la última letra (otra persona u otra familia)', () => {
+    expect(nombreCoincide('Fernanda Sofía Andrade Vega', 'ANDRADE VEGA FERNANDO SOFIA')).toBe(false);
+    expect(nombreCoincide('Luis Alberto Martines Vega', 'MARTINEZ VEGA LUIS ALBERTO')).toBe(false);
+  });
+
+  it('la letra de diferencia se tolera en una sola palabra', () => {
+    expect(nombreCoincide('Edwin Sebastien Cabascanfo Salazar', 'CABASCANGO SALAZAR EDWIN SEBASTIAN')).toBe(false);
+  });
+
+  it('nombres de 3 y de 5 palabras, y apellidos compuestos', () => {
+    expect(nombreCoincide('Luis Vega Tapia', 'VEGA TAPIA LUIS')).toBe(true);
+    expect(nombreCoincide('Luis Vega', 'VEGA TAPIA LUIS')).toBe(false);
+    expect(nombreCoincide('María José Ana Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(true);
+    expect(nombreCoincide('María José Pérez López', 'PÉREZ LÓPEZ MARÍA JOSÉ ANA')).toBe(false);
+    expect(nombreCoincide('Ana María de la Torre Vega', 'DE LA TORRE VEGA ANA MARÍA')).toBe(true);
+  });
+
+  it('una sola palabra en el personal nunca coincide', () => {
+    expect(nombreCoincide('Ana', 'ANA')).toBe(false);
   });
 
   it('"Mario" no pasa por "María"', () => {
