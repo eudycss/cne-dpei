@@ -1147,6 +1147,11 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-etapas-grid > .card { margin: 0; min-width: 0; }
 @media (max-width: 1100px) { .evx-etapas-grid { grid-template-columns: 1fr; } }
 .evx-medalla { margin-right: 0.35rem; }
+.evx-nombre-celda { display: flex; align-items: center; flex-wrap: wrap; gap: 0 0.35rem; min-width: 0; }
+.evx-nombre-celda .evx-medalla { margin-right: 0; font-size: 1.05rem; }
+.evx-insignia { font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 99px; white-space: nowrap; }
+.evx-insignia.pilas { color: var(--f-text); background: var(--f-bg-elevated); border: 1px dashed var(--f-border-strong); }
+.evx-insignia.completo { color: var(--f-text); background: var(--f-bg-elevated); border: 1px solid var(--f-border-strong); }
 .evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
 .evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }

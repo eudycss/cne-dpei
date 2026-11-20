@@ -6,7 +6,7 @@ import { PERMISO_IDS } from '@cne/shared-validation';
 import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName } from '@cne/shared-types';
 
 import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
-import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
+import { AvanceEvatics, distintivo, ordenarGrupos } from './AvanceEvatics';
 import { sugerenciaIa } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
@@ -130,9 +130,9 @@ describe('EvaticsPanel', () => {
     renderPanel();
     const avance = await screen.findByRole('region', { name: 'Avance por cantón' });
     const barras = within(avance).getAllByRole('button', { name: /aprobados \(/ });
-    expect(barras.map((b) => b.textContent?.split(/\d/)[0])).toEqual(['Ibarra', 'CPE']);
+    expect(barras.map((b) => b.querySelector('.evx-nombre')?.textContent)).toEqual(['Ibarra', 'CPE']);
     expect(barras[0]).toHaveAccessibleName(
-      'Ibarra: 2 de 3 aprobados (67 %), 1 en revisión, 0 rechazados, 0 sin subir. Filtrar el listado',
+      'Ibarra: 2 de 3 aprobados (67 %), 1 en revisión, 0 rechazados, 0 sin subir. Primer lugar. Filtrar el listado',
     );
 
     await user.click(barras[0]);
@@ -442,6 +442,62 @@ describe('avance: orden automático', () => {
 
     rerender(<AvanceEvatics {...props} porTecnico={[g('Carlos', 10, 8), g('Sebastian', 10, 9)]} />);
     expect(nombresEnPantalla()).toEqual(['Sebastian', 'Carlos']);
+  });
+});
+
+describe('AvanceEvatics: medallas y «Póngase pilas»', () => {
+  const g = (nombre: string, total: number, aprobados: number) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+
+  it('medalla a los 3 primeros con avance; desde el 4.º «Póngase pilas» hasta el 100 %', () => {
+    expect(distintivo(g('A', 10, 9), 0)).toEqual({ tipo: 'medalla', lugar: 1 });
+    expect(distintivo(g('B', 10, 5), 1)).toEqual({ tipo: 'medalla', lugar: 2 });
+    expect(distintivo(g('C', 10, 10), 2)).toEqual({ tipo: 'medalla', lugar: 3 });
+    expect(distintivo(g('D', 10, 3), 3)).toEqual({ tipo: 'pilas' });
+    expect(distintivo(g('E', 4, 4), 3)).toEqual({ tipo: 'completo' });
+  });
+
+  it('sin aprobados no hay medalla, aunque esté entre los 3 primeros', () => {
+    expect(distintivo(g('A', 10, 0), 0)).toEqual({ tipo: 'pilas' });
+    expect(distintivo(g('Vacío', 0, 0), 0)).toBeNull();
+  });
+
+  it('se ve en las barras y lo anuncia el lector de pantalla', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('Ibarra', 10, 8), g('Otavalo', 10, 6), g('Cotacachi', 10, 4), g('Urcuquí', 10, 1), g('Pimampiro', 2, 0)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /^Ibarra:.*Primer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Otavalo:.*Segundo lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cotacachi:.*Tercer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Urcuquí:.*¡Póngase pilas!/ })).toBeInTheDocument();
+    expect(screen.getAllByText('¡Póngase pilas!')).toHaveLength(2);
+    expect(screen.getByText('🥇')).toBeInTheDocument();
+  });
+
+  it('en la tabla, columna «Lugar»', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('Ibarra', 10, 10), g('Otavalo', 5, 1)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Ver como tabla/ }));
+    expect(screen.getByRole('columnheader', { name: 'Lugar' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '🥇 Primer lugar' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '🥈 Segundo lugar' })).toBeInTheDocument();
   });
 });
 

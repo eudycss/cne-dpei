@@ -32,8 +32,52 @@ export function ordenarGrupos(grupos: GrupoConteoEvatics[]): GrupoConteoEvatics[
   );
 }
 
-export function describirGrupo(g: GrupoConteoEvatics): string {
-  return `${g.nombre}: ${g.aprobados} de ${g.total} aprobados (${pct(g.aprobados, g.total)} %), ${g.pendientes} en revisión, ${g.rechazados} rechazados, ${g.sinSubir} sin subir`;
+export const MEDALLAS = {
+  1: { icono: '🥇', texto: 'Primer lugar' },
+  2: { icono: '🥈', texto: 'Segundo lugar' },
+  3: { icono: '🥉', texto: 'Tercer lugar' },
+} as const;
+
+export type Distintivo = { tipo: 'medalla'; lugar: 1 | 2 | 3 } | { tipo: 'completo' } | { tipo: 'pilas' };
+
+/**
+ * Lo que gana cada grupo según su puesto (0 = primero, ya ordenado con
+ * ordenarGrupos): medalla los 3 primeros con al menos un aprobado; desde ahí,
+ * «¡Completo!» al llegar al 100 % y «¡Póngase pilas!» mientras no.
+ */
+export function distintivo(g: GrupoConteoEvatics, puesto: number): Distintivo | null {
+  if (g.total === 0) return null;
+  if (puesto < 3 && g.aprobados > 0) return { tipo: 'medalla', lugar: (puesto + 1) as 1 | 2 | 3 };
+  return g.aprobados >= g.total ? { tipo: 'completo' } : { tipo: 'pilas' };
+}
+
+export function textoDistintivo(d: Distintivo | null): string {
+  if (!d) return '';
+  if (d.tipo === 'medalla') return `${MEDALLAS[d.lugar].icono} ${MEDALLAS[d.lugar].texto}`;
+  return d.tipo === 'completo' ? '✅ ¡Completo!' : '¡Póngase pilas!';
+}
+
+export function describirGrupo(g: GrupoConteoEvatics, d: Distintivo | null = null): string {
+  const base = `${g.nombre}: ${g.aprobados} de ${g.total} aprobados (${pct(g.aprobados, g.total)} %), ${g.pendientes} en revisión, ${g.rechazados} rechazados, ${g.sinSubir} sin subir`;
+  if (!d) return base;
+  return `${base}. ${d.tipo === 'medalla' ? MEDALLAS[d.lugar].texto : textoDistintivo(d)}`;
+}
+
+/** Medalla, «¡Completo!» o «¡Póngase pilas!» junto al nombre (decorativo: el texto va en el aria-label). */
+function Insignia({ d }: { d: Distintivo | null }) {
+  if (!d) return null;
+  if (d.tipo === 'medalla') {
+    return (
+      <span className="evx-medalla" aria-hidden="true" title={MEDALLAS[d.lugar].texto}>
+        {MEDALLAS[d.lugar].icono}
+      </span>
+    );
+  }
+  return (
+    <span className={`evx-insignia ${d.tipo}`} aria-hidden="true">
+      {textoDistintivo(d)}
+    </span>
+  );
 }
 
 const DURACION_REORDEN_MS = 450;
@@ -165,10 +209,11 @@ export function AvanceEvatics({
                 ))}
                 <th scope="col">Total</th>
                 <th scope="col">% aprobado</th>
+                <th scope="col">Lugar</th>
               </tr>
             </thead>
             <tbody>
-              {grupos.map((g) => (
+              {grupos.map((g, i) => (
                 <tr key={g.nombre}>
                   <th scope="row">{g.nombre}</th>
                   {TRAMOS.map((t) => (
@@ -176,6 +221,7 @@ export function AvanceEvatics({
                   ))}
                   <td>{g.total}</td>
                   <td>{pct(g.aprobados, g.total)} %</td>
+                  <td>{textoDistintivo(distintivo(g, i))}</td>
                 </tr>
               ))}
             </tbody>
@@ -183,18 +229,23 @@ export function AvanceEvatics({
         </div>
       ) : (
         <ul className="evx-barras" ref={lista}>
-          {grupos.map((g) => {
+          {grupos.map((g, i) => {
             const elegido = actual === g.nombre;
+            const d = distintivo(g, i);
             return (
               <li key={g.nombre} data-clave={g.nombre}>
                 <button
                   type="button"
                   className="evx-fila"
                   aria-pressed={elegido}
-                  aria-label={`${describirGrupo(g)}. ${elegido ? 'Quitar el filtro' : 'Filtrar el listado'}`}
+                  aria-label={`${describirGrupo(g, d)}. ${elegido ? 'Quitar el filtro' : 'Filtrar el listado'}`}
                   onClick={() => onElegir(vista, elegido ? '' : g.nombre)}
                 >
-                  <span className="evx-nombre">{g.nombre}</span>
+                  <span className="evx-nombre-celda">
+                    {d?.tipo === 'medalla' && <Insignia d={d} />}
+                    <span className="evx-nombre">{g.nombre}</span>
+                    {d && d.tipo !== 'medalla' && <Insignia d={d} />}
+                  </span>
                   <span className="evx-barra" aria-hidden="true">
                     {TRAMOS.map((t) =>
                       g[t.clave] > 0 ? (
