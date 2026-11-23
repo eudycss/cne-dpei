@@ -25,6 +25,7 @@ import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
 import { cargoCorto, fechaCorta, mensajeError, partirNombre } from './utils';
 import { SEXO, contarSexo, cumpleSexo, textoSexo, type FiltroSexo } from './sexo';
+import { cumpleFoto, type FiltroFoto } from './foto';
 
 /**
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
@@ -66,6 +67,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const [busqueda, setBusqueda] = useState('');
   const [filtroCuenta, setFiltroCuenta] = useState<EstadoCuentaCda | ''>('');
   const [filtroSexo, setFiltroSexo] = useState<FiltroSexo>('');
+  const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('');
   const [params, setParams] = useSearchParams();
   const filtro = {
     desde: fechaDeUrl(params.get('ingresoDesde')),
@@ -89,6 +91,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     setBusqueda('');
     setFiltroCuenta('');
     setFiltroSexo('');
+    setFiltroFoto('');
     setParams(
       (prev) => {
         const p = new URLSearchParams(prev);
@@ -173,11 +176,13 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         coincideBusqueda([o.apellidosNombres, o.cedula], q) &&
         cumpleIngreso(o, f) &&
         (!filtroCuenta || o.cuenta === filtroCuenta) &&
-        cumpleSexo(o, filtroSexo),
+        cumpleSexo(o, filtroSexo) &&
+        cumpleFoto(o, filtroFoto),
     );
     return ordenarPorIngreso(filtrados, orden);
-  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta, filtroSexo]);
-  const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '' || filtroSexo !== '';
+  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta, filtroSexo, filtroFoto]);
+  const hayFiltros =
+    busqueda.trim() !== '' || conRango || filtroCuenta !== '' || filtroSexo !== '' || filtroFoto !== '';
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
   const porRevisar = data?.filter((o) => o.activo && o.fotoPendiente).length ?? 0;
@@ -314,6 +319,15 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 <option value="M">Hombres</option>
                 <option value="F">Mujeres</option>
                 <option value="SIN">Sin registrar</option>
+              </select>
+            </label>
+            <label className="ocda-fecha">
+              <span>Foto</span>
+              <select value={filtroFoto} onChange={(e) => setFiltroFoto(e.target.value as FiltroFoto)}>
+                <option value="">Todas</option>
+                <option value="CON">Con foto</option>
+                <option value="SIN">Sin foto (nada subido)</option>
+                <option value="REVISAR">Por revisar</option>
               </select>
             </label>
             <label className="ocda-fecha">
