@@ -16,6 +16,7 @@ import {
   leerCallbackJornada,
   marcasCumplimiento,
   mensajeFrecuencia,
+  mismosConteos,
   tecladoFrecuencia,
   paginasDetalleJornada,
   tecladoFichaCda,
@@ -721,5 +722,73 @@ describe('Jornada (Telegram)', () => {
       expect(mensajeFrecuencia(0)).toContain('Toque una frecuencia para volver a activarlo');
       expect(mensajeFrecuencia(240)).toContain('cada <b>4 h</b>');
     });
+  });
+});
+
+describe('Jornada: juntas de los NO CDA', () => {
+  // CDA 971 con 3 NO CDA: 5 + 2 juntas llegaron, 6 faltan.
+  const conJuntas = () =>
+    jornada({
+      noCdas: [
+        noCda('7001', '971', { juntas: 5, visita: { en: A_LAS('18:42'), sinSenal: false } }),
+        noCda('7002', '971', { juntas: 2, visita: { en: A_LAS('19:05'), sinSenal: false } }),
+        noCda('7003', '971', { juntas: 6 }),
+      ],
+    });
+
+  it('el resumen de Llegada NO CDA trae la barra de juntas', () => {
+    const texto = formatearResumenJornada(conJuntas(), 'NO_CDA', AHORA);
+    expect(texto).toMatch(/🗳️ Juntas <code>[▓░]+<\/code> <b>7 de 13<\/b> · 54 %/);
+  });
+
+  it('por CDA: cada CDA con sus juntas', () => {
+    const texto = formatearResumenJornada(conJuntas(), 'NO_CDA', AHORA, 'cda');
+    expect(texto).toContain('— 2/3 · juntas 7/13');
+  });
+
+  it('el detalle y la ficha del CDA muestran las juntas de cada NO CDA', () => {
+    const detalle = paginasDetalleJornada(conJuntas(), 'NO_CDA', 'tod', AHORA).join('\n');
+    expect(detalle).toContain('2 de 3 llegaron · juntas 7/13');
+    expect(detalle).toContain('⏳ 7003 · NC 7003 · 6 juntas');
+
+    const ficha = formatearFichaCda(conJuntas(), '971', AHORA)!;
+    expect(ficha).toContain('NO CDA: 2 de 3 llegaron</b> · juntas 7/13');
+    expect(ficha).toContain('✅ 7001 · NC 7001 · 5 juntas · 18:42');
+  });
+
+  it('sin juntas en el distributivo no aparece ninguna línea de juntas', () => {
+    const j = jornada({ noCdas: [noCda('7001', '971'), noCda('7002', '971', { visita: { en: A_LAS('18:42'), sinSenal: false } })] });
+    expect(formatearResumenJornada(j, 'NO_CDA', AHORA)).not.toContain('Juntas');
+    expect(formatearFichaCda(j, '971', AHORA)).not.toContain('juntas');
+  });
+
+  it('el resumen automático suma juntas y dice cuántas llegaron desde el anterior', () => {
+    const antes = conteosJornada(jornada({ noCdas: [noCda('7001', '971', { juntas: 5 }), noCda('7002', '971', { juntas: 2 }), noCda('7003', '971', { juntas: 6 })] }));
+    expect(antes.juntasNoCda).toEqual({ hechos: 0, total: 13 });
+
+    const texto = formatearResumenAutomatico(conJuntas(), AHORA, { conteos: antes, en: A_LAS('18:30') });
+    expect(texto).toContain('2/3 · faltan 1 · juntas 7/13 · 0 de 1 CDA completos');
+    expect(texto).toContain('🏫 +2 NO CDA llegaron (+7 juntas)');
+  });
+
+  it('una sola junta va en singular', () => {
+    const j = jornada({ noCdas: [noCda('7001', '971', { juntas: 1 })] });
+    expect(formatearFichaCda(j, '971', AHORA)).toContain('⏳ 7001 · NC 7001 · 1 junta');
+  });
+
+  it('un conteo guardado sin juntas (antes del deploy) cuenta como distinto, y uno igual no', () => {
+    const j = conJuntas();
+    const { juntasNoCda: _sinJuntas, ...viejo } = conteosJornada(j);
+    expect(mismosConteos(viejo, conteosJornada(j))).toBe(false);
+    expect(mismosConteos(conteosJornada(j), conteosJornada(j))).toBe(true);
+  });
+
+  it('un resumen anterior guardado sin juntas no inventa "+N juntas"', () => {
+    const { juntasNoCda: _sinJuntas, ...viejo } = conteosJornada(
+      jornada({ noCdas: [noCda('7001', '971', { juntas: 5 }), noCda('7002', '971', { juntas: 2 }), noCda('7003', '971', { juntas: 6 })] }),
+    );
+    const texto = formatearResumenAutomatico(conJuntas(), AHORA, { conteos: viejo, en: A_LAS('18:30') });
+    expect(texto).toContain('🏫 +2 NO CDA llegaron');
+    expect(texto).not.toContain('juntas)');
   });
 });
