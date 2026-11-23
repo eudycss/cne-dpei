@@ -13,7 +13,7 @@ vi.mock('../../auth/AuthContext', () => ({
 }));
 
 vi.mock('../../lib/api', () => ({
-  api: { get: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 
 const aoaToSheet = vi.fn(() => ({}));
@@ -466,5 +466,88 @@ describe('ReporteNoCdaPage — Informe del Operador CDA', () => {
 
     expect(sileoError).toHaveBeenCalledWith({ title: mensaje });
     expect(guardarArchivo).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReporteNoCdaPage — NO CDA sin CDA: llegada directa a la Delegación', () => {
+  const delegacion: ReporteNoCdaItem = {
+    cdaId: 'DELEGACION',
+    cdaCodigo: 'DPEI',
+    cdaNombre: 'Delegación Imbabura (directo, sin CDA)',
+    cantonNombre: 'IBARRA',
+    operadorNombre: '—',
+    operadorCedula: '—',
+    kitsCodigos: [],
+    totalNoCdas: 2,
+    totalLlegados: 1,
+    juntasNoCdas: 4,
+    juntasLlegadas: 2,
+    esDelegacion: true,
+    noCdas: [
+      { ...noCdaItem.noCdas[1], id: 'd-pend', codigoRecinto: '1963', nombre: 'Escuela Abelardo Morán' },
+      { ...noCdaItem.noCdas[0], id: 'd-lleg', codigoRecinto: '1999', nombre: 'Escuela Directa', registradoPor: 'Sup Uno' },
+    ],
+  };
+  const apiPost = api.post as unknown as ReturnType<typeof vi.fn>;
+  const apiDelete = api.delete as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    rolesUsuario = ['ADMINISTRADOR'];
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === '/tracking/reporte-no-cda' ? [noCdaItem, delegacion] : [flujoItem] }),
+    );
+    apiPost.mockResolvedValue({ data: {} });
+    apiDelete.mockResolvedValue({ data: {} });
+  });
+
+  async function abrirVista() {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Juan Pérez');
+    await user.click(screen.getByText('Llegada de NO CDA'));
+    await screen.findByText(/1963 — Escuela Abelardo Morán/);
+    return user;
+  }
+
+  it('el admin marca la llegada con confirmación y llama al endpoint del NO CDA', async () => {
+    const user = await abrirVista();
+    expect(screen.getByText('Quien recibe en la Delegación')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Marcar llegada: 1963 — Escuela Abelardo Morán' }));
+    expect(screen.getByRole('heading', { name: 'Marcar llegada a la Delegación' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Sí, llegó' }));
+
+    expect(apiPost).toHaveBeenCalledWith('/tracking/no-cda/d-pend/llegada-delegacion');
+    // Recarga el reporte para ver la hora y quién marcó.
+    await vi.waitFor(() => expect(apiGetMock.mock.calls.filter(([u]) => u === '/tracking/reporte-no-cda').length).toBeGreaterThan(1));
+  });
+
+  it('cancelar no registra nada', async () => {
+    const user = await abrirVista();
+    await user.click(screen.getByRole('button', { name: 'Marcar llegada: 1963 — Escuela Abelardo Morán' }));
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('solo el administrador ve «Deshacer» en una llegada ya marcada', async () => {
+    const user = await abrirVista();
+    await user.click(screen.getByRole('button', { name: 'Deshacer: 1999 — Escuela Directa' }));
+    await user.click(screen.getByRole('button', { name: 'Sí, deshacer' }));
+    expect(apiDelete).toHaveBeenCalledWith('/tracking/no-cda/d-lleg/llegada-delegacion');
+  });
+
+  it('el técnico supervisor marca pero no deshace', async () => {
+    rolesUsuario = ['TECNICO_SUPERVISOR'];
+    await abrirVista();
+    expect(screen.getByRole('button', { name: /Marcar llegada: 1963/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Deshacer/ })).not.toBeInTheDocument();
+  });
+
+  it('el lector no ve ningún botón; los CDA normales nunca los tienen', async () => {
+    rolesUsuario = ['LECTOR'];
+    await abrirVista();
+    expect(screen.queryByRole('button', { name: /Marcar llegada/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Deshacer/ })).not.toBeInTheDocument();
   });
 });

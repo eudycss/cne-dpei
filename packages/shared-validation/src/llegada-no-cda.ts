@@ -4,6 +4,14 @@
  * Tipos estructurales: sirve tal cual con `ReporteNoCdaItem` de shared-types.
  */
 
+/**
+ * NO CDA sin CDA de destino: llevan sus actas directo a la Delegación. En el
+ * reporte y en el bot van como un grupo más, con este id y este código.
+ */
+export const CDA_ID_DELEGACION = 'DELEGACION';
+export const CODIGO_DELEGACION = 'DPEI';
+export const NOMBRE_DELEGACION = 'Delegación Imbabura (directo, sin CDA)';
+
 export interface NoCdaParaResumen {
   cantonNombre: string;
   juntas: number;

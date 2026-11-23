@@ -887,6 +887,16 @@ export interface ReporteNoCdaItem {
   /** Juntas de los NO CDA que ya llegaron. */
   juntasLlegadas: number;
   noCdas: ReporteNoCdaDetalle[];
+  /**
+   * Grupo "DPEI — Delegación Imbabura": NO CDA sin CDA de destino, que llevan
+   * sus actas directo a la Delegación. Su llegada se marca desde la web.
+   */
+  esDelegacion?: boolean;
+}
+
+export interface LlegadaNoCdaDelegacionResponse {
+  recintoId: string;
+  ocurridoEn: string;
 }
 
 export interface ReporteFlujoItem {

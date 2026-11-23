@@ -69,6 +69,16 @@ describe('JornadaService', () => {
               // Sin juntas en el distributivo (null): cuentan como 0.
               // Su CDA (1500) no tiene kit: no cuenta.
               { id: 'n2', codigoRecinto: '2002', nombre: 'Lejana', cdaDestinoId: 'r3', canton: null },
+              // Sin CDA: entrega directo en la Delegación (grupo DPEI, siempre cuenta).
+              {
+                id: 'n3',
+                codigoRecinto: '1963',
+                nombre: 'Directa',
+                cdaDestinoId: null,
+                juntasFemeninas: 1,
+                juntasMasculinas: 1,
+                canton: { codigo: '40', nombre: 'COTACACHI' },
+              },
             ],
       ),
     );
@@ -237,6 +247,18 @@ describe('JornadaService', () => {
           visita: null,
           cdaConKit: false,
           juntas: 0,
+        },
+        {
+          codigoRecinto: '1963',
+          nombreRecinto: 'Directa',
+          codigoCda: 'DPEI',
+          nombreCda: 'Delegación Imbabura (directo, sin CDA)',
+          canton: { codigo: 40, nombre: 'COTACACHI' },
+          tecnico: { numero: null, nombre: '' },
+          personas: [],
+          visita: null,
+          cdaConKit: true,
+          juntas: 2,
         },
       ]);
       expect(j.sinDistributivo).toBe(false);
@@ -422,8 +444,10 @@ describe('JornadaService', () => {
       await service.atenderMensaje(CHAT, BOTONES_JORNADA.NO_CDA);
       const [texto, , botones] = telegram.enviarHtml.mock.calls[0];
       expect(texto).toContain('· por CDA');
-      expect(texto).toContain('<b>1 de 1</b> ✅');
+      // 2001 (de 971) llegó; 1963 (sin CDA, directo a la Delegación) falta.
+      expect(texto).toContain('<b>1 de 2</b> · faltan 1');
       expect(texto).toContain('✅ <b>971</b> · UE Chaltura — 1/1');
+      expect(texto).toContain('⏳ <b>DPEI</b> · Delegación Imbabura (directo, sin CDA) — 0/1 · juntas 0/2');
       expect(texto).toContain('⚪ 1 NO CDA de CDA sin kit (no cuentan)');
       expect(JSON.stringify(botones)).toContain('jor:cda:971');
       expect(JSON.stringify(botones)).toContain('• 🏫 Por CDA •');

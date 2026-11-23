@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MINUTOS_RESUMEN_JORNADA_POR_DEFECTO } from '@cne/shared-validation';
+import { CODIGO_DELEGACION, MINUTOS_RESUMEN_JORNADA_POR_DEFECTO, NOMBRE_DELEGACION } from '@cne/shared-validation';
 import { PrismaService } from '../../db/prisma.service';
 import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distributivo-tecnicos.client';
 import { escapeHtml } from '../../auth/notifier';
@@ -30,6 +30,7 @@ import {
   type Jornada,
   type KitEscaneadoJornada,
   type MomentoJornada,
+  type NoCdaJornada,
   type PersonaJornada,
   type RegistroJornada,
   type TecnicoJornada,
@@ -501,7 +502,8 @@ export class JornadaService {
         select: { kitId: true, operadorId: true, confirmadoEn: true, desdeOffline: true, fotoMilitarUrl: true },
       }),
       this.prisma.recinto.findMany({
-        where: { tipo: 'NO_CDA', activo: true, cdaDestinoId: { not: null } },
+        // Los que no tienen CDA (cdaDestinoId null) van como el grupo de la Delegación.
+        where: { tipo: 'NO_CDA', activo: true },
         select: {
           id: true,
           codigoRecinto: true,
@@ -637,21 +639,35 @@ export class JornadaService {
       }
     }
     const noCdasJornada = noCdas
-      .filter((n) => cdaPorId.has(n.cdaDestinoId!))
-      .map((n) => {
-        const cda = cdaPorId.get(n.cdaDestinoId!)!;
-        return {
+      .filter((n) => n.cdaDestinoId === null || cdaPorId.has(n.cdaDestinoId))
+      .map((n): NoCdaJornada => {
+        const comun = {
           codigoRecinto: n.codigoRecinto,
           nombreRecinto: n.nombre,
+          canton: cantonDe(n.canton),
+          visita: visitaPorRecinto.get(n.id) ?? null,
+          juntas: (n.juntasFemeninas ?? 0) + (n.juntasMasculinas ?? 0),
+        };
+        if (n.cdaDestinoId === null) {
+          // Sin CDA: entrega directo en la Delegación; cuenta siempre y se marca desde la web.
+          return {
+            ...comun,
+            codigoCda: CODIGO_DELEGACION,
+            nombreCda: NOMBRE_DELEGACION,
+            tecnico: tecnicoPorCodigo.get(n.codigoRecinto) ?? SIN_TECNICO,
+            personas: [],
+            cdaConKit: true,
+          };
+        }
+        const cda = cdaPorId.get(n.cdaDestinoId)!;
+        return {
+          ...comun,
           codigoCda: cda.codigoRecinto,
           nombreCda: cda.nombre,
-          canton: cantonDe(n.canton),
           // Si el distributivo no trae el NO CDA, va con el técnico de su CDA.
           tecnico: tecnicoPorCodigo.get(n.codigoRecinto) ?? tecnicoDe(cda.codigoRecinto),
           personas: personasPorRecinto.get(cda.id) ?? [],
-          visita: visitaPorRecinto.get(n.id) ?? null,
           cdaConKit: conKit.has(cda.id),
-          juntas: (n.juntasFemeninas ?? 0) + (n.juntasMasculinas ?? 0),
         };
       });
 

@@ -792,3 +792,33 @@ describe('Jornada: juntas de los NO CDA', () => {
     expect(texto).not.toContain('juntas)');
   });
 });
+
+describe('Jornada: NO CDA sin CDA (directo a la Delegación)', () => {
+  const directo = (extra: Partial<NoCdaJornada> = {}) =>
+    noCda('1963', 'DPEI', { nombreCda: 'Delegación Imbabura (directo, sin CDA)', personas: [], tecnico: SIN, juntas: 2, ...extra });
+
+  it('por CDA aparece como el grupo DPEI y abre su ficha', () => {
+    const j = jornada({ noCdas: [noCda('7001', '971', { juntas: 4 }), directo()] });
+    expect(formatearResumenJornada(j, 'NO_CDA', AHORA, 'cda')).toContain('<b>DPEI</b> · Delegación Imbabura (directo, sin CDA) — 0/1 · juntas 0/2');
+    const botones = tecladoJornada(j, 'NO_CDA', 'res', 0, 1, 'cda').inline_keyboard.flat();
+    expect(botones.map((b) => b.callback_data)).toContain(callbackFichaCda('DPEI'));
+  });
+
+  it('la ficha DPEI explica que se marca en la web y lista sus NO CDA', () => {
+    const j = jornada({ noCdas: [directo({ visita: { en: A_LAS('19:40'), sinSenal: false } })] });
+    const ficha = formatearFichaCda(j, 'DPEI', AHORA)!;
+    expect(ficha).toContain('<b>🔎 DPEI · Delegación Imbabura (directo, sin CDA)</b>');
+    expect(ficha).toContain('Reportes › Llegada de NO CDA');
+    expect(ficha).toContain('✅ 1963 · NC 1963 · 2 juntas · 19:40');
+  });
+
+  it('sin NO CDA directos, la ficha DPEI no existe', () => {
+    expect(formatearFichaCda(jornada(), 'DPEI', AHORA)).toBeNull();
+  });
+
+  it('en el detalle dice que entrega directo en la Delegación (no "su CDA no tiene kit")', () => {
+    const detalle = paginasDetalleJornada(jornada({ noCdas: [directo()] }), 'NO_CDA', 'tod', AHORA).join('\n');
+    expect(detalle).toContain('sin CDA: entregan directo en la Delegación');
+    expect(detalle).not.toContain('su CDA no tiene kit');
+  });
+});

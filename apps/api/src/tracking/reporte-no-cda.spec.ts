@@ -103,6 +103,32 @@ describe('armarReporteNoCda', () => {
     });
   });
 
+  it('los NO CDA sin CDA van al final como el grupo de la Delegación, con su llegada y quién la marcó', () => {
+    const items = armarReporteNoCda(
+      entrada({
+        noCdasDelegacion: [recinto('d1', { cantonNombre: 'COTACACHI', juntasFemeninas: 1, juntasMasculinas: 1 })],
+        llegadas: [{ recintoId: 'd1', operadorId: 'as1', ocurridoEn: new Date('2026-11-30T02:40:00Z') }],
+      }),
+    );
+
+    expect(items.map((i) => i.cdaId)).toEqual(['cda1', 'DELEGACION']);
+    expect(items[1]).toMatchObject({
+      cdaCodigo: 'DPEI',
+      esDelegacion: true,
+      totalNoCdas: 1,
+      totalLlegados: 1,
+      juntasNoCdas: 2,
+      juntasLlegadas: 2,
+      kitsCodigos: [],
+    });
+    expect(items[1].noCdas[0]).toMatchObject({ cantonNombre: 'COTACACHI', llegadaEn: '2026-11-30T02:40:00.000Z', registradoPor: 'Luis Mora' });
+    expect(items[0].esDelegacion).toBeUndefined();
+  });
+
+  it('sin NO CDA directos no hay grupo de la Delegación', () => {
+    expect(armarReporteNoCda(entrada({ noCdasDelegacion: [] })).map((i) => i.cdaId)).toEqual(['cda1']);
+  });
+
   it('ignora marcas sin recinto y NO CDA de otros CDA', () => {
     const [cda] = armarReporteNoCda(
       entrada({
