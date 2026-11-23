@@ -344,6 +344,59 @@ describe('TrackingService', () => {
     });
   });
 
+  describe('reporteNoCdas', () => {
+    const noCdaId = '55555555-5555-5555-5555-555555555555';
+    const asistenteId = '66666666-6666-6666-6666-666666666666';
+    const recintoBd = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      codigoRecinto: id.slice(0, 4),
+      nombre: `Recinto ${id.slice(0, 4)}`,
+      cdaDestinoId: null,
+      juntasFemeninas: 2,
+      juntasMasculinas: 2,
+      numeroElectores: 1000,
+      canton: { nombre: 'IBARRA' },
+      ...extra,
+    });
+
+    it('sin evento activo devuelve lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.reporteNoCdas()).resolves.toEqual([]);
+    });
+
+    it('trae cantón y juntas, y cuenta la marca de quien la haya hecho (sin filtrar por el operador del kit)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId, codigoUnico: 'K001' }]);
+      prisma.recinto.findMany
+        .mockResolvedValueOnce([recintoBd(recintoId, {})])
+        .mockResolvedValueOnce([
+          recintoBd(noCdaId, { cdaDestinoId: recintoId, juntasFemeninas: 6, juntasMasculinas: 7, canton: { nombre: 'URCUQUI' } }),
+        ]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { recintoId: noCdaId, operadorId: asistenteId, ocurridoEn: new Date('2026-11-29T23:42:00.000Z') },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Pérez', cedula: '1000000001' },
+        { id: asistenteId, nombres: 'Luis', apellidos: 'Mora', cedula: '1000000002' },
+      ]);
+
+      const [cda] = await service.reporteNoCdas();
+
+      expect(cda).toMatchObject({ cantonNombre: 'IBARRA', operadorNombre: 'Ana Pérez', juntasNoCdas: 13, juntasLlegadas: 13 });
+      expect(cda.noCdas[0]).toMatchObject({
+        cantonNombre: 'URCUQUI',
+        juntas: 13,
+        llegadaEn: '2026-11-29T23:42:00.000Z',
+        registradoPor: 'Luis Mora',
+      });
+      const filtro = prisma.eventoTracking.findMany.mock.calls.at(-1)![0].where;
+      expect(filtro).toEqual({ eventoId, tipo: 'LLEGADA_NO_CDA', recintoId: { in: [noCdaId] } });
+      expect(prisma.usuario.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { id: { in: [operadorId, asistenteId] } } }),
+      );
+    });
+  });
+
   describe('reporteFlujoCdas', () => {
     it('incluye la prueba de conexión, el cantón y el id del operador de cada CDA', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);

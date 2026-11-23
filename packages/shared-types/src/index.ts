@@ -859,18 +859,33 @@ export interface ReporteNoCdaDetalle {
   id: string;
   codigoRecinto: string;
   nombre: string;
+  cantonNombre: string;
+  juntasFemeninas: number;
+  juntasMasculinas: number;
+  /** Femeninas + masculinas (0 si el distributivo no las trae). */
+  juntas: number;
+  electores: number;
   llegado: boolean;
+  /** Primera vez que el operador del CDA marcó que llegó (ISO), o null. */
+  llegadaEn: string | null;
+  /** Nombre de quien lo marcó, o null si aún no llega. */
+  registradoPor: string | null;
 }
 
 export interface ReporteNoCdaItem {
   cdaId: string;
   cdaCodigo: string;
   cdaNombre: string;
+  cantonNombre: string;
   operadorNombre: string;
   operadorCedula: string;
   kitsCodigos: string[];
   totalNoCdas: number;
   totalLlegados: number;
+  /** Juntas de todos sus NO CDA. */
+  juntasNoCdas: number;
+  /** Juntas de los NO CDA que ya llegaron. */
+  juntasLlegadas: number;
   noCdas: ReporteNoCdaDetalle[];
 }
 
