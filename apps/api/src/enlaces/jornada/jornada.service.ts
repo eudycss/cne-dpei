@@ -507,6 +507,8 @@ export class JornadaService {
           codigoRecinto: true,
           nombre: true,
           cdaDestinoId: true,
+          juntasFemeninas: true,
+          juntasMasculinas: true,
           canton: { select: { codigo: true, nombre: true } },
         },
       }),
@@ -649,6 +651,7 @@ export class JornadaService {
           personas: personasPorRecinto.get(cda.id) ?? [],
           visita: visitaPorRecinto.get(n.id) ?? null,
           cdaConKit: conKit.has(cda.id),
+          juntas: (n.juntasFemeninas ?? 0) + (n.juntasMasculinas ?? 0),
         };
       });
 

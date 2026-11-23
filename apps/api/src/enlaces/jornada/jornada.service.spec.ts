@@ -57,7 +57,16 @@ describe('JornadaService', () => {
               { id: 'r3', codigoRecinto: '1500', nombre: 'Sin kit', canton: null },
             ]
           : [
-              { id: 'n1', codigoRecinto: '2001', nombre: 'Escuelita', cdaDestinoId: 'r1', canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
+              {
+                id: 'n1',
+                codigoRecinto: '2001',
+                nombre: 'Escuelita',
+                cdaDestinoId: 'r1',
+                juntasFemeninas: 3,
+                juntasMasculinas: 2,
+                canton: { codigo: '45', nombre: 'ANTONIO ANTE' },
+              },
+              // Sin juntas en el distributivo (null): cuentan como 0.
               // Su CDA (1500) no tiene kit: no cuenta.
               { id: 'n2', codigoRecinto: '2002', nombre: 'Lejana', cdaDestinoId: 'r3', canton: null },
             ],
@@ -215,6 +224,7 @@ describe('JornadaService', () => {
           personas: j.unidades[0].personas,
           visita: { en: T('2026-11-29T15:00:00Z'), sinSenal: false },
           cdaConKit: true,
+          juntas: 5,
         },
         {
           codigoRecinto: '2002',
@@ -226,6 +236,7 @@ describe('JornadaService', () => {
           personas: [],
           visita: null,
           cdaConKit: false,
+          juntas: 0,
         },
       ]);
       expect(j.sinDistributivo).toBe(false);

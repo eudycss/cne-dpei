@@ -90,6 +90,8 @@ export interface NoCdaJornada {
   visita: RegistroJornada | null;
   /** Su CDA tiene kit en el evento; si no, nadie irá hoy y el NO CDA no cuenta. */
   cdaConKit: boolean;
+  /** Juntas F + M del distributivo (ausente = 0): el avance se mide también en juntas. */
+  juntas?: number;
 }
 
 export interface SinKitJornada {
@@ -275,6 +277,8 @@ export interface ItemJornada extends ConGrupo {
   marcas?: string;
   /** Solo NO CDA: su CDA, para agruparlos debajo de él. */
   cda?: { codigo: string; nombre: string };
+  /** Solo NO CDA: sus juntas. */
+  juntas?: number;
 }
 
 export interface EstadoVista {
@@ -299,6 +303,7 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
         personas: n.personas,
         registro: n.visita,
         cda: { codigo: n.codigoCda, nombre: n.nombreCda },
+        juntas: n.juntas ?? 0,
       }),
     );
     return {
@@ -446,6 +451,28 @@ function bloqueItem(i: ItemJornada, conHora: boolean): string {
   return `<b>${escapeHtml(i.codigoRecinto)} · ${escapeHtml(i.nombreRecinto)}</b>${horaTxt}${nota}${marcas}\n${lineaPersonas(i.personas)}`;
 }
 
+/** Juntas que llegaron de unos NO CDA (con o sin registro). */
+export function juntasNoCda(items: { juntas?: number; registro?: RegistroJornada | null; visita?: RegistroJornada | null }[]): AvanceVista {
+  let hechos = 0;
+  let total = 0;
+  for (const i of items) {
+    const n = i.juntas ?? 0;
+    total += n;
+    if (i.registro ?? i.visita) hechos += n;
+  }
+  return { hechos, total };
+}
+
+/** " · juntas 8/12", o nada si el distributivo no trae juntas. */
+function sufijoJuntas(a: AvanceVista): string {
+  return a.total > 0 ? ` · juntas ${a.hechos}/${a.total}` : '';
+}
+
+/** " · 4 juntas", o nada. */
+function juntasDeUno(n: number | undefined): string {
+  return n ? ` · ${n} ${n === 1 ? 'junta' : 'juntas'}` : '';
+}
+
 /**
  * NO CDA agrupados debajo de su CDA ("1133 · … — 1 de 2 llegaron"), primero
  * los CDA a los que les falta alguno. Con `soloFaltan`, cada CDA lista solo sus pendientes.
@@ -468,11 +495,13 @@ function bloquesNoCdaPorCda(items: ItemJornada[], soloFaltan: boolean): string[]
     const lineas = [...visibles].sort((a, b) => (a.registro ? 1 : 0) - (b.registro ? 1 : 0) || porCodigo(a, b)).map(
       (n) =>
         `   ${n.registro ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
+        juntasDeUno(n.juntas) +
         (n.registro ? ` · ${horaDe(n.registro)}` : ''),
     );
     return [
       [
-        `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}`,
+        `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}` +
+          sufijoJuntas(juntasNoCda(ncs)),
         ncs[0].personas.length > 0 ? lineaPersonas(ncs[0].personas) : '   <i>su CDA no tiene kit</i>',
         ...lineas,
       ].join('\n'),
@@ -496,15 +525,26 @@ export interface AvanceCda {
   nombre: string;
   reportados: number;
   total: number;
+  juntas: AvanceVista;
 }
 
 /** Un avance por CDA con NO CDA: primero los incompletos, luego por código. */
 export function avancePorCda(items: ItemJornada[]): AvanceCda[] {
   const porCda = new Map<string, AvanceCda>();
   for (const i of items) {
-    const a = porCda.get(i.cda!.codigo) ?? { codigo: i.cda!.codigo, nombre: i.cda!.nombre, reportados: 0, total: 0 };
+    const a = porCda.get(i.cda!.codigo) ?? {
+      codigo: i.cda!.codigo,
+      nombre: i.cda!.nombre,
+      reportados: 0,
+      total: 0,
+      juntas: { hechos: 0, total: 0 },
+    };
     a.total++;
-    if (i.registro) a.reportados++;
+    a.juntas.total += i.juntas ?? 0;
+    if (i.registro) {
+      a.reportados++;
+      a.juntas.hechos += i.juntas ?? 0;
+    }
     porCda.set(a.codigo, a);
   }
   const completo = (a: AvanceCda) => (a.reportados === a.total ? 1 : 0);
@@ -561,6 +601,11 @@ export function formatearResumenJornada(
   if (vista === 'NO_CDA') {
     const avance = avancePorCda([...estado.faltan, ...estado.cumplidos]);
     const completos = avance.filter((a) => a.reportados === a.total).length;
+    const juntas = juntasNoCda([...estado.faltan, ...estado.cumplidos]);
+    if (juntas.total > 0) {
+      const pct = Math.round((juntas.hechos / juntas.total) * 100);
+      lineas.push(`🗳️ Juntas <code>${barra(juntas.hechos, juntas.total, ANCHO_BARRA)}</code> <b>${juntas.hechos} de ${juntas.total}</b> · ${pct} %`);
+    }
     lineas.push(`🏫 ${completos} de ${avance.length} CDA completos (llegaron todos sus NO CDA)`);
     // Por CDA no hay técnicos: no hace falta el aviso del distributivo.
     if (agrupacion === 'cda') {
@@ -568,7 +613,8 @@ export function formatearResumenJornada(
       lineas.push(...lineaNoCdaSinKit(j), '');
       for (const a of avance) {
         lineas.push(
-          `${a.reportados === a.total ? '✅' : '⏳'} <b>${escapeHtml(a.codigo)}</b> · ${escapeHtml(a.nombre)} — ${a.reportados}/${a.total}`,
+          `${a.reportados === a.total ? '✅' : '⏳'} <b>${escapeHtml(a.codigo)}</b> · ${escapeHtml(a.nombre)} — ${a.reportados}/${a.total}` +
+            sufijoJuntas(a.juntas),
         );
       }
       return recortarPorLineas(lineas);
@@ -786,10 +832,14 @@ export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): stri
   const ncs = j.noCdas.filter((n) => n.codigoCda === codigo).sort(porCodigo);
   if (ncs.length > 0) {
     const reportados = ncs.filter((n) => n.visita).length;
-    lineas.push('', `🏫 <b>NO CDA: ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}</b>`);
+    lineas.push(
+      '',
+      `🏫 <b>NO CDA: ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}</b>${sufijoJuntas(juntasNoCda(ncs))}`,
+    );
     for (const n of [...ncs].sort((a, b) => (a.visita ? 1 : 0) - (b.visita ? 1 : 0))) {
       lineas.push(
         `   ${n.visita ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
+          juntasDeUno(n.juntas) +
           (n.visita ? ` · ${horaDe(n.visita)}` : ''),
       );
     }
@@ -870,6 +920,8 @@ export interface ConteosJornada {
   momentos: Record<MomentoJornada | 'NO_CDA', AvanceVista>;
   cdasCompletos: number;
   cdasConNoCda: number;
+  /** Juntas de los NO CDA que llegaron (un resumen guardado antes de este campo no lo trae). */
+  juntasNoCda?: AvanceVista;
   kitPendientes: number;
   cumplimiento: ConteosCumplimiento;
 }
@@ -915,6 +967,7 @@ export function conteosJornada(j: Jornada): ConteosJornada {
     },
     cdasCompletos: porCda.filter((a) => a.reportados === a.total).length,
     cdasConNoCda: porCda.length,
+    juntasNoCda: juntasNoCda([...noCda.faltan, ...noCda.cumplidos]),
     kitPendientes: estadoVista(j, 'KIT').faltan.length,
     cumplimiento: conteosCumplimiento(j),
   };
@@ -966,7 +1019,10 @@ export function formatearResumenAutomatico(
     const { hechos, total } = c.momentos[v];
     if (total === 0) continue;
     const faltan = total - hechos;
-    const extra = v === 'NO_CDA' ? ` · ${c.cdasCompletos} de ${c.cdasConNoCda} CDA completos` : '';
+    const extra =
+      v === 'NO_CDA'
+        ? `${sufijoJuntas(c.juntasNoCda ?? { hechos: 0, total: 0 })} · ${c.cdasCompletos} de ${c.cdasConNoCda} CDA completos`
+        : '';
     lineas.push(
       `${BOTONES_JORNADA[v]}  <code>${barra(hechos, total, ANCHO_BARRA)}</code> ${hechos}/${total}` +
         (faltan > 0 ? ` · faltan ${faltan}` : ' ✅') +
@@ -984,9 +1040,12 @@ export function formatearResumenAutomatico(
   lineas.push(c.kitPendientes > 0 ? `${BOTONES_JORNADA.KIT}: ${c.kitPendientes}` : `${BOTONES_JORNADA.KIT}: ninguno`);
 
   if (anterior) {
+    const masJuntas = (c.juntasNoCda?.hechos ?? 0) - (anterior.conteos.juntasNoCda?.hechos ?? c.juntasNoCda?.hechos ?? 0);
     const cambios = ORDEN_RESUMEN.map((v) => ({ v, n: c.momentos[v].hechos - anterior.conteos.momentos[v].hechos }))
       .filter(({ n }) => n > 0)
-      .map(({ v, n }) => CAMBIO[v].replace('{n}', String(n)));
+      .map(({ v, n }) =>
+        CAMBIO[v].replace('{n}', String(n)) + (v === 'NO_CDA' && masJuntas > 0 ? ` (+${masJuntas} juntas)` : ''),
+      );
     // Un resumen guardado antes de este cambio (en memoria tras un deploy) no trae cumplimiento.
     const completaron = cu.todo - (anterior.conteos.cumplimiento?.todo ?? cu.todo);
     const antes = anterior.conteos.cumplimiento;
