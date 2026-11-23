@@ -76,6 +76,11 @@ export function ReporteNoCdaPage() {
   // el lector ve el reporte en pantalla y el Excel.
   const { user } = useAuth();
   const isAdmin = actuaComoAdmin(user?.roles);
+  // NO CDA sin CDA: marca quien recibe en la Delegación; deshacer, solo el administrador.
+  const permisosDelegacion = {
+    marcar: isAdmin || !!user?.roles.some((r) => r === 'TECNICO_SUPERVISOR' || r === 'ASISTENTE_TRANSVERSAL'),
+    deshacer: !!user?.roles.includes('ADMINISTRADOR'),
+  };
 
   const { data: responsables } = useQuery({
     queryKey: ['responsables-informe'],
@@ -498,7 +503,7 @@ export function ReporteNoCdaPage() {
             {!data?.length ? (
               <p className="muted">No hay CDAs con operador asignado en el evento activo.</p>
             ) : (
-              <LlegadaNoCdaPanel datos={data} />
+              <LlegadaNoCdaPanel datos={data} permisos={permisosDelegacion} />
             )}
           </>
         )}

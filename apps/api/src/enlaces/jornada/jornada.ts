@@ -1,5 +1,11 @@
 import { escapeHtml } from '../../auth/notifier';
-import { MINUTOS_RESUMEN_JORNADA, RESUMEN_JORNADA_DETENIDO, textoFrecuenciaResumenJornada } from '@cne/shared-validation';
+import {
+  CODIGO_DELEGACION,
+  MINUTOS_RESUMEN_JORNADA,
+  NOMBRE_DELEGACION,
+  RESUMEN_JORNADA_DETENIDO,
+  textoFrecuenciaResumenJornada,
+} from '@cne/shared-validation';
 
 /**
  * Grupo "Jornada" de Telegram: quién falta y quién ya cumplió cada momento del
@@ -502,7 +508,11 @@ function bloquesNoCdaPorCda(items: ItemJornada[], soloFaltan: boolean): string[]
       [
         `<b>${escapeHtml(codigo)} · ${escapeHtml(nombre)}</b> — ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}` +
           sufijoJuntas(juntasNoCda(ncs)),
-        ncs[0].personas.length > 0 ? lineaPersonas(ncs[0].personas) : '   <i>su CDA no tiene kit</i>',
+        codigo === CODIGO_DELEGACION
+          ? '   <i>sin CDA: entregan directo en la Delegación (se marca en la web)</i>'
+          : ncs[0].personas.length > 0
+            ? lineaPersonas(ncs[0].personas)
+            : '   <i>su CDA no tiene kit</i>',
         ...lineas,
       ].join('\n'),
     ];
@@ -800,6 +810,7 @@ const ETIQUETA_MOMENTO: Record<MomentoJornada, [hecho: string, falta: string]> =
  * un CDA de la jornada.
  */
 export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): string | null {
+  if (codigo === CODIGO_DELEGACION) return fichaDelegacion(j, ahora);
   const unidades = j.unidades.filter((u) => u.codigoRecinto === codigo);
   const sinKit = j.sinKit.find((s) => s.codigoRecinto === codigo);
   const ref = unidades[0] ?? sinKit;
@@ -829,22 +840,40 @@ export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): stri
     lineas.push(lineaPersonas(u.personas, ''));
   });
 
+  lineas.push(...lineasNoCdaDe(j, codigo));
+  return recortarPorLineas(lineas);
+}
+
+/** "🏫 NO CDA: 1 de 2 llegaron · juntas …" y cada NO CDA (pendientes primero), o nada. */
+function lineasNoCdaDe(j: Jornada, codigo: string): string[] {
   const ncs = j.noCdas.filter((n) => n.codigoCda === codigo).sort(porCodigo);
-  if (ncs.length > 0) {
-    const reportados = ncs.filter((n) => n.visita).length;
-    lineas.push(
-      '',
-      `🏫 <b>NO CDA: ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}</b>${sufijoJuntas(juntasNoCda(ncs))}`,
-    );
-    for (const n of [...ncs].sort((a, b) => (a.visita ? 1 : 0) - (b.visita ? 1 : 0))) {
-      lineas.push(
-        `   ${n.visita ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
+  if (ncs.length === 0) return [];
+  const reportados = ncs.filter((n) => n.visita).length;
+  return [
+    '',
+    `🏫 <b>NO CDA: ${reportados} de ${ncs.length} ${ncs.length === 1 ? 'llegó' : 'llegaron'}</b>${sufijoJuntas(juntasNoCda(ncs))}`,
+    ...[...ncs]
+      .sort((a, b) => (a.visita ? 1 : 0) - (b.visita ? 1 : 0))
+      .map(
+        (n) =>
+          `   ${n.visita ? '✅' : '⏳'} ${escapeHtml(n.codigoRecinto)} · ${escapeHtml(n.nombreRecinto)}` +
           juntasDeUno(n.juntas) +
           (n.visita ? ` · ${horaDe(n.visita)}` : ''),
-      );
-    }
-  }
-  return recortarPorLineas(lineas);
+      ),
+  ];
+}
+
+/** Ficha del grupo "DPEI": NO CDA sin CDA que entregan directo en la Delegación. */
+function fichaDelegacion(j: Jornada, ahora: Date): string | null {
+  if (!j.noCdas.some((n) => n.codigoCda === CODIGO_DELEGACION)) return null;
+  return recortarPorLineas([
+    `<b>🔎 ${CODIGO_DELEGACION} · ${escapeHtml(NOMBRE_DELEGACION)}</b> · ${hora(ahora)}`,
+    `<i>${escapeHtml(j.evento)}</i>`,
+    '',
+    'No tienen CDA: entregan sus actas directo en la Delegación.',
+    'Quien los recibe marca la llegada en la web (Reportes › Llegada de NO CDA).',
+    ...lineasNoCdaDe(j, CODIGO_DELEGACION),
+  ]);
 }
 
 /** Si no cabe en un mensaje, quita líneas completas del final (nunca corta una etiqueta HTML) y lo dice. */

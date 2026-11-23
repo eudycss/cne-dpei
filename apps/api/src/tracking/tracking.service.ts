@@ -20,6 +20,7 @@ import type {
   LlegadaDpiResponse,
   LlegadaNoCdaRequest,
   LlegadaNoCdaResponse,
+  LlegadaNoCdaDelegacionResponse,
   LlegadaRecintoManualRequest,
   LlegadaRecintoManualResponse,
   LlegadaRecintoRequest,
@@ -1931,7 +1932,6 @@ export class TrackingService {
     }
 
     const cdaIds = Array.from(operadorPorCda.keys());
-    if (cdaIds.length === 0) return [];
 
     const conCanton = {
       id: true,
@@ -1943,7 +1943,7 @@ export class TrackingService {
       numeroElectores: true,
       canton: { select: { nombre: true } },
     } as const;
-    const [cdas, noCdas] = await Promise.all([
+    const [cdas, noCdas, directos] = await Promise.all([
       this.prisma.recinto.findMany({
         where: { id: { in: cdaIds }, tipo: 'CDA' },
         orderBy: { codigoRecinto: 'asc' },
@@ -1954,12 +1954,22 @@ export class TrackingService {
         orderBy: { nombre: 'asc' },
         select: conCanton,
       }),
+      // Sin CDA de destino: llevan sus actas directo a la Delegación (se marcan desde la web).
+      this.prisma.recinto.findMany({
+        where: { tipo: 'NO_CDA', activo: true, cdaDestinoId: null },
+        orderBy: { nombre: 'asc' },
+        select: conCanton,
+      }),
     ]);
-    if (cdas.length === 0) return [];
+    if (cdas.length === 0 && directos.length === 0) return [];
 
     // Cuenta la marca de quien la haya hecho: si el kit pasó al otro de la pareja, la llegada no se pierde.
     const llegadas = await this.prisma.eventoTracking.findMany({
-      where: { eventoId: evento.id, tipo: 'LLEGADA_NO_CDA', recintoId: { in: noCdas.map((nc) => nc.id) } },
+      where: {
+        eventoId: evento.id,
+        tipo: 'LLEGADA_NO_CDA',
+        recintoId: { in: [...noCdas, ...directos].map((nc) => nc.id) },
+      },
       select: { recintoId: true, operadorId: true, ocurridoEn: true },
     });
 
@@ -1973,11 +1983,88 @@ export class TrackingService {
     return armarReporteNoCda({
       cdas: cdas.map(aRecinto),
       noCdas: noCdas.map(aRecinto),
+      noCdasDelegacion: directos.map(aRecinto),
       operadorPorCda,
       kitsPorCda,
       usuarios,
       llegadas,
     });
+  }
+
+  /** NO CDA activo y sin CDA de destino (lleva sus actas directo a la Delegación), o 404/400. */
+  private async noCdaDirectoADelegacion(recintoId: string) {
+    const recinto = await this.prisma.recinto.findUnique({
+      where: { id: recintoId },
+      select: { id: true, tipo: true, activo: true, cdaDestinoId: true },
+    });
+    if (!recinto || !recinto.activo || recinto.tipo !== 'NO_CDA') throw new NotFoundException('Recinto NO CDA no encontrado');
+    if (recinto.cdaDestinoId) {
+      throw new BadRequestException('Este NO CDA tiene CDA: su llegada la marca el operador de ese CDA');
+    }
+    return recinto;
+  }
+
+  /**
+   * Un NO CDA sin CDA llega con sus actas directo a la Delegación: quien lo
+   * recibe marca la llegada desde la web (hora actual). Queda como cualquier
+   * llegada de NO CDA, con quién la registró.
+   */
+  async registrarLlegadaNoCdaDelegacion(recintoId: string, usuarioId: string): Promise<LlegadaNoCdaDelegacionResponse> {
+    const evento = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' }, select: { id: true } });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+    await this.noCdaDirectoADelegacion(recintoId);
+
+    // Bloqueo por recinto hasta el fin de la transacción: dos personas que marcan a la vez no crean dos filas.
+    const llegada = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`llegada-no-cda:${recintoId}`}))`;
+      const existente = await tx.eventoTracking.findFirst({
+        where: { eventoId: evento.id, tipo: 'LLEGADA_NO_CDA', recintoId },
+        select: { id: true },
+      });
+      if (existente) throw new ConflictException('La llegada de este NO CDA ya está registrada');
+      return tx.eventoTracking.create({
+        data: {
+          eventoId: evento.id,
+          operadorId: usuarioId,
+          tipo: 'LLEGADA_NO_CDA',
+          recintoId,
+          ocurridoEn: new Date(),
+          registradoPorId: usuarioId,
+          motivoManual: 'Llegada directa a la Delegación (NO CDA sin CDA)',
+        },
+        select: { ocurridoEn: true },
+      });
+    });
+    return { recintoId, ocurridoEn: llegada.ocurridoEn.toISOString() };
+  }
+
+  /**
+   * El administrador deshace una llegada a la Delegación marcada por error (solo
+   * NO CDA sin CDA). Devuelve qué se borró (quién y a qué hora) para la bitácora.
+   */
+  async anularLlegadaNoCdaDelegacion(
+    recintoId: string,
+  ): Promise<{ recintoId: string; eliminadas: number; marcas: { registradoPorId: string; ocurridoEn: string }[] }> {
+    const evento = await this.prisma.eventoElectoral.findFirst({ where: { estado: 'ACTIVO' }, select: { id: true } });
+    if (!evento) throw new NotFoundException('No hay un evento electoral activo');
+    await this.noCdaDirectoADelegacion(recintoId);
+
+    const donde = { eventoId: evento.id, tipo: 'LLEGADA_NO_CDA' as const, recintoId };
+    const borradas = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`llegada-no-cda:${recintoId}`}))`;
+      const marcas = await tx.eventoTracking.findMany({
+        where: donde,
+        select: { operadorId: true, registradoPorId: true, ocurridoEn: true },
+      });
+      await tx.eventoTracking.deleteMany({ where: donde });
+      return marcas;
+    });
+    if (borradas.length === 0) throw new NotFoundException('Este NO CDA no tiene una llegada registrada');
+    return {
+      recintoId,
+      eliminadas: borradas.length,
+      marcas: borradas.map((m) => ({ registradoPorId: m.registradoPorId ?? m.operadorId, ocurridoEn: m.ocurridoEn.toISOString() })),
+    };
   }
 
   /**

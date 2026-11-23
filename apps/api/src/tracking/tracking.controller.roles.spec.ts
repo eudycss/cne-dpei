@@ -1,5 +1,5 @@
 import { Reflector } from '@nestjs/core';
-import { ROLES_KEY } from '../common/roles.decorator';
+import { ROLES_KEY, SOLO_ADMIN_KEY } from '../common/roles.decorator';
 import { BadRequestException } from '@nestjs/common';
 import { cantonDelQuery, jornadaDelQuery, operadoresDelQuery, TrackingController } from './tracking.controller';
 
@@ -111,5 +111,27 @@ describe('operadoresDelQuery (operadores elegidos)', () => {
   it('rechaza un id inválido o el parámetro repetido', () => {
     expect(() => operadoresDelQuery(`${A},no-es-uuid`)).toThrow(BadRequestException);
     expect(() => operadoresDelQuery([A, B])).toThrow(BadRequestException);
+  });
+});
+
+describe('TrackingController — llegada de un NO CDA sin CDA a la Delegación', () => {
+  const soloAdmin = (metodo: keyof TrackingController): boolean =>
+    !!new Reflector().get(SOLO_ADMIN_KEY, TrackingController.prototype[metodo] as () => unknown);
+
+  it('la marcan quienes reciben en la Delegación: admin, técnico supervisor y asistente transversal', () => {
+    expect(rolesDe('llegadaNoCdaDelegacion')).toEqual(['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL']);
+    expect(soloAdmin('llegadaNoCdaDelegacion')).toBe(false);
+  });
+
+  it('deshacerla es solo del administrador (ni el analista provincial)', () => {
+    expect(rolesDe('anularLlegadaNoCdaDelegacion')).toEqual(['ADMINISTRADOR']);
+    expect(soloAdmin('anularLlegadaNoCdaDelegacion')).toBe(true);
+  });
+
+  it('quien la registra es el usuario de la sesión', () => {
+    const registrarLlegadaNoCdaDelegacion = jest.fn();
+    const ctrl = new TrackingController({ registrarLlegadaNoCdaDelegacion } as never, {} as never, {} as never);
+    ctrl.llegadaNoCdaDelegacion('nc-1', { sub: 'sup-1' } as never);
+    expect(registrarLlegadaNoCdaDelegacion).toHaveBeenCalledWith('nc-1', 'sup-1');
   });
 });

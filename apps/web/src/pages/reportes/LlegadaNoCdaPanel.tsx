@@ -4,6 +4,7 @@ import { type Avance, coincideBusqueda, porcentajeAvance, resumenLlegadaNoCda } 
 import { DonaAnillo } from '../../components/DonaAnillo';
 import { NumeroAnimado } from '../../components/NumeroAnimado';
 import { AvanceEtapas } from '../operadores/AvanceEtapas';
+import { AccionLlegadaDelegacion } from './AccionLlegadaDelegacion';
 import type { GrupoAvance } from '../operadores/estadisticas';
 
 type Agrupacion = 'cda' | 'canton';
@@ -95,7 +96,14 @@ function Kpi({ etiqueta, valor, detalle }: { etiqueta: string; valor: number; de
  * Llegada de los NO CDA a su CDA: el operador del CDA marca cada NO CDA cuando
  * llega. Avance medido en juntas (y en recintos), gráficos y la tabla por CDA.
  */
-export function LlegadaNoCdaPanel({ datos }: { datos: ReporteNoCdaItem[] }) {
+export function LlegadaNoCdaPanel({
+  datos,
+  permisos = { marcar: false, deshacer: false },
+}: {
+  datos: ReporteNoCdaItem[];
+  /** Fila de la Delegación: quién puede marcar la llegada y quién deshacerla (el API lo revisa igual). */
+  permisos?: { marcar: boolean; deshacer: boolean };
+}) {
   const [agrupacion, setAgrupacion] = useState<Agrupacion>('cda');
   const [busqueda, setBusqueda] = useState('');
   const [soloPendientes, setSoloPendientes] = useState(false);
@@ -214,7 +222,7 @@ export function LlegadaNoCdaPanel({ datos }: { datos: ReporteNoCdaItem[] }) {
               <tr key={item.cdaId}>
                 <td>{item.cdaCodigo} — {item.cdaNombre}</td>
                 <td>{item.cantonNombre}</td>
-                <td>{item.operadorNombre}</td>
+                <td>{item.esDelegacion ? <span className="muted">Quien recibe en la Delegación</span> : item.operadorNombre}</td>
                 <td>
                   <strong style={{ color: 'var(--success-text)' }}>{item.totalLlegados}</strong> / {item.totalNoCdas}
                 </td>
@@ -240,6 +248,12 @@ export function LlegadaNoCdaPanel({ datos }: { datos: ReporteNoCdaItem[] }) {
                           {' · '}
                           {nc.codigoRecinto} — {nc.nombre} · {nc.juntas} {nc.juntas === 1 ? 'junta' : 'juntas'}
                           {nc.registradoPor && <span className="muted"> · marcó {nc.registradoPor}</span>}
+                          {item.esDelegacion && !nc.llegado && permisos.marcar && (
+                            <AccionLlegadaDelegacion noCda={nc} accion="marcar" />
+                          )}
+                          {item.esDelegacion && nc.llegado && permisos.deshacer && (
+                            <AccionLlegadaDelegacion noCda={nc} accion="deshacer" />
+                          )}
                         </li>
                       ))}
                     </ul>
