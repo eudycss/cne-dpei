@@ -136,7 +136,13 @@ export function Tramo({ valor, clase, atenuado }: { valor: number; clase: string
     const id = requestAnimationFrame(() => setGrow(valor));
     return () => cancelAnimationFrame(id);
   }, [valor]);
-  return <span className={`evx-tramo ${clase}${atenuado ? ' atenuado' : ''}`} style={{ flexGrow: grow }} />;
+  // Un tramo en 0 no se dibuja: el ancho mínimo sugeriría un avance que no hay.
+  return (
+    <span
+      className={`evx-tramo ${clase}${atenuado ? ' atenuado' : ''}`}
+      style={{ flexGrow: grow, minWidth: valor === 0 ? 0 : undefined }}
+    />
+  );
 }
 
 /**
