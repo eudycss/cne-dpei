@@ -1,4 +1,5 @@
 import type { ReporteNoCdaDetalle, ReporteNoCdaItem } from '@cne/shared-types';
+import { CDA_ID_DELEGACION, CODIGO_DELEGACION, NOMBRE_DELEGACION } from '@cne/shared-validation';
 
 /** Datos mínimos de un recinto (CDA o NO CDA) para el reporte de llegadas. */
 export interface RecintoLlegada {
@@ -32,6 +33,8 @@ export interface EntradaReporteNoCda {
   operadorPorCda: ReadonlyMap<string, string>;
   kitsPorCda: ReadonlyMap<string, string[]>;
   noCdas: RecintoLlegada[];
+  /** NO CDA sin CDA de destino: van al final como el grupo de la Delegación. */
+  noCdasDelegacion?: RecintoLlegada[];
   /** Los operadores de los CDA y quienes marcaron llegadas. */
   usuarios: UsuarioLlegada[];
   llegadas: MarcaLlegadaNoCda[];
@@ -63,12 +66,21 @@ export function armarReporteNoCda(entrada: EntradaReporteNoCda): ReporteNoCdaIte
     noCdasPorCda.set(nc.cdaDestinoId, lista);
   }
 
-  return entrada.cdas.map((cda) => {
+  const detalleDe = (lista: RecintoLlegada[]) => lista.map((nc) => detalleNoCda(nc, primeraLlegada.get(nc.id), usuarioPorId));
+  const totales = (detalle: ReporteNoCdaDetalle[]) => {
+    const llegados = detalle.filter((d) => d.llegado);
+    return {
+      totalNoCdas: detalle.length,
+      totalLlegados: llegados.length,
+      juntasNoCdas: sumaJuntas(detalle),
+      juntasLlegadas: sumaJuntas(llegados),
+      noCdas: detalle,
+    };
+  };
+
+  const items: ReporteNoCdaItem[] = entrada.cdas.map((cda) => {
     const operadorId = entrada.operadorPorCda.get(cda.id);
     const operador = operadorId ? usuarioPorId.get(operadorId) : undefined;
-    const detalle = (noCdasPorCda.get(cda.id) ?? []).map((nc) => detalleNoCda(nc, primeraLlegada.get(nc.id), usuarioPorId));
-    const llegados = detalle.filter((d) => d.llegado);
-
     return {
       cdaId: cda.id,
       cdaCodigo: cda.codigoRecinto,
@@ -77,13 +89,26 @@ export function armarReporteNoCda(entrada: EntradaReporteNoCda): ReporteNoCdaIte
       operadorNombre: operador ? nombreCompleto(operador) : 'Operador',
       operadorCedula: operador?.cedula ?? '—',
       kitsCodigos: entrada.kitsPorCda.get(cda.id) ?? [],
-      totalNoCdas: detalle.length,
-      totalLlegados: llegados.length,
-      juntasNoCdas: sumaJuntas(detalle),
-      juntasLlegadas: sumaJuntas(llegados),
-      noCdas: detalle,
+      ...totales(detalleDe(noCdasPorCda.get(cda.id) ?? [])),
     };
   });
+
+  const directos = entrada.noCdasDelegacion ?? [];
+  if (directos.length > 0) {
+    items.push({
+      cdaId: CDA_ID_DELEGACION,
+      cdaCodigo: CODIGO_DELEGACION,
+      cdaNombre: NOMBRE_DELEGACION,
+      cantonNombre: 'IBARRA',
+      // Lo marca quien recibe en la Delegación (sale en cada NO CDA como "marcó…").
+      operadorNombre: '—',
+      operadorCedula: '—',
+      kitsCodigos: [],
+      ...totales(detalleDe(directos)),
+      esDelegacion: true,
+    });
+  }
+  return items;
 }
 
 function detalleNoCda(

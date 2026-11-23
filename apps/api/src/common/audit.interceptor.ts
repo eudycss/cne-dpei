@@ -790,6 +790,37 @@ const AUDIT_TABLE: Array<{
     },
   },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto-manual$/, accion: 'REGISTRO_LLEGADA_RECINTO_MANUAL', entidad: 'eventos_tracking', campos: ['recintoId', 'operadorId', 'ocurridoEn'] },
+  // NO CDA sin CDA: quien recibe en la Delegación marca la llegada; el administrador puede deshacerla.
+  {
+    method: 'POST',
+    pathRegex: /^\/tracking\/no-cda\/[^/]+\/llegada-delegacion$/,
+    accion: 'NO_CDA_LLEGADA_DELEGACION',
+    entidad: 'recinto',
+    entidadId: (req) => String(req.params?.recintoId ?? '').slice(0, 40) || undefined,
+    resumen: (res) => {
+      const ocurridoEn = (res as { ocurridoEn?: unknown } | null)?.ocurridoEn;
+      return { ocurridoEn: typeof ocurridoEn === 'string' ? ocurridoEn.slice(0, 40) : null };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/tracking\/no-cda\/[^/]+\/llegada-delegacion$/,
+    accion: 'NO_CDA_LLEGADA_DELEGACION_ANULADA',
+    entidad: 'recinto',
+    entidadId: (req) => String(req.params?.recintoId ?? '').slice(0, 40) || undefined,
+    // Qué se borró: quién la había marcado (id de usuario, sin nombre) y a qué hora.
+    resumen: (res) => {
+      const marcas = (res as { marcas?: unknown } | null)?.marcas;
+      return {
+        marcas: Array.isArray(marcas)
+          ? marcas.slice(0, 10).map((m) => ({
+              registradoPorId: String((m as { registradoPorId?: unknown }).registradoPorId ?? '').slice(0, 40),
+              ocurridoEn: String((m as { ocurridoEn?: unknown }).ocurridoEn ?? '').slice(0, 40),
+            }))
+          : [],
+      };
+    },
+  },
 ];
 
 /**
