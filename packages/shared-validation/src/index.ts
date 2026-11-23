@@ -1044,6 +1044,7 @@ export * from './modulos';
 export * from './permisos';
 export * from './busqueda';
 export * from './perimetro';
+export * from './llegada-no-cda';
 
 // --- Parejas Operador CDA + Asistente CDA por día ---
 
