@@ -9,9 +9,10 @@ const QUEUE_KEY = 'cne:offline_queue';
 const RECHAZADAS_KEY = 'cne:offline_rechazadas';
 const MAX_MOTIVO = 200;
 const MAX_RECHAZADAS = 50;
+const ENDPOINT_POSICIONES = '/tracking/posiciones';
 // Las posiciones GPS van cada pocos segundos: un rechazo de una sola no
 // merece un aviso al operador y llenaría la lista.
-const SIN_AVISO_DE_RECHAZO = new Set(['/tracking/posiciones']);
+const SIN_AVISO_DE_RECHAZO = new Set([ENDPOINT_POSICIONES]);
 
 /** Registro que el servidor no aceptó al sincronizar: se muestra al operador con el motivo. */
 export interface AccionRechazada {
@@ -48,6 +49,9 @@ async function saveQueue(queue: QueuedAction[]): Promise<void> {
   await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
+/** Las posiciones GPS no dependen de ningún registro de la jornada ni al revés (se envían con enOrden: false). */
+const esGps = (a: QueuedAction) => a.endpoint === ENDPOINT_POSICIONES;
+
 async function getRechazadas(): Promise<AccionRechazada[]> {
   return leerLista<AccionRechazada>(await AsyncStorage.getItem(RECHAZADAS_KEY));
 }
@@ -81,6 +85,11 @@ export async function enqueue(item: Omit<QueuedAction, 'id' | 'enqueuedAt'>): Pr
 }
 
 let envioEnCurso: Promise<void> | null = null;
+// Registros de la jornada (llegada, salida, kits…) esperando su turno: mientras haya
+// alguno, el envío no empieza posiciones GPS nuevas. Tras una caída larga de datos
+// se acumulan cientos de lotes GPS y el operador no debe esperar a que salgan todos
+// para registrar su llegada.
+let registrosUrgentes = 0;
 // Cambia con cada vaciarCola (cierre de sesión o cambio de operador): un envío
 // que empezó antes no debe seguir enviando ni volver a guardar la cola vieja.
 let epoca = 0;
@@ -99,11 +108,18 @@ async function enviarCola(): Promise<void> {
   const epocaInicial = epoca;
   const queue = await getQueue();
   if (queue.length === 0) return;
+  // Primero los registros de la jornada (conservan su orden entre sí) y al final las posiciones GPS.
+  const orden = [...queue.filter((a) => !esGps(a)), ...queue.filter(esGps)];
   const remaining: QueuedAction[] = [];
   const rechazadas: AccionRechazada[] = [];
-  for (let i = 0; i < queue.length; i++) {
+  for (let i = 0; i < orden.length; i++) {
     if (epoca !== epocaInicial) return;
-    const action = queue[i];
+    const action = orden[i];
+    if (registrosUrgentes > 0 && esGps(action)) {
+      // Un registro de la jornada está esperando: las posiciones siguen después.
+      remaining.push(...orden.slice(i));
+      break;
+    }
     let payload: object;
     try {
       // Una recepción de kit encolada sin señal lleva un marcador en vez de la
@@ -113,7 +129,7 @@ async function enviarCola(): Promise<void> {
     } catch (e) {
       if (esReintentableEnCola(e)) {
         // La foto todavía no sube: se conserva esta acción y todo lo que depende de ella.
-        remaining.push(...queue.slice(i));
+        remaining.push(...orden.slice(i));
         break;
       }
       rechazadas.push(aRechazada(action, e));
@@ -126,7 +142,7 @@ async function enviarCola(): Promise<void> {
         // Sin red, error del servidor (5xx, ej. Render despertando) o sin sesión
         // válida (401): mantener en cola esta acción y todas las que quedan por
         // procesar, no solo la que falló.
-        remaining.push(...queue.slice(i));
+        remaining.push(...orden.slice(i));
         break; // no seguir procesando si el backend no está respondiendo bien
       }
       // 409: ya estaba registrado (la respuesta anterior se perdió); no es un error.
@@ -204,6 +220,11 @@ export async function contarPendientes(): Promise<number> {
   return (await getQueue()).length;
 }
 
+/** Registros de la jornada sin enviar: las posiciones GPS atrasadas no cuentan, no frenan a nadie. */
+async function contarRegistrosPendientes(): Promise<number> {
+  return (await getQueue()).filter((a) => !esGps(a)).length;
+}
+
 export { isNetworkError, isTransientError };
 
 export async function withOffline<T>(
@@ -213,22 +234,40 @@ export async function withOffline<T>(
   fn: () => Promise<T>,
   { enOrden = true }: { enOrden?: boolean } = {},
 ): Promise<T | null> {
-  // Los pasos de la jornada dependen de los anteriores (el servidor rechaza la
-  // llegada si faltan recepciones de kit). Si quedan acciones sin enviar, se
-  // envían primero; si siguen pendientes, esta va a la cola detrás de ellas.
-  // `enOrden: false` para lo que no depende de nada (posiciones GPS, incidencias).
-  if (enOrden && (await contarPendientes()) > 0) {
-    await flushQueue();
-    // Si había un envío en curso, lo encolado mientras tanto se envía en una segunda pasada.
-    if ((await contarPendientes()) > 0) await flushQueue();
-    if ((await contarPendientes()) > 0) {
-      await enqueue({ endpoint, method, payload: { ...payload, desdeOffline: true } });
-      return null;
+  let urgente = false;
+  const soltar = () => {
+    if (urgente) {
+      urgente = false;
+      registrosUrgentes--;
     }
+  };
+  if (enOrden) {
+    urgente = true;
+    registrosUrgentes++;
   }
   try {
+    // Los pasos de la jornada dependen de los anteriores (el servidor rechaza la
+    // llegada si faltan recepciones de kit). Si quedan registros sin enviar, se
+    // envían primero; si siguen pendientes, esta va a la cola detrás de ellos.
+    // Las posiciones GPS atrasadas no cuentan (van después, en segundo plano).
+    // `enOrden: false` para lo que no depende de nada (posiciones GPS, incidencias).
+    if (enOrden && (await contarRegistrosPendientes()) > 0) {
+      await flushQueue();
+      // Si había un envío en curso, lo encolado mientras tanto se envía en una segunda pasada.
+      if ((await contarRegistrosPendientes()) > 0) await flushQueue();
+      if ((await contarRegistrosPendientes()) > 0) {
+        await enqueue({ endpoint, method, payload: { ...payload, desdeOffline: true } });
+        return null;
+      }
+    }
     const result = await fn();
-    flushQueue(); // best-effort, sin await
+    soltar(); // las posiciones atrasadas siguen ahora, sin frenar el registro
+    // Best-effort, sin await. Si había un envío en curso (que pudo cortarse por este
+    // registro), se espera a que termine y se lanza otro para reanudar las posiciones.
+    void (envioEnCurso ?? Promise.resolve()).then(
+      () => flushQueue(),
+      () => flushQueue(),
+    );
     return result;
   } catch (e) {
     // Incluye 401: tras un login sin conexión no hay sesión en el servidor; el
@@ -238,6 +277,8 @@ export async function withOffline<T>(
       return null;
     }
     throw e;
+  } finally {
+    soltar();
   }
 }
 
