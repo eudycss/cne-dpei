@@ -12,6 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
 import { api, onSessionExpired, tokenStore } from '../lib/api';
 import { limpiarCacheJornada, prepararCacheParaUsuario } from '../lib/cache-jornada';
+import { cancelarAvisoNoCda } from '../lib/aviso-no-cda';
 import { detenerRastreo } from '../lib/location';
 import {
   guardarVerificadorOffline,
@@ -92,6 +93,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onSessionExpired(() => {
       // Solo si había alguien dentro: sin sesión no hay nada que avisar.
       if (userRef.current) setAvisoSesion(AVISO_SESION_CERRADA);
+      // Sin sesión no se puede marcar nada: el recordatorio de NO CDA solo molestaría.
+      void cancelarAvisoNoCda();
       setUser(null);
     });
     return unsubscribe;
@@ -165,6 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // también la puerta de reingreso sin conexión.
     await limpiarVerificadorOffline();
     await limpiarCacheJornada().catch(() => {});
+    // El recordatorio de NO CDA es de este operador: no debe sonar para el siguiente.
+    await cancelarAvisoNoCda();
     setUser(null);
     // Un 401 de algo en vuelo mientras se limpiaba (tokens ya borrados, user
     // aún seteado) dispara el aviso de sesión cerrada: en un cierre voluntario

@@ -1405,7 +1405,7 @@ export class TrackingService {
     const ocurridoEn = new Date(parsed.ocurridoEn);
 
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, acta_instalacion_url, acta_escrutinio_url)
+      INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, acta_instalacion_url, acta_escrutinio_url, justificacion_no_cda)
       VALUES (
         uuid_generate_v4(),
         ${evento.id}::uuid,
@@ -1417,7 +1417,8 @@ export class TrackingService {
         ${parsed.desdeOffline ?? false},
         now(),
         ${parsed.actaInstalacionUrl},
-        ${parsed.actaEscrutinioUrl}
+        ${parsed.actaEscrutinioUrl},
+        ${parsed.justificacionNoCda ?? null}
       )
       RETURNING id;
     `)[0].id;

@@ -1517,6 +1517,35 @@ describe('TrackingService', () => {
       });
       expect(notifications.encolarSalidaRecinto).toHaveBeenCalledTimes(1);
     });
+
+    function prepararSalidaValida() {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-recinto-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'Perez' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+    }
+
+    it('guarda la justificación de salir con NO CDA sin marcar (recortada)', async () => {
+      prepararSalidaValida();
+      await service.registrarSalidaRecinto(operadorId, {
+        ...conActas,
+        justificacionNoCda: '  El NO CDA 1917 no llegó, se avisó al técnico  ',
+      } as any);
+      const valores = prisma.$queryRaw.mock.calls[0].slice(1);
+      expect(valores).toContain('El NO CDA 1917 no llegó, se avisó al técnico');
+    });
+
+    it('sin justificación (APK anterior o cola offline) guarda NULL y no rechaza', async () => {
+      prepararSalidaValida();
+      await service.registrarSalidaRecinto(operadorId, conActas as any);
+      const valores = prisma.$queryRaw.mock.calls[0].slice(1);
+      expect(valores[valores.length - 1]).toBeNull();
+    });
   });
 
   describe('registrarLlegadaDpiManual (el operador olvidó marcarla)', () => {
