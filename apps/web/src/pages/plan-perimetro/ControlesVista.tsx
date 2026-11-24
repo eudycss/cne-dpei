@@ -1,4 +1,5 @@
-import { Compass, Mountain, RotateCcw, RotateCw } from 'lucide-react';
+import { Compass, Mountain } from 'lucide-react';
+import { RotateCcwIcon, RotateCwIcon, useIconoAnimado } from '../../components/iconos-animados';
 import { useMapInstance } from '../../components/map';
 import { CAPAS_BASE, type CapaBase } from './estiloPlan';
 
@@ -19,6 +20,8 @@ interface ControlesVistaProps {
  */
 export function ControlesVista({ capa, onCapa, vista3d, onVista3d }: ControlesVistaProps) {
   const map = useMapInstance();
+  const giroIzq = useIconoAnimado();
+  const giroDer = useIconoAnimado();
   const girar = (grados: number) => map.easeTo({ bearing: map.getBearing() + grados, duration: 400 });
 
   function cambiar3d() {
@@ -43,11 +46,11 @@ export function ControlesVista({ capa, onCapa, vista3d, onVista3d }: ControlesVi
           <Mountain size={16} aria-hidden="true" />
           {vista3d ? 'Vista 3D' : 'Vista plana'}
         </button>
-        <button type="button" className="pp-btn" aria-label="Girar a la izquierda" title="Girar a la izquierda" onClick={() => girar(-GIRO)}>
-          <RotateCcw size={16} aria-hidden="true" />
+        <button type="button" className="pp-btn" aria-label="Girar a la izquierda" title="Girar a la izquierda" onClick={() => girar(-GIRO)} {...giroIzq.disparadores}>
+          <RotateCcwIcon ref={giroIzq.ref} size={16} aria-hidden="true" />
         </button>
-        <button type="button" className="pp-btn" aria-label="Girar a la derecha" title="Girar a la derecha" onClick={() => girar(GIRO)}>
-          <RotateCw size={16} aria-hidden="true" />
+        <button type="button" className="pp-btn" aria-label="Girar a la derecha" title="Girar a la derecha" onClick={() => girar(GIRO)} {...giroDer.disparadores}>
+          <RotateCwIcon ref={giroDer.ref} size={16} aria-hidden="true" />
         </button>
         <button type="button" className="pp-btn" onClick={() => map.easeTo({ bearing: 0, duration: 400 })}>
           <Compass size={16} aria-hidden="true" />
