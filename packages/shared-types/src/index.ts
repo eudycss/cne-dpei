@@ -741,6 +741,8 @@ export interface SalidaRecintoRequest {
   ocurridoEn: string;
   actaInstalacionUrl: string;
   actaEscrutinioUrl: string;
+  /** Motivo de salir con recintos NO CDA sin marcar (la app lo pide si faltan). */
+  justificacionNoCda?: string;
   /** true si la acción se reenvió desde la cola offline del móvil. */
   desdeOffline?: boolean;
 }

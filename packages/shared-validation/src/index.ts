@@ -515,6 +515,15 @@ export const salidaRecintoSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
   actaInstalacionUrl: z.string().min(1, 'Acta de instalación requerida'),
   actaEscrutinioUrl: z.string().min(1, 'Acta de escrutinio requerida'),
+  // Motivo de salir con recintos NO CDA sin marcar su llegada. Opcional en el
+  // servidor: las APK anteriores y la cola offline no lo envían; la app nueva
+  // lo exige cuando faltan NO CDA.
+  justificacionNoCda: z
+    .string()
+    .trim()
+    .min(5, 'Escriba al menos 5 caracteres')
+    .max(500, 'Máximo 500 caracteres')
+    .optional(),
   desdeOffline,
 });
 
