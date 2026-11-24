@@ -18,9 +18,10 @@ import { CorregirAsistenciaModal } from './CorregirAsistenciaModal';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { EscanearQrModal } from './EscanearQrModal';
 import { Kpi } from './Kpi';
-import { cargoCorto, hoyEcuador, iniciales } from './utils';
+import { cargoCorto, hoyEcuador } from './utils';
 import { useGrupoCda } from './grupo';
 import { useModulos } from '../../lib/useModulos';
+import { AvatarPersona } from './AvatarPersona';
 
 type Filtro = 'todos' | 'sin-entrada' | 'sin-salida' | 'completos';
 type Marca = { operadorId: string; tipo: TipoMarcaAsistenciaCda };
@@ -339,9 +340,7 @@ export function AsistenciaPanel({ acciones = null }: { acciones?: HTMLElement | 
                   <tr key={o.id}>
                     <th scope="row">
                       <span className="ocda-persona">
-                        <span className={`ocda-avatar${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
-                          {iniciales(o.apellidosNombres)}
-                        </span>
+                        <AvatarPersona persona={{ operadorId: o.id, nombre: o.apellidosNombres, cedula: o.cedula, cargo: o.cargo, tieneFoto: o.tieneFoto }} ampliable={false} />
                         <span className="ocda-persona-textos">
                           <span className="ocda-persona-nombre">{o.apellidosNombres}</span>
                           <span className="ocda-persona-cargo" title={o.cargo}>

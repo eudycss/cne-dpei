@@ -7,6 +7,7 @@ import { SearchInput } from '../../components/SearchInput';
 import { crearReservasParejaCda, getDisponiblesParejasCda } from '../../lib/queries/operadores-cda';
 import { cargoPareja } from './ParejaFormModal';
 import { mensajeError } from './utils';
+import { ConFoto } from './AvatarPersona';
 
 /**
  * Operadores y Asistentes CDA activos que ese día no están en ninguna pareja
@@ -139,7 +140,9 @@ export function PersonalSinRecinto({ dia }: { dia: string }) {
                     <th scope="row" className="mono">
                       {i + 1}
                     </th>
-                    <td>{p.apellidosNombres}</td>
+                    <td>
+                      <ConFoto persona={{ operadorId: p.id, nombre: p.apellidosNombres, cedula: p.cedula }}>{p.apellidosNombres}</ConFoto>
+                    </td>
                     <td className="mono">{p.cedula}</td>
                     <td>{cargoPareja(p)}</td>
                   </tr>

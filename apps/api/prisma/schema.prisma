@@ -165,6 +165,7 @@ model Usuario {
   parejasCdaCreadas   ParejaCda[]     @relation("ParejaCdaCreadaPor")
   planesPerimetroCreados      PlanPerimetro[] @relation("PlanPerimetroCreadoPor")
   planesPerimetroActualizados PlanPerimetro[] @relation("PlanPerimetroActualizadoPor")
+  distribucionesDiasCreadas   DistribucionDias[] @relation("DistribucionDiasCreadaPor")
 
   asistenciasCdaEntrada AsistenciaCda[]  @relation("AsistenciaCdaEntradaPor")
   asistenciasCdaSalida  AsistenciaCda[]  @relation("AsistenciaCdaSalidaPor")
@@ -505,6 +506,8 @@ model EventoTracking {
   // las actas antes de poder registrar la salida del recinto.
   actaInstalacionUrl String? @map("acta_instalacion_url") @db.VarChar(512)
   actaEscrutinioUrl  String? @map("acta_escrutinio_url") @db.VarChar(512)
+  // Solo en SALIDA_RECINTO: por qué salió con recintos NO CDA sin marcar su llegada.
+  justificacionNoCda String? @map("justificacion_no_cda") @db.VarChar(500)
   // Solo en la fila tipo=PRUEBA_CONEXION: foto de la computadora donde se hizo
   // el test (obligatoria en la app; opcional en el servidor por las APK viejas).
   fotoPruebaConexionUrl String? @map("foto_prueba_conexion_url") @db.VarChar(512)
@@ -871,6 +874,7 @@ model OperadorCda {
   practicasDigitacion  PracticaDigitacionPersona[]
   intentosDigitacion   IntentoDigitacion[]
   puestosPerimetro     PuestoPerimetro[]
+  distribucionesDias   DistribucionDiasPersona[]
 
   @@index([grupo, activo])
   @@map("operadores_cda")
@@ -1220,7 +1224,7 @@ model CertificadoEvatics {
   subidoEn              DateTime  @map("subido_en") @db.Timestamptz(6)
   /// Versión del aviso LOPDP que aceptó al subir.
   consentimientoVersion String    @map("consentimiento_version") @db.VarChar(40)
-  /// PENDIENTE, APROBADO o RECHAZADO.
+  /// PENDIENTE, APROBADO, RECHAZADO o SIN_SUBIR (guarda una captura antigua; se muestra como «Sin subir»).
   estado                String    @default("PENDIENTE") @db.VarChar(12)
   motivoRechazo         String?   @map("motivo_rechazo") @db.VarChar(300)
   revisadoPorId         String?   @map("revisado_por_id") @db.Uuid
@@ -1320,4 +1324,55 @@ model PuestoPerimetro {
   @@unique([planId, orden], map: "uq_puestos_perimetro_plan_orden")
   @@index([operadorCdaId], map: "idx_puestos_perimetro_operador")
   @@map("puestos_perimetro")
+}
+
+// ---- Distribución del personal por días (p. ej. viernes, sábado y domingo) ----
+
+/// Reparto del personal CDA/CPE entre varios días: cada persona va un solo día,
+/// equitativo entre hombres y mujeres. Independiente de Parejas, kits y asistencia.
+model DistribucionDias {
+  id            String   @id @default(uuid()) @db.Uuid
+  nombre        String   @db.VarChar(120)
+  /// Días del reparto (1 a 7), en orden.
+  fechas        DateTime[] @db.Date
+  /// Claves de cargos_cda que el reparto automático deja fuera (se pueden agregar a mano).
+  excluirCargos String[] @map("excluir_cargos") @db.VarChar(40)
+  /// Cantón y encargado que se ponen al personal del CPE (no tiene recinto).
+  cantonCpe     String?  @map("canton_cpe") @db.VarChar(100)
+  encargadoCpe  String?  @map("encargado_cpe") @db.VarChar(200)
+  creadoPorId   String?  @map("creado_por_id") @db.Uuid
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  creadoPor Usuario?                  @relation("DistribucionDiasCreadaPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  personas  DistribucionDiasPersona[]
+
+  @@map("distribuciones_dias")
+}
+
+/// Una persona en un día de la distribución: del personal registrado
+/// (operadorId; nombre, celular, sexo y cargo salen de su ficha) o externa
+/// (operadorId null; esos datos se guardan aquí).
+model DistribucionDiasPersona {
+  id             String   @id @default(uuid()) @db.Uuid
+  distribucionId String   @map("distribucion_id") @db.Uuid
+  fecha          DateTime @db.Date
+  operadorId     String?  @map("operador_id") @db.Uuid
+  /// Siempre: una cédula solo puede estar una vez en la distribución.
+  cedula         String   @db.VarChar(10)
+  nombres        String?  @db.VarChar(200)
+  telefono       String?  @db.VarChar(20)
+  sexo           String?  @db.VarChar(1)
+  cargo          String?  @db.VarChar(160)
+  canton         String?  @db.VarChar(100)
+  encargado      String?  @db.VarChar(200)
+  creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  distribucion DistribucionDias @relation(fields: [distribucionId], references: [id], onDelete: Cascade)
+  operador     OperadorCda?     @relation(fields: [operadorId], references: [id], onDelete: Restrict)
+
+  @@unique([distribucionId, cedula], map: "uq_distribucion_dias_personas_cedula")
+  @@index([distribucionId, fecha], map: "idx_distribucion_dias_personas_fecha")
+  @@index([operadorId], map: "idx_distribucion_dias_personas_operador")
+  @@map("distribucion_dias_personas")
 }

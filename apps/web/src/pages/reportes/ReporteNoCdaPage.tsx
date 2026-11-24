@@ -7,6 +7,8 @@ import type { ReporteFlujoItem, ReporteNoCdaItem } from '@cne/shared-types';
 import { api } from '../../lib/api';
 import { Logo2027 } from '../../components/Logo2027';
 import { FotoActaModal } from '../operadores/FotoActaModal';
+import { REFRESCO_MONITOREO_MS } from '../operadores/MonitoreoPage';
+import { LlegadaNoCdaPanel, filasDetalleNoCda, horaLlegada } from './LlegadaNoCdaPanel';
 import { useAuth } from '../../auth/AuthContext';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
 import {
@@ -58,6 +60,8 @@ export function ReporteNoCdaPage() {
       const res = await api.get<ReporteNoCdaItem[]>('/tracking/reporte-no-cda');
       return res.data;
     },
+    // Los NO CDA llegan uno a uno en la noche: se refresca solo, como el Monitoreo.
+    refetchInterval: REFRESCO_MONITOREO_MS,
   });
 
   const { data: flujo, isLoading: isLoadingFlujo } = useQuery({
@@ -72,6 +76,11 @@ export function ReporteNoCdaPage() {
   // el lector ve el reporte en pantalla y el Excel.
   const { user } = useAuth();
   const isAdmin = actuaComoAdmin(user?.roles);
+  // NO CDA sin CDA: marca quien recibe en la Delegación; deshacer, solo el administrador.
+  const permisosDelegacion = {
+    marcar: isAdmin || !!user?.roles.some((r) => r === 'TECNICO_SUPERVISOR' || r === 'ASISTENTE_TRANSVERSAL'),
+    deshacer: !!user?.roles.includes('ADMINISTRADOR'),
+  };
 
   const { data: responsables } = useQuery({
     queryKey: ['responsables-informe'],
@@ -162,21 +171,37 @@ export function ReporteNoCdaPage() {
           ]);
         }
       } else {
-        rows.push(['Reporte de CDAs con sus NO-CDAs — CNE Imbabura']);
+        rows.push(['Llegada de los NO CDA a su CDA — CNE Imbabura']);
         rows.push([]);
-        rows.push(['Operador', 'Cédula', 'CDA', 'Kit(s)', 'Llegados', 'Faltan', 'NO-CDAs']);
+        rows.push([
+          'Operador',
+          'Cédula',
+          'CDA',
+          'Cantón',
+          'Kit(s)',
+          'NO CDA llegados',
+          'NO CDA faltan',
+          'Juntas llegadas',
+          'Juntas total',
+          'NO-CDAs',
+        ]);
         for (const item of data ?? []) {
           const noCdasTexto =
             item.noCdas.length === 0
               ? '—'
-              : item.noCdas.map((nc) => `${nc.llegado ? '✓' : '✗'} ${nc.codigoRecinto} — ${nc.nombre}`).join('; ');
+              : item.noCdas
+                  .map((nc) => `${nc.llegado ? '✓' : '✗'} ${nc.codigoRecinto} — ${nc.nombre}${nc.llegadaEn ? ` (${horaLlegada(nc.llegadaEn)})` : ''}`)
+                  .join('; ');
           rows.push([
             item.operadorNombre,
             item.operadorCedula,
             `${item.cdaCodigo} — ${item.cdaNombre}`,
+            item.cantonNombre,
             item.kitsCodigos.join(', ') || '—',
             item.totalLlegados,
             item.totalNoCdas - item.totalLlegados,
+            item.juntasLlegadas,
+            item.juntasNoCdas,
             noCdasTexto,
           ]);
         }
@@ -185,6 +210,7 @@ export function ReporteNoCdaPage() {
       const ws = XLSX.utils.aoa_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, vista === 'flujo' ? 'Flujo CDAs' : 'CDAs y NO-CDAs');
+      if (vista === 'nocda') XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filasDetalleNoCda(data ?? [])), 'Detalle NO CDA');
       XLSX.writeFile(wb, vista === 'flujo' ? 'reporte_flujo_cdas.xlsx' : 'reporte_cdas_nocdas.xlsx');
     } catch (e: any) {
       sileo.error({ title: 'No se pudo exportar: ' + (e?.message ?? '') });
@@ -233,7 +259,7 @@ export function ReporteNoCdaPage() {
               Flujo de CDAs
             </button>
             <button className={vista === 'nocda' ? 'btn' : 'btn secondary'} onClick={() => setVista('nocda')}>
-              CDAs con sus NO-CDAs
+              Llegada de NO CDA
             </button>
             <button
               className="btn secondary"
@@ -469,49 +495,15 @@ export function ReporteNoCdaPage() {
           </>
         ) : (
           <>
-            <h2 style={{ marginTop: 0 }}>Reporte de CDAs con sus NO-CDAs</h2>
+            <h2 style={{ marginTop: 0 }}>Llegada de los NO CDA a su CDA</h2>
+            <div className="muted" style={{ marginBottom: '0.75rem' }}>
+              El operador del CDA marca cada NO CDA cuando llega. Se actualiza cada {REFRESCO_MONITOREO_MS / 1000} segundos.
+            </div>
 
             {!data?.length ? (
               <p className="muted">No hay CDAs con operador asignado en el evento activo.</p>
             ) : (
-              <div className="table-scroll">
-                <table className="table-report">
-                  <thead>
-                    <tr>
-                      <th>Operador</th>
-                      <th>Cédula</th>
-                      <th>CDA</th>
-                      <th>Kit(s)</th>
-                      <th>Llegados</th>
-                      <th>Faltan</th>
-                      <th>NO-CDAs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.map((item) => (
-                      <tr key={item.cdaId}>
-                        <td>{item.operadorNombre}</td>
-                        <td>{item.operadorCedula}</td>
-                        <td>{item.cdaCodigo} — {item.cdaNombre}</td>
-                        <td>{item.kitsCodigos.join(', ') || '—'}</td>
-                        <td><strong style={{ color: 'var(--success-text)' }}>{item.totalLlegados}</strong> / {item.totalNoCdas}</td>
-                        <td><strong style={{ color: 'var(--error)' }}>{item.totalNoCdas - item.totalLlegados}</strong></td>
-                        <td>
-                          {item.noCdas.length === 0 ? (
-                            <span className="muted">—</span>
-                          ) : (
-                            item.noCdas.map((nc) => (
-                              <div key={nc.id} style={{ color: nc.llegado ? 'var(--success-text)' : 'var(--error)' }}>
-                                {nc.llegado ? '✓' : '✗'} {nc.codigoRecinto} — {nc.nombre}
-                              </div>
-                            ))
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <LlegadaNoCdaPanel datos={data} permisos={permisosDelegacion} />
             )}
           </>
         )}

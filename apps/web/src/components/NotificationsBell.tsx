@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell } from 'lucide-react';
+import { BellRingIcon, useIconoAnimado } from './iconos-animados';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { TextoAnimado } from './TextoAnimado';
 import type { NotificacionItem } from '@cne/shared-types';
@@ -49,6 +49,20 @@ export function NotificationsBell() {
     setPage(1);
   }, [data]);
 
+  // La campana suena sola una vez cuando llegan notificaciones nuevas (sube el
+  // contador). No suena en la primera carga ni al marcar como leída.
+  const campana = useIconoAnimado();
+  const animarCampana = campana.animar;
+  // Se compara el contador que manda el servidor (no el local, que baja al marcar).
+  const noLeidasServidor = data?.noLeidas;
+  const noLeidasPrevRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (noLeidasServidor === undefined) return;
+    const previo = noLeidasPrevRef.current;
+    noLeidasPrevRef.current = noLeidasServidor;
+    if (previo !== null && noLeidasServidor > previo) animarCampana();
+  }, [noLeidasServidor, animarCampana]);
+
   const markRead = useMutation({
     mutationFn: (id: string) => marcarNotificacionLeida(id),
   });
@@ -95,8 +109,9 @@ export function NotificationsBell() {
         aria-label={noLeidas > 0 ? `Notificaciones, ${noLeidas} sin leer` : 'Notificaciones'}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
+        {...campana.disparadores}
       >
-        <Bell size={18} />
+        <BellRingIcon ref={campana.ref} size={18} aria-hidden="true" />
         {noLeidas > 0 ? (
           <span className="notif-badge">
             <TextoAnimado text={noLeidas > 99 ? '99+' : String(noLeidas)} />

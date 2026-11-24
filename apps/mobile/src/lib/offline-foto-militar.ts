@@ -1,9 +1,9 @@
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { FotoMilitarResponse } from '@cne/shared-types';
-import { api } from './api';
 import { comprimirFoto } from './comprimir-foto';
 import { isTransientError } from './errores-red';
+import { subirFoto } from './subir-foto';
 
 /**
  * Foto del militar sin señal (mismo patrón que offline-actas).
@@ -81,20 +81,7 @@ async function guardar(contextoId: string, registro: RegistroFoto): Promise<void
 
 /** Sube la foto al almacenamiento cifrado del servidor y devuelve su identificador. */
 export async function subirFotoMilitar(uri: string): Promise<FotoMilitarResponse> {
-  const form = new FormData();
-  // En RN, FormData acepta el objeto { uri, name, type } como blob; los tipos
-  // estándar de TS no lo reflejan, por eso el cast a any.
-  const filename = uri.split('/').pop() ?? `militar-${Date.now()}.jpg`;
-  const match = /\.(\w+)$/.exec(filename);
-  const ext = match?.[1]?.toLowerCase() ?? 'jpg';
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  form.append('file', { uri, name: filename, type: mime } as any);
-
-  const { data } = await api.post<FotoMilitarResponse>('/tracking/foto-militar', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    transformRequest: (d) => d,
-  });
-  return data;
+  return subirFoto<FotoMilitarResponse>('/tracking/foto-militar', uri);
 }
 
 /**

@@ -9,6 +9,7 @@ import { getConvocatoriaCda, guardarConvocatoriaCda } from '../../lib/queries/op
 import { useModulos } from '../../lib/useModulos';
 import { hoyEcuador, mensajeError } from './utils';
 import { CargaConvocatoriaExcel } from './CargaConvocatoriaExcel';
+import { ConFoto } from './AvatarPersona';
 
 interface GrupoCargo {
   clave: string;
@@ -216,7 +217,9 @@ export function ConvocatoriaPanel() {
                           disabled={!editable || p.porPareja || guardar.isPending}
                           onChange={() => alternar(p.operadorId)}
                         />
-                        <span>{p.apellidosNombres}</span>
+                        <ConFoto persona={{ operadorId: p.operadorId, nombre: p.apellidosNombres }}>
+                          {p.apellidosNombres}
+                        </ConFoto>
                         {p.porPareja && <span className="ocda-estado pendiente">En Parejas</span>}
                       </label>
                     </li>

@@ -21,6 +21,10 @@ import { AppBar } from '../components/AppBar';
 import { CameraFoto } from '../components/CameraFoto';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
+import { NoCdaPendientesCard } from '../components/NoCdaPendientesCard';
+import { JustificacionNoCdaModal } from '../components/JustificacionNoCdaModal';
+import { cancelarAvisoNoCda, noCdasPendientes, sincronizarAvisoNoCda } from '../lib/aviso-no-cda';
+import { pedirPermisoAvisos } from '../lib/aviso-proximidad';
 import {
   capturarYSubirActa,
   limpiarActas,
@@ -131,6 +135,34 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // NO CDA sin marcar: tarjeta, número rojo, recordatorio cada 30 min y
+  // justificación al salir. Recarga sin el spinner de pantalla completa.
+  const pendientesNoCda = useMemo(() => noCdasPendientes(asignacion), [asignacion]);
+  const [pedirMotivo, setPedirMotivo] = useState(false);
+  const refrescarNoCdas = useCallback(async () => {
+    try {
+      setAsignacion(await getMiAsignacion());
+    } catch {
+      // Sin señal: queda la asignación actual; la marca ya se guardó en la cola.
+    }
+  }, []);
+
+  const hayAsignacion = !!asignacion;
+  useEffect(() => {
+    if (!hayAsignacion) return;
+    const n = pendientesNoCda.length;
+    let vigente = true;
+    (async () => {
+      // El diálogo de permiso puede quedar abierto mientras cambia el número:
+      // solo el último cambio programa (la cola de aviso-no-cda ordena el resto).
+      if (n > 0) await pedirPermisoAvisos();
+      if (vigente) await sincronizarAvisoNoCda(n);
+    })();
+    return () => {
+      vigente = false;
+    };
+  }, [hayAsignacion, pendientesNoCda.length]);
 
   // Namespacea la persistencia local de actas por recinto+evento: sin esto,
   // si el operador nunca confirma la salida (cierra sesión, cambia de
@@ -355,17 +387,21 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   }
 
   function confirmar() {
+    if (pendientesNoCda.length > 0) {
+      setPedirMotivo(true);
+      return;
+    }
     Alert.alert(
       'Registrar salida del recinto',
       'Se registrará la salida del recinto y se iniciará el rastreo de tu retorno al DPI. ¿Deseas continuar?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Registrar Salida', style: 'default', onPress: ejecutarSalida },
+        { text: 'Registrar Salida', style: 'default', onPress: () => ejecutarSalida() },
       ],
     );
   }
 
-  async function ejecutarSalida() {
+  async function ejecutarSalida(justificacionNoCda?: string) {
     if (!instalacion.url || !escrutinio.url || !contextoId) return;
     setRegistrando(true);
     try {
@@ -378,7 +414,9 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         ocurridoEn: new Date().toISOString(),
         actaInstalacionUrl: instalacion.url,
         actaEscrutinioUrl: escrutinio.url,
+        ...(justificacionNoCda ? { justificacionNoCda } : {}),
       });
+      await cancelarAvisoNoCda();
 
       if (result === null) {
         Alert.alert('Sin señal', 'Salida del recinto guardada localmente. Se sincronizará automáticamente.');
@@ -409,6 +447,8 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
 
       onSalidaRegistrada();
     } catch (e: any) {
+      // Que el aviso de error no quede tapado por el pedido de motivo.
+      setPedirMotivo(false);
       if (e instanceof LocationServicesDisabledError) {
         Alert.alert(
           'Activa la ubicación',
@@ -421,6 +461,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         );
       } else if (e?.response?.status === 409) {
         Alert.alert('Salida ya registrada', 'Ya habías registrado tu salida del recinto.');
+        await cancelarAvisoNoCda();
         await limpiarActas(contextoId);
         await limpiarPruebaConexion(contextoId);
         onSalidaRegistrada();
@@ -462,7 +503,13 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="Salida del recinto" onRefresh={cargar} refreshing={loading} />
+      <AppBar
+        subtitle="Salida del recinto"
+        onRefresh={cargar}
+        refreshing={loading}
+        noCdasPendientes={pendientesNoCda.length}
+        onMiRecintoCerrado={refrescarNoCdas}
+      />
       <ScrollView
         contentContainerStyle={styles.body}
         refreshControl={
@@ -470,6 +517,8 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
         }
       >
         <Text style={styles.title}>Salida del recinto electoral</Text>
+
+        <NoCdaPendientesCard noCdas={asignacion?.noCdas ?? []} onMarcado={refrescarNoCdas} />
 
         <View style={styles.stepper}>
           <StepBadge n={1} label="Prueba de conexión" active={paso === 1} done={paso > 1} styles={styles} />
@@ -588,6 +637,14 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </ScrollView>
+
+      <JustificacionNoCdaModal
+        visible={pedirMotivo}
+        pendientes={pendientesNoCda}
+        registrando={registrando}
+        onConfirmar={(motivo) => ejecutarSalida(motivo)}
+        onCancelar={() => setPedirMotivo(false)}
+      />
 
       <Modal visible={mostrarCamara !== null} animationType="slide" presentationStyle="fullScreen">
         <CameraFoto

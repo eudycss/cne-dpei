@@ -9,6 +9,7 @@ import { buscarPersonasCda } from '../../lib/queries/operadores-cda';
 import { FILTROS_INGRESO } from './filtroIngreso';
 import { useCargosCda, useGrupoCda } from './grupo';
 import { mensajeError } from './utils';
+import { AvatarPersona } from './AvatarPersona';
 
 /** La API pide al menos 3 caracteres y devuelve hasta 20 personas. */
 const MINIMO = 3;
@@ -76,6 +77,7 @@ export function PersonasEncontradas({
         const t = textos(p.grupo);
         return (
           <li key={p.id} className="ocda-persona">
+            <AvatarPersona persona={{ operadorId: p.id, nombre: p.apellidosNombres, cedula: p.cedula }} />
             <span className="ocda-persona-datos">
               <strong>{p.apellidosNombres}</strong>
               <span className="muted">

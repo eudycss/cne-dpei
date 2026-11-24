@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -63,7 +64,7 @@ import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
 import { RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { EventoNoReabiertoGuard } from '../common/evento-no-reabierto.guard';
-import { LecturaConfigurable, Roles } from '../common/roles.decorator';
+import { LecturaConfigurable, Roles, SoloAdmin } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthenticatedUser } from '../common/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
@@ -311,6 +312,33 @@ export class TrackingController {
   })
   reporteNoCda() {
     return this.tracking.reporteNoCdas();
+  }
+
+  @Post('no-cda/:recintoId/llegada-delegacion')
+  @UseGuards(EventoNoReabiertoGuard)
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @RequiereModulo('reportes')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'recintoId', description: 'NO CDA sin CDA de destino' })
+  @ApiOperation({
+    summary: 'Quien recibe en la Delegación marca la llegada de un NO CDA sin CDA (directo a la Delegación)',
+  })
+  llegadaNoCdaDelegacion(
+    @Param('recintoId', ParseUUIDPipe) recintoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tracking.registrarLlegadaNoCdaDelegacion(recintoId, user.sub);
+  }
+
+  @Delete('no-cda/:recintoId/llegada-delegacion')
+  @UseGuards(EventoNoReabiertoGuard)
+  @Roles('ADMINISTRADOR')
+  @SoloAdmin()
+  @RequiereModulo('reportes')
+  @ApiParam({ name: 'recintoId', description: 'NO CDA sin CDA de destino' })
+  @ApiOperation({ summary: 'El administrador deshace una llegada a la Delegación marcada por error' })
+  anularLlegadaNoCdaDelegacion(@Param('recintoId', ParseUUIDPipe) recintoId: string) {
+    return this.tracking.anularLlegadaNoCdaDelegacion(recintoId);
   }
 
   @Get('reporte-flujo')

@@ -1,5 +1,7 @@
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 
+let mockRoles: string[] = ['ADMINISTRADOR'];
+
 jest.mock('../lib/notifications', () => ({
   getMisNotificaciones: jest.fn(),
   marcarNotificacionLeida: jest.fn(),
@@ -8,7 +10,7 @@ jest.mock('../lib/notifications', () => ({
 }));
 jest.mock('./EstadoSincronizacion', () => ({ EstadoSincronizacion: () => null }));
 jest.mock('../auth/AuthContext', () => ({
-  useAuth: () => ({ user: { roles: ['ADMINISTRADOR'] } }),
+  useAuth: () => ({ user: { roles: mockRoles } }),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 24, bottom: 0, left: 0, right: 0 }),
@@ -105,6 +107,37 @@ describe('AppBar — inset superior', () => {
       await flushPromises();
     });
     expect(paddingTopBarra(r)).toBe(10);
+    await act(async () => r.unmount());
+  }, 15000);
+});
+
+describe('AppBar — número rojo de NO CDA por marcar (operador)', () => {
+  beforeEach(() => {
+    mockRoles = ['OPERADOR_CDA'];
+    (getMisNotificaciones as jest.Mock).mockResolvedValue({ items: [], total: 0, noLeidas: 0 });
+  });
+  afterEach(() => {
+    mockRoles = ['ADMINISTRADOR'];
+  });
+
+  it('muestra el número sobre "Mi recinto" y lo anuncia al lector de pantalla', async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(<AppBar noCdasPendientes={3} />);
+      await flushPromises();
+    });
+    expect(r.root.findAllByProps({ testID: 'badge-no-cda' }).length).toBeGreaterThan(0);
+    expect(r.root.findAll((n) => n.props.accessibilityLabel === 'Mi recinto, 3 NO CDA por marcar').length).toBeGreaterThan(0);
+    await act(async () => r.unmount());
+  }, 15000);
+
+  it('sin pendientes no muestra el número', async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(<AppBar noCdasPendientes={0} />);
+      await flushPromises();
+    });
+    expect(r.root.findAllByProps({ testID: 'badge-no-cda' })).toHaveLength(0);
     await act(async () => r.unmount());
   }, 15000);
 });

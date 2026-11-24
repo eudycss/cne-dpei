@@ -19,7 +19,8 @@ import { AccionesEncabezado } from './AccionesEncabezado';
 import { useModulos } from '../../lib/useModulos';
 import { GenerarActasModal } from './GenerarActasModal';
 import { Kpi } from './Kpi';
-import { cargoCorto, iniciales } from './utils';
+import { cargoCorto } from './utils';
+import { AvatarPersona } from './AvatarPersona';
 
 type Filtro = 'todos' | 'sin-acta' | 'generadas' | 'firmadas';
 
@@ -218,9 +219,7 @@ export function ActasPanel({ acciones = null }: { acciones?: HTMLElement | null 
                     </td>
                     <th scope="row">
                       <span className="ocda-persona">
-                        <span className={`ocda-avatar${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
-                          {iniciales(o.apellidosNombres)}
-                        </span>
+                        <AvatarPersona persona={{ operadorId: o.id, nombre: o.apellidosNombres, cedula: o.cedula, cargo: o.cargo, tieneFoto: o.tieneFoto }} ampliable={false} />
                         <span className="ocda-persona-textos">
                           <span className="ocda-persona-nombre">{o.apellidosNombres}</span>
                           <span className="ocda-persona-cargo" title={o.cargo}>

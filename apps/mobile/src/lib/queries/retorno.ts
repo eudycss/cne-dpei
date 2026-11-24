@@ -12,25 +12,13 @@ import type {
 } from '@cne/shared-types';
 import { api } from '../api';
 import { withOffline } from '../offline-queue';
+import { subirFoto } from '../subir-foto';
 import { actualizarCopia } from '../cache-jornada';
 
 // subirFotoActa NO tiene soporte offline: las URLs de las actas son requeridas
 // por postSalidaRecinto (mismo criterio que subirFotoMilitar en llegada.ts).
 export async function subirFotoActa(uri: string): Promise<{ url: string }> {
-  const form = new FormData();
-  const filename = uri.split('/').pop() ?? `acta-${Date.now()}.jpg`;
-  const match = /\.(\w+)$/.exec(filename);
-  const ext = match?.[1]?.toLowerCase() ?? 'jpg';
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  // En RN, FormData acepta el objeto { uri, name, type } como blob; los tipos
-  // estándar de TS no lo reflejan, por eso el cast a any.
-  form.append('file', { uri, name: filename, type: mime } as any);
-
-  const { data } = await api.post<{ url: string }>('/tracking/foto-acta', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    transformRequest: (d) => d,
-  });
-  return data;
+  return subirFoto<{ url: string }>('/tracking/foto-acta', uri);
 }
 
 export async function postSalidaRecinto(body: SalidaRecintoRequest): Promise<SalidaRecintoResponse | null> {
