@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import type { MiAsignacionRecinto, MiAsignacionResponse } from '@cne/shared-types';
-import { getMiAsignacion, postLlegadaNoCda } from '../lib/queries/tracking';
+import type { MiAsignacionResponse } from '@cne/shared-types';
+import { getMiAsignacion } from '../lib/queries/tracking';
 import { SuParejaCard } from './SuParejaCard';
+import { NoCdaChecklist, juntasTotales as jt } from './NoCdaChecklist';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
 import { Colors } from '../theme/colors';
@@ -13,21 +13,11 @@ interface Props {
   onClose: () => void;
 }
 
-function jt(r: MiAsignacionRecinto): number {
-  return (r.juntasFemeninas ?? 0) + (r.juntasMasculinas ?? 0);
-}
-
-function formatHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
-}
-
 export function MiRecintoModal({ visible, onClose }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [data, setData] = useState<MiAsignacionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [marcando, setMarcando] = useState<string | null>(null);
-
   const cargar = () => {
     setError(null);
     getMiAsignacion()
@@ -39,18 +29,6 @@ export function MiRecintoModal({ visible, onClose }: Props) {
     if (!visible) return;
     cargar();
   }, [visible]);
-
-  const marcarLlegada = async (recintoId: string) => {
-    setMarcando(recintoId);
-    try {
-      await postLlegadaNoCda(recintoId);
-      cargar();
-    } catch {
-      setError('No se pudo registrar la llegada. Intenta de nuevo.');
-    } finally {
-      setMarcando(null);
-    }
-  };
 
   const totalJuntas = data ? jt(data.recinto) + data.noCdas.reduce((sum, nc) => sum + jt(nc), 0) : 0;
 
@@ -78,43 +56,7 @@ export function MiRecintoModal({ visible, onClose }: Props) {
               </View>
 
               <Text style={[styles.sectionLabel, { marginTop: 4 }]}>NO-CDAs a mi cargo</Text>
-              {data.noCdas.length === 0 ? (
-                <Text style={styles.muted}>Sin NO-CDAs asignados a este CDA.</Text>
-              ) : (
-                data.noCdas.map((nc) => {
-                  const llegado = !!nc.llegadaRegistradaEn;
-                  return (
-                    <Pressable
-                      key={nc.id}
-                      style={styles.noCdaRow}
-                      disabled={llegado || marcando === nc.id}
-                      onPress={() => marcarLlegada(nc.id)}
-                    >
-                      <Ionicons
-                        name={llegado ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={llegado ? colors.success : colors.textSecondary}
-                        style={styles.checkbox}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.recintoNombre}>{nc.nombre}</Text>
-                        <Text style={styles.recintoMeta}>
-                          {nc.codigoRecinto}
-                          {nc.parroquia ? ` · ${nc.parroquia}` : ''}
-                        </Text>
-                        <Text style={styles.recintoMeta}>
-                          JF: {nc.juntasFemeninas ?? '—'} · JM: {nc.juntasMasculinas ?? '—'} · JT: {jt(nc)}
-                        </Text>
-                        {llegado && (
-                          <Text style={styles.llegadaText}>
-                            Llegada registrada a las {formatHora(nc.llegadaRegistradaEn!)}
-                          </Text>
-                        )}
-                      </View>
-                    </Pressable>
-                  );
-                })
-              )}
+              <NoCdaChecklist noCdas={data.noCdas} onMarcado={cargar} />
 
               <Text style={styles.totalJuntas}>Nro Juntas Total: {totalJuntas}</Text>
 
@@ -148,9 +90,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   sectionLabel: { fontSize: 12, fontFamily: fontFamily.bold, color: c.textSecondary, marginBottom: 4 },
   recintoNombre: { fontSize: 14, fontFamily: fontFamily.medium, color: c.textPrimary },
   recintoMeta: { fontSize: 12, fontFamily: fontFamily.regular, color: c.textMeta },
-  noCdaRow: { marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start' },
-  checkbox: { marginRight: 8, marginTop: 2 },
-  llegadaText: { fontSize: 12, fontFamily: fontFamily.medium, color: c.successText },
   totalJuntas: { fontSize: 13, fontFamily: fontFamily.bold, color: c.textPrimary, marginTop: 6 },
   muted: { fontSize: 13, fontFamily: fontFamily.regular, color: c.textSecondary },
   error: { fontSize: 13, fontFamily: fontFamily.regular, color: c.error, marginVertical: 12 },
