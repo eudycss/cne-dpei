@@ -146,14 +146,14 @@ export class OperadoresCdaService {
    * actas ligadas. Al ocultar, el cron de la madrugada borra su foto (LOPDP).
    */
 
-  async cambiarActivo(id: string, activo: boolean): Promise<OperadorCda> {
+  async cambiarActivo(id: string, activo: boolean, hechoPorId?: string): Promise<OperadorCda> {
     const { cedula } = await this.existe(id);
     const passwordHash = activo ? await this.cuentas.hashInicial(cedula) : '';
     // Misma transacción: ocultar a alguien nunca le deja la app abierta.
     const editado = await this.prisma.$transaction(async (tx) => {
       const fila = await tx.operadorCda.update({ where: { id }, data: { activo } });
       if (activo) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
-      else await this.cuentas.retirarCuenta(tx, id);
+      else await this.cuentas.retirarCuenta(tx, id, { motivo: 'OCULTADO_CDA', hechoPorId });
       return fila;
     });
     return toOperadorCdaDto(editado);
@@ -202,6 +202,7 @@ export class OperadoresCdaService {
     // El hash (argon2, lento) se calcula antes de abrir la transacción.
     const passwordHash = !teniaCuenta && tendraCuenta ? await this.cuentas.hashInicial(o.cedula) : '';
 
+    let cuentaDesactivada = false;
     const editado = await this.prisma.$transaction(async (tx) => {
       // Condicionado al cargo leído: si otro administrador lo cambió entretanto, no se pisa.
       // Este UPDATE espera al bloqueo de ActasCdaService.generar: así ningún acta sale con el cargo anterior.
@@ -210,7 +211,10 @@ export class OperadoresCdaService {
       await tx.cambioCargoCda.create({
         data: { operadorId: id, grupoAnterior: o.grupo, grupoNuevo: grupo, desde: fechaDb(desde), hechoPorId: usuarioId },
       });
-      if (teniaCuenta && !tendraCuenta) await this.cuentas.retirarCuenta(tx, id);
+      if (teniaCuenta && !tendraCuenta) {
+        const retiro = await this.cuentas.retirarCuenta(tx, id, { motivo: 'CAMBIO_CARGO_CDA', hechoPorId: usuarioId });
+        cuentaDesactivada = retiro === 'DESACTIVADA';
+      }
       if (!teniaCuenta && tendraCuenta) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
       return tx.operadorCda.findUniqueOrThrow({ where: { id } });
     });
@@ -220,6 +224,7 @@ export class OperadoresCdaService {
       desde,
       carnetVigente: o._count.credenciales > 0,
       actaVigente: o._count.actas > 0,
+      cuentaDesactivada,
     };
   }
 

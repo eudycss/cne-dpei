@@ -552,8 +552,8 @@ describe('OperadoresCdaService', () => {
     it('ocultar retira la cuenta en la misma transacción; reactivar la asegura', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
       prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA, activo: false });
-      await service.cambiarActivo('o1', false);
-      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(prisma, 'o1');
+      await service.cambiarActivo('o1', false, 'admin-1');
+      expect(cuentas.retirarCuenta).toHaveBeenCalledWith(prisma, 'o1', { motivo: 'OCULTADO_CDA', hechoPorId: 'admin-1' });
       expect(cuentas.asegurarCuenta).not.toHaveBeenCalled();
 
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1', cedula: '1710034065' });

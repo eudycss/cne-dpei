@@ -12,6 +12,10 @@ const ROL_CDA = 'OPERADOR_CDA';
 const ESPERA_SINCRONIZACION_MS = 20_000;
 
 export type ResultadoAsegurar = 'CREADA' | 'VINCULADA' | 'YA_TENIA' | 'NO_APLICA';
+/** DESACTIVADA: quedó sin roles y se desactivó ahora; YA_INACTIVA: sin roles pero ya estaba inactiva; ROL_RETIRADO: conserva otros roles. */
+export type ResultadoRetiro = 'DESACTIVADA' | 'YA_INACTIVA' | 'ROL_RETIRADO' | 'SIN_CUENTA';
+/** Por qué se retira el acceso (queda en la bitácora). */
+export type MotivoRetiroCuenta = 'CAMBIO_CARGO_CDA' | 'OCULTADO_CDA';
 
 type Tx = Prisma.TransactionClient;
 
@@ -117,17 +121,45 @@ export class CuentasCdaService implements OnApplicationBootstrap {
    * Quita el acceso a la app: retira el rol OPERADOR_CDA y cierra sus sesiones.
    * Solo desactiva la cuenta si ese era su único rol (un Administrador que
    * además es asistente sigue entrando a la web). El vínculo se conserva para
-   * reutilizar la misma cuenta si vuelve.
+   * reutilizar la misma cuenta si vuelve. Deja constancia en la bitácora: la
+   * desactivación no pasa por "Desactivar" de Usuarios.
    */
-  async retirarCuenta(tx: Tx, operadorId: string): Promise<void> {
+  async retirarCuenta(
+    tx: Tx,
+    operadorId: string,
+    contexto: { motivo: MotivoRetiroCuenta; hechoPorId?: string | null },
+  ): Promise<ResultadoRetiro> {
     const op = await tx.operadorCda.findUnique({ where: { id: operadorId }, select: { usuarioId: true } });
-    if (!op?.usuarioId) return;
+    if (!op?.usuarioId) return 'SIN_CUENTA';
     const usuarioId = op.usuarioId;
     const rolId = await this.rolCdaId(tx);
-    await tx.usuarioRol.deleteMany({ where: { usuarioId, rolId } });
+    const { count: rolesQuitados } = await tx.usuarioRol.deleteMany({ where: { usuarioId, rolId } });
     const otrosRoles = await tx.usuarioRol.count({ where: { usuarioId } });
-    if (otrosRoles === 0) await tx.usuario.update({ where: { id: usuarioId }, data: { activo: false } });
+    const desactivar = otrosRoles === 0;
+    // Condicionado: si ya estaba inactiva, no hay nada que registrar.
+    const { count: desactivadas } = desactivar
+      ? await tx.usuario.updateMany({ where: { id: usuarioId, activo: true }, data: { activo: false } })
+      : { count: 0 };
     await tx.refreshToken.updateMany({ where: { usuarioId, revocadoEn: null }, data: { revocadoEn: new Date() } });
+
+    if (rolesQuitados > 0 || desactivadas > 0) {
+      await tx.bitacoraAuditoria.create({
+        data: {
+          usuarioId: contexto.hechoPorId ?? null,
+          accion: desactivadas > 0 ? 'USER_DESACTIVADO_AUTO' : 'ROLE_REVOKE_AUTO',
+          entidad: 'usuario',
+          entidadId: usuarioId,
+          datosDespues: {
+            motivo: contexto.motivo,
+            operadorCdaId: operadorId,
+            rolRetirado: rolesQuitados > 0 ? ROL_CDA : null,
+            ...(desactivadas > 0 && { activo: false }),
+          },
+        },
+      });
+    }
+    if (!desactivar) return 'ROL_RETIRADO';
+    return desactivadas > 0 ? 'DESACTIVADA' : 'YA_INACTIVA';
   }
 
   /**
