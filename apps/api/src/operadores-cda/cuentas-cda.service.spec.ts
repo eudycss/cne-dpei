@@ -133,7 +133,7 @@ describe('CuentasCdaService', () => {
       const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('VINCULADA');
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
 
@@ -156,7 +156,7 @@ describe('CuentasCdaService', () => {
 
       await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
       expect(prisma.usuarioRol.createMany).toHaveBeenCalled();
     });
 
@@ -263,7 +263,7 @@ describe('CuentasCdaService', () => {
       expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data).toMatchObject({
         usuarioId: null,
         accion: 'USER_REACTIVADO_AUTO',
-        datosDespues: { motivo: 'SINCRONIZACION_CDA' },
+        datosDespues: { motivo: 'SINCRONIZACION_CDA', operadorCdaId: OP_ID, rolAgregado: null, activo: true },
       });
     });
   });
