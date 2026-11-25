@@ -14,9 +14,11 @@ import { FILTROS_INGRESO } from './filtroIngreso';
 import { CARGOS_BASE, CargosCdaContext, GrupoCdaContext, grupoDeRuta, textosDeCargo } from './grupo';
 import { OpcionesCargo } from './OpcionesCargo';
 import { BuscadorGeneral } from './BuscadorGeneral';
+import { ResumenSexo } from './ResumenSexo';
 import { QuienFuePanel } from './QuienFuePanel';
 import { ConvocatoriaPanel } from './ConvocatoriaPanel';
 import { EvaticsPanel } from './EvaticsPanel';
+import { DistribucionDiasPanel } from './DistribucionDiasPanel';
 import { GestionarCargosModal } from './GestionarCargosModal';
 import { getCargosCda } from '../../lib/queries/operadores-cda';
 import { useAuth } from '../../auth/AuthContext';
@@ -30,8 +32,12 @@ const SECCIONES = [
   { id: 'parejas', etiqueta: 'Parejas' },
   { id: 'historial', etiqueta: 'Historial de parejas' },
   { id: 'quien-fue', etiqueta: '¿Quién fue a dónde?' },
+  { id: 'distribucion', etiqueta: 'Distribución por días' },
   { id: 'evatics', etiqueta: 'Certificados Evatics' },
 ] as const;
+
+/** Pestañas de todo el personal: sin el combo de cargo. */
+const SIN_CARGO = new Set<string>(['evatics', 'distribucion']);
 
 /** Las parejas (operador + asistente por recinto), su historial y la búsqueda solo son de los dos cargos CDA. */
 const DE_PAREJAS = new Set<string>(['parejas', 'historial', 'quien-fue']);
@@ -58,8 +64,8 @@ export function OperadoresCdaPage() {
   const cargos = data && data.length > 0 ? data : CARGOS_BASE;
   const grupo = grupoDeRuta(params.get('grupo'), cargos);
   const textos = textosDeCargo(grupo, cargos);
-  // Evatics es de todo el personal (CDA, CPE y Asistentes Transversales): el cargo no aplica.
-  const enEvatics = params.get('tab') === 'evatics';
+  // Evatics y la distribución por días son de todo el personal: el cargo no aplica.
+  const sinCargo = SIN_CARGO.has(params.get('tab') ?? '');
 
   function elegirGrupo(g: GrupoCda) {
     // Conserva la sección; los filtros del listado eran del cargo anterior.
@@ -90,7 +96,8 @@ export function OperadoresCdaPage() {
           <div className="ocda-acciones" ref={setAcciones} />
         </div>
         <BuscadorGeneral />
-        {!enEvatics && (
+        <ResumenSexo cargos={cargos} />
+        {!sinCargo && (
           <div className="ocda-cargo-fila">
             <label className="ocda-cargo">
               <span>Cargo</span>
@@ -124,6 +131,8 @@ export function OperadoresCdaPage() {
                 <HistorialParejasPanel />
               ) : seccion === 'quien-fue' ? (
                 <QuienFuePanel />
+              ) : seccion === 'distribucion' ? (
+                <DistribucionDiasPanel />
               ) : seccion === 'evatics' ? (
                 <EvaticsPanel acciones={acciones} />
               ) : (

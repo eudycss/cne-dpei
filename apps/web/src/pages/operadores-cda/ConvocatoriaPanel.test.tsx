@@ -8,7 +8,7 @@ import { ConvocatoriaPanel } from './ConvocatoriaPanel';
 import { getConvocatoriaCda, guardarConvocatoriaCda } from '../../lib/queries/operadores-cda';
 import { sileo } from 'sileo';
 
-vi.mock('../../lib/queries/operadores-cda', () => ({ getConvocatoriaCda: vi.fn(), guardarConvocatoriaCda: vi.fn() }));
+vi.mock('../../lib/queries/operadores-cda', () => ({ getConvocatoriaCda: vi.fn(), guardarConvocatoriaCda: vi.fn(), getIdsConFoto: vi.fn().mockResolvedValue([]), getFotoOperadorCda: vi.fn() }));
 vi.mock('sileo', () => ({ sileo: { error: vi.fn(), success: vi.fn() } }));
 const permisos = { gestionar: true };
 vi.mock('../../lib/useModulos', () => ({

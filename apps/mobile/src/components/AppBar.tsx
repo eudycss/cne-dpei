@@ -24,9 +24,13 @@ interface AppBarProps {
   subtitle?: string;
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** NO CDA sin marcar su llegada: número rojo sobre "Mi recinto". */
+  noCdasPendientes?: number;
+  /** Al cerrar "Mi recinto" (pudo marcar NO CDA ahí), para que la pantalla recargue. */
+  onMiRecintoCerrado?: () => void;
 }
 
-export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
+export function AppBar({ subtitle, onRefresh, refreshing, noCdasPendientes = 0, onMiRecintoCerrado }: AppBarProps) {
   const insets = useSafeAreaInsets();
   const sinInsetSuperior = useContext(AppBarSinInsetSuperior);
   const { theme, colors, toggle } = useTheme();
@@ -128,8 +132,22 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
           </Pressable>
         )}
         {esOperador && (
-          <Pressable onPress={() => setShowMiRecinto(true)} hitSlop={8} accessibilityLabel="Mi recinto">
-            <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+          <Pressable
+            onPress={() => setShowMiRecinto(true)}
+            hitSlop={11}
+            accessibilityRole="button"
+            accessibilityLabel={
+              noCdasPendientes > 0 ? `Mi recinto, ${noCdasPendientes} NO CDA por marcar` : 'Mi recinto'
+            }
+          >
+            <View>
+              <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+              {noCdasPendientes > 0 && (
+                <View style={[styles.badge, styles.badgeNoCda]} testID="badge-no-cda">
+                  <Text style={styles.badgeNoCdaText}>{noCdasPendientes > 99 ? '99+' : noCdasPendientes}</Text>
+                </View>
+              )}
+            </View>
           </Pressable>
         )}
         {esOperador && (
@@ -159,7 +177,15 @@ export function AppBar({ subtitle, onRefresh, refreshing }: AppBarProps) {
         </Pressable>
       </View>
 
-      {esOperador && <MiRecintoModal visible={showMiRecinto} onClose={() => setShowMiRecinto(false)} />}
+      {esOperador && (
+        <MiRecintoModal
+          visible={showMiRecinto}
+          onClose={() => {
+            setShowMiRecinto(false);
+            onMiRecintoCerrado?.();
+          }}
+        />
+      )}
       {esOperador && (
         <ReportarIncidenciaModal visible={showIncidencia} onClose={() => setShowIncidencia(false)} />
       )}
@@ -206,4 +232,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 9, fontFamily: fontFamily.bold, color: '#fff' },
+  // Rojo fijo (no el `error` claro del tema oscuro): blanco sobre #dc2626 ≈ 4.8:1 (WCAG AA).
+  badgeNoCda: { backgroundColor: '#dc2626', minWidth: 18, height: 18, borderRadius: 9, top: -7, right: -9 },
+  badgeNoCdaText: { fontSize: 11, fontFamily: fontFamily.bold, color: '#fff' },
 });

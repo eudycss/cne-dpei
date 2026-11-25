@@ -150,7 +150,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
       'Asignaciones',
       'Kits Electorales',
     ]);
-    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas']);
+    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas', 'Plan de perímetro']);
     expect(etiquetas('Informes')).toEqual(['Cadena de custodia', 'Reportes', 'Power BI CDAS']);
     const hrefs = within(screen.getByRole('group', { name: 'Preparación' }))
       .getAllByRole('link')
@@ -173,7 +173,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
       within(screen.getByRole('group', { name: grupo }))
         .getAllByRole('link')
         .map((l) => l.textContent);
-    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas']);
+    expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas', 'Plan de perímetro']);
     expect(etiquetas('Informes')).toEqual(['Power BI CDAS']);
   });
 

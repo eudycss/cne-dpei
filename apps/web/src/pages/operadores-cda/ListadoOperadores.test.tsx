@@ -36,7 +36,9 @@ const operador = (over: Partial<OperadorCda>): OperadorCda => ({
   cargo: 'OPERADOR CDA',
   unidad: null,
   fechaInicio: '2026-10-20',
+  sexo: null,
   tieneFoto: false,
+  fotoPendiente: false,
   activo: true,
   creadoEn: '2026-10-22T10:00:00.000Z',
   ...over,
@@ -82,6 +84,59 @@ describe('ListadoOperadores', () => {
     expect(within(tarjetas[0]).getByText('Sin foto')).toBeInTheDocument();
     expect(within(tarjetas[1]).getByText('Foto cargada')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('2 de 2 operadores · 1 con foto');
+  });
+
+  it('muestra el sexo en la tarjeta, cuenta hombres y mujeres activos y filtra por sexo', async () => {
+    getMock.mockResolvedValueOnce({
+      data: [
+        operador({ sexo: 'F' }),
+        operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000', sexo: 'M' }),
+        operador({ id: 'o3', apellidosNombres: 'VEGA TAPIA LUIS', cedula: '1002003001' }),
+      ],
+    });
+    renderPagina();
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(within(lista).getByText('Mujer')).toBeInTheDocument();
+    expect(within(lista).getByText('Hombre')).toBeInTheDocument();
+    expect(within(lista).getByText('Sin registrar')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('1 hombre · 1 mujer · 1 sin sexo registrado');
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sexo' }), 'M');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'RUIZ MORA JUAN' })).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sexo' }), 'SIN');
+    expect(screen.getByRole('heading', { name: 'VEGA TAPIA LUIS' })).toBeInTheDocument();
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('filtra a quienes aún no suben la foto, a los que tienen y a los que están por revisar', async () => {
+    getMock.mockResolvedValueOnce({
+      data: [
+        operador({ tieneFoto: true }),
+        operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000' }),
+        operador({ id: 'o3', apellidosNombres: 'VEGA TAPIA LUIS', cedula: '1002003001', fotoPendiente: true }),
+      ],
+    });
+    renderPagina();
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    const foto = screen.getByRole('combobox', { name: 'Foto' });
+
+    await userEvent.selectOptions(foto, 'SIN');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'RUIZ MORA JUAN' })).toBeInTheDocument();
+    expect(screen.getByText(/1 de 3 operadores/)).toBeInTheDocument();
+
+    await userEvent.selectOptions(foto, 'REVISAR');
+    expect(screen.getByRole('heading', { name: 'VEGA TAPIA LUIS' })).toBeInTheDocument();
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+
+    await userEvent.selectOptions(foto, 'CON');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+    expect(foto).toHaveValue('');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(3);
   });
 
   it('filtra sin importar tildes ni mayúsculas, y por cédula', async () => {
@@ -142,6 +197,20 @@ describe('ListadoOperadores', () => {
     await screen.findByRole('list', { name: 'Operadores CDA' });
     expect(screen.queryByRole('button', { name: 'Carnets QR' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Enlace de foto/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copiar enlace de fotos' })).not.toBeInTheDocument();
+  });
+
+  it('"Copiar enlace de fotos" copia el enlace único /foto-cda (sin token)', async () => {
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.fotos.enlace']);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar enlace de fotos' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/foto-cda`));
+    expect(sileo.success).toHaveBeenCalled();
   });
 });
 
@@ -204,6 +273,32 @@ describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () =
       }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('agregar y editar: el sexo se elige en el formulario y se manda como M o F', async () => {
+    getMock.mockResolvedValue({ data: [operador({ sexo: 'F' })] });
+    postMock.mockResolvedValueOnce({ data: operador({ id: 'nuevo', apellidosNombres: 'RUIZ MORA JUAN', sexo: 'M' }) });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: 'Agregar operador' }));
+    let dialogo = await screen.findByRole('dialog', { name: 'Agregar operador' });
+    await userEvent.type(within(dialogo).getByLabelText('Apellidos y nombres'), 'RUIZ MORA JUAN');
+    await userEvent.type(within(dialogo).getByLabelText('Cédula'), '1002003000');
+    await userEvent.selectOptions(within(dialogo).getByLabelText('Sexo (opcional)'), 'M');
+    fireEvent.change(within(dialogo).getByLabelText('Fecha de ingreso'), { target: { value: '2026-10-21' } });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Agregar operador' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda', expect.objectContaining({ sexo: 'M' })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    patchMock.mockResolvedValueOnce({ data: operador({ sexo: null }) });
+    await userEvent.click(screen.getByRole('button', { name: /^Editar/ }));
+    dialogo = await screen.findByRole('dialog', { name: 'Editar operador' });
+    const sexo = within(dialogo).getByLabelText('Sexo (opcional)');
+    expect(sexo).toHaveValue('F');
+    // Volver a "Sin registrar" no manda el campo: la API lo guarda vacío.
+    await userEvent.selectOptions(sexo, '');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(patchMock).toHaveBeenCalled());
+    expect(patchMock.mock.calls[0][1]).not.toHaveProperty('sexo');
   });
 
   it('agregar: si la API responde 409 muestra su mensaje y no cierra', async () => {
@@ -496,6 +591,73 @@ describe('iniciales', () => {
     expect(await screen.findByRole('dialog', { name: 'Enlace para subir foto' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Generar enlace' }));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/enlace-foto'));
+  });
+
+  it('pulsar la foto la abre en grande y al cerrar el foco vuelve a la foto', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    renderPagina();
+    const ver = await screen.findByRole('button', { name: 'Ver foto ampliada: ANDRADE LÓPEZ MARÍA JOSÉ' });
+    await userEvent.click(ver);
+    const dialogo = await screen.findByRole('dialog', { name: 'ANDRADE LÓPEZ MARÍA JOSÉ' });
+    expect(within(dialogo).getByRole('img', { name: 'Foto de ANDRADE LÓPEZ MARÍA JOSÉ' })).toHaveAttribute('src', 'blob:foto');
+    expect(within(dialogo).getByText('1710034065')).toBeInTheDocument();
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(ver).toHaveFocus();
+  });
+
+  it('foto nueva por revisar: aviso, etiqueta y "Revisar foto" muestra ambas; aprobar llama a la API', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', tieneFoto: true, fotoPendiente: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    postMock.mockResolvedValue({ data: { id: 'o1' } });
+    renderPagina();
+    expect(await screen.findByText(/1 foto nueva por revisar/)).toBeInTheDocument();
+    expect(screen.getByText('Foto nueva por revisar')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar foto nueva: ANDRADE LÓPEZ MARÍA JOSÉ' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Revisar foto nueva' });
+    expect(await within(dialogo).findByRole('img', { name: 'Foto actual de ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    expect(await within(dialogo).findByRole('img', { name: 'Foto nueva de ANDRADE LÓPEZ MARÍA JOSÉ' })).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente', { responseType: 'blob' });
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Aprobar foto nueva' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente/aprobar'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(sileo.success).toHaveBeenCalledWith(expect.objectContaining({ title: 'Foto nueva aprobada' }));
+  });
+
+  it('rechazar la foto nueva llama a la API de rechazo', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:foto');
+    URL.revokeObjectURL = vi.fn();
+    getMock.mockImplementation(async (url: string) =>
+      url === '/operadores-cda?grupo=OPERADOR'
+        ? { data: [operador({ tieneFoto: true, fotoPendiente: true })] }
+        : { data: new Blob(['jpg']) },
+    );
+    postMock.mockResolvedValue({ data: { id: 'o1' } });
+    renderPagina();
+    await userEvent.click(await screen.findByRole('button', { name: /Revisar foto nueva/ }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Revisar foto nueva' });
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Rechazar' }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/operadores-cda/o1/foto-pendiente/rechazar'));
+  });
+
+  it('sin foto no hay botón para ampliar', async () => {
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.queryByRole('button', { name: /Ver foto ampliada/ })).not.toBeInTheDocument();
   });
 });
 

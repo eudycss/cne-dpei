@@ -33,6 +33,7 @@ describe('OperadoresCdaService', () => {
       create: jest.fn(),
       update: jest.fn(),
       upsert: jest.fn((args: unknown) => args),
+      groupBy: jest.fn(),
     },
     $transaction: jest.fn((ops: unknown) =>
       typeof ops === 'function' ? (ops as (tx: unknown) => unknown)(prisma) : Promise.resolve(ops),
@@ -168,6 +169,22 @@ describe('OperadoresCdaService', () => {
       expect(update.telefono).toBeUndefined();
       expect(update.unidad).toBeUndefined();
       expect(update.fechaInicio).toBeUndefined();
+      expect(update.sexo).toBeUndefined();
+    });
+
+    it('lee la columna Sexo del Excel (Hombre/Mujer) y marca error si no es M o F', async () => {
+      const encabezados = [...ENCABEZADOS, 'Sexo'];
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Hoja1');
+      ws.getRow(1).values = encabezados;
+      ws.getRow(2).values = [...FILA_OK, 'Hombre'];
+      ws.getRow(3).values = [2, 'RUIZ MORA ANA', '1002003000', '', 'OPERADOR CDA', '', '', 'Otro'];
+      const file = { originalname: 'operadores.xlsx', buffer: Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer) } as Express.Multer.File;
+
+      const r = await service.importar(file, { aplicar: false });
+
+      expect(r.filas[0].sexo).toBe('M');
+      expect(r.errores).toEqual([expect.objectContaining({ fila: 3, error: expect.stringMatching(/sexo: Sexo inválido/) })]);
     });
 
     it('no guarda nada si hay errores', async () => {
@@ -341,9 +358,10 @@ describe('OperadoresCdaService', () => {
           cargo: 'OPERADOR CDA',
           unidad: null,
           fechaInicio: new Date('2026-10-20T00:00:00Z'),
+          sexo: null,
         },
       });
-      expect(r).toMatchObject({ id: 'o1', activo: true, tieneFoto: false });
+      expect(r).toMatchObject({ id: 'o1', activo: true, tieneFoto: false, sexo: null });
     });
 
     it('crear con cédula ya registrada: 409, y si está oculto lo dice', async () => {
@@ -385,6 +403,47 @@ describe('OperadoresCdaService', () => {
       const { data } = prisma.operadorCda.update.mock.calls[0][0];
       expect(data).not.toHaveProperty('cedula');
       expect(data).toMatchObject({ telefono: null, unidad: null, fechaInicio: null });
+    });
+
+    it('sexo: se guarda al crear y editar, y el DTO solo expone M, F o null', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
+      prisma.operadorCda.create.mockResolvedValueOnce({ ...FILA_BD, sexo: 'M' });
+      const creado = await service.crear({ ...ALTA, sexo: 'M' });
+      expect(prisma.operadorCda.create.mock.calls[0][0].data.sexo).toBe('M');
+      expect(creado.sexo).toBe('M');
+
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce({ ...FILA_BD, sexo: 'X' });
+      const editado = await service.editar('o1', { apellidosNombres: 'RUIZ MORA JUAN', cargo: 'OPERADOR CDA', sexo: 'F' });
+      expect(prisma.operadorCda.update.mock.calls[0][0].data.sexo).toBe('F');
+      // Un valor raro en la base no se filtra a la web.
+      expect(editado.sexo).toBeNull();
+    });
+
+    it('editar sin sexo lo deja sin registrar (el formulario manda todo)', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1' });
+      prisma.operadorCda.update.mockResolvedValueOnce(FILA_BD);
+      await service.editar('o1', { apellidosNombres: 'RUIZ MORA JUAN', cargo: 'OPERADOR CDA' });
+      expect(prisma.operadorCda.update.mock.calls[0][0].data.sexo).toBeNull();
+    });
+
+    it('resumenSexo: cuenta hombres, mujeres y sin registrar por cargo, solo activos', async () => {
+      prisma.operadorCda.groupBy.mockResolvedValueOnce([
+        { grupo: 'OPERADOR', sexo: 'M', _count: { _all: 27 } },
+        { grupo: 'OPERADOR', sexo: 'F', _count: { _all: 36 } },
+        { grupo: 'ASISTENTE', sexo: 'F', _count: { _all: 35 } },
+        { grupo: 'ASISTENTE', sexo: 'M', _count: { _all: 27 } },
+        { grupo: 'DIGITADOR', sexo: null, _count: { _all: 4 } },
+      ]);
+
+      const r = await service.resumenSexo();
+
+      expect(prisma.operadorCda.groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: { activo: true } }));
+      expect(r).toEqual([
+        { grupo: 'ASISTENTE', hombres: 27, mujeres: 35, sinRegistrar: 0 },
+        { grupo: 'DIGITADOR', hombres: 0, mujeres: 0, sinRegistrar: 4 },
+        { grupo: 'OPERADOR', hombres: 27, mujeres: 36, sinRegistrar: 0 },
+      ]);
     });
 
     it('dispositivo: guarda Android, iPhone o ninguno y devuelve solo eso; un id inexistente da 404', async () => {

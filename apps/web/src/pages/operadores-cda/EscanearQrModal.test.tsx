@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ConsultaQrCda, OperadorCda } from '@cne/shared-types';
@@ -35,6 +35,7 @@ const ANA: OperadorCda = {
   unidad: null,
   fechaInicio: null,
   tieneFoto: false,
+  fotoPendiente: false,
   activo: true,
   creadoEn: '2026-10-20T10:00:00Z',
 };
@@ -99,6 +100,11 @@ describe('EscanearQrModal', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Entrada registrada a las 08:01: PÉREZ LÓPEZ ANA MARÍA');
     await waitFor(() => expect(campo()).toHaveFocus());
     expect(campo()).toHaveValue('');
+    // La última marca queda a la vista con foto y nombre (la foto sale de la caché: no se vuelve a pedir).
+    const ultima = screen.getByRole('region', { name: 'Última marca: PÉREZ LÓPEZ ANA MARÍA' });
+    expect(within(ultima).getByRole('img', { name: 'Foto de PÉREZ LÓPEZ ANA MARÍA' })).toHaveAttribute('src', 'blob:foto');
+    expect(within(ultima).getByText('✓ Entrada registrada a las 08:01')).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledTimes(1);
   });
 
   it('sin foto: avisa que verifique la cédula y deja registrar directo, sin casilla', async () => {

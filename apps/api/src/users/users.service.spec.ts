@@ -205,6 +205,43 @@ describe('UsersService', () => {
       expect(prisma.usuario.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id }, data: expect.objectContaining({ cedula: nuevaCedula }) }),
       );
+      // Editar sin desactivar no cierra sesiones.
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('al desactivar un usuario revoca sus sesiones en la misma transacción', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id, activo: true }));
+      prisma.usuario.update.mockResolvedValueOnce(userRow({ id, activo: false }));
+
+      const result = await service.update(id, { activo: false } as any);
+
+      expect(result.activo).toBe(false);
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { usuarioId: id, revocadoEn: null },
+        data: { revocadoEn: expect.any(Date) },
+      });
+    });
+
+    it('revoca aunque ya figurara inactivo (idempotente, a prueba de ediciones simultáneas)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id, activo: false }));
+      prisma.usuario.update.mockResolvedValueOnce(userRow({ id, activo: false }));
+      await service.update(id, { activo: false } as any);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('no revoca sesiones al reactivar', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id, activo: false }));
+      prisma.usuario.update.mockResolvedValueOnce(userRow({ id, activo: true }));
+      await service.update(id, { activo: true } as any);
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('si falla la revocación, update() propaga el error (no reporta éxito)', async () => {
+      prisma.usuario.findUnique.mockResolvedValueOnce(userRow({ id, activo: true }));
+      prisma.usuario.update.mockResolvedValueOnce(userRow({ id, activo: false }));
+      prisma.refreshToken.updateMany.mockRejectedValueOnce(new Error('db caída'));
+      await expect(service.update(id, { activo: false } as any)).rejects.toThrow('db caída');
     });
 
     it('lanza ConflictException si la cédula nueva ya pertenece a otro usuario', async () => {

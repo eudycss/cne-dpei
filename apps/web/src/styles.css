@@ -700,6 +700,10 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   background: linear-gradient(135deg, var(--f-cian), var(--f-violeta));
 }
 .ocda-avatar.grande { width: 52px; height: 52px; font-size: 0.95rem; }
+.ocda-avatar.chico { width: 32px; height: 32px; font-size: 0.7rem; }
+.ocda-con-foto { display: inline-flex; gap: 0.5rem; align-items: center; vertical-align: middle; }
+/* Buscador: con la miniatura, los datos quedan pegados a ella (el botón al final). */
+.ocda-personas .ocda-persona-datos { flex: 1; }
 
 /* Check de entrada (cian) / salida (violeta), 150 × 44 como en Figma. */
 .ocda-check {
@@ -746,6 +750,24 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-estado.pendiente { background: var(--f-cian-suave); color: var(--f-cian); }
 .ocda-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .ocda-avatar:has(img) { overflow: hidden; }
+/* La foto de la tarjeta se pulsa para verla en grande. */
+.ocda-avatar-boton {
+  display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%;
+  background: none; cursor: zoom-in;
+}
+.ocda-avatar-boton:focus-visible { outline: 3px solid var(--f-cian); outline-offset: 2px; }
+.ocda-avatar:has(.ocda-avatar-boton:focus-visible) { overflow: visible; }
+.ocda-foto-ampliada {
+  display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 12px;
+  background: var(--f-bg-elevated);
+}
+/* Revisión de foto nueva: actual y nueva lado a lado (una debajo de otra en celular). */
+.ocda-revisar-fotos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; }
+.ocda-revisar-fotos figure { margin: 0; display: grid; gap: 0.4rem; }
+.ocda-revisar-fotos figcaption { font-size: 0.85rem; font-weight: 600; color: var(--f-text-muted); }
+.ocda-revisar-fotos img {
+  width: 100%; aspect-ratio: 3 / 4; object-fit: contain; border-radius: 12px; background: var(--f-bg-elevated);
+}
 .ocda-tarjeta-pie { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .tema-futurista .btn.ocda-btn-chico { min-height: 44px; padding: 0.35rem 0.8rem; font-size: 0.8rem; border-radius: 10px; }
 
@@ -966,6 +988,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-qr-foto img { width: 100%; height: 100%; object-fit: cover; }
 .ocda-qr-nombre { font-size: 1.15rem; font-weight: 700; color: var(--f-text); }
 .ocda-qr-pregunta { margin: 0; font-weight: 600; color: var(--f-text); }
+/* Última marca: queda a la vista mientras se espera el siguiente carnet. */
+.ocda-qr-marcada { padding: 0.75rem; border-radius: 14px; border: 1px solid var(--f-exito); background: var(--f-exito-suave); }
+.ocda-qr-marcada-texto { font-weight: 600; color: var(--f-text); }
 @media (max-width: 480px) {
   .ocda-qr-persona { flex-direction: column; align-items: center; text-align: center; }
 }
@@ -1104,11 +1129,12 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-leyenda { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; margin: 0.9rem 0; padding: 0; list-style: none; font-size: 0.8rem; color: var(--f-text-muted); }
 .evx-leyenda li { display: inline-flex; align-items: center; gap: 0.4rem; }
 .evx-muestra { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
-/* Colores de estado del tema (no de serie): verde y rojo nunca juntos. */
-.evx-muestra.aprobado, .evx-tramo.aprobado { background: var(--f-exito); }
-.evx-muestra.pendiente, .evx-tramo.pendiente { background: var(--f-aviso); }
-.evx-muestra.rechazado, .evx-tramo.rechazado { background: var(--f-error); }
-.evx-muestra.sin-subir, .evx-tramo.sin-subir { background: var(--f-border-strong); }
+/* Colores de estado del tema (no de serie): verde y rojo nunca juntos.
+   Fuera de .tema-futurista (Estadísticas, Reportes) caen a los colores de estado de la app. */
+.evx-muestra.aprobado, .evx-tramo.aprobado { background: var(--f-exito, var(--estado-llego)); }
+.evx-muestra.pendiente, .evx-tramo.pendiente { background: var(--f-aviso, var(--estado-recinto)); }
+.evx-muestra.rechazado, .evx-tramo.rechazado { background: var(--f-error, var(--error)); }
+.evx-muestra.sin-subir, .evx-tramo.sin-subir { background: var(--f-border-strong, var(--estado-dpi)); }
 .evx-barras { display: grid; gap: 0.15rem; margin: 0; padding: 0; list-style: none; }
 .evx-fila {
   position: relative; width: 100%; min-height: 44px; display: grid; align-items: center; gap: 0.75rem;
@@ -1121,7 +1147,22 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-etapas-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1rem; }
 .evx-etapas-grid > .card { margin: 0; min-width: 0; }
 @media (max-width: 1100px) { .evx-etapas-grid { grid-template-columns: 1fr; } }
+/* Reportes › Llegada de NO CDA: dona angosta, barras anchas (los nombres de los CDA son largos). */
+.ncda-graficos { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .ncda-graficos { grid-template-columns: 1fr; } }
+.ncda-barras-scroll { max-height: 26rem; overflow-y: auto; border-radius: 10px; }
+.ncda-barras-scroll:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media print { .ncda-barras-scroll { max-height: none; overflow: visible; } }
+/* 6 columnas: cabe sin desplazar a lo ancho en escritorio; el detalle se lleva el espacio. */
+.table-report.ncda-tabla { min-width: 760px; }
+.ncda-tabla td:last-child { width: 45%; }
 .evx-medalla { margin-right: 0.35rem; }
+.evx-nombre-celda { display: flex; align-items: center; flex-wrap: wrap; gap: 0 0.35rem; min-width: 0; }
+.evx-nombre-celda .evx-medalla { margin-right: 0; font-size: 1.05rem; }
+.evx-insignia { font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 99px; white-space: nowrap; }
+.evx-insignia.pilas { color: var(--f-text); background: var(--f-bg-elevated); border: 1px dashed var(--f-border-strong); }
+.evx-insignia.completo { color: var(--f-text); background: var(--f-bg-elevated); border: 1px solid var(--f-border-strong); }
+.evx-insignia.fuera { color: var(--f-text); background: transparent; border: 1px solid var(--f-border-strong); font-weight: 500; }
 .evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
 .evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }
@@ -1215,4 +1256,206 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   @media (prefers-reduced-motion: no-preference) and (not print) {
     .estad-seccion { animation: estad-aparecer linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
   }
+}
+
+/* ---- Plan de perímetro (mapa tipo Google Earth) ---- */
+.pp-nuevo { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+.pp-nuevo .ocda-campo { flex: 1 1 280px; max-width: 480px; }
+.pp-nuevo input { width: 100%; }
+.pp-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; align-items: start; }
+@media (max-width: 960px) { .pp-cuerpo { grid-template-columns: minmax(0, 1fr); } }
+.pp-mapa-marco { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--f-border-subtle); }
+.pp-mapa { width: 100%; height: min(72vh, 760px); min-height: 420px; }
+.pp-superior {
+  position: absolute; top: 0.75rem; left: 0.75rem; z-index: 3; display: flex; flex-direction: column; gap: 0.5rem;
+  width: min(420px, calc(100% - 4.5rem));
+}
+.pp-controles { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.pp-buscador { position: relative; }
+.pp-buscador form {
+  display: flex; align-items: center; gap: 0.25rem; padding: 0.3rem; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 94%, transparent); backdrop-filter: blur(8px); box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.pp-buscador input {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 0 0.6rem; border: 0; border-radius: 7px; background: transparent;
+  color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-buscador input:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-buscador-resultados {
+  position: relative; margin-top: 0.35rem; padding: 0.4rem; border-radius: 10px; max-height: 280px; overflow: auto;
+  background: var(--f-bg-surface); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.pp-buscador-resultados ul { margin: 0; padding: 0; list-style: none; }
+.pp-buscador-resultados li button {
+  display: flex; flex-direction: column; gap: 0.1rem; width: 100%; min-height: 44px; padding: 0.4rem 2rem 0.4rem 0.5rem;
+  border: 0; border-radius: 7px; background: transparent; color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-buscador-resultados li button span { font-size: 0.75rem; color: var(--f-text-muted); }
+.pp-buscador-resultados li button:hover { background: var(--f-bg-elevated); }
+.pp-buscador-resultados li button:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-buscador-resultados .pp-ayuda { padding: 0.4rem 2rem 0.4rem 0.5rem; }
+.pp-buscador-cerrar { position: absolute; top: 0.3rem; right: 0.3rem; }
+.pp-capas, .pp-botones {
+  display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0; padding: 0.3rem; border: 0; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 94%, transparent); backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.pp-capas label {
+  position: relative; padding: 0.35rem 0.7rem; border-radius: 7px; font-size: 0.8rem; font-weight: 600;
+  color: var(--f-text); cursor: pointer;
+}
+.pp-capas label.activo { background: var(--f-degradado); color: var(--f-text-on-accent); }
+.pp-capas input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pp-capas label:focus-within { box-shadow: var(--focus-ring); }
+.pp-btn {
+  display: inline-flex; align-items: center; gap: 0.35rem; min-height: 32px; min-width: 32px; justify-content: center;
+  padding: 0.3rem 0.6rem; border: 0; border-radius: 7px; background: transparent; color: var(--f-text);
+  font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+.pp-btn:hover { background: var(--f-bg-elevated); }
+.pp-btn[aria-pressed="true"] { background: var(--f-cian-suave); color: var(--f-cian); }
+.pp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-puesto {
+  /* Área de toque de 44 px aunque el círculo dibujado mida 24 px. */
+  display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; min-width: 44px; padding: 0 10px; border: 0;
+  background: transparent; cursor: pointer; font: inherit;
+}
+.pp-puesto .pp-puesto-numero { box-shadow: 0 0 0 2px #fff, 0 2px 8px rgb(0 0 0 / 0.45); }
+.pp-puesto-numero {
+  display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 0.3rem; border-radius: 99px;
+  background: var(--f-cian); color: #04151a; font-size: 0.75rem; font-weight: 800;
+}
+.pp-puesto--sin-persona .pp-puesto-numero { background: #94a3b8; }
+.pp-puesto--seleccionado .pp-puesto-numero { background: #facc15; transform: scale(1.2); }
+.pp-puesto-nombre {
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.4rem;
+  border-radius: 5px; background: rgb(2 6 23 / 0.72); color: #fff; font-size: 0.72rem; font-weight: 600;
+}
+
+.pp-puesto:focus-visible .pp-puesto-numero { box-shadow: 0 0 0 3px #facc15, 0 0 0 5px #04151a; }
+@media (prefers-reduced-motion: no-preference) { .pp-puesto-numero { transition: transform 150ms ease-out; } }
+.pp-leyenda {
+  position: absolute; left: 0.75rem; bottom: 2rem; z-index: 2; display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem;
+  max-width: calc(100% - 1.5rem); margin: 0; padding: 0.45rem 0.7rem; list-style: none; border-radius: 10px;
+  background: color-mix(in srgb, var(--f-bg-surface) 88%, transparent); font-size: 0.75rem; color: var(--f-text);
+}
+.pp-leyenda li { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pp-leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.pp-leyenda i.pp-leyenda-borde { background: transparent; border: 2px dashed; }
+.pp-panel {
+  display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; border-radius: 14px;
+  border: 1px solid var(--f-border-subtle); background: var(--f-bg-surface); max-height: min(72vh, 760px); overflow: auto;
+}
+.pp-panel-titulo { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1rem; }
+.pp-contador { padding: 0 0.5rem; border-radius: 99px; background: var(--f-bg-elevated); font-size: 0.8rem; }
+.pp-lista { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.pp-lista button {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 40px; padding: 0.35rem 0.5rem; border: 0;
+  border-radius: 8px; background: transparent; color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-lista button:hover { background: var(--f-bg-elevated); }
+.pp-lista button.activo { background: var(--f-cian-suave); }
+.pp-lista button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-sin-persona { color: var(--f-text-muted); font-style: italic; }
+.pp-tarjeta {
+  display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: center; padding: 0.75rem; border-radius: 12px;
+  background: var(--f-bg-elevated);
+}
+.pp-tarjeta .btn { grid-column: 1 / -1; justify-self: end; }
+.pp-tarjeta-puesto { margin: 0; font-size: 0.75rem; color: var(--f-text-muted); }
+.pp-tarjeta-nombre { margin: 0.15rem 0 0; font-weight: 700; }
+.pp-foto { width: 72px; height: 90px; border-radius: 10px; object-fit: cover; }
+.pp-foto--vacia { display: grid; place-items: center; background: var(--f-bg-surface); color: var(--f-text-muted); }
+.pp-avisos { margin: 0; padding-left: 1.1rem; }
+/* Edición del plan */
+.pp-barra-edicion { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+.pp-nombre-plan { flex: 1 1 240px; max-width: 420px; }
+.pp-nombre-plan input { width: 100%; }
+.pp-estado-cambios { font-size: 0.8rem; color: var(--f-text-muted); }
+.pp-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.btn.pp-btn-peligro { background: var(--f-error); color: #fff; }
+.pp-btn-peligro-borde { box-shadow: inset 0 0 0 1px var(--f-error); }
+.pp-editor-seccion { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.75rem; }
+.pp-fila-botones, .pp-fila-campos { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
+.pp-fila-campos .ocda-cargo { margin-top: 0; }
+.pp-fila-campos input { width: 7.5rem; min-height: 40px; padding: 0 0.6rem; border-radius: 8px; border: 1px solid var(--f-borde-control); background: var(--f-bg-elevated); color: var(--f-text); font: inherit; }
+.pp-fila-campos input:focus-visible, .pp-lista--edicion input:focus-visible, .pp-zonas input:focus-visible, .pp-zonas select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pp-ayuda { margin: 0; font-size: 0.8rem; color: var(--f-text-muted); }
+.pp-dato { margin: 0; font-size: 0.85rem; }
+.pp-check { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 32px; font-size: 0.85rem; cursor: pointer; }
+.pp-check input { width: 18px; height: 18px; accent-color: var(--f-cian); }
+.pp-dibujo { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-radius: 10px; background: color-mix(in srgb, #facc15 14%, var(--f-bg-elevated)); }
+.pp-dibujo p { margin: 0; font-size: 0.85rem; }
+.pp-lista--edicion li { display: flex; align-items: center; gap: 0.5rem; min-height: 40px; }
+.pp-lista--edicion input, .pp-zonas input, .pp-zonas select {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 0 0.5rem; border-radius: 7px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-elevated); color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-lista-nombre { flex: 1 1 auto; font-size: 0.85rem; }
+.pp-zonas { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.pp-zonas li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.4rem; border-radius: 8px; }
+.pp-zonas li.activo { background: var(--f-cian-suave); }
+.pp-zonas li i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.pp-zonas select { flex: 0 1 9rem; }
+.pp-btn-zona { border: 2px solid transparent; }
+.pp-dibujando, .pp-dibujando canvas { cursor: crosshair !important; }
+.pp-puesto--editable { cursor: grab; }
+.pp-manija {
+  /* 44 px de área de toque; el punto dibujado mide 14 px. */
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: grab;
+}
+.pp-manija::before {
+  content: ''; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px #22d3ee, 0 2px 6px rgb(0 0 0 / 0.5);
+}
+.pp-manija--valla::before { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 3px #f97316, 0 2px 6px rgb(0 0 0 / 0.5); }
+/* outline transparente: en modo de alto contraste se vuelve visible (el box-shadow no). */
+.pp-manija:focus-visible, .pp-puesto:focus-visible { outline: 2px solid transparent; }
+.pp-manija:focus-visible::before { box-shadow: 0 0 0 3px #facc15, 0 0 0 6px #04151a; }
+/* En el panel angosto del editor las 4 pestañas comparten el ancho sin cortarse. */
+.pp-panel .pestanas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 0; }
+.pp-panel .pestanas [role="tab"] { padding-left: 0.35rem; padding-right: 0.35rem; }
+
+/* Personal CDA/CPE en los puestos */
+.pp-fila-puesto { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.pp-lista--edicion li { flex-direction: column; align-items: stretch; }
+.pp-selector, .pp-completar {
+  display: flex; flex-direction: column; gap: 0.5rem; margin: 0.35rem 0 0.5rem 2rem; padding: 0.6rem; border-radius: 10px;
+  background: var(--f-bg-elevated);
+}
+.pp-completar { margin: 0; }
+.pp-completar h4 { margin: 0; font-size: 0.9rem; }
+.pp-selector input[type="search"], .pp-fila-campos select {
+  min-height: 40px; padding: 0 0.6rem; border-radius: 8px; border: 1px solid var(--f-borde-control);
+  background: var(--f-bg-surface); color: var(--f-text); font: inherit; font-size: 0.85rem;
+}
+.pp-candidatos { display: flex; flex-direction: column; gap: 0.15rem; max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.pp-candidatos button {
+  width: 100%; min-height: 40px; padding: 0.35rem 0.5rem; border: 0; border-radius: 7px; background: transparent;
+  color: var(--f-text); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+}
+.pp-candidatos button:hover { background: var(--f-bg-surface); }
+.pp-candidatos button:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.pp-otro-plan { color: var(--f-aviso); font-size: 0.78rem; }
+.pp-barra-edicion .btn svg { vertical-align: -3px; }
+
+/* Hoja para imprimir: solo existe mientras se imprime. */
+.pp-impresion { display: none; }
+@media print {
+  body.pp-imprimiendo * { visibility: hidden; }
+  body.pp-imprimiendo .pp-impresion, body.pp-imprimiendo .pp-impresion * { visibility: visible; }
+  body.pp-imprimiendo .pp-impresion {
+    display: block; position: absolute; top: 0; left: 0; width: 100%; color: #000; background: #fff; font-size: 11pt;
+  }
+  .pp-impresion h1 { margin: 0 0 0.2rem; font-size: 16pt; }
+  .pp-impresion p { margin: 0 0 0.4rem; }
+  .pp-impresion img { display: block; width: 100%; max-height: 11cm; object-fit: contain; margin: 0.4rem 0; border: 1px solid #999; }
+  .pp-impresion table { width: 100%; border-collapse: collapse; }
+  .pp-impresion th, .pp-impresion td { border: 1px solid #999; padding: 2pt 4pt; text-align: left; }
+  .pp-impresion tr { break-inside: avoid; }
+  .pp-impresion-pie { margin-top: 0.4rem; font-size: 8pt; color: #444; }
+}
+
+/* Pantallas táctiles: botones de 44 px (guía del proyecto). */
+@media (pointer: coarse) {
+  .pp-btn { min-width: 44px; min-height: 44px; }
 }

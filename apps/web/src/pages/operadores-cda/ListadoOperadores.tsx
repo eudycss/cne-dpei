@@ -10,9 +10,10 @@ import { useAuth } from '../../auth/AuthContext';
 import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
-import { cambiarActivoOperadorCda, getOperadoresCda } from '../../lib/queries/operadores-cda';
-import { useFotoOperadorUrl } from './useFotoOperador';
+import { cambiarActivoOperadorCda, getOperadoresCda, urlFotoCdaGeneral } from '../../lib/queries/operadores-cda';
+import { AvatarPersona } from './AvatarPersona';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
+import { RevisarFotoModal } from './RevisarFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
 import { useGrupoCda } from './grupo';
 import { EnOtroCargo } from './BuscadorGeneral';
@@ -22,7 +23,9 @@ import { OperadorFormModal } from './OperadorFormModal';
 import { OcultarOperadorModal } from './OcultarOperadorModal';
 import { CuentasAppModal } from './CuentasAppModal';
 import { FILTROS_INGRESO, cumpleIngreso, fechaDeUrl, ordenarPorIngreso, rangoIngresoInvalido, type OrdenListado } from './filtroIngreso';
-import { cargoCorto, fechaCorta, iniciales, mensajeError, partirNombre } from './utils';
+import { cargoCorto, fechaCorta, mensajeError, partirNombre } from './utils';
+import { SEXO, contarSexo, cumpleSexo, textoSexo, type FiltroSexo } from './sexo';
+import { cumpleFoto, type FiltroFoto } from './foto';
 
 /**
  * Tras agregar, editar u ocultar: listados (con y sin ocultos), asistencia y
@@ -57,11 +60,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const isAdmin = actuaComoAdmin(user?.roles);
   const { puede } = useModulos();
   const puedeCarnets = puede('cda.carnets.emitir') || puede('cda.carnets.reimprimir');
+  const puedeEnlaceFoto = puede('cda.fotos.enlace');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   // Solo operadores y asistentes entran a la app de campo.
   const conCuentaApp = grupo === 'OPERADOR' || grupo === 'ASISTENTE';
   const [busqueda, setBusqueda] = useState('');
   const [filtroCuenta, setFiltroCuenta] = useState<EstadoCuentaCda | ''>('');
+  const [filtroSexo, setFiltroSexo] = useState<FiltroSexo>('');
+  const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('');
   const [params, setParams] = useSearchParams();
   const filtro = {
     desde: fechaDeUrl(params.get('ingresoDesde')),
@@ -84,6 +90,8 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const limpiarFiltros = () => {
     setBusqueda('');
     setFiltroCuenta('');
+    setFiltroSexo('');
+    setFiltroFoto('');
     setParams(
       (prev) => {
         const p = new URLSearchParams(prev);
@@ -97,6 +105,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const [carnets, setCarnets] = useState(false);
   const [cuentasApp, setCuentasApp] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
+  const [revisarPara, setRevisarPara] = useState<OperadorCda | null>(null);
   // null = cerrado; 'nuevo' = agregar; un operador = editarlo.
   const [formulario, setFormulario] = useState<OperadorCda | 'nuevo' | null>(null);
   const [ocultarA, setOcultarA] = useState<OperadorCda | null>(null);
@@ -166,19 +175,39 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       (o) =>
         coincideBusqueda([o.apellidosNombres, o.cedula], q) &&
         cumpleIngreso(o, f) &&
-        (!filtroCuenta || o.cuenta === filtroCuenta),
+        (!filtroCuenta || o.cuenta === filtroCuenta) &&
+        cumpleSexo(o, filtroSexo) &&
+        cumpleFoto(o, filtroFoto),
     );
     return ordenarPorIngreso(filtrados, orden);
-  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta]);
-  const hayFiltros = busqueda.trim() !== '' || conRango || filtroCuenta !== '';
+  }, [data, busqueda, desde, hasta, incluirSinFecha, orden, filtroCuenta, filtroSexo, filtroFoto]);
+  const hayFiltros =
+    busqueda.trim() !== '' || conRango || filtroCuenta !== '' || filtroSexo !== '' || filtroFoto !== '';
 
   const conFoto = data?.filter((o) => o.activo && o.tieneFoto).length ?? 0;
+  const porRevisar = data?.filter((o) => o.activo && o.fotoPendiente).length ?? 0;
   const ocultos = data?.filter((o) => !o.activo).length ?? 0;
+  const sexo = contarSexo(data ?? []);
+
+  // Enlace único para todo el personal CDA/CPE: cada quien escribe su cédula.
+  async function copiarEnlaceFotos() {
+    try {
+      await navigator.clipboard.writeText(urlFotoCdaGeneral());
+      sileo.success({ title: 'Enlace copiado: envíelo al personal por WhatsApp', description: urlFotoCdaGeneral() });
+    } catch {
+      sileo.error({ title: `No se pudo copiar. El enlace es ${urlFotoCdaGeneral()}` });
+    }
+  }
 
   return (
     <>
-      {(isAdmin || puedeCarnets) && (
+      {(isAdmin || puedeCarnets || puedeEnlaceFoto) && (
         <AccionesEncabezado destino={acciones}>
+          {puedeEnlaceFoto && (
+            <button type="button" className="btn secondary" onClick={copiarEnlaceFotos}>
+              Copiar enlace de fotos
+            </button>
+          )}
           {isAdmin && (
             <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
               Importar Excel
@@ -284,6 +313,24 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
               </label>
             )}
             <label className="ocda-fecha">
+              <span>Sexo</span>
+              <select value={filtroSexo} onChange={(e) => setFiltroSexo(e.target.value as FiltroSexo)}>
+                <option value="">Todos</option>
+                <option value="M">Hombres</option>
+                <option value="F">Mujeres</option>
+                <option value="SIN">Sin registrar</option>
+              </select>
+            </label>
+            <label className="ocda-fecha">
+              <span>Foto</span>
+              <select value={filtroFoto} onChange={(e) => setFiltroFoto(e.target.value as FiltroFoto)}>
+                <option value="">Todas</option>
+                <option value="CON">Con foto</option>
+                <option value="SIN">Sin foto (nada subido)</option>
+                <option value="REVISAR">Por revisar</option>
+              </select>
+            </label>
+            <label className="ocda-fecha">
               <span>Ordenar</span>
               <select value={orden} onChange={(e) => setOrden(e.target.value as OrdenListado)}>
                 <option value="lista">Como en la lista</option>
@@ -310,8 +357,15 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
             <p className="muted" role="status" style={{ margin: 0 }}>
               {visibles.length} de {data.length} {plural} · {conFoto} con foto
               {verOcultos && ` · ${ocultos} oculto${ocultos === 1 ? '' : 's'}`}
+              {` · ${textoSexo(sexo)}`}
             </p>
           </div>
+          {puedeEnlaceFoto && porRevisar > 0 && (
+            <p className="banner" role="status">
+              {porRevisar === 1 ? '1 foto nueva por revisar' : `${porRevisar} fotos nuevas por revisar`}: pulse
+              «Revisar foto» en la tarjeta para aprobarla o rechazarla.
+            </p>
+          )}
           {rangoInvalido && (
             <p id="ingreso-rango-error" className="banner error" role="alert">
               La fecha “desde” es posterior a “hasta”: corrija el rango para filtrar por fecha de ingreso.
@@ -330,7 +384,8 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                 <TarjetaOperador
                   operador={o}
                   mostrarCuenta={conCuentaApp}
-                  onEnlace={puede('cda.fotos.enlace') ? () => setEnlacePara(o) : undefined}
+                  onEnlace={puedeEnlaceFoto ? () => setEnlacePara(o) : undefined}
+                  onRevisar={puedeEnlaceFoto && o.fotoPendiente ? () => setRevisarPara(o) : undefined}
                   admin={
                     isAdmin
                       ? {
@@ -364,6 +419,9 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
         <CarnetsQrModal operadores={data.filter((o) => o.activo)} onClose={() => setCarnets(false)} />
       )}
       {enlacePara && <EnlaceFotoModal operador={enlacePara} onClose={() => setEnlacePara(null)} />}
+      {revisarPara && (
+        <RevisarFotoModal operador={revisarPara} onClose={() => setRevisarPara(null)} onRevisada={refrescar} />
+      )}
       {formulario && (
         <OperadorFormModal
           operador={formulario === 'nuevo' ? undefined : formulario}
@@ -376,40 +434,13 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   );
 }
 
-/** true cuando el elemento entra (o está por entrar) en pantalla; luego se queda en true. */
-function useVisible<T extends Element>() {
-  const ref = useRef<T>(null);
-  const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
-  useEffect(() => {
-    if (visible || !ref.current) return;
-    const obs = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true), { rootMargin: '200px' });
-    obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, [visible]);
-  return { ref, visible };
-}
-
-/**
- * Foto descifrada (blob) o, mientras no haya, las iniciales. Solo se pide al
- * acercarse a la pantalla: cada foto se descifra en la API (Render, 0.1 vCPU).
- */
-function AvatarOperador({ operador: o }: { operador: OperadorCda }) {
-  const { ref, visible } = useVisible<HTMLSpanElement>();
-  const url = useFotoOperadorUrl(o, visible);
-
-  return (
-    <span ref={ref} className={`ocda-avatar grande${o.tieneFoto ? ' con-foto' : ''}`} aria-hidden="true">
-      {url ? <img src={url} alt="" /> : iniciales(o.apellidosNombres)}
-    </span>
-  );
-}
-
 type AccionesAdmin = { onEditar: () => void; onOcultar: () => void; onReactivar: () => void; reactivando: boolean };
 
 function TarjetaOperador({
   operador: o,
   mostrarCuenta,
   onEnlace,
+  onRevisar,
   admin,
 }: {
   operador: OperadorCda;
@@ -417,6 +448,8 @@ function TarjetaOperador({
   mostrarCuenta: boolean;
   /** Sin permiso para crear enlaces de foto, no se muestra el botón. */
   onEnlace?: () => void;
+  /** Subió una foto nueva con su cédula: se aprueba o rechaza. */
+  onRevisar?: () => void;
   /** Solo el administrador agrega, edita u oculta. */
   admin?: AccionesAdmin;
 }) {
@@ -425,7 +458,7 @@ function TarjetaOperador({
   return (
     <>
       <div className="ocda-tarjeta-top">
-        <AvatarOperador operador={o} />
+        <AvatarPersona persona={{ operadorId: o.id, nombre: o.apellidosNombres, cedula: o.cedula, cargo: o.cargo, tieneFoto: o.tieneFoto }} tamano="grande" />
         <h3 className="ocda-nombre" aria-label={o.apellidosNombres}>
           <span className="ocda-nombre-apellidos">{apellidos}</span>
           {nombres && <span className="ocda-nombre-nombres">{nombres}</span>}
@@ -443,6 +476,10 @@ function TarjetaOperador({
         <div>
           <dt>Cargo</dt>
           <dd title={o.cargo}>{cargoCorto(o.cargo)}</dd>
+        </div>
+        <div>
+          <dt>Sexo</dt>
+          <dd>{o.sexo ? SEXO[o.sexo] : <span className="muted">Sin registrar</span>}</dd>
         </div>
         <div>
           <dt>Ingreso</dt>
@@ -463,6 +500,17 @@ function TarjetaOperador({
             <span className={`ocda-estado ${o.tieneFoto ? 'ok' : 'pendiente'}`}>
               {o.tieneFoto ? 'Foto cargada' : 'Sin foto'}
             </span>
+            {o.fotoPendiente && <span className="ocda-estado pendiente">Foto nueva por revisar</span>}
+            {onRevisar && (
+              <button
+                type="button"
+                className="btn ocda-btn-chico"
+                onClick={onRevisar}
+                aria-label={`Revisar foto nueva: ${o.apellidosNombres}`}
+              >
+                Revisar foto
+              </button>
+            )}
             {onEnlace && (
               <button
                 type="button"

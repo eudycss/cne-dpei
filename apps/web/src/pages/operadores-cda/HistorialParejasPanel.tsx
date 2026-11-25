@@ -12,6 +12,7 @@ import { PropuestaParejasModal } from './PropuestaParejasModal';
 import { useAuth } from '../../auth/AuthContext';
 import { useCargosCda } from './grupo';
 import { mensajeError } from './utils';
+import { ConFoto } from './AvatarPersona';
 
 type Vista = 'personal' | 'recintos';
 type Estado = '' | 'SI' | 'NO';
@@ -277,9 +278,11 @@ function TablaPersonal({ personas }: { personas: PersonaHistorialCda[] }) {
             <tr key={p.id}>
               <td className="mono">{i + 1}</td>
               <th scope="row" style={{ fontWeight: 'normal', textAlign: 'left' }}>
-                {p.apellidosNombres}
-                <br />
-                <span className="muted mono">{p.cedula}</span>
+                <ConFoto persona={{ operadorId: p.id, nombre: p.apellidosNombres, cedula: p.cedula }}>
+                  {p.apellidosNombres}
+                  <br />
+                  <span className="muted mono">{p.cedula}</span>
+                </ConFoto>
                 {!p.activo && (
                   <span className="ocda-estado vacio" style={{ marginLeft: 6 }}>
                     Oculto

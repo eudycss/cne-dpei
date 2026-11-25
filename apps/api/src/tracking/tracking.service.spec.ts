@@ -23,7 +23,7 @@ describe('TrackingService', () => {
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
     parejaCda: { findMany: jest.fn() },
-    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn() },
+    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     entregaCustodioKit: { findUnique: jest.fn() },
@@ -64,7 +64,9 @@ describe('TrackingService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    prisma.$transaction.mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr));
+    // Arreglo de consultas o función interactiva (recibe el mismo mock como transacción).
+    prisma.$transaction.mockImplementation(((arg: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
+      typeof arg === 'function' ? arg(prisma) : Promise.all(arg)) as never);
     prisma.parejaCda.findMany.mockResolvedValue([]);
 
     const moduleRef = await Test.createTestingModule({
@@ -341,6 +343,159 @@ describe('TrackingService', () => {
 
       expect(result.yaRegistroPruebaConexion).toBe(true);
       expect(result.pruebaConexionConFoto).toBe(false);
+    });
+  });
+
+  describe('reporteNoCdas', () => {
+    const noCdaId = '55555555-5555-5555-5555-555555555555';
+    const asistenteId = '66666666-6666-6666-6666-666666666666';
+    const recintoBd = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      codigoRecinto: id.slice(0, 4),
+      nombre: `Recinto ${id.slice(0, 4)}`,
+      cdaDestinoId: null,
+      juntasFemeninas: 2,
+      juntasMasculinas: 2,
+      numeroElectores: 1000,
+      canton: { nombre: 'IBARRA' },
+      ...extra,
+    });
+
+    it('sin evento activo devuelve lista vacía', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.reporteNoCdas()).resolves.toEqual([]);
+    });
+
+    it('trae cantón y juntas, y cuenta la marca de quien la haya hecho (sin filtrar por el operador del kit)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId, codigoUnico: 'K001' }]);
+      prisma.recinto.findMany
+        .mockResolvedValueOnce([recintoBd(recintoId, {})])
+        .mockResolvedValueOnce([
+          recintoBd(noCdaId, { cdaDestinoId: recintoId, juntasFemeninas: 6, juntasMasculinas: 7, canton: { nombre: 'URCUQUI' } }),
+        ])
+        .mockResolvedValueOnce([]); // ningún NO CDA directo a la Delegación
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { recintoId: noCdaId, operadorId: asistenteId, ocurridoEn: new Date('2026-11-29T23:42:00.000Z') },
+      ]);
+      prisma.usuario.findMany.mockResolvedValueOnce([
+        { id: operadorId, nombres: 'Ana', apellidos: 'Pérez', cedula: '1000000001' },
+        { id: asistenteId, nombres: 'Luis', apellidos: 'Mora', cedula: '1000000002' },
+      ]);
+
+      const [cda] = await service.reporteNoCdas();
+
+      expect(cda).toMatchObject({ cantonNombre: 'IBARRA', operadorNombre: 'Ana Pérez', juntasNoCdas: 13, juntasLlegadas: 13 });
+      expect(cda.noCdas[0]).toMatchObject({
+        cantonNombre: 'URCUQUI',
+        juntas: 13,
+        llegadaEn: '2026-11-29T23:42:00.000Z',
+        registradoPor: 'Luis Mora',
+      });
+      const filtro = prisma.eventoTracking.findMany.mock.calls.at(-1)![0].where;
+      expect(filtro).toEqual({ eventoId, tipo: 'LLEGADA_NO_CDA', recintoId: { in: [noCdaId] } });
+      expect(prisma.usuario.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { id: { in: [operadorId, asistenteId] } } }),
+      );
+    });
+
+    it('sin kits todavía, igual muestra el grupo de la Delegación con sus NO CDA sin CDA', async () => {
+      const directoId = '77777777-7777-7777-7777-777777777777';
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+      prisma.recinto.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([recintoBd(directoId, { canton: { nombre: 'COTACACHI' } })]);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]);
+      prisma.usuario.findMany.mockResolvedValueOnce([]);
+
+      const items = await service.reporteNoCdas();
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ cdaId: 'DELEGACION', esDelegacion: true, totalNoCdas: 1, totalLlegados: 0 });
+      expect(prisma.recinto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tipo: 'NO_CDA', activo: true, cdaDestinoId: null } }),
+      );
+    });
+  });
+
+  describe('llegada de un NO CDA sin CDA a la Delegación', () => {
+    const directoId = '77777777-7777-7777-7777-777777777777';
+    const directo = { id: directoId, tipo: 'NO_CDA', activo: true, cdaDestinoId: null };
+
+    it('la registra con la hora actual y quién la marcó', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce(directo);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
+      prisma.eventoTracking.create.mockResolvedValueOnce({ ocurridoEn: new Date('2026-11-30T02:40:00.000Z') });
+
+      await expect(service.registrarLlegadaNoCdaDelegacion(directoId, 'sup-1')).resolves.toEqual({
+        recintoId: directoId,
+        ocurridoEn: '2026-11-30T02:40:00.000Z',
+      });
+      // Marca dentro de una transacción con bloqueo por recinto (dos a la vez no duplican).
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+      expect(prisma.eventoTracking.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            eventoId,
+            operadorId: 'sup-1',
+            registradoPorId: 'sup-1',
+            tipo: 'LLEGADA_NO_CDA',
+            recintoId: directoId,
+          }),
+        }),
+      );
+    });
+
+    it('rechaza un NO CDA que tiene CDA (lo marca su operador) y uno ya marcado', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ ...directo, cdaDestinoId: recintoId });
+      await expect(service.registrarLlegadaNoCdaDelegacion(directoId, 'sup-1')).rejects.toBeInstanceOf(BadRequestException);
+
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce(directo);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'ya' });
+      await expect(service.registrarLlegadaNoCdaDelegacion(directoId, 'sup-1')).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza un CDA o un recinto inactivo como si no existiera', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ ...directo, tipo: 'CDA' });
+      await expect(service.registrarLlegadaNoCdaDelegacion(directoId, 'sup-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('el administrador la deshace y devuelve qué borró (para la bitácora); si no había marca, 404', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce(directo);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([
+        { operadorId: 'sup-1', registradoPorId: 'sup-1', ocurridoEn: new Date('2026-11-30T02:40:00.000Z') },
+      ]);
+      prisma.eventoTracking.deleteMany.mockResolvedValueOnce({ count: 1 });
+      await expect(service.anularLlegadaNoCdaDelegacion(directoId)).resolves.toEqual({
+        recintoId: directoId,
+        eliminadas: 1,
+        marcas: [{ registradoPorId: 'sup-1', ocurridoEn: '2026-11-30T02:40:00.000Z' }],
+      });
+      expect(prisma.eventoTracking.deleteMany).toHaveBeenCalledWith({
+        where: { eventoId, tipo: 'LLEGADA_NO_CDA', recintoId: directoId },
+      });
+      expect(prisma.$executeRaw).toHaveBeenCalled(); // bloqueo por recinto
+
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce(directo);
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([]);
+      prisma.eventoTracking.deleteMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.anularLlegadaNoCdaDelegacion(directoId)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('no deja deshacer la marca de un NO CDA que tiene CDA (es del operador)', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.recinto.findUnique.mockResolvedValueOnce({ ...directo, cdaDestinoId: recintoId });
+      await expect(service.anularLlegadaNoCdaDelegacion(directoId)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.eventoTracking.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -1361,6 +1516,35 @@ describe('TrackingService', () => {
         data: { estado: 'EN_RETORNO' },
       });
       expect(notifications.encolarSalidaRecinto).toHaveBeenCalledTimes(1);
+    });
+
+    function prepararSalidaValida() {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-recinto-id' }]);
+      prisma.usuario.findUnique.mockResolvedValueOnce({ nombres: 'Ana', apellidos: 'Perez' });
+      prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
+    }
+
+    it('guarda la justificación de salir con NO CDA sin marcar (recortada)', async () => {
+      prepararSalidaValida();
+      await service.registrarSalidaRecinto(operadorId, {
+        ...conActas,
+        justificacionNoCda: '  El NO CDA 1917 no llegó, se avisó al técnico  ',
+      } as any);
+      const valores = prisma.$queryRaw.mock.calls[0].slice(1);
+      expect(valores).toContain('El NO CDA 1917 no llegó, se avisó al técnico');
+    });
+
+    it('sin justificación (APK anterior o cola offline) guarda NULL y no rechaza', async () => {
+      prepararSalidaValida();
+      await service.registrarSalidaRecinto(operadorId, conActas as any);
+      const valores = prisma.$queryRaw.mock.calls[0].slice(1);
+      expect(valores[valores.length - 1]).toBeNull();
     });
   });
 

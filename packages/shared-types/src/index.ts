@@ -741,6 +741,8 @@ export interface SalidaRecintoRequest {
   ocurridoEn: string;
   actaInstalacionUrl: string;
   actaEscrutinioUrl: string;
+  /** Motivo de salir con recintos NO CDA sin marcar (la app lo pide si faltan). */
+  justificacionNoCda?: string;
   /** true si la acción se reenvió desde la cola offline del móvil. */
   desdeOffline?: boolean;
 }
@@ -859,19 +861,44 @@ export interface ReporteNoCdaDetalle {
   id: string;
   codigoRecinto: string;
   nombre: string;
+  cantonNombre: string;
+  juntasFemeninas: number;
+  juntasMasculinas: number;
+  /** Femeninas + masculinas (0 si el distributivo no las trae). */
+  juntas: number;
+  electores: number;
   llegado: boolean;
+  /** Primera vez que el operador del CDA marcó que llegó (ISO), o null. */
+  llegadaEn: string | null;
+  /** Nombre de quien lo marcó, o null si aún no llega. */
+  registradoPor: string | null;
 }
 
 export interface ReporteNoCdaItem {
   cdaId: string;
   cdaCodigo: string;
   cdaNombre: string;
+  cantonNombre: string;
   operadorNombre: string;
   operadorCedula: string;
   kitsCodigos: string[];
   totalNoCdas: number;
   totalLlegados: number;
+  /** Juntas de todos sus NO CDA. */
+  juntasNoCdas: number;
+  /** Juntas de los NO CDA que ya llegaron. */
+  juntasLlegadas: number;
   noCdas: ReporteNoCdaDetalle[];
+  /**
+   * Grupo "DPEI — Delegación Imbabura": NO CDA sin CDA de destino, que llevan
+   * sus actas directo a la Delegación. Su llegada se marca desde la web.
+   */
+  esDelegacion?: boolean;
+}
+
+export interface LlegadaNoCdaDelegacionResponse {
+  recintoId: string;
+  ocurridoEn: string;
 }
 
 export interface ReporteFlujoItem {
@@ -1213,7 +1240,11 @@ export interface OperadorCda {
   unidad: string | null;
   /** AAAA-MM-DD */
   fechaInicio: string | null;
+  /** M o F; null mientras no se registre. */
+  sexo: SexoCda | null;
   tieneFoto: boolean;
+  /** Subió una foto nueva con su cédula y espera la aprobación de la Delegación. */
+  fotoPendiente: boolean;
   activo: boolean;
   /**
    * Cuenta de la app (solo grupos OPERADOR y ASISTENTE; el resto, SIN_CUENTA).
@@ -1235,6 +1266,17 @@ export type EstadoParejaCda = 'EN_APP' | 'SIN_KIT' | 'PENDIENTE_EVENTO';
 
 /** Celular de la persona (la APK solo se instala en Android). */
 export type DispositivoCda = 'ANDROID' | 'IPHONE';
+
+/** Sexo del personal CDA/CPE, como en la cédula: M (hombre) o F (mujer). */
+export type SexoCda = 'M' | 'F';
+
+/** Conteo por sexo de un cargo (solo personal activo). */
+export interface ResumenSexoCargoCda {
+  grupo: GrupoCda;
+  hombres: number;
+  mujeres: number;
+  sinRegistrar: number;
+}
 
 export interface PersonaParejaCda {
   id: string;
@@ -1608,6 +1650,7 @@ export interface OperadorCdaFila {
   cargo: string;
   unidad?: string;
   fechaInicio?: string;
+  sexo?: SexoCda;
   /** NUEVO si la cédula no existe; ACTUALIZAR si ya estaba registrada. */
   accion: 'NUEVO' | 'ACTUALIZAR';
 }
@@ -1621,6 +1664,8 @@ export interface CrearOperadorCdaRequest {
   unidad?: string;
   /** Fecha de ingreso, AAAA-MM-DD: obligatoria al agregar a mano. */
   fechaInicio: string;
+  /** Opcional: en la edición, si no viene, queda sin registrar. */
+  sexo?: SexoCda;
   /** Por defecto OPERADOR. */
   grupo?: GrupoCda;
 }
@@ -1897,6 +1942,32 @@ export type EnlaceFotoCdaPublico =
     }
   /** Caducó, ya se usó, se generó otro, superó los intentos o no existe. */
   | { estado: 'INACTIVO' };
+
+/**
+ * Lo que ve quien escribe su cédula en el enlace único de foto. Solo el
+ * nombre corto ("Ana P.") y la cédula enmascarada: cualquiera puede escribir
+ * una cédula ajena.
+ */
+/**
+ * Respuesta al subir la foto. `cambio` es un enlace de un uso (30 min) para
+ * que quien la subió la cambie desde el mismo celular si se equivocó.
+ */
+export interface SubidaFotoCdaResult {
+  ok: true;
+  /** null cuando la foto quedó pendiente de aprobación (no hay nada que cambiar aún). */
+  cambio: EnlaceFotoCdaCreado | null;
+  /** Ya tenía foto: la nueva espera la aprobación de la Delegación; la actual se mantiene. */
+  pendiente: boolean;
+}
+
+export interface FotoCdaPorCedula {
+  nombreCorto: string;
+  /** Cédula enmascarada (p. ej. 1050xxxx12). */
+  cedula: string;
+  cargo: string;
+  /** Ya tiene foto: una nueva queda pendiente de aprobación de la Delegación. */
+  tieneFoto: boolean;
+}
 
 // Actas de entrega de indumentaria y credencial (peto, credencial y cordón).
 
@@ -2403,4 +2474,155 @@ export interface EstadisticasJornadaDto {
   sinDistributivo: boolean;
   unidades: UnidadEstadisticaJornada[];
   noCdas: NoCdaEstadisticaJornada[];
+}
+
+// --- Plan de perímetro (despliegue sobre el mapa por evento) ---
+
+export type TipoZonaPerimetro = 'peligro' | 'precaucion' | 'segura' | 'acceso';
+
+export interface ZonaPerimetro {
+  id: string;
+  tipo: TipoZonaPerimetro;
+  nombre: string;
+  /** Anillo [[lat, lng], ...]. */
+  coords: [number, number][];
+}
+
+export interface VallaPerimetro {
+  id: string;
+  lat: number;
+  lng: number;
+  angulo: number;
+}
+
+export interface AjustesPerimetro {
+  pctMujeres: number;
+  largoValla: number;
+  mostrarNombres: boolean;
+  alinearVallas: boolean;
+}
+
+export interface VistaPerimetro {
+  lat: number;
+  lng: number;
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+/** De la persona solo se muestra el nombre y, si ya la subió, la foto (nada de cédula, cargo ni sexo). */
+export interface PersonaPuestoPerimetro {
+  id: string;
+  nombre: string;
+  tieneFoto: boolean;
+}
+
+export interface PuestoPerimetro {
+  id: string;
+  /** 1, 2, 3...: el número del puesto. */
+  orden: number;
+  lat: number;
+  lng: number;
+  etiqueta: string | null;
+  persona: PersonaPuestoPerimetro | null;
+}
+
+export interface PlanPerimetroResumen {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  lugar: string | null;
+  puestos: number;
+  puestosConPersona: number;
+  actualizadoEn: string;
+}
+
+export interface PlanPerimetroDetalle {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  lugar: string | null;
+  perimetro: [number, number][] | null;
+  zonas: ZonaPerimetro[];
+  vallas: VallaPerimetro[];
+  ajustes: AjustesPerimetro;
+  vista: VistaPerimetro | null;
+  puestos: PuestoPerimetro[];
+  /** Se manda en el próximo guardado: si otra persona guardó antes, el API responde 409. */
+  version: number;
+  actualizadoEn: string;
+  /** Avisos que no bloquean, p. ej. una persona que también está en otro plan del evento. */
+  avisos: string[];
+}
+
+/** Persona que se puede asignar a un puesto: solo id y nombre (el cargo y el centro sirven para filtrar). */
+export interface CandidatoPerimetro {
+  id: string;
+  nombre: string;
+  /** Ya está en otro plan del mismo evento (se permite, con aviso). */
+  enOtroPlan: boolean;
+}
+
+export interface CargoPerimetro {
+  clave: string;
+  nombre: string;
+  centro: 'CDA' | 'CPE';
+}
+
+/** Personas propuestas en el orden de los puestos vacíos (el sexo nunca sale del servidor). */
+export interface PropuestaPersonalPerimetro {
+  personas: CandidatoPerimetro[];
+  /** Puestos que no se pudieron llenar por falta de personal con esos filtros. */
+  faltan: number;
+}
+
+// ---- Distribución del personal por días ----
+
+/** Hombres y mujeres de un día (o del total). `sinSexo`: fichas sin el dato. */
+export interface TotalesDistribucionDia {
+  fecha: string;
+  hombres: number;
+  mujeres: number;
+  sinSexo: number;
+  total: number;
+}
+
+export interface DistribucionDiasResumen {
+  id: string;
+  nombre: string;
+  fechas: string[];
+  total: number;
+  creadoEn: string;
+}
+
+export interface PersonaDistribucionDias {
+  id: string;
+  fecha: string;
+  /** null = persona externa (no está en el personal CDA/CPE). */
+  operadorId: string | null;
+  nombres: string;
+  cedula: string;
+  telefono: string | null;
+  sexo: 'M' | 'F' | null;
+  cargo: string;
+  canton: string | null;
+  encargado: string | null;
+}
+
+export interface DistribucionDiasDetalle extends DistribucionDiasResumen {
+  excluirCargos: string[];
+  cantonCpe: string | null;
+  encargadoCpe: string | null;
+  totales: TotalesDistribucionDia[];
+  personas: PersonaDistribucionDias[];
+  /** Avisos del armado (p. ej. no se pudo leer el distributivo de técnicos). */
+  avisos: string[];
+}
+
+/** Personal activo que todavía no está en la distribución (para "Agregar persona"). */
+export interface CandidatoDistribucion {
+  id: string;
+  nombre: string;
+  cedula: string;
+  cargo: string;
 }

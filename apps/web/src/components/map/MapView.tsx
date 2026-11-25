@@ -20,11 +20,18 @@ interface MapViewProps {
   scrollZoom?: boolean;
   /** Inclinación 3D inicial (grados). 0 = plano, ideal para lookups puntuales. */
   pitch?: number;
+  /** Inclinación 3D máxima (grados). MapLibre trae 60; un mapa tipo Google Earth usa hasta 85. */
+  maxPitch?: number;
+  /**
+   * Estilo propio (p. ej. satélite + capas dibujadas). Si viene, reemplaza al del
+   * tema y cada cambio se aplica con setStyle, que solo actualiza la diferencia.
+   */
+  estilo?: maplibregl.StyleSpecification;
   className?: string;
   children?: ReactNode;
 }
 
-export function MapView({ center, zoom, scrollZoom = true, pitch = 0, className, children }: MapViewProps) {
+export function MapView({ center, zoom, scrollZoom = true, pitch = 0, maxPitch, estilo, className, children }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const { theme } = useTheme();
@@ -34,10 +41,11 @@ export function MapView({ center, zoom, scrollZoom = true, pitch = 0, className,
 
     const instance = new maplibregl.Map({
       container: containerRef.current,
-      style: estiloMapa(theme),
+      style: estilo ?? estiloMapa(theme),
       center: [center[1], center[0]],
       zoom,
       pitch,
+      ...(maxPitch !== undefined ? { maxPitch } : {}),
       scrollZoom,
       attributionControl: { compact: false },
     });
@@ -56,14 +64,15 @@ export function MapView({ center, zoom, scrollZoom = true, pitch = 0, className,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cambio de tema sin recrear el mapa: solo se reemplaza el estilo base. Los
-  // marcadores y popups son DOM (maplibregl.Marker), no capas, así que no se pierden.
-  const temaAplicado = useRef(theme);
+  // Cambio de tema (o de estilo propio) sin recrear el mapa: solo se reemplaza el
+  // estilo. Los marcadores y popups son DOM (maplibregl.Marker), no capas, así que no se pierden.
+  const estiloActual = estilo ?? estiloMapa(theme);
+  const estiloAplicado = useRef(estiloActual);
   useEffect(() => {
-    if (!map || temaAplicado.current === theme) return;
-    temaAplicado.current = theme;
-    map.setStyle(estiloMapa(theme));
-  }, [map, theme]);
+    if (!map || estiloAplicado.current === estiloActual) return;
+    estiloAplicado.current = estiloActual;
+    map.setStyle(estiloActual);
+  }, [map, estiloActual]);
 
   return (
     <div ref={containerRef} className={className}>

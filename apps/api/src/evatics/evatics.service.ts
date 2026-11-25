@@ -40,7 +40,14 @@ import { limpiarJpeg } from '../operadores-cda/jpeg';
 import { diaDeFechaDb, diaEcuador, fechaDb } from '../operadores-cda/dia-ecuador';
 import { LectorNoConfigurado, LectorRespuestaInvalida, type LecturaCertificado } from './lector-certificado';
 import { LectorCertificadoService } from './lector-certificado.service';
-import { nombreCoincide, nombreCorto, nombreCortoDeApellidosNombres } from './nombre-evatics';
+import {
+  nombreCoincide,
+  nombreCorto,
+  nombreCortoDeApellidosNombres,
+  nombreDeCuenta,
+  separarApellidosNombres,
+  type NombreEsperado,
+} from './nombre-evatics';
 
 /** La página la reduce a ~1600 px (unos 400 KB): 2 MB deja margen sin aceptar fotos crudas. */
 export const MAX_CERTIFICADO_BYTES = 2 * 1024 * 1024;
@@ -110,6 +117,8 @@ export interface ActorEvatics {
 export interface PersonaEvatics {
   cedula: string;
   apellidosNombres: string;
+  /** Para comparar con el certificado: un nombre y un apellido. */
+  nombreEsperado: NombreEsperado;
   nombreCorto: string;
   cargo: string;
   centro: CentroEvatics;
@@ -218,22 +227,19 @@ function analisisDto(c: CertificadoGuardado): AnalisisCertificadoEvatics {
 }
 
 /** Qué decirle a la persona justo después de subir, según lo que leyó la IA (nunca el nombre leído). */
-/** Nombre visible y todas las notas >= 7: el único aviso que no es una advertencia. */
-export const MENSAJE_ENVIADO = 'Enviado correctamente';
+/** Certificado legible con nombre: el único aviso que no es una advertencia. */
+export const MENSAJE_ENVIADO = 'Enviado correctamente. Un supervisor lo revisará.';
 
 export function avisoParaLaPersona(lectura: LecturaCertificado | null): string | null {
-  if (!lectura) return 'Enviado a revisión.';
+  if (!lectura) return 'Enviado a revisión. Un supervisor lo revisará.';
   if (!lectura.esCertificadoEvatics) {
-    return 'La imagen no parece una prueba de Evatics (certificado o captura del curso). Revise que sea la correcta y vuelva a subirla.';
+    return 'Esto no parece el Certificado de Aprobación de Evatics. Un supervisor lo revisará; si se equivocó de archivo, suba el certificado (foto o PDF).';
   }
   if (!lectura.legible) {
-    return 'No se lee bien la imagen. Súbala otra vez con buena luz, sin reflejos y completa.';
+    return 'No se lee bien el certificado. Un supervisor lo revisará; si puede, súbalo otra vez con buena luz, sin reflejos y completo, o en PDF.';
   }
   if (!lectura.nombreLeido) {
-    return 'Recibida, pero no se ve su nombre en la imagen. Un supervisor la revisará; si puede, suba una captura donde aparezca su nombre.';
-  }
-  if (!lectura.notasAprobadas) {
-    return 'Enviado a revisión.';
+    return 'Recibido, pero no se ve su nombre en el certificado. Un supervisor lo revisará; si puede, suba el certificado completo donde aparezca su nombre.';
   }
   return MENSAJE_ENVIADO;
 }
@@ -358,7 +364,7 @@ export class EvaticsService {
     // La foto ya quedó guardada: un fallo al leerla no cambia la respuesta (queda en cola).
     const lectura = this.lector.disponible()
       ? await conTope(
-          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.apellidosNombres).catch((e) => {
+          this.analizar(guardado.id, fotoKey, jpeg.limpio, persona.nombreEsperado).catch((e) => {
             this.log.warn(`Análisis Evatics al subir no disponible: ${nombreError(e)}`);
             return null;
           }),
@@ -412,7 +418,8 @@ export class EvaticsService {
     if (actual.subidasDia === hoy && actual.subidasHoy >= MAX_SUBIDAS_POR_DIA) {
       throw new HttpException(DEMASIADAS_SUBIDAS, HttpStatus.TOO_MANY_REQUESTS);
     }
-    const rotar = actual.estado === 'RECHAZADO' || !actual.fotoAnteriorKey;
+    // Rechazado o SIN_SUBIR (captura antigua): la foto actual pasa a ser la anterior.
+    const rotar = actual.estado === 'RECHAZADO' || actual.estado === 'SIN_SUBIR' || !actual.fotoAnteriorKey;
     const reemplazo = actual.reemplazos + 1;
     const r = await tx.certificadoEvatics.updateMany({
       where: {
@@ -446,7 +453,8 @@ export class EvaticsService {
       this.tecnicosPorRecinto(),
     ]);
     const ubicaciones = await this.ubicaciones(personas.flatMap((p) => (p.operadorId ? [p.operadorId] : [])));
-    const porCedula = new Map(certificados.map((c) => [c.cedula, c]));
+    // Un registro en SIN_SUBIR guarda una captura antigua: se lista como si no hubiera subido nada.
+    const porCedula = new Map(certificados.filter((c) => c.estado !== 'SIN_SUBIR').map((c) => [c.cedula, c]));
 
     const todas: FilaEvatics[] = personas.map((p) => {
       const c = porCedula.get(p.cedula);
@@ -507,9 +515,9 @@ export class EvaticsService {
   async foto(id: string, anterior = false, version?: Date): Promise<Buffer> {
     const c = await this.prisma.certificadoEvatics.findUnique({
       where: { id },
-      select: { fotoKey: true, subidoEn: true, fotoAnteriorKey: true, fotoAnteriorSubidaEn: true },
+      select: { estado: true, fotoKey: true, subidoEn: true, fotoAnteriorKey: true, fotoAnteriorSubidaEn: true },
     });
-    if (!c) throw new NotFoundException('Certificado no encontrado');
+    if (!c || c.estado === 'SIN_SUBIR') throw new NotFoundException('Certificado no encontrado');
     const clave = anterior ? c.fotoAnteriorKey : c.fotoKey;
     if (!clave) throw new NotFoundException('Este certificado no tiene foto anterior');
     const subidaEn = anterior ? c.fotoAnteriorSubidaEn : c.subidoEn;
@@ -529,8 +537,8 @@ export class EvaticsService {
     subidoEn: string,
     actor: ActorEvatics,
   ): Promise<{ id: string; estado: DecisionEvatics; revisadoEn: string }> {
-    const c = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { cedula: true } });
-    if (!c) throw new NotFoundException('Certificado no encontrado');
+    const c = await this.prisma.certificadoEvatics.findUnique({ where: { id }, select: { cedula: true, estado: true } });
+    if (!c || c.estado === 'SIN_SUBIR') throw new NotFoundException('Certificado no encontrado');
     if ((await this.cedulasPropias(actor)).has(c.cedula)) {
       throw new ForbiddenException('No puede revisar su propio certificado: lo revisa otro supervisor');
     }
@@ -611,7 +619,7 @@ export class EvaticsService {
             continue;
           }
           const jpeg = await this.storage.readDecrypted(p.fotoKey);
-          const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.apellidosNombres);
+          const lectura = await this.analizar(p.id, p.fotoKey, jpeg, persona.nombreEsperado);
           if (!lectura) break; // proveedores sin respuesta o tope por minuto: la próxima vuelta
           analizados++;
         } catch (e) {
@@ -632,7 +640,7 @@ export class EvaticsService {
    * Analiza una foto y guarda lo leído (solo si sigue siendo la misma foto).
    * Devuelve la lectura, o null si quedó en cola o sin análisis.
    */
-  private async analizar(id: string, fotoKey: string, jpeg: Buffer, esperado: string): Promise<LecturaCertificado | null> {
+  private async analizar(id: string, fotoKey: string, jpeg: Buffer, esperado: NombreEsperado): Promise<LecturaCertificado | null> {
     if (!this.tomarCupo()) {
       // Tope por minuto: espera en cola sin llamar a la IA y sin gastar un intento.
       await this.prisma.certificadoEvatics.updateMany({
@@ -652,7 +660,7 @@ export class EvaticsService {
           nombreCoincide: lectura.nombreLeido ? nombreCoincide(lectura.nombreLeido, esperado) : null,
           esCertificado: lectura.esCertificadoEvatics,
           legible: lectura.legible,
-          notasAprobadas: lectura.notasAprobadas,
+          notasAprobadas: null,
           analizadoEn: new Date(),
           analisisProveedor: proveedor,
         },
@@ -771,6 +779,7 @@ export class EvaticsService {
     return {
       cedula: o.cedula,
       apellidosNombres: o.apellidosNombres,
+      nombreEsperado: separarApellidosNombres(o.apellidosNombres),
       nombreCorto: nombreCortoDeApellidosNombres(o.apellidosNombres),
       cargo: o.cargoCda.nombre,
       centro: o.cargoCda.centro === 'CPE' ? 'CPE' : 'CDA',
@@ -783,6 +792,7 @@ export class EvaticsService {
     return {
       cedula: u.cedula,
       apellidosNombres: `${u.apellidos} ${u.nombres}`.trim().toUpperCase(),
+      nombreEsperado: nombreDeCuenta(u.nombres, u.apellidos),
       nombreCorto: nombreCorto(u.nombres, u.apellidos),
       cargo: 'Asistente Transversal',
       centro: 'AT',

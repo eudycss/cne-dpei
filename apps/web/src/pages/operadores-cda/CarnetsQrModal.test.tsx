@@ -33,6 +33,7 @@ const op = (id: string, apellidosNombres: string): OperadorCda => ({
   unidad: null,
   fechaInicio: null,
   tieneFoto: false,
+  fotoPendiente: false,
   activo: true,
   creadoEn: '2026-10-20T10:00:00Z',
 });

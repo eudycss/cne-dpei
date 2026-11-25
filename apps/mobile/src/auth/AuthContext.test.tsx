@@ -32,10 +32,15 @@ jest.mock('../lib/offlineAuth', () => ({
   verificarLoginOffline: jest.fn(),
 }));
 
+jest.mock('../lib/aviso-no-cda', () => ({
+  cancelarAvisoNoCda: jest.fn().mockResolvedValue(undefined),
+}));
+
 import * as SecureStore from 'expo-secure-store';
 import { AuthProvider, AVISO_SESION_CERRADA, useAuth } from './AuthContext';
 import { guardarVerificadorOffline, limpiarVerificadorOffline, verificarLoginOffline } from '../lib/offlineAuth';
 import { detenerRastreo } from '../lib/location';
+import { cancelarAvisoNoCda } from '../lib/aviso-no-cda';
 import type { MiAsignacionResponse } from '@cne/shared-types';
 import {
   guardarAsignacion,
@@ -148,6 +153,18 @@ describe('AuthContext — reacción a sesión expirada', () => {
     });
 
     expect(harness.current.user).toBeNull();
+  });
+
+  it('al expirar la sesión quita el recordatorio de NO CDA (sin sesión no se pueden marcar)', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) =>
+      key === 'cne.user' ? Promise.resolve(JSON.stringify(sessionUser)) : Promise.resolve(null),
+    );
+    await renderAuth();
+    await act(async () => {
+      __emitSessionExpired();
+      await flushPromises();
+    });
+    expect(cancelarAvisoNoCda).toHaveBeenCalled();
   });
 
   it('al cerrarse la sesión deja un aviso para la pantalla de ingreso', async () => {
@@ -377,6 +394,15 @@ describe('AuthContext — login offline', () => {
 
     expect(limpiarVerificadorOffline).toHaveBeenCalled();
     expect(tokenStore.clear).toHaveBeenCalled();
+  });
+
+  it('logout() quita el recordatorio de NO CDA (no debe sonarle al siguiente operador)', async () => {
+    (api.post as jest.Mock).mockResolvedValue({});
+    const harness = await renderAuth();
+    await act(async () => {
+      await harness.current.logout();
+    });
+    expect(cancelarAvisoNoCda).toHaveBeenCalled();
   });
 
   it('logout() detiene el rastreo en segundo plano (no sigue encolando posiciones de quien salió)', async () => {

@@ -37,8 +37,11 @@ import type {
   PersonaEntregaCda,
   EnlaceFotoCdaCreado,
   EnlaceFotoCdaPublico,
+  FotoCdaPorCedula,
+  SubidaFotoCdaResult,
   AsistenciaCdaFila,
   CargoCda,
+  ResumenSexoCargoCda,
   CrearCargoCdaRequest,
   FormatoReporteCda,
   GrupoCda,
@@ -158,9 +161,37 @@ export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFoto
 }
 
 /** Foto descifrada del operador como blob (la API no la deja en caché). */
+/**
+ * Cada foto se descifra en la API (Render, 0.1 vCPU): en listados largos se
+ * piden de a pocas a la vez para no saturarla.
+ */
+const MAX_FOTOS_A_LA_VEZ = 3;
+let fotosEnCurso = 0;
+const esperandoFoto: (() => void)[] = [];
+
 export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
-  const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
+  // Al terminar, el lugar pasa directo al siguiente en espera (nunca hay más de 3).
+  if (fotosEnCurso >= MAX_FOTOS_A_LA_VEZ) await new Promise<void>((r) => esperandoFoto.push(r));
+  else fotosEnCurso++;
+  try {
+    const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
+    return data;
+  } finally {
+    const siguiente = esperandoFoto.shift();
+    if (siguiente) siguiente();
+    else fotosEnCurso--;
+  }
+}
+
+// Foto nueva que subió la persona teniendo ya una: la Delegación la aprueba o rechaza.
+
+export async function getFotoPendienteOperadorCda(operadorId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto-pendiente`, { responseType: 'blob' });
   return data;
+}
+
+export async function revisarFotoPendienteCda(operadorId: string, decision: 'aprobar' | 'rechazar'): Promise<void> {
+  await api.post(`/operadores-cda/${operadorId}/foto-pendiente/${decision}`);
 }
 
 // Carnet QR: escanear (consultar y luego confirmar la marca) y, solo el administrador, emitir o anular.
@@ -206,13 +237,40 @@ export async function consultarEnlaceFotoCda(token: string): Promise<EnlaceFotoC
   return data;
 }
 
-export async function subirFotoCda(token: string, foto: Blob): Promise<void> {
+export async function subirFotoCda(token: string, foto: Blob): Promise<SubidaFotoCdaResult> {
   const fd = new FormData();
   fd.append('token', token);
   fd.append('consentimiento', 'true');
   fd.append('version', VERSION_AVISO_FOTO_CDA);
   fd.append('foto', foto, 'foto.jpg');
-  await api.post('/publico/foto-cda/subir', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  const { data } = await api.post<SubidaFotoCdaResult>('/publico/foto-cda/subir', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+/** Enlace único que se comparte con todo el personal: cada quien escribe su cédula. */
+export function urlFotoCdaGeneral(origen = window.location.origin): string {
+  return `${origen}/foto-cda`;
+}
+
+// La cédula va en el cuerpo, nunca en la URL de la API.
+
+export async function consultarFotoCdaPorCedula(cedula: string): Promise<FotoCdaPorCedula> {
+  const { data } = await api.post<FotoCdaPorCedula>('/publico/foto-cda/cedula/consultar', { cedula });
+  return data;
+}
+
+export async function subirFotoCdaPorCedula(cedula: string, foto: Blob): Promise<SubidaFotoCdaResult> {
+  const fd = new FormData();
+  fd.append('cedula', cedula);
+  fd.append('consentimiento', 'true');
+  fd.append('version', VERSION_AVISO_FOTO_CDA);
+  fd.append('foto', foto, 'foto.jpg');
+  const { data } = await api.post<SubidaFotoCdaResult>('/publico/foto-cda/cedula/subir', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
 }
 
 // Actas de entrega de indumentaria y credencial.
@@ -560,6 +618,12 @@ export async function descargarQrParejasCda(fecha: string, parejaIds?: string[])
 
 // Gestión de cargos (combo "Cargo"): todos ven la lista; crear, renombrar y desactivar, solo el administrador.
 
+/** Hombres, mujeres y sin registrar por cargo (solo activos). */
+export async function getResumenSexoCda(): Promise<ResumenSexoCargoCda[]> {
+  const { data } = await api.get<ResumenSexoCargoCda[]>('/operadores-cda/resumen-sexo');
+  return data;
+}
+
 export async function getCargosCda(): Promise<CargoCda[]> {
   const { data } = await api.get<CargoCda[]>('/cargos-cda');
   return data;
@@ -605,5 +669,11 @@ export async function cargarConvocatoriaCda(file: File, fecha: string, aplicar: 
 
 export async function descargarPlantillaConvocatoriaCda(): Promise<Blob> {
   const { data } = await api.get<Blob>('/operadores-cda/convocatoria/plantilla.xlsx', { responseType: 'blob' });
+  return data;
+}
+
+/** Ids del personal que tiene foto (para la miniatura en cualquier listado). */
+export async function getIdsConFoto(): Promise<string[]> {
+  const { data } = await api.get<string[]>('/operadores-cda/fotos/con-foto');
   return data;
 }

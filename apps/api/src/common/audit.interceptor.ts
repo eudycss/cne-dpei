@@ -364,6 +364,29 @@ const AUDIT_TABLE: Array<{
     entidad: 'pareja_cda',
     resumen: (_res, req) => resumenReporteTecnicos(req),
   },
+  // Distribución del personal por días: armar, regenerar, borrar y editar filas
+  // (solo el día y el tipo, sin datos personales) y descargas (llevan cédulas y celulares).
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias$/, accion: 'DISTRIBUCION_DIAS_CREATE', entidad: 'distribucion_dias', campos: ['fechas', 'excluirCargos'] },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/regenerar$/, accion: 'DISTRIBUCION_DIAS_REGENERAR', entidad: 'distribucion_dias' },
+  { method: 'DELETE', pathRegex: /^\/distribuciones-dias\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_DELETE', entidad: 'distribucion_dias' },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/personas$/, accion: 'DISTRIBUCION_DIAS_PERSONA_ADD', entidad: 'distribucion_dias', campos: ['tipo', 'fecha'] },
+  { method: 'PATCH', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_UPDATE', entidad: 'distribucion_dias', campos: ['fecha'] },
+  { method: 'DELETE', pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+$/, accion: 'DISTRIBUCION_DIAS_PERSONA_DELETE', entidad: 'distribucion_dias' },
+  { method: 'POST',  pathRegex: /^\/distribuciones-dias\/[^/]+\/personas\/[^/]+\/intercambiar$/, accion: 'DISTRIBUCION_DIAS_PERSONA_INTERCAMBIO', entidad: 'distribucion_dias', campos: ['conId'] },
+  {
+    method: 'GET',
+    pathRegex: /^\/distribuciones-dias\/[^/]+\/reporte\.(xlsx|pdf)$/,
+    accion: 'DISTRIBUCION_DIAS_EXPORTAR',
+    entidad: 'distribucion_dias',
+    resumen: (_res, req) => ({ formato: (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx', fecha: typeof req.query?.fecha === 'string' ? req.query.fecha.slice(0, 10) : null }),
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/distribuciones-dias\/[^/]+\/contactos\.vcf$/,
+    accion: 'DISTRIBUCION_DIAS_CONTACTOS',
+    entidad: 'distribucion_dias',
+    resumen: (_res, req) => ({ fecha: typeof req.query?.fecha === 'string' ? req.query.fecha.slice(0, 10) : null }),
+  },
   // Reporte de atrasos: el cambio de la hora oficial (recalcula todos los días)
   // y la descarga del Excel o PDF (lleva cédulas), con el rango pedido.
   {
@@ -410,6 +433,38 @@ const AUDIT_TABLE: Array<{
       const v = (req.body as { version?: unknown } | undefined)?.version;
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null };
     },
+  },
+  // Enlace único de foto (por cédula): nunca la cédula, solo el operador y la versión del aviso.
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/foto-cda\/cedula\/subir$/,
+    accion: 'FOTO_CDA_SUBIR_CEDULA',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    // pendiente: ya tenía foto y la nueva espera aprobación (sirve para detectar subidas con cédula ajena).
+    resumen: (_res, req) => {
+      const v = (req.body as { version?: unknown } | undefined)?.version;
+      const pendiente = (req as Request & { fotoPendienteCda?: unknown }).fotoPendienteCda === true;
+      return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null, pendiente };
+    },
+  },
+  // Revisión de la foto nueva: quién la aprobó o rechazó (sin datos de la imagen).
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/[^/]+\/foto-pendiente\/aprobar$/,
+    accion: 'FOTO_CDA_PENDIENTE_APROBAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => idUuid(req.params?.id),
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/operadores-cda\/[^/]+\/foto-pendiente\/rechazar$/,
+    accion: 'FOTO_CDA_PENDIENTE_RECHAZAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => idUuid(req.params?.id),
   },
   // Certificados Evatics. La subida es pública: el certificado sale de
   // req.certificadoEvaticsId (lo pone el controller), nunca la cédula; queda la
@@ -735,6 +790,37 @@ const AUDIT_TABLE: Array<{
     },
   },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto-manual$/, accion: 'REGISTRO_LLEGADA_RECINTO_MANUAL', entidad: 'eventos_tracking', campos: ['recintoId', 'operadorId', 'ocurridoEn'] },
+  // NO CDA sin CDA: quien recibe en la Delegación marca la llegada; el administrador puede deshacerla.
+  {
+    method: 'POST',
+    pathRegex: /^\/tracking\/no-cda\/[^/]+\/llegada-delegacion$/,
+    accion: 'NO_CDA_LLEGADA_DELEGACION',
+    entidad: 'recinto',
+    entidadId: (req) => String(req.params?.recintoId ?? '').slice(0, 40) || undefined,
+    resumen: (res) => {
+      const ocurridoEn = (res as { ocurridoEn?: unknown } | null)?.ocurridoEn;
+      return { ocurridoEn: typeof ocurridoEn === 'string' ? ocurridoEn.slice(0, 40) : null };
+    },
+  },
+  {
+    method: 'DELETE',
+    pathRegex: /^\/tracking\/no-cda\/[^/]+\/llegada-delegacion$/,
+    accion: 'NO_CDA_LLEGADA_DELEGACION_ANULADA',
+    entidad: 'recinto',
+    entidadId: (req) => String(req.params?.recintoId ?? '').slice(0, 40) || undefined,
+    // Qué se borró: quién la había marcado (id de usuario, sin nombre) y a qué hora.
+    resumen: (res) => {
+      const marcas = (res as { marcas?: unknown } | null)?.marcas;
+      return {
+        marcas: Array.isArray(marcas)
+          ? marcas.slice(0, 10).map((m) => ({
+              registradoPorId: String((m as { registradoPorId?: unknown }).registradoPorId ?? '').slice(0, 40),
+              ocurridoEn: String((m as { ocurridoEn?: unknown }).ocurridoEn ?? '').slice(0, 40),
+            }))
+          : [],
+      };
+    },
+  },
 ];
 
 /**

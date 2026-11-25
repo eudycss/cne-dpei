@@ -13,6 +13,8 @@ import type {
   OperadorCda,
   OperadorCdaFila,
   PersonaCdaEncontrada,
+  ResumenSexoCargoCda,
+  SexoCda,
 } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { CuentasCdaService, GRUPOS_CON_CUENTA } from './cuentas-cda.service';
@@ -112,6 +114,24 @@ export class OperadoresCdaService {
     await this.existe(id);
     const editado = await this.prisma.operadorCda.update({ where: { id }, data: datosEditables(datos) });
     return toOperadorCdaDto(editado);
+  }
+
+  /** Hombres, mujeres y sin registrar por cargo (solo activos), para el resumen de la web. */
+  async resumenSexo(): Promise<ResumenSexoCargoCda[]> {
+    const filas = await this.prisma.operadorCda.groupBy({
+      by: ['grupo', 'sexo'],
+      where: { activo: true },
+      _count: { _all: true },
+    });
+    const porGrupo = new Map<GrupoCda, ResumenSexoCargoCda>();
+    for (const f of filas) {
+      const r = porGrupo.get(f.grupo) ?? { grupo: f.grupo, hombres: 0, mujeres: 0, sinRegistrar: 0 };
+      if (f.sexo === 'M') r.hombres += f._count._all;
+      else if (f.sexo === 'F') r.mujeres += f._count._all;
+      else r.sinRegistrar += f._count._all;
+      porGrupo.set(f.grupo, r);
+    }
+    return [...porGrupo.values()].sort((a, b) => a.grupo.localeCompare(b.grupo));
   }
 
   /** Celular de la persona (ANDROID/IPHONE, o null si no se sabe). */
@@ -271,6 +291,7 @@ export class OperadoresCdaService {
           cargo: f.cargo,
           unidad: f.unidad,
           fechaInicio: f.fechaInicio ? new Date(`${f.fechaInicio}T00:00:00Z`) : undefined,
+          sexo: f.sexo,
         };
         return this.prisma.operadorCda.upsert({
           where: { cedula: f.cedula },
@@ -335,6 +356,7 @@ function datosEditables(d: EditarOperadorCdaRequest) {
     cargo: d.cargo,
     unidad: d.unidad || null,
     fechaInicio: d.fechaInicio ? new Date(`${d.fechaInicio}T00:00:00Z`) : null,
+    sexo: d.sexo ?? null,
   };
 }
 
@@ -405,7 +427,9 @@ export function toOperadorCdaDto(o: {
   cargo: string;
   unidad: string | null;
   fechaInicio: Date | null;
+  sexo?: string | null;
   fotoKey: string | null;
+  fotoPendienteKey?: string | null;
   activo: boolean;
   creadoEn: Date;
 }): OperadorCda {
@@ -419,11 +443,15 @@ export function toOperadorCdaDto(o: {
     cargo: o.cargo,
     unidad: o.unidad,
     fechaInicio: o.fechaInicio ? o.fechaInicio.toISOString().slice(0, 10) : null,
+    sexo: aSexo(o.sexo),
     tieneFoto: !!o.fotoKey,
+    fotoPendiente: !!o.fotoPendienteKey,
     activo: o.activo,
     creadoEn: o.creadoEn.toISOString(),
   };
 }
+
+const aSexo = (s: string | null | undefined): SexoCda | null => (s === 'M' || s === 'F' ? s : null);
 
 /** Estado de la cuenta de la app para la columna "Cuenta app" de la web. */
 function estadoCuenta(

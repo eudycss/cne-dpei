@@ -9,6 +9,7 @@ import { EvaticsPublicoPage, LADO_CERTIFICADO, BYTES_CERTIFICADO } from './Evati
 import { fechaLarga } from '../operadores-cda/utils';
 import { api } from '../../lib/api';
 import { reducirFoto } from '../foto-cda/reducirFoto';
+import { pdfAImagen } from './pdfAImagen';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../foto-cda/reducirFoto', async (original) => ({
@@ -16,6 +17,12 @@ vi.mock('../foto-cda/reducirFoto', async (original) => ({
   reducirFoto: vi.fn(),
 }));
 
+vi.mock('./pdfAImagen', async (original) => ({
+  ...(await original<typeof import('./pdfAImagen')>()),
+  pdfAImagen: vi.fn(),
+}));
+
+const pdfMock = pdfAImagen as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 const reducirMock = reducirFoto as unknown as ReturnType<typeof vi.fn>;
 const CEDULA = '1710034065';
@@ -103,7 +110,7 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
   it('sin autorizar no se puede elegir la foto', async () => {
     await entrar();
     expect(screen.getByRole('button', { name: 'Tomar foto' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Elegir de la galería' })).toHaveAccessibleDescription(
+    expect(screen.getByRole('button', { name: 'Elegir foto o PDF' })).toHaveAccessibleDescription(
       'Marque la autorización para continuar.',
     );
   });
@@ -129,11 +136,11 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
 
   it('sube cédula, consentimiento, versión del aviso y la foto; luego confirma', async () => {
     const user = await hastaVistaPrevia();
-    postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado correctamente' } });
-    await user.click(screen.getByRole('button', { name: 'Subir esta foto' }));
-    await screen.findByRole('heading', { name: 'Enviado correctamente' });
+    postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: 'Enviado correctamente. Un supervisor lo revisará.' } });
+    await user.click(screen.getByRole('button', { name: 'Subir este certificado' }));
+    await screen.findByRole('heading', { name: 'Enviado correctamente. Un supervisor lo revisará.' });
     // También es lo que ve si la IA (Gemini o Groq) falló o no respondió: lo decide el supervisor.
-    expect(screen.getByText(/Un supervisor revisará su imagen/)).toBeInTheDocument();
+    expect(screen.getByText(/Puede volver a esta página con su cédula/)).toBeInTheDocument();
 
     const [url, fd] = postMock.mock.calls[1];
     expect(url).toBe('/publico/evatics/subir');
@@ -146,11 +153,11 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
   it('si la IA avisa que no se lee, puede subir otra sin volver a escribir la cédula', async () => {
     const user = await hastaVistaPrevia();
     postMock.mockResolvedValueOnce({ data: { ok: true, estado: 'PENDIENTE', aviso: 'No se lee el nombre' } });
-    await user.click(screen.getByRole('button', { name: 'Subir esta foto' }));
-    await screen.findByRole('heading', { name: 'Foto recibida, pero revísela' });
+    await user.click(screen.getByRole('button', { name: 'Subir este certificado' }));
+    await screen.findByRole('heading', { name: 'Certificado recibido, pero revíselo' });
     expect(screen.getByText('No se lee el nombre')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Subir otra foto' }));
+    await user.click(screen.getByRole('button', { name: 'Subir otro archivo' }));
     await screen.findByRole('heading', { name: 'Hola, Lucía C.' });
     expect(screen.getByText('En revisión')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tomar otra foto' })).toBeInTheDocument();
@@ -159,9 +166,9 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
   it('un error al subir se muestra y permite reintentar', async () => {
     const user = await hastaVistaPrevia();
     postMock.mockRejectedValueOnce({ response: { status: 429, data: { message: 'Ya se subieron 5 fotos hoy' } } });
-    await user.click(screen.getByRole('button', { name: 'Subir esta foto' }));
+    await user.click(screen.getByRole('button', { name: 'Subir este certificado' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ya se subieron 5 fotos hoy');
-    expect(screen.getByRole('button', { name: 'Subir esta foto' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Subir este certificado' })).toBeEnabled();
   });
 
   it('rechazado: muestra el motivo para que corrija', async () => {
@@ -172,7 +179,7 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
 
   it('aprobado o con el plazo vencido: no ofrece subir', async () => {
     await entrar(consulta({ estado: 'APROBADO', puedeSubir: false }));
-    expect(screen.getByText(/Sus notas ya fueron recibidas/)).toBeInTheDocument();
+    expect(screen.getByText(/Su certificado fue aprobado/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Tomar/ })).not.toBeInTheDocument();
   });
 
@@ -188,7 +195,7 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
     reducirMock.mockReturnValue(new Promise<Blob>((r) => (terminar = r)));
     await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
     await user.upload(screen.getByTestId('galeria'), new File(['x'], 'cert.png', { type: 'image/png' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Preparando la foto…');
+    expect(screen.getByRole('status')).toHaveTextContent('Preparando el certificado…');
     await user.click(screen.getByRole('button', { name: 'Escribir otra cédula' }));
     terminar(new Blob(['x'], { type: 'image/jpeg' }));
     await new Promise((r) => setTimeout(r, 0));
@@ -225,5 +232,47 @@ describe('EvaticsPublicoPage (subir el certificado con la cédula)', () => {
     await user.click(screen.getByRole('button', { name: 'Escribir otra cédula' }));
     expect(screen.getByLabelText('Número de cédula')).toHaveValue('');
     expect(screen.queryByText('Lucía C.')).not.toBeInTheDocument();
+  });
+
+  describe('certificado en PDF', () => {
+    it('la galería acepta fotos y PDF; la cámara solo fotos', async () => {
+      await entrar();
+      expect(screen.getByTestId('galeria')).toHaveAttribute('accept', 'image/*,application/pdf,.pdf');
+      expect(screen.getByTestId('camara')).toHaveAttribute('accept', 'image/*');
+    });
+
+    it('un PDF se convierte en imagen y luego se reduce como una foto', async () => {
+      const user = await entrar();
+      const pagina = new Blob(['png'], { type: 'image/png' });
+      pdfMock.mockResolvedValueOnce(pagina);
+      reducirMock.mockResolvedValueOnce(new Blob([new Uint8Array(1024)], { type: 'image/jpeg' }));
+      await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+      const pdf = new File(['%PDF-1.7'], 'certificado.pdf', { type: 'application/pdf' });
+      await user.upload(screen.getByTestId('galeria'), pdf);
+      await screen.findByRole('heading', { name: '¿Se lee su nombre?' });
+      expect(pdfMock).toHaveBeenCalledWith(pdf);
+      expect(reducirMock).toHaveBeenCalledWith(pagina, { ladoMaximo: LADO_CERTIFICADO, bytesObjetivo: BYTES_CERTIFICADO });
+    });
+
+    it('una foto no pasa por el lector de PDF', async () => {
+      pdfMock.mockClear();
+      await hastaVistaPrevia();
+      expect(pdfMock).not.toHaveBeenCalled();
+    });
+
+    it('si el PDF no se abre, muestra el error con el foco', async () => {
+      const user = await entrar();
+      pdfMock.mockRejectedValueOnce(new Error('No se pudo abrir el PDF. Elija otro archivo o tome una foto del certificado.'));
+      await user.click(screen.getByRole('checkbox', { name: /Autorizo al CNE/ }));
+      await user.upload(screen.getByTestId('galeria'), new File(['x'], 'c.pdf', { type: 'application/pdf' }));
+      const alerta = await screen.findByRole('alert');
+      expect(alerta).toHaveTextContent('No se pudo abrir el PDF');
+      expect(alerta).toHaveFocus();
+    });
+
+    it('pide solo el Certificado de Aprobación, no capturas del curso', async () => {
+      await entrar();
+      expect(screen.getByText(/no sirven capturas del curso ni de las notas/)).toBeInTheDocument();
+    });
   });
 });

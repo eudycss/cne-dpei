@@ -192,6 +192,35 @@ describe('desdeOffline en los schemas de tracking que pasan por la cola offline'
   });
 });
 
+describe('salidaRecintoSchema — justificación de NO CDA sin marcar', () => {
+  const base = {
+    latitud: 0.35,
+    longitud: -78.11,
+    ocurridoEn: '2026-09-30T10:00:00.000Z',
+    actaInstalacionUrl: 'a',
+    actaEscrutinioUrl: 'b',
+  };
+
+  it('es opcional (APK anteriores no la envían)', () => {
+    expect(salidaRecintoSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('recorta espacios y acepta un motivo válido', () => {
+    const r = salidaRecintoSchema.safeParse({ ...base, justificacionNoCda: '  No llegó el bus  ' });
+    expect(r.success).toBe(true);
+    expect(r.data?.justificacionNoCda).toBe('No llegó el bus');
+  });
+
+  it('rechaza un motivo de menos de 5 caracteres (solo espacios incluidos)', () => {
+    expect(salidaRecintoSchema.safeParse({ ...base, justificacionNoCda: 'ok' }).success).toBe(false);
+    expect(salidaRecintoSchema.safeParse({ ...base, justificacionNoCda: '       ' }).success).toBe(false);
+  });
+
+  it('rechaza un motivo de más de 500 caracteres', () => {
+    expect(salidaRecintoSchema.safeParse({ ...base, justificacionNoCda: 'x'.repeat(501) }).success).toBe(false);
+  });
+});
+
 describe('avisosEnlacesSchema', () => {
   it('acepta las opciones de la lista, incluido 10 min para el día de votaciones', () => {
     expect(avisosEnlacesSchema.safeParse({ minutosPrimerAviso: 10, minutosRepetirAviso: 240 }).success).toBe(true);
@@ -689,5 +718,23 @@ describe('celdas del Excel de convocatoria', () => {
     expect(leerFechaCelda('5/11/26')).toBeNull();
     expect(leerFechaCelda('mañana')).toBeNull();
     expect(leerFechaCelda('')).toBeNull();
+  });
+});
+
+describe('sexo del personal CDA/CPE', () => {
+  const base = { apellidosNombres: 'RUIZ MORA JUAN', cedula: '1710034065', cargo: 'OPERADOR CDA' };
+
+  it('acepta M, F o ausente', () => {
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'M' }).success).toBe(true);
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'F' }).success).toBe(true);
+    expect(operadorCdaFilaSchema.safeParse(base).success).toBe(true);
+    expect(editarOperadorCdaSchema.safeParse({ apellidosNombres: base.apellidosNombres, cargo: base.cargo, sexo: 'F' }).success).toBe(true);
+  });
+
+  it('rechaza cualquier otro valor con un mensaje claro', () => {
+    const r = operadorCdaFilaSchema.safeParse({ ...base, sexo: 'X' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].message).toBe('Sexo inválido (use M o F)');
+    expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'm' }).success).toBe(false);
   });
 });

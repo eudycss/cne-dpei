@@ -706,6 +706,51 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(subir.data)).not.toContain('secreto-que-no-debe-quedar');
   });
 
+  it('foto por cédula (enlace único): el operador y la versión del aviso, nunca la cédula', async () => {
+    const subir = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/publico/foto-cda/cedula/subir',
+        body: { cedula: '1050123412', consentimiento: 'true', version: 'LOPDP-2026-10' },
+        operadorCdaId: OTRO,
+      },
+      { ok: true },
+    );
+    expect(subir.data).toMatchObject({
+      usuarioId: null,
+      accion: 'FOTO_CDA_SUBIR_CEDULA',
+      entidad: 'operador_cda',
+      entidadId: OTRO,
+      datosDespues: { consentimientoVersion: 'LOPDP-2026-10' },
+    });
+    expect(JSON.stringify(subir.data)).not.toContain('1050123412');
+  });
+
+  it('foto nueva por revisar: queda si fue pendiente, y quién la aprobó o rechazó', async () => {
+    const subir = await auditar(
+      {
+        method: 'POST',
+        originalUrl: '/publico/foto-cda/cedula/subir',
+        body: { cedula: '1050123412', consentimiento: 'true', version: 'LOPDP-2026-10' },
+        operadorCdaId: OTRO,
+        fotoPendienteCda: true,
+      },
+      { ok: true },
+    );
+    expect(subir.data).toMatchObject({ datosDespues: { consentimientoVersion: 'LOPDP-2026-10', pendiente: true } });
+
+    for (const [decision, accion] of [
+      ['aprobar', 'FOTO_CDA_PENDIENTE_APROBAR'],
+      ['rechazar', 'FOTO_CDA_PENDIENTE_RECHAZAR'],
+    ] as const) {
+      const r = await auditar(
+        { method: 'POST', originalUrl: `/operadores-cda/${OTRO}/foto-pendiente/${decision}`, params: { id: OTRO }, user: ADMIN },
+        { id: OTRO },
+      );
+      expect(r.data).toMatchObject({ accion, entidad: 'operador_cda', entidadId: OTRO });
+    }
+  });
+
   it('simulador de digitación: configuración sin personas, quién empieza, y las actas no se auditan', async () => {
     const PRACTICA = '44444444-4444-4444-8444-444444444444';
     const crear = await auditar(
@@ -764,6 +809,17 @@ describe('AuditInterceptor', () => {
       user: ADMIN,
     });
     expect(individual.data).toMatchObject({ datosDespues: { formato: 'pdf', operadorId: OTRO } });
+
+    // Contactos .vcf de un día de la distribución (llevan celulares): solo el día, sin teléfonos.
+    const contactos = await auditar({
+      method: 'GET', originalUrl: `/distribuciones-dias/${PRACTICA}/contactos.vcf?fecha=2026-11-20`, params: { id: PRACTICA }, query: { fecha: '2026-11-20' }, user: ADMIN,
+    });
+    expect(contactos.data).toMatchObject({
+      accion: 'DISTRIBUCION_DIAS_CONTACTOS',
+      entidad: 'distribucion_dias',
+      entidadId: PRACTICA,
+      datosDespues: { fecha: '2026-11-20' },
+    });
 
     // Anular un intento: quién (usuario), de qué persona y práctica; el motivo (texto libre) no.
     const INTENTO = '55555555-5555-4555-8555-555555555555';

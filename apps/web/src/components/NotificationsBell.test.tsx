@@ -11,6 +11,18 @@ vi.mock('../lib/api', () => ({
   api: { get: vi.fn(), patch: vi.fn() },
 }));
 
+// Campana falsa: deja ver cuándo se pide que suene sin depender de motion.
+const sonar = vi.hoisted(() => vi.fn());
+vi.mock('./iconos-animados', async (original) => {
+  const real = await original<typeof import('./iconos-animados')>();
+  const { forwardRef, useImperativeHandle } = await import('react');
+  const BellRingIcon = forwardRef<unknown, Record<string, unknown>>((_props, ref) => {
+    useImperativeHandle(ref, () => ({ startAnimation: sonar, stopAnimation: vi.fn() }));
+    return <span data-testid="campana" />;
+  });
+  return { ...real, BellRingIcon };
+});
+
 const apiGetMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const apiPatchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
 
@@ -25,8 +37,7 @@ function item(id: string, creadoEn: string): NotificacionItem {
   };
 }
 
-function renderBell() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderBell(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <NotificationsBell />
@@ -165,5 +176,49 @@ describe('NotificationsBell — paginación', () => {
     await screen.findByText('1 sin leer');
 
     expect(screen.queryByText('Cargar más')).not.toBeInTheDocument();
+  });
+});
+
+describe('NotificationsBell — campana animada', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function respuesta(noLeidas: number) {
+    return { data: { items: [item('n1', '2026-09-08T10:00:00.000Z')], total: noLeidas, noLeidas } };
+  }
+
+  it('suena solo cuando el servidor reporta más no leídas que antes, no en la primera carga ni cuando bajan', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    apiGetMock.mockResolvedValueOnce(respuesta(3));
+    renderBell(client);
+    await screen.findByRole('button', { name: 'Notificaciones, 3 sin leer' });
+    expect(sonar).not.toHaveBeenCalled();
+
+    apiGetMock.mockResolvedValueOnce(respuesta(5));
+    await client.refetchQueries({ queryKey: ['notificaciones-mias'] });
+    await screen.findByRole('button', { name: 'Notificaciones, 5 sin leer' });
+    expect(sonar).toHaveBeenCalledTimes(1);
+
+    apiGetMock.mockResolvedValueOnce(respuesta(5));
+    await client.refetchQueries({ queryKey: ['notificaciones-mias'] });
+    apiGetMock.mockResolvedValueOnce(respuesta(2));
+    await client.refetchQueries({ queryKey: ['notificaciones-mias'] });
+    await screen.findByRole('button', { name: 'Notificaciones, 2 sin leer' });
+    expect(sonar).toHaveBeenCalledTimes(1);
+  });
+
+  it('también suena al pasar el mouse o llegar con el teclado al botón', async () => {
+    const user = userEvent.setup();
+    apiGetMock.mockResolvedValue(respuesta(0));
+    renderBell();
+    const boton = await screen.findByRole('button', { name: 'Notificaciones' });
+
+    await user.hover(boton);
+    expect(sonar).toHaveBeenCalledTimes(1);
+    await user.unhover(boton);
+    await user.tab();
+    expect(boton).toHaveFocus();
+    expect(sonar).toHaveBeenCalledTimes(2);
   });
 });

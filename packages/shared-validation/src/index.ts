@@ -515,6 +515,15 @@ export const salidaRecintoSchema = z.object({
   ocurridoEn: z.string().datetime({ message: 'Fecha-hora ISO requerida' }),
   actaInstalacionUrl: z.string().min(1, 'Acta de instalación requerida'),
   actaEscrutinioUrl: z.string().min(1, 'Acta de escrutinio requerida'),
+  // Motivo de salir con recintos NO CDA sin marcar su llegada. Opcional en el
+  // servidor: las APK anteriores y la cola offline no lo envían; la app nueva
+  // lo exige cuando faltan NO CDA.
+  justificacionNoCda: z
+    .string()
+    .trim()
+    .min(5, 'Escriba al menos 5 caracteres')
+    .max(500, 'Máximo 500 caracteres')
+    .optional(),
   desdeOffline,
 });
 
@@ -707,6 +716,9 @@ const fechaIngresoCdaSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
   .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)');
 
+/** Sexo del personal CDA/CPE, como en la cédula: M (hombre) o F (mujer). */
+export const sexoCdaSchema = z.enum(['M', 'F'], { errorMap: () => ({ message: 'Sexo inválido (use M o F)' }) });
+
 // Una fila del Excel de talento humano ya normalizada por la API (encabezados
 // "N°, Apellidos Nombres, Cédula, Teléfonos De Contacto, Cargo, Unidad, Inicial").
 export const operadorCdaFilaSchema = z.object({
@@ -721,6 +733,7 @@ export const operadorCdaFilaSchema = z.object({
   cargo: z.string().trim().min(1, 'Cargo requerido').max(160, 'Máximo 160 caracteres'),
   unidad: z.string().trim().max(200, 'Máximo 200 caracteres').optional(),
   fechaInicio: fechaIngresoCdaSchema.optional(),
+  sexo: sexoCdaSchema.optional(),
 });
 
 export type OperadorCdaFilaInput = z.infer<typeof operadorCdaFilaSchema>;
@@ -977,6 +990,21 @@ export const subirFotoCdaSchema = z.object({
   }),
 });
 
+// Enlace único de foto: la persona escribe su cédula (sin enlace personal).
+
+export const consultarFotoCdaCedulaSchema = z.object({ cedula: cedulaSchema }).strict();
+
+/** Campos de texto que acompañan a la foto (multipart). */
+export const subirFotoCdaCedulaSchema = z.object({
+  cedula: cedulaSchema,
+  consentimiento: z.literal('true', {
+    errorMap: () => ({ message: 'Debe autorizar el uso de su foto para continuar' }),
+  }),
+  version: z.literal(VERSION_AVISO_FOTO_CDA, {
+    errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
+  }),
+});
+
 // Actas de entrega de indumentaria y credencial (operadores CDA).
 
 export const estadoPrendaSchema = z.enum(['NUEVO', 'BUENO', 'REGULAR', 'MALO']);
@@ -1024,6 +1052,8 @@ export const descargarActasCdaSchema = z.object({ operadorIds: operadorIdsActasS
 export * from './modulos';
 export * from './permisos';
 export * from './busqueda';
+export * from './perimetro';
+export * from './llegada-no-cda';
 
 // --- Parejas Operador CDA + Asistente CDA por día ---
 
@@ -1423,3 +1453,125 @@ export const filtrosEvaticsSchema = z.object({
   q: z.string().trim().max(100).optional(),
 });
 export type FiltrosEvaticsInput = z.infer<typeof filtrosEvaticsSchema>;
+
+// ---- Distribución del personal por días ----
+
+export const MAX_DIAS_DISTRIBUCION = 7;
+export const MAX_CANDIDATOS_DISTRIBUCION = 20;
+
+/** Texto libre corto (va a Excel y PDF): sin caracteres de control; vacío = sin dato. */
+const textoDistribucion = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Máximo ${max} caracteres`)
+    // eslint-disable-next-line no-control-regex
+    .regex(/^[^\u0000-\u001f\u007f]*$/, 'Caracteres no permitidos')
+    .transform((s) => s.replace(/ +/g, ' '));
+
+/** Vacío o ausente = sin dato (la API lo guarda como null). */
+const textoOpcionalDistribucion = (max: number) => textoDistribucion(max).optional();
+
+const fechasDistribucionSchema = z
+  .array(fechaParejaCdaSchema)
+  .min(1, 'Elija al menos un día')
+  .max(MAX_DIAS_DISTRIBUCION, `Máximo ${MAX_DIAS_DISTRIBUCION} días`)
+  .refine((f) => new Set(f).size === f.length, 'Hay un día repetido')
+  .transform((f) => [...f].sort());
+
+/** Nueva distribución: se arma sola con el personal activo menos los cargos excluidos. */
+export const crearDistribucionDiasSchema = z
+  .object({
+    nombre: textoDistribucion(120).pipe(z.string().min(3, 'Mínimo 3 caracteres')),
+    fechas: fechasDistribucionSchema,
+    excluirCargos: z.array(grupoCdaSchema).max(50),
+    cantonCpe: textoOpcionalDistribucion(100),
+    encargadoCpe: textoOpcionalDistribucion(200),
+  })
+  .strict();
+export type CrearDistribucionDiasInput = z.infer<typeof crearDistribucionDiasSchema>;
+
+/** Agregar a mano: alguien del personal registrado (cualquier cargo) o una persona externa. */
+export const agregarPersonaDistribucionSchema = z.discriminatedUnion('tipo', [
+  z.object({ tipo: z.literal('REGISTRADA'), fecha: fechaParejaCdaSchema, operadorId: z.string().uuid('Persona inválida') }).strict(),
+  z
+    .object({
+      tipo: z.literal('EXTERNA'),
+      fecha: fechaParejaCdaSchema,
+      nombres: textoDistribucion(200).pipe(z.string().min(3, 'Apellidos y nombres requeridos')),
+      cedula: cedulaSchema,
+      telefono: telefonoSchema,
+      sexo: sexoCdaSchema,
+      cargo: textoDistribucion(160).pipe(z.string().min(1, 'Cargo requerido')),
+      canton: textoOpcionalDistribucion(100),
+      encargado: textoOpcionalDistribucion(200),
+    })
+    .strict(),
+]);
+export type AgregarPersonaDistribucionInput = z.infer<typeof agregarPersonaDistribucionSchema>;
+
+/** Editar una fila: cambiar de día, cantón o encargado (vacío = quitar el dato). */
+export const editarPersonaDistribucionSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema.optional(),
+    canton: textoDistribucion(100).optional(),
+    encargado: textoDistribucion(200).optional(),
+  })
+  .strict()
+  .refine((b) => b.fecha !== undefined || b.canton !== undefined || b.encargado !== undefined, 'No hay cambios');
+export type EditarPersonaDistribucionInput = z.infer<typeof editarPersonaDistribucionSchema>;
+
+/** Filtros del reporte: un día del reparto y/o un encargado (texto exacto de la columna). */
+export const reporteDistribucionSchema = z
+  .object({
+    fecha: fechaParejaCdaSchema.optional(),
+    encargado: textoDistribucion(200).optional(),
+  })
+  .strict();
+export type ReporteDistribucionInput = z.infer<typeof reporteDistribucionSchema>;
+
+export const candidatosDistribucionSchema = z
+  .object({ buscar: z.string().trim().max(60, 'Máximo 60 caracteres').default('') })
+  .strict();
+export type CandidatosDistribucionInput = z.infer<typeof candidatosDistribucionSchema>;
+
+/**
+ * Celular en formato internacional (+5939XXXXXXXX) para importar contactos,
+ * o null si no es un celular ecuatoriano válido (misma regla que telefonoSchema).
+ */
+export function celularInternacional(tel: string | null | undefined): string | null {
+  const limpio = (tel ?? '').replace(/[\s\-()]/g, '');
+  const m = /^(?:\+593|0)(9\d{8})$/.exec(limpio);
+  return m ? `+593${m[1]}` : null;
+}
+
+const DIA_SEMANA_CORTO = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
+const DIA_SEMANA_ARCHIVO = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const diaSemana = (fecha: string) => new Date(`${fecha}T00:00:00Z`).getUTCDay();
+
+/** Prefijo de los contactos del día (YYYY-MM-DD): 2026-11-20 → "VIE20". */
+export function prefijoDia(fecha: string): string {
+  return `${DIA_SEMANA_CORTO[diaSemana(fecha)]}${fecha.slice(8, 10)}`;
+}
+
+/** Nombre del .vcf del día, sin tildes: 2026-11-21 → "contactos-sabado-21.vcf". */
+export function archivoContactosDia(fecha: string): string {
+  return `contactos-${DIA_SEMANA_ARCHIVO[diaSemana(fecha)]}-${fecha.slice(8, 10)}.vcf`;
+}
+
+/** Contactos (.vcf) de un día del reparto: el día es obligatorio. */
+export const contactosDistribucionSchema = z.object({ fecha: fechaParejaCdaSchema }).strict();
+export type ContactosDistribucionInput = z.infer<typeof contactosDistribucionSchema>;
+
+/** Intercambiar de día a dos personas del mismo sexo de la distribución. */
+export const intercambiarPersonaDistribucionSchema = z.object({ conId: z.string().uuid('Persona inválida') }).strict();
+export type IntercambiarPersonaDistribucionInput = z.infer<typeof intercambiarPersonaDistribucionSchema>;
+
+/**
+ * Regla de cupo al mover a una persona sola de día: el día destino debe tener
+ * menos personas de su sexo que el día de origen. Así la diferencia entre días
+ * no crece (y si ya estaba desbalanceada, solo se puede corregir).
+ */
+export function tieneCupoDia(mismoSexoDestino: number, mismoSexoOrigen: number): boolean {
+  return mismoSexoDestino < mismoSexoOrigen;
+}

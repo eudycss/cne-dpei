@@ -4,6 +4,7 @@ import { cedulaSchema } from '@cne/shared-validation';
 import type { ConsultaEvaticsPublica, EstadoCertificadoEvatics, SubidaEvaticsResult } from '@cne/shared-types';
 import { consultarEvatics, subirEvatics } from '../../lib/queries/evatics';
 import { reducirFoto } from '../foto-cda/reducirFoto';
+import { esPdf, pdfAImagen } from './pdfAImagen';
 import { cargoCorto, fechaLarga } from '../operadores-cda/utils';
 
 /** El nombre del certificado debe leerse: más resolución que la foto de la credencial, bajo el tope de 2 MB de la API. */
@@ -16,14 +17,14 @@ type Paso =
   | { tipo: 'vista'; cedula: string; datos: ConsultaEvaticsPublica; foto: Blob; url: string }
   | { tipo: 'listo'; cedula: string; datos: ConsultaEvaticsPublica; resultado: SubidaEvaticsResult };
 
-/** Lo que responde la API cuando se ve el nombre y todas las notas son >= 7. */
-const MENSAJE_ENVIADO = 'Enviado correctamente';
+/** Lo que responde la API cuando la IA ve el certificado con el nombre. */
+const MENSAJE_ENVIADO = 'Enviado correctamente. Un supervisor lo revisará.';
 
 const ESTADO: Record<EstadoCertificadoEvatics, { etiqueta: string; clase: string }> = {
   SIN_SUBIR: { etiqueta: 'Aún no lo sube', clase: 'vacio' },
   PENDIENTE: { etiqueta: 'En revisión', clase: 'aviso' },
   APROBADO: { etiqueta: 'Aprobado', clase: 'ok' },
-  RECHAZADO: { etiqueta: 'Rechazado: suba otra foto', clase: 'error' },
+  RECHAZADO: { etiqueta: 'Rechazado: suba el certificado', clase: 'error' },
 };
 
 function mensajeDe(e: unknown, porDefecto: string): string {
@@ -167,7 +168,7 @@ function PedirCedula({ onDatos }: { onDatos: (cedula: string, datos: ConsultaEva
       <Titulo>Suba su certificado Evatics</Titulo>
       <p className="fcda-texto">
         Escriba su número de cédula. Si está registrado en el personal CDA, CPE o como Asistente Transversal, podrá
-        subir la foto del certificado de la capacitación.
+        subir su Certificado de Aprobación de Evatics, en foto o PDF.
       </p>
       <div className="fcda-campo">
         <label htmlFor="evx-cedula">Número de cédula</label>
@@ -245,12 +246,12 @@ function EstadoCertificado({
       )}
       {datos.estado === 'APROBADO' && (
         <div className="banner" role="status">
-          Sus notas ya fueron recibidas. Próximamente podrán descargar su certificado.
+          Su certificado fue aprobado.
         </div>
       )}
       {datos.estado === 'PENDIENTE' && datos.puedeSubir && (
         <p className="fcda-texto">
-          Ya subió una foto y está en revisión. Si se equivocó de foto, puede reemplazarla.
+          Ya subió su certificado y está en revisión. Si se equivocó de archivo, puede reemplazarlo.
         </p>
       )}
       {datos.plazoVencido && datos.estado !== 'APROBADO' && (
@@ -295,7 +296,8 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
     setError(null);
     setPreparando(true);
     try {
-      const foto = await reducirFoto(archivo, { ladoMaximo: LADO_CERTIFICADO, bytesObjetivo: BYTES_CERTIFICADO });
+      const imagen = esPdf(archivo) ? await pdfAImagen(archivo) : archivo;
+      const foto = await reducirFoto(imagen, { ladoMaximo: LADO_CERTIFICADO, bytesObjetivo: BYTES_CERTIFICADO });
       if (montado.current) onFoto(foto);
     } catch (err) {
       if (!montado.current) return;
@@ -308,9 +310,9 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
   return (
     <>
       <ul className="fcda-consejos">
+        <li>Solo el «Certificado de Aprobación»: no sirven capturas del curso ni de las notas</li>
         <li>Que se lea su nombre completo</li>
-        <li>Certificado entero, de frente y con buena luz</li>
-        <li>Sirve una captura de pantalla del certificado</li>
+        <li>Puede subir el PDF del certificado o una foto entera, de frente y con buena luz</li>
       </ul>
 
       <div className={`fcda-consentimiento${acepta ? ' marcado' : ''}`}>
@@ -359,7 +361,7 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
       )}
       {preparando && (
         <p ref={aviso} tabIndex={-1} className="fcda-texto" role="status">
-          Preparando la foto…
+          Preparando el certificado…
         </p>
       )}
 
@@ -385,7 +387,7 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
           aria-describedby={acepta ? undefined : 'evx-falta-autorizar'}
           onClick={() => galeria.current?.click()}
         >
-          Elegir de la galería
+          Elegir foto o PDF
         </button>
         <input
           ref={camara}
@@ -396,7 +398,14 @@ function ElegirFoto({ onFoto, reemplaza }: { onFoto: (foto: Blob) => void; reemp
           onChange={elegido}
           data-testid="camara"
         />
-        <input ref={galeria} type="file" accept="image/*" hidden onChange={elegido} data-testid="galeria" />
+        <input
+          ref={galeria}
+          type="file"
+          accept="image/*,application/pdf,.pdf"
+          hidden
+          onChange={elegido}
+          data-testid="galeria"
+        />
       </div>
     </>
   );
@@ -436,7 +445,7 @@ function VistaPrevia(props: {
       )}
       <div className="fcda-acciones">
         <button type="button" className="btn" disabled={subir.isPending} onClick={() => subir.mutate()}>
-          {subir.isPending ? 'Subiendo…' : 'Subir esta foto'}
+          {subir.isPending ? 'Subiendo…' : 'Subir este certificado'}
         </button>
         <button type="button" className="btn secondary" disabled={subir.isPending} onClick={props.onOtra}>
           Elegir otra
@@ -469,21 +478,21 @@ function Listo({
             )}
           </svg>
         </span>
-        <Titulo centrado>{advertencia ? 'Foto recibida, pero revísela' : MENSAJE_ENVIADO}</Titulo>
+        <Titulo centrado>{advertencia ? 'Certificado recibido, pero revíselo' : MENSAJE_ENVIADO}</Titulo>
         {advertencia ? (
           <div className="banner error" role="status">
             {advertencia}
           </div>
         ) : (
           <p className="fcda-texto">
-            Un supervisor revisará su imagen. Puede volver a esta página con su cédula para ver si fue aprobado.
+            Puede volver a esta página con su cédula para ver si fue aprobado.
           </p>
         )}
       </div>
       <div className="fcda-acciones">
         {advertencia && (
           <button type="button" className="btn" onClick={onOtra}>
-            Subir otra foto
+            Subir otro archivo
           </button>
         )}
         <button type="button" className="btn secondary" onClick={onSalir}>
