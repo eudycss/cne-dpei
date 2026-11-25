@@ -56,8 +56,17 @@ jest.mock('../theme/ThemeContext', () => ({
 jest.mock('../components/AppBar', () => ({ AppBar: () => null }));
 jest.mock('../components/CameraFoto', () => ({ CameraFoto: () => null }));
 jest.mock('../lib/galeria', () => ({ elegirFotoDeGaleria: jest.fn() }));
+jest.mock('../lib/aviso-no-cda', () => ({
+  ...jest.requireActual('../lib/aviso-no-cda'),
+  sincronizarAvisoNoCda: jest.fn().mockResolvedValue(undefined),
+  cancelarAvisoNoCda: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../lib/aviso-proximidad', () => ({ pedirPermisoAvisos: jest.fn().mockResolvedValue(true) }));
 
 import { elegirFotoDeGaleria } from '../lib/galeria';
+import { cancelarAvisoNoCda, sincronizarAvisoNoCda } from '../lib/aviso-no-cda';
+import { pedirPermisoAvisos } from '../lib/aviso-proximidad';
+import { JustificacionNoCdaModal } from '../components/JustificacionNoCdaModal';
 import { SalidaRecintoScreen } from './SalidaRecintoScreen';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { postSalidaRecinto } from '../lib/queries/retorno';
@@ -335,6 +344,91 @@ describe('SalidaRecintoScreen', () => {
     expect(limpiarActas).toHaveBeenCalledTimes(1);
     expect(limpiarActas).toHaveBeenCalledWith('ev1_r1');
     expect(limpiarPruebaConexion).toHaveBeenCalledWith('ev1_r1');
+  });
+
+  describe('NO CDA sin marcar', () => {
+    const noCda = (id: string, llegadaRegistradaEn: string | null) => ({
+      ...asignacionFixture.recinto,
+      id,
+      codigoRecinto: id,
+      nombre: `NO CDA ${id}`,
+      llegadaRegistradaEn,
+    });
+
+    async function hastaConfirmar() {
+      (capturarYSubirActa as jest.Mock)
+        .mockResolvedValueOnce({ uri: 'file://i.jpg', url: 'actas/instalacion.bin', error: null })
+        .mockResolvedValueOnce({ uri: 'file://e.jpg', url: 'actas/escrutinio.bin', error: null });
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+        await flushPromises();
+      });
+      await tomarFoto(renderer, 'Reporte de instalación', 'file://i.jpg');
+      await tomarFoto(renderer, 'Reporte de escrutinio', 'file://e.jpg');
+      await act(async () => {
+        pressableAncestor(renderer.root.findByProps({ children: 'Continuar' })).props.onPress();
+        await flushPromises();
+      });
+      await act(async () => {
+        pressableAncestor(renderer.root.findByProps({ children: 'K001' })).props.onPress();
+        await flushPromises();
+      });
+      await act(async () => {
+        pressableAncestor(renderer.root.findByProps({ children: 'Registrar Salida de Recinto Electoral' })).props.onPress();
+        await flushPromises();
+      });
+      return renderer;
+    }
+
+    it('con pendientes muestra la tarjeta, pide permiso y programa el recordatorio con el número', async () => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue({
+        ...asignacionFixture,
+        noCdas: [noCda('1917', null), noCda('1920', '2026-11-23T15:00:00Z')],
+      });
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(<SalidaRecintoScreen onSalidaRegistrada={jest.fn()} />);
+        await flushPromises();
+      });
+      expect(renderer.root.findAllByProps({ testID: 'tarjeta-no-cda' }).length).toBeGreaterThan(0);
+      expect(pedirPermisoAvisos).toHaveBeenCalled();
+      expect(sincronizarAvisoNoCda).toHaveBeenLastCalledWith(1);
+    });
+
+    it('sin pendientes cancela el recordatorio (sincroniza con 0) y sale con la confirmación normal', async () => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue({
+        ...asignacionFixture,
+        noCdas: [noCda('1920', '2026-11-23T15:00:00Z')],
+      });
+      await hastaConfirmar();
+      expect(sincronizarAvisoNoCda).toHaveBeenCalledWith(0);
+      expect(postSalidaRecinto).toHaveBeenCalledWith(expect.not.objectContaining({ justificacionNoCda: expect.anything() }));
+    });
+
+    it('con pendientes, "Registrar salida" pide el motivo y lo envía; luego cancela el recordatorio', async () => {
+      (getMiAsignacion as jest.Mock).mockResolvedValue({
+        ...asignacionFixture,
+        noCdas: [noCda('1917', null)],
+      });
+      const renderer = await hastaConfirmar();
+
+      // No se registró todavía: primero se abre el pedido de motivo.
+      expect(postSalidaRecinto).not.toHaveBeenCalled();
+      const modal = renderer.root.findByType(JustificacionNoCdaModal);
+      expect(modal.props.visible).toBe(true);
+      expect(modal.props.pendientes.map((p: { id: string }) => p.id)).toEqual(['1917']);
+
+      await act(async () => {
+        modal.props.onConfirmar('El 1917 no llegó, se avisó al técnico');
+        await flushPromises();
+      });
+
+      expect(postSalidaRecinto).toHaveBeenCalledWith(
+        expect.objectContaining({ justificacionNoCda: 'El 1917 no llegó, se avisó al técnico' }),
+      );
+      expect(cancelarAvisoNoCda).toHaveBeenCalled();
+    });
   });
 
   it('al montar, restaura las actas persistidas con el contextoId correcto (recinto+evento activo)', async () => {

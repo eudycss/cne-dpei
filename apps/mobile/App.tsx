@@ -13,6 +13,7 @@ import {
   DMSans_700Bold,
   DMSans_700Bold_Italic,
 } from '@expo-google-fonts/dm-sans';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -30,6 +31,7 @@ import { RetornadoScreen } from './src/screens/RetornadoScreen';
 import { SupervisorFlow } from './src/screens/SupervisorFlow';
 import { AsistenteFlow } from './src/screens/AsistenteFlow';
 import { useEtapaOperador } from './src/lib/useEtapaOperador';
+import { cancelarAvisoNoCda } from './src/lib/aviso-no-cda';
 // Efecto de import: registra la tarea de rastreo (TaskManager.defineTask) al
 // arrancar la app, para que el rastreo en segundo plano (HU4-CA3) se reanude
 // tras un reinicio en frío aunque no se monte SalidaRecintoScreen.
@@ -47,6 +49,12 @@ function OperadorFlow() {
   // HU2 → HU5: el operador transita por estados durante la jornada electoral.
   const { colors } = useTheme();
   const { etapa, avanzarA } = useEtapaOperador();
+
+  // El recordatorio de NO CDA solo tiene sentido mientras está en el CDA: si la
+  // etapa avanzó por otra vía (reinicio, salida encolada, etc.) se quita.
+  useEffect(() => {
+    if (etapa !== null && etapa !== 'EN_RECINTO') cancelarAvisoNoCda();
+  }, [etapa]);
 
   if (etapa === null) {
     return (

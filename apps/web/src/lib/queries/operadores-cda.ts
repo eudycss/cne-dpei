@@ -161,9 +161,26 @@ export async function crearEnlaceFotoCda(operadorId: string): Promise<EnlaceFoto
 }
 
 /** Foto descifrada del operador como blob (la API no la deja en caché). */
+/**
+ * Cada foto se descifra en la API (Render, 0.1 vCPU): en listados largos se
+ * piden de a pocas a la vez para no saturarla.
+ */
+const MAX_FOTOS_A_LA_VEZ = 3;
+let fotosEnCurso = 0;
+const esperandoFoto: (() => void)[] = [];
+
 export async function getFotoOperadorCda(operadorId: string): Promise<Blob> {
-  const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
-  return data;
+  // Al terminar, el lugar pasa directo al siguiente en espera (nunca hay más de 3).
+  if (fotosEnCurso >= MAX_FOTOS_A_LA_VEZ) await new Promise<void>((r) => esperandoFoto.push(r));
+  else fotosEnCurso++;
+  try {
+    const { data } = await api.get<Blob>(`/operadores-cda/${operadorId}/foto`, { responseType: 'blob' });
+    return data;
+  } finally {
+    const siguiente = esperandoFoto.shift();
+    if (siguiente) siguiente();
+    else fotosEnCurso--;
+  }
 }
 
 // Foto nueva que subió la persona teniendo ya una: la Delegación la aprueba o rechaza.
@@ -652,5 +669,11 @@ export async function cargarConvocatoriaCda(file: File, fecha: string, aplicar: 
 
 export async function descargarPlantillaConvocatoriaCda(): Promise<Blob> {
   const { data } = await api.get<Blob>('/operadores-cda/convocatoria/plantilla.xlsx', { responseType: 'blob' });
+  return data;
+}
+
+/** Ids del personal que tiene foto (para la miniatura en cualquier listado). */
+export async function getIdsConFoto(): Promise<string[]> {
+  const { data } = await api.get<string[]>('/operadores-cda/fotos/con-foto');
   return data;
 }

@@ -33,6 +33,7 @@ import { PasarAReservaModal, ReservaParejas } from './ReservaParejas';
 import { PersonalSinRecinto } from './PersonalSinRecinto';
 import { resumenApp } from './resumenParejas';
 import { hoyEcuador, mensajeError } from './utils';
+import { ConFoto } from './AvatarPersona';
 
 /** Pareja anterior a la regla Operador + Asistente: el cargo real de quien no es el de su columna. */
 function CargoDistinto({ persona, columna }: { persona: PersonaParejaCda; columna: 'OPERADOR' | 'ASISTENTE' }) {
@@ -557,18 +558,22 @@ export function ParejasPanel() {
                             </td>
                           )}
                           <td>
-                            {p.operador.apellidosNombres}
-                            <br />
-                            <span className="muted mono">{p.operador.cedula}</span>
+                            <ConFoto persona={{ operadorId: p.operador.id, nombre: p.operador.apellidosNombres, cedula: p.operador.cedula }}>
+                              {p.operador.apellidosNombres}
+                              <br />
+                              <span className="muted mono">{p.operador.cedula}</span>
+                            </ConFoto>
                             <CargoDistinto persona={p.operador} columna="OPERADOR" />
                             {botonCambiar(p, 'OPERADOR', 'operador')}
                           </td>
                           <td>
                             {p.asistente ? (
                               <>
-                                {p.asistente.apellidosNombres}
-                                <br />
-                                <span className="muted mono">{p.asistente.cedula}</span>
+                                <ConFoto persona={{ operadorId: p.asistente.id, nombre: p.asistente.apellidosNombres, cedula: p.asistente.cedula }}>
+                                  {p.asistente.apellidosNombres}
+                                  <br />
+                                  <span className="muted mono">{p.asistente.cedula}</span>
+                                </ConFoto>
                                 <CargoDistinto persona={p.asistente} columna="ASISTENTE" />
                               </>
                             ) : (

@@ -1,0 +1,118 @@
+import type { PersonaDistribucionDias, TotalesDistribucionDia } from '@cne/shared-types';
+import { celularInternacional, coincideBusqueda, tieneCupoDia } from '@cne/shared-validation';
+
+/** Cargos que la distribución deja fuera de fábrica (se pueden agregar a mano). */
+export const EXCLUIDOS_POR_DEFECTO = ['SUPERVISOR', 'ASISTENTE_ARCHIVOS'] as const;
+
+/** Mismo texto aunque cambien mayúsculas, tildes o espacios (como en la API). */
+export function claveTexto(s: string | null | undefined): string {
+  return (s ?? '').normalize('NFD').replace(/\p{M}/gu, '').trim().replace(/\s+/g, ' ').toLocaleUpperCase('es');
+}
+
+/** Valores distintos de una columna (para filtros y sugerencias), en orden alfabético. */
+export function valoresUnicos(valores: ReadonlyArray<string | null>): string[] {
+  const vistos = new Map<string, string>();
+  for (const v of valores) {
+    const t = v?.trim();
+    if (t && !vistos.has(claveTexto(t))) vistos.set(claveTexto(t), t);
+  }
+  return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+}
+
+export interface FiltroTabla {
+  fecha: string;
+  encargado: string;
+  buscar: string;
+}
+
+/** Filas de la tabla: día y encargado exactos (vacío = todos) y búsqueda sin tildes. */
+export function filtrarPersonas(personas: PersonaDistribucionDias[], f: FiltroTabla): PersonaDistribucionDias[] {
+  const encargado = f.encargado ? claveTexto(f.encargado) : null;
+  return personas.filter(
+    (p) =>
+      (!f.fecha || p.fecha === f.fecha) &&
+      (encargado === null || claveTexto(p.encargado) === encargado) &&
+      coincideBusqueda([p.nombres, p.cedula, p.cargo, p.canton, p.encargado], f.buscar),
+  );
+}
+
+/**
+ * Tras editar a mano: si entre los días hay más de una persona de diferencia en
+ * hombres o en mujeres, la distribución dejó de ser equitativa.
+ */
+export function desbalance(totales: TotalesDistribucionDia[]): { hombres: boolean; mujeres: boolean } {
+  const dif = (xs: number[]) => (xs.length ? Math.max(...xs) - Math.min(...xs) : 0);
+  return { hombres: dif(totales.map((t) => t.hombres)) > 1, mujeres: dif(totales.map((t) => t.mujeres)) > 1 };
+}
+
+/** Viernes, sábado y domingo siguientes a `hoy` (AAAA-MM-DD); si hoy es viernes, desde hoy. */
+export function proximoFinDeSemana(hoy: string): string[] {
+  const d = new Date(`${hoy}T12:00:00Z`);
+  const hastaViernes = (5 - d.getUTCDay() + 7) % 7;
+  return [0, 1, 2].map((i) => {
+    const x = new Date(d);
+    x.setUTCDate(d.getUTCDate() + hastaViernes + i);
+    return x.toISOString().slice(0, 10);
+  });
+}
+
+/** "2026-11-20" → "vie 20/11" (encabezados cortos y opciones). */
+export function diaCorto(dia: string): string {
+  const d = new Date(`${dia}T12:00:00Z`);
+  const semana = d.toLocaleDateString('es-EC', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+  return `${semana} ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+}
+
+export const SEXO_TEXTO: Record<'M' | 'F', string> = { M: 'Hombre', F: 'Mujer' };
+
+export interface ContactosDia {
+  incluidos: number;
+  sinCelular: string[];
+  /** Comparten el celular con alguien del mismo día que ya va en el archivo. */
+  repetidos: string[];
+}
+
+/**
+ * Por día, cuántos van en el .vcf y quiénes quedan fuera. Misma regla que la
+ * API: recorre en el orden de la tabla (el de la API) y el primero con cada
+ * número se queda.
+ */
+export function contactosPorDia(personas: Pick<PersonaDistribucionDias, 'fecha' | 'nombres' | 'telefono'>[], fechas: string[]): Map<string, ContactosDia> {
+  const mapa = new Map(fechas.map((f) => [f, { incluidos: 0, sinCelular: [] as string[], repetidos: [] as string[], vistos: new Set<string>() }]));
+  for (const p of personas) {
+    const dia = mapa.get(p.fecha);
+    if (!dia) continue;
+    const tel = celularInternacional(p.telefono);
+    if (!tel) dia.sinCelular.push(p.nombres);
+    else if (dia.vistos.has(tel)) dia.repetidos.push(p.nombres);
+    else {
+      dia.vistos.add(tel);
+      dia.incluidos++;
+    }
+  }
+  return new Map([...mapa].map(([f, d]) => [f, { incluidos: d.incluidos, sinCelular: d.sinCelular, repetidos: d.repetidos }]));
+}
+
+export interface CupoDia {
+  fecha: string;
+  /** Personas de su mismo sexo que van ese día hoy (contándola a ella en su día). */
+  mismoSexo: number;
+  /** Se puede mover ahí sin romper lo equitativo (el día actual siempre se puede). */
+  conCupo: boolean;
+}
+
+/** Para el selector de día al mover a una persona sola (misma regla que la API). */
+export function cupoPorDia(personas: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>[], persona: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>, fechas: string[]): CupoDia[] {
+  const mismo = (f: string) => personas.filter((x) => x.fecha === f && x.sexo === persona.sexo).length;
+  const origen = mismo(persona.fecha);
+  return fechas.map((f) => ({
+    fecha: f,
+    mismoSexo: mismo(f),
+    conCupo: f === persona.fecha || !persona.sexo || tieneCupoDia(mismo(f), origen),
+  }));
+}
+
+/** Con quién se puede intercambiar: mismo sexo, otro día. */
+export function candidatosIntercambio<T extends Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>>(personas: T[], persona: Pick<PersonaDistribucionDias, 'id' | 'fecha' | 'sexo'>): T[] {
+  return personas.filter((x) => x.id !== persona.id && x.fecha !== persona.fecha && x.sexo === persona.sexo);
+}

@@ -6,8 +6,8 @@ import { PERMISO_IDS } from '@cne/shared-validation';
 import type { AnalisisCertificadoEvatics, FilaEvatics, ListadoEvatics, RoleName } from '@cne/shared-types';
 
 import { EvaticsPanel, REFRESCO_EVATICS_MS } from './EvaticsPanel';
-import { AvanceEvatics, ordenarGrupos } from './AvanceEvatics';
-import { sugerenciaIa, textoNotasAprobadas } from './RevisarEvaticsModal';
+import { AvanceEvatics, distintivo, ordenarGrupos } from './AvanceEvatics';
+import { sugerenciaIa } from './RevisarEvaticsModal';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
 
@@ -130,9 +130,9 @@ describe('EvaticsPanel', () => {
     renderPanel();
     const avance = await screen.findByRole('region', { name: 'Avance por cantón' });
     const barras = within(avance).getAllByRole('button', { name: /aprobados \(/ });
-    expect(barras.map((b) => b.textContent?.split(/\d/)[0])).toEqual(['Ibarra', 'CPE']);
+    expect(barras.map((b) => b.querySelector('.evx-nombre')?.textContent)).toEqual(['Ibarra', 'CPE']);
     expect(barras[0]).toHaveAccessibleName(
-      'Ibarra: 2 de 3 aprobados (67 %), 1 en revisión, 0 rechazados, 0 sin subir. Filtrar el listado',
+      'Ibarra: 2 de 3 aprobados (67 %), 1 en revisión, 0 rechazados, 0 sin subir. Primer lugar. Filtrar el listado',
     );
 
     await user.click(barras[0]);
@@ -375,7 +375,7 @@ describe('sugerenciaIa', () => {
     [null, 'Aún sin leer'],
     [{ ...LISTO, estado: 'EN_COLA' as const }, 'Aún sin leer'],
     [{ ...LISTO, estado: 'NO_DISPONIBLE' as const }, 'Sin IA'],
-    [{ ...LISTO, esCertificado: false }, 'No parece un certificado'],
+    [{ ...LISTO, esCertificado: false }, 'No es el Certificado de Aprobación'],
     [{ ...LISTO, legible: false }, 'No se lee bien'],
     [LISTO, 'El nombre coincide'],
     [{ ...LISTO, nombreCoincide: false }, 'El nombre no coincide'],
@@ -412,8 +412,8 @@ describe('ordenarGrupos', () => {
   });
 
   it('con 0 aprobados todos empatan: más personas primero, luego nombre; un grupo vacío no rompe', () => {
-    expect(ordenarGrupos([g('Urcuquí', 2), g('CPE', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
-      'CPE',
+    expect(ordenarGrupos([g('Urcuquí', 2), g('Antonio Ante', 9), g('Vacío', 0), g('Ibarra', 5)]).map((x) => x.nombre)).toEqual([
+      'Antonio Ante',
       'Ibarra',
       'Urcuquí',
       'Vacío',
@@ -445,6 +445,79 @@ describe('avance: orden automático', () => {
   });
 });
 
+describe('AvanceEvatics: medallas y «Póngase pilas»', () => {
+  const g = (nombre: string, total: number, aprobados: number) => ({
+    nombre,
+    total,
+    aprobados,
+    sinSubir: total - aprobados,
+    pendientes: 0,
+    rechazados: 0,
+  });
+
+  it('medalla a los 3 primeros con avance; desde el 4.º «Póngase pilas» hasta el 100 %', () => {
+    expect(distintivo(g('A', 10, 9), 0)).toEqual({ tipo: 'medalla', lugar: 1 });
+    expect(distintivo(g('B', 10, 5), 1)).toEqual({ tipo: 'medalla', lugar: 2 });
+    expect(distintivo(g('C', 10, 10), 2)).toEqual({ tipo: 'medalla', lugar: 3 });
+    expect(distintivo(g('D', 10, 3), 3)).toEqual({ tipo: 'pilas' });
+    expect(distintivo(g('E', 4, 4), 3)).toEqual({ tipo: 'completo' });
+  });
+
+  it('sin aprobados no hay medalla, aunque esté entre los 3 primeros', () => {
+    expect(distintivo(g('A', 10, 0), 0)).toEqual({ tipo: 'pilas' });
+    expect(distintivo(g('Vacío', 0, 0), 0)).toBeNull();
+  });
+
+  it('se ve en las barras y lo anuncia el lector de pantalla', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('Ibarra', 10, 8), g('Otavalo', 10, 6), g('Cotacachi', 10, 4), g('Urcuquí', 10, 1), g('Pimampiro', 2, 0)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /^Ibarra:.*Primer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Otavalo:.*Segundo lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cotacachi:.*Tercer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Urcuquí:.*¡Póngase pilas!/ })).toBeInTheDocument();
+    expect(screen.getAllByText('¡Póngase pilas!')).toHaveLength(2);
+    expect(screen.getByText('🥇')).toBeInTheDocument();
+  });
+
+  it('en la tabla, columna «Lugar»', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('Ibarra', 10, 10), g('Otavalo', 5, 1)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Ver como tabla/ }));
+    expect(screen.getByRole('columnheader', { name: 'Lugar' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '🥇 Primer lugar' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '🥈 Segundo lugar' })).toBeInTheDocument();
+  });
+
+  it('el CPE se ve al final, «Fuera de competencia», y no quita medallas', () => {
+    render(
+      <AvanceEvatics
+        porCanton={[g('CPE', 10, 10), g('Ibarra', 10, 8), g('Otavalo', 10, 6), g('Cotacachi', 10, 4), g('Urcuquí', 10, 1)]}
+        porTecnico={[]}
+        seleccionado={{ canton: '', tecnico: '' }}
+        onElegir={() => {}}
+      />,
+    );
+    const nombres = [...document.querySelectorAll('.evx-barras .evx-nombre')].map((n) => n.textContent);
+    expect(nombres).toEqual(['Ibarra', 'Otavalo', 'Cotacachi', 'Urcuquí', 'CPE']);
+    expect(screen.getByRole('button', { name: /^Ibarra:.*Primer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cotacachi:.*Tercer lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^CPE:.*Fuera de competencia/ })).toBeInTheDocument();
+    expect(distintivo(g('CPE', 10, 10), 0)).toEqual({ tipo: 'fuera' });
+  });
+});
+
 describe('EvaticsPanel: refresco automático', () => {
   it('vuelve a pedir el avance sola cada REFRESCO_EVATICS_MS', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -463,16 +536,7 @@ describe('EvaticsPanel: refresco automático', () => {
   });
 });
 
-describe('textoNotasAprobadas', () => {
-  it('visto, no visto o sin dato (filas anteriores)', () => {
-    expect(textoNotasAprobadas(true)).toBe('Visto por la IA');
-    expect(textoNotasAprobadas(false)).toBe('No visto');
-    expect(textoNotasAprobadas(null)).toBe('Sin dato');
-    expect(textoNotasAprobadas(undefined)).toBe('Sin dato');
-  });
-});
-
-describe('modal de revisión: Notas de cuestionarios ≥ 7', () => {
+describe('modal de revisión: solo el Certificado de Aprobación', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     permisos.actuales = new Set(PERMISO_IDS);
@@ -492,14 +556,16 @@ describe('modal de revisión: Notas de cuestionarios ≥ 7', () => {
     await user.click(await screen.findByRole('button', { name: 'Revisar certificado de ANDRADE LÓPEZ ANA' }));
   }
 
-  it.each([
-    [true, 'Visto por la IA'],
-    [false, 'No visto'],
-    [null, 'Sin dato'],
-  ])('lectura lista con notasAprobadas=%s → %s', async (valor, texto) => {
-    await abrir({ ...LISTO, notasAprobadas: valor });
-    expect(await screen.findByText('Notas de cuestionarios ≥ 7')).toBeInTheDocument();
-    expect(screen.getByText(texto)).toBeInTheDocument();
+  it('ya no muestra la fila de notas de cuestionarios', async () => {
+    await abrir({ ...LISTO, notasAprobadas: true });
+    await screen.findByText('Sugerencia de la IA');
+    expect(screen.queryByText(/Notas de cuestionarios/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Solo vale el Certificado de Aprobación/)).toBeInTheDocument();
+  });
+
+  it('si la IA dice que no es el certificado, lo marca para rechazar', async () => {
+    await abrir({ ...LISTO, esCertificado: false });
+    expect((await screen.findAllByText('No es el Certificado de Aprobación')).length).toBeGreaterThan(0);
   });
 
   it('sin lectura lista (en cola) no se muestra la fila', async () => {

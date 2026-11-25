@@ -700,6 +700,10 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
   background: linear-gradient(135deg, var(--f-cian), var(--f-violeta));
 }
 .ocda-avatar.grande { width: 52px; height: 52px; font-size: 0.95rem; }
+.ocda-avatar.chico { width: 32px; height: 32px; font-size: 0.7rem; }
+.ocda-con-foto { display: inline-flex; gap: 0.5rem; align-items: center; vertical-align: middle; }
+/* Buscador: con la miniatura, los datos quedan pegados a ella (el botón al final). */
+.ocda-personas .ocda-persona-datos { flex: 1; }
 
 /* Check de entrada (cian) / salida (violeta), 150 × 44 como en Figma. */
 .ocda-check {
@@ -984,6 +988,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .ocda-qr-foto img { width: 100%; height: 100%; object-fit: cover; }
 .ocda-qr-nombre { font-size: 1.15rem; font-weight: 700; color: var(--f-text); }
 .ocda-qr-pregunta { margin: 0; font-weight: 600; color: var(--f-text); }
+/* Última marca: queda a la vista mientras se espera el siguiente carnet. */
+.ocda-qr-marcada { padding: 0.75rem; border-radius: 14px; border: 1px solid var(--f-exito); background: var(--f-exito-suave); }
+.ocda-qr-marcada-texto { font-weight: 600; color: var(--f-text); }
 @media (max-width: 480px) {
   .ocda-qr-persona { flex-direction: column; align-items: center; text-align: center; }
 }
@@ -1122,11 +1129,12 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-leyenda { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; margin: 0.9rem 0; padding: 0; list-style: none; font-size: 0.8rem; color: var(--f-text-muted); }
 .evx-leyenda li { display: inline-flex; align-items: center; gap: 0.4rem; }
 .evx-muestra { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
-/* Colores de estado del tema (no de serie): verde y rojo nunca juntos. */
-.evx-muestra.aprobado, .evx-tramo.aprobado { background: var(--f-exito); }
-.evx-muestra.pendiente, .evx-tramo.pendiente { background: var(--f-aviso); }
-.evx-muestra.rechazado, .evx-tramo.rechazado { background: var(--f-error); }
-.evx-muestra.sin-subir, .evx-tramo.sin-subir { background: var(--f-border-strong); }
+/* Colores de estado del tema (no de serie): verde y rojo nunca juntos.
+   Fuera de .tema-futurista (Estadísticas, Reportes) caen a los colores de estado de la app. */
+.evx-muestra.aprobado, .evx-tramo.aprobado { background: var(--f-exito, var(--estado-llego)); }
+.evx-muestra.pendiente, .evx-tramo.pendiente { background: var(--f-aviso, var(--estado-recinto)); }
+.evx-muestra.rechazado, .evx-tramo.rechazado { background: var(--f-error, var(--error)); }
+.evx-muestra.sin-subir, .evx-tramo.sin-subir { background: var(--f-border-strong, var(--estado-dpi)); }
 .evx-barras { display: grid; gap: 0.15rem; margin: 0; padding: 0; list-style: none; }
 .evx-fila {
   position: relative; width: 100%; min-height: 44px; display: grid; align-items: center; gap: 0.75rem;
@@ -1139,7 +1147,22 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .evx-etapas-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1rem; }
 .evx-etapas-grid > .card { margin: 0; min-width: 0; }
 @media (max-width: 1100px) { .evx-etapas-grid { grid-template-columns: 1fr; } }
+/* Reportes › Llegada de NO CDA: dona angosta, barras anchas (los nombres de los CDA son largos). */
+.ncda-graficos { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .ncda-graficos { grid-template-columns: 1fr; } }
+.ncda-barras-scroll { max-height: 26rem; overflow-y: auto; border-radius: 10px; }
+.ncda-barras-scroll:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media print { .ncda-barras-scroll { max-height: none; overflow: visible; } }
+/* 6 columnas: cabe sin desplazar a lo ancho en escritorio; el detalle se lleva el espacio. */
+.table-report.ncda-tabla { min-width: 760px; }
+.ncda-tabla td:last-child { width: 45%; }
 .evx-medalla { margin-right: 0.35rem; }
+.evx-nombre-celda { display: flex; align-items: center; flex-wrap: wrap; gap: 0 0.35rem; min-width: 0; }
+.evx-nombre-celda .evx-medalla { margin-right: 0; font-size: 1.05rem; }
+.evx-insignia { font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 99px; white-space: nowrap; }
+.evx-insignia.pilas { color: var(--f-text); background: var(--f-bg-elevated); border: 1px dashed var(--f-border-strong); }
+.evx-insignia.completo { color: var(--f-text); background: var(--f-bg-elevated); border: 1px solid var(--f-border-strong); }
+.evx-insignia.fuera { color: var(--f-text); background: transparent; border: 1px solid var(--f-border-strong); font-weight: 500; }
 .evx-nombre { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Separación de 2 px con el color de la superficie entre tramos; extremos redondeados. */
 .evx-barra { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--f-bg-elevated); }

@@ -16,6 +16,7 @@ import { OperadoresCdaController } from '../operadores-cda/operadores-cda.contro
 import { ConvocatoriaCdaController } from '../operadores-cda/convocatoria-cda.controller';
 import { EvaticsController } from '../evatics/evatics.controller';
 import { PerimetroController } from '../perimetro/perimetro.controller';
+import { DistribucionDiasController } from '../operadores-cda/distribucion-dias.controller';
 import { PerimetroPersonalController } from '../perimetro/perimetro-personal.controller';
 import { MODULO_KEY, ModuloGuard } from './modulo.guard';
 
@@ -90,6 +91,14 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [ConvocatoriaCdaController, 'cargar', 'cda.convocatoria.gestionar'],
   [EvaticsController, 'foto', 'cda.evatics.ver'], // también la deja pasar 'cda.evatics.revisar'
   [EvaticsController, 'revisar', 'cda.evatics.revisar'],
+  [DistribucionDiasController, 'crear', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'regenerar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'eliminar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'candidatos', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'agregar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'editar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'quitar', 'cda.distribucion.gestionar'],
+  [DistribucionDiasController, 'intercambiar', 'cda.distribucion.gestionar'],
   [PerimetroController, 'crear', 'perimetro.planes.editar'],
   [PerimetroController, 'guardar', 'perimetro.planes.editar'],
   [PerimetroController, 'eliminar', 'perimetro.planes.editar'],
@@ -168,6 +177,7 @@ describe('Ningún endpoint de CDAs queda sin control', () => {
     FotoCdaController,
     ConvocatoriaCdaController,
     EvaticsController,
+    DistribucionDiasController,
     PerimetroController,
     PerimetroPersonalController,
   ];

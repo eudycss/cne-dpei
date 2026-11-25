@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from './AuthContext';
 import { api, tokenStore } from '../lib/api';
@@ -76,6 +77,28 @@ describe('AuthContext', () => {
     expect(tokenStore.clear).toHaveBeenCalledTimes(1);
     expect(result.current.user).toBeNull();
     expect(localStorage.getItem('cne.user')).toBeNull();
+  });
+
+  it('logout vacía la caché de consultas (fotos, cédulas): quien entre después no la ve', async () => {
+    localStorage.setItem('cne.user', JSON.stringify(sessionUser));
+    postMock.mockResolvedValueOnce({ data: {} });
+    const qc = new QueryClient();
+    qc.setQueryData(['operadores-cda', 'o1', 'foto'], new Blob(['jpg']));
+    qc.setQueryData(['operadores-cda', 'con-foto'], ['o1']);
+    const conCache = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: conCache });
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(qc.getQueryCache().getAll()).toHaveLength(0);
+    expect(qc.getQueryData(['operadores-cda', 'o1', 'foto'])).toBeUndefined();
+    expect(result.current.user).toBeNull();
   });
 
   it('logout limpia la sesión aunque el POST /auth/logout falle', async () => {

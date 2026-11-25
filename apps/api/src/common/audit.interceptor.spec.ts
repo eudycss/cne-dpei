@@ -810,6 +810,17 @@ describe('AuditInterceptor', () => {
     });
     expect(individual.data).toMatchObject({ datosDespues: { formato: 'pdf', operadorId: OTRO } });
 
+    // Contactos .vcf de un día de la distribución (llevan celulares): solo el día, sin teléfonos.
+    const contactos = await auditar({
+      method: 'GET', originalUrl: `/distribuciones-dias/${PRACTICA}/contactos.vcf?fecha=2026-11-20`, params: { id: PRACTICA }, query: { fecha: '2026-11-20' }, user: ADMIN,
+    });
+    expect(contactos.data).toMatchObject({
+      accion: 'DISTRIBUCION_DIAS_CONTACTOS',
+      entidad: 'distribucion_dias',
+      entidadId: PRACTICA,
+      datosDespues: { fecha: '2026-11-20' },
+    });
+
     // Anular un intento: quién (usuario), de qué persona y práctica; el motivo (texto libre) no.
     const INTENTO = '55555555-5555-4555-8555-555555555555';
     const anular = await auditar(

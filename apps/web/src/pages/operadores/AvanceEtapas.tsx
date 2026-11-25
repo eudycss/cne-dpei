@@ -1,14 +1,8 @@
 import { useRef } from 'react';
 import { NumeroAnimado } from '../../components/NumeroAnimado';
-import { Tramo, useAnimarReorden } from '../operadores-cda/AvanceEvatics';
+import { MEDALLAS, Tramo, useAnimarReorden } from '../operadores-cda/AvanceEvatics';
 import { formatearFechaHora } from '../../lib/notifications';
-import { porcentaje, type GrupoAvance, type Medalla } from './estadisticas';
-
-const MEDALLAS: Record<Medalla, { icono: string; texto: string }> = {
-  1: { icono: '🥇', texto: 'Primer lugar' },
-  2: { icono: '🥈', texto: 'Segundo lugar' },
-  3: { icono: '🥉', texto: 'Tercer lugar' },
-};
+import { porcentaje, type GrupoAvance } from './estadisticas';
 
 const describir = (g: GrupoAvance, etiquetaHecho: string) => {
   const base = `${g.nombre}: ${g.hechos} de ${g.total} ${etiquetaHecho} (${porcentaje(g.hechos, g.total)} %)`;

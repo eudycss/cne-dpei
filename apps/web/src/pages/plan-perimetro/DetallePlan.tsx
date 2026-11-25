@@ -20,7 +20,7 @@ import { COLOR_PERIMETRO, COLOR_VALLA } from './estiloPlan';
 import { cuerpoGuardar, describirAccion, editorReducer, estadoInicial, type AccionEditor, type EstadoEditor } from './editorPlan';
 import { EditorPanel, useSeccionEditor } from './EditorPanel';
 import type * as maplibregl from 'maplibre-gl';
-import { FileSpreadsheet, Printer } from 'lucide-react';
+import { FileSpreadsheetIcon, PrinterIcon, useIconoAnimado } from '../../components/iconos-animados';
 import { capturarMapa, descargarExcel, ENCABEZADOS_PUESTOS, filasPuestos, resumenPlan } from './exportarPlan';
 
 const esConflicto = (e: unknown) => (e as { response?: { status?: number } })?.response?.status === 409;
@@ -78,6 +78,8 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
 
   // Al imprimir solo se ve la hoja del plan (clase en <body>); al terminar se vuelve a la pantalla.
   const [hojaLista, setHojaLista] = useState(false);
+  const iconoExcel = useIconoAnimado();
+  const iconoImprimir = useIconoAnimado();
   useEffect(() => {
     if (impresion === undefined || !hojaLista) return;
     document.body.classList.add('pp-imprimiendo');
@@ -216,11 +218,11 @@ export function DetallePlan({ planId, editable, onEditando, onEliminado }: Detal
               Editar plan
             </button>
           )}
-          <button type="button" className="btn secondary" disabled={plan.puestos.length === 0} onClick={() => descargarExcel(plan)}>
-            <FileSpreadsheet size={16} aria-hidden="true" /> Descargar Excel
+          <button type="button" className="btn secondary" disabled={plan.puestos.length === 0} onClick={() => descargarExcel(plan)} {...iconoExcel.disparadores}>
+            <FileSpreadsheetIcon ref={iconoExcel.ref} size={16} aria-hidden="true" /> Descargar Excel
           </button>
-          <button type="button" className="btn secondary" onClick={() => void imprimir()}>
-            <Printer size={16} aria-hidden="true" /> Imprimir
+          <button type="button" className="btn secondary" onClick={() => void imprimir()} {...iconoImprimir.disparadores}>
+            <PrinterIcon ref={iconoImprimir.ref} size={16} aria-hidden="true" /> Imprimir
           </button>
         </div>
       )}

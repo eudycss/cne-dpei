@@ -21,6 +21,7 @@ import { useModulos } from '../../lib/useModulos';
 import { ExportarReporteModal } from './ExportarReporteModal';
 import { Kpi } from './Kpi';
 import { hoyEcuador, mensajeError } from './utils';
+import { ConFoto } from './AvatarPersona';
 
 type Vista = 'resumen' | 'detalle';
 type Filtro = 'todos' | EstadoPuntualidad;
@@ -243,7 +244,9 @@ export function AtrasosPanel({ acciones = null }: { acciones?: HTMLElement | nul
             <tbody>
               {resumen.map((r) => (
                 <tr key={r.operadorId}>
-                  <th scope="row">{r.apellidosNombres}</th>
+                  <th scope="row">
+                    <ConFoto persona={{ operadorId: r.operadorId, nombre: r.apellidosNombres, cedula: r.cedula }}>{r.apellidosNombres}</ConFoto>
+                  </th>
                   <td className="mono">{r.cedula}</td>
                   <td>{r.puntuales}</td>
                   <td>{r.atrasos > 0 ? <span className="ocda-estado aviso">{r.atrasos}</span> : 0}</td>
@@ -310,7 +313,7 @@ function FilaDetalle({ fila: f }: { fila: FilaAtrasoCda }) {
     <tr>
       <td className="mono">{f.fecha}</td>
       <th scope="row">
-        {f.apellidosNombres}
+        <ConFoto persona={{ operadorId: f.operadorId, nombre: f.apellidosNombres, cedula: f.cedula }}>{f.apellidosNombres}</ConFoto>
         <span className="sr-only"> · cédula {f.cedula}</span>
       </th>
       <td className="mono">{f.entrada ?? '—'}</td>

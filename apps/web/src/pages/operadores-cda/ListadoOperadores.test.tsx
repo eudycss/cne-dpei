@@ -110,6 +110,35 @@ describe('ListadoOperadores', () => {
     expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
   });
 
+  it('filtra a quienes aún no suben la foto, a los que tienen y a los que están por revisar', async () => {
+    getMock.mockResolvedValueOnce({
+      data: [
+        operador({ tieneFoto: true }),
+        operador({ id: 'o2', apellidosNombres: 'RUIZ MORA JUAN', cedula: '1002003000' }),
+        operador({ id: 'o3', apellidosNombres: 'VEGA TAPIA LUIS', cedula: '1002003001', fotoPendiente: true }),
+      ],
+    });
+    renderPagina();
+    const lista = await screen.findByRole('list', { name: 'Operadores CDA' });
+    const foto = screen.getByRole('combobox', { name: 'Foto' });
+
+    await userEvent.selectOptions(foto, 'SIN');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'RUIZ MORA JUAN' })).toBeInTheDocument();
+    expect(screen.getByText(/1 de 3 operadores/)).toBeInTheDocument();
+
+    await userEvent.selectOptions(foto, 'REVISAR');
+    expect(screen.getByRole('heading', { name: 'VEGA TAPIA LUIS' })).toBeInTheDocument();
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+
+    await userEvent.selectOptions(foto, 'CON');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+    expect(foto).toHaveValue('');
+    expect(within(lista).getAllByRole('listitem')).toHaveLength(3);
+  });
+
   it('filtra sin importar tildes ni mayúsculas, y por cédula', async () => {
     getMock.mockResolvedValueOnce({
       data: [operador({}), operador({ id: 'o2', apellidosNombres: 'ANDRADE LÓPEZ MARÍA JOSÉ', cedula: '1002003000' })],

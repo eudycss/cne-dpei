@@ -1,3 +1,5 @@
+import { DistribucionDiasController } from './distribucion-dias.controller';
+import { DistribucionDiasService } from './distribucion-dias.service';
 import { Module } from '@nestjs/common';
 import { OperadoresCdaController } from './operadores-cda.controller';
 import { OperadoresCdaService } from './operadores-cda.service';
@@ -31,7 +33,7 @@ import { ConvocatoriaCdaService } from './convocatoria-cda.service';
 
 @Module({
   imports: [PermisosModulosModule, KitsModule, EnlacesModule],
-  controllers: [ConvocatoriaCdaController, AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController, ParejasCdaController, ReporteTecnicosCdaController, HistorialParejasCdaController, CargosCdaController],
-  providers: [ConvocatoriaCdaService, AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet, ParejasCdaService, ReporteTecnicosCdaService, HistorialParejasCdaService, CargosCdaService],
+  controllers: [DistribucionDiasController, ConvocatoriaCdaController, AtrasosCdaController, CuentasCdaController, OperadoresCdaController, AsistenciaCdaController, FotoCdaController, FotoCdaPublicoController, ActasCdaController, CredencialQrCdaController, ParejasCdaController, ReporteTecnicosCdaController, HistorialParejasCdaController, CargosCdaController],
+  providers: [DistribucionDiasService, ConvocatoriaCdaService, AtrasosCdaService, OperadoresCdaService, CuentasCdaService, AsistenciaCdaService, FotoCdaService, ActasCdaService, CredencialQrCdaService, CifradoTokenCarnet, ParejasCdaService, ReporteTecnicosCdaService, HistorialParejasCdaService, CargosCdaService],
 })
 export class OperadoresCdaModule {}

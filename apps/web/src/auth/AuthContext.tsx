@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { LoginResponse, RoleName } from '@cne/shared-types';
+import { QueryClientContext } from '@tanstack/react-query';
 import { api, tokenStore } from '../lib/api';
 
 interface SessionUser {
@@ -37,6 +38,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return raw ? (JSON.parse(raw) as SessionUser) : null;
   });
   const [loading, setLoading] = useState(false);
+  // Opcional: en producción siempre hay QueryClientProvider por encima (main.tsx).
+  const queryClient = useContext(QueryClientContext);
 
   useEffect(() => {
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -62,9 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+    // Sin recargar la página, la caché seguiría con datos de la sesión (fotos
+    // del personal, cédulas, teléfonos) y quien entre después en este equipo
+    // podría verlos. cancel antes de clear: una consulta en vuelo no la vuelve a llenar.
+    if (queryClient) await queryClient.cancelQueries();
+    // Desde aquí, todo síncrono: sin tokens y sin usuario en el mismo paso, para
+    // que ninguna consulta salga sin token (401 → recarga) entre medio.
+    queryClient?.clear();
     tokenStore.clear();
     setUser(null);
-  }, []);
+  }, [queryClient]);
 
   const markPasswordChanged = useCallback(() => {
     setUser((u) => (u ? { ...u, debeCambiarPwd: false } : u));
