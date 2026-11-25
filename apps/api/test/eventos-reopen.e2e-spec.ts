@@ -21,7 +21,8 @@ const OPERADOR_ID = '00000000-0000-0000-0000-0000000000a1';
  * Usa el evento TEST E2E. Si hay otro evento ACTIVO lo pasa a BORRADOR durante
  * la prueba y al final deja todo como estaba.
  *
- * Requiere postgres levantado y `pnpm db:seed` ejecutado.
+ * Requiere postgres levantado, `pnpm db:seed` y test/fixtures/ensure-tracking-e2e-fixtures.ts
+ * ejecutados: el operador de prueba debe existir y estar activo (JwtStrategy lo verifica).
  */
 describe('Reabrir evento (e2e)', () => {
   let app: INestApplication;
