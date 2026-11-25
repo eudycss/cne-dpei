@@ -73,6 +73,18 @@ describe('JwtStrategy', () => {
     await expect(strategy.validate(payload)).resolves.toEqual(payload);
   });
 
+  it('al llegar al tope de 5000 usuarios recordados vacía la caché (memoria acotada)', async () => {
+    findUnique.mockResolvedValue({ activo: true });
+    for (let i = 0; i < 5_000; i++) await strategy.validate({ ...payload, sub: `u${i}` });
+    await strategy.validate({ ...payload, sub: 'u5000' }); // vacía y guarda solo este
+    findUnique.mockClear();
+
+    await strategy.validate({ ...payload, sub: 'u0' });
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    await strategy.validate({ ...payload, sub: 'u5000' });
+    expect(findUnique).toHaveBeenCalledTimes(1);
+  });
+
   it('si la base falla, no deja pasar (el error sube y el pedido no se atiende)', async () => {
     findUnique.mockRejectedValueOnce(new Error('BD caída'));
     await expect(strategy.validate(payload)).rejects.toThrow('BD caída');
