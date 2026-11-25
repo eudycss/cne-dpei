@@ -439,7 +439,7 @@ describe('ParejasCdaService', () => {
 
       const r = await service.aplicar(DIA);
 
-      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1', { motivo: 'ALTA_CDA' });
       expect(prisma.kitElectoral.findFirst.mock.calls[0][0].where).toEqual({ eventoId: 'ev2', recintoId: 'r1', esPrueba: false, parejasCda: { none: {} }, estado: { in: ['EN_BODEGA', 'ASIGNADO'] } });
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'uNuevo' });
       // La 2.ª pareja de r1 recibe su propio kit (otro dispositivo), no queda solo registrada.
@@ -584,7 +584,7 @@ describe('ParejasCdaService', () => {
 
       await service.crearKitConPareja({ eventoId: 'ev2', recintoId: 'r1', operadorCdaId: 'op1', detalleItems }, 'admin');
 
-      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('op1', { motivo: 'ALTA_CDA' });
       expect(kits.create).toHaveBeenCalledWith(expect.objectContaining({ detalleItems }));
       expect(kits.asignar).toHaveBeenCalledWith('kNuevo', { operadorId: 'uNuevo' });
       expect(prisma.parejaCda.create.mock.calls[0][0].data.asistenteCdaId).toBeNull();
@@ -771,7 +771,7 @@ describe('ParejasCdaService', () => {
         apellidosNombres: 'RUIZ JUAN',
         grupo: 'ASISTENTE',
       });
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'asNuevo', 'hash');
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'asNuevo', 'hash', { motivo: 'ALTA_CDA' });
       // La persona nueva arranca con su cédula como contraseña.
       expect(cuentas.hashInicial).toHaveBeenCalledWith('1713175071');
       expect(prisma.parejaCda.create).toHaveBeenCalledTimes(1);
@@ -1399,7 +1399,7 @@ describe('ParejasCdaService', () => {
       // p1 no tiene Android: su kit queda con su operador (y la web avisa que no se podrá rastrear).
       expect(kits.asignar).toHaveBeenNthCalledWith(1, 'k1', { operadorId: 'u1' });
       // p2: se le crea la cuenta a su asistente con Android y lleva un kit propio.
-      expect(cuentas.crearOVincular).toHaveBeenCalledWith('as2');
+      expect(cuentas.crearOVincular).toHaveBeenCalledWith('as2', { motivo: 'ALTA_CDA' });
       expect(kits.asignar).toHaveBeenNthCalledWith(2, 'kNuevo', { operadorId: 'u4' });
       expect(r).toMatchObject({ enApp: 2, kitsCreados: 1 });
     });
