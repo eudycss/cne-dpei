@@ -1275,7 +1275,7 @@ export class ParejasCdaService {
 
   /** Crea (o vincula) la cuenta de la app del operador y devuelve su usuario. */
   private async crearCuentaOperador(operadorCdaId: string): Promise<string> {
-    await this.cuentas.crearOVincular(operadorCdaId);
+    await this.cuentas.crearOVincular(operadorCdaId, { motivo: 'ALTA_CDA' });
     const op = await this.prisma.operadorCda.findUnique({ where: { id: operadorCdaId }, select: { usuarioId: true } });
     if (!op?.usuarioId) throw new BadRequestException('El operador está oculto: no tiene cuenta de la app');
     return op.usuarioId;
@@ -1309,7 +1309,7 @@ export class ParejasCdaService {
     existentes.set(p.cedula, creada);
     // Su contraseña inicial es su cédula; el hash (argon2, lento) va antes de la transacción.
     const hash = await this.cuentas.hashInicial(p.cedula);
-    await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, creada.id, hash));
+    await this.prisma.$transaction((tx) => this.cuentas.asegurarCuenta(tx, creada.id, hash, { motivo: 'ALTA_CDA' }));
     return creada.id;
   }
 

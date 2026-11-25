@@ -185,7 +185,7 @@ describe('OperadoresCdaService.cambiarCargo', () => {
     it('de digitador a operador: asegura la cuenta', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(leido({ grupo: 'DIGITADOR' }));
       await service.cambiarCargo(OP, 'OPERADOR', USR);
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP, 'hash-inicial');
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(tx, OP, 'hash-inicial', { motivo: 'CAMBIO_CARGO_CDA', hechoPorId: USR });
       // Arranca con su cédula como contraseña.
       expect(cuentas.hashInicial).toHaveBeenCalledWith('1710034065');
       expect(cuentas.retirarCuenta).not.toHaveBeenCalled();

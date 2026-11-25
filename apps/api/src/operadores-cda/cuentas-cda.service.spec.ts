@@ -9,6 +9,7 @@ import { PrismaService } from '../db/prisma.service';
 const ROL_ID = 'rrrrrrrr-rrrr-rrrr-rrrr-rrrrrrrrrrrr';
 const OP_ID = 'oooooooo-oooo-oooo-oooo-oooooooooooo';
 const USR_ID = 'uuuuuuuu-uuuu-uuuu-uuuu-uuuuuuuuuuuu';
+const ALTA = { motivo: 'CAMBIO_CARGO_CDA' as const, hechoPorId: 'admin-1' };
 
 function operador(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,7 +30,7 @@ describe('CuentasCdaService', () => {
   const prisma = {
     operadorCda: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
-    usuarioRol: { upsert: jest.fn(), deleteMany: jest.fn(), count: jest.fn() },
+    usuarioRol: { createMany: jest.fn(), deleteMany: jest.fn(), count: jest.fn() },
     rol: { findUnique: jest.fn() },
     refreshToken: { updateMany: jest.fn() },
     bitacoraAuditoria: { create: jest.fn() },
@@ -47,6 +48,8 @@ describe('CuentasCdaService', () => {
     prisma.operadorCda.findMany.mockResolvedValue([]);
     prisma.usuarioRol.count.mockResolvedValue(0);
     prisma.usuarioRol.deleteMany.mockResolvedValue({ count: 1 });
+    // Por defecto ya tenía el rol: no hay nada que registrar.
+    prisma.usuarioRol.createMany.mockResolvedValue({ count: 0 });
     prisma.usuario.updateMany.mockResolvedValue({ count: 1 });
     const moduleRef = await Test.createTestingModule({
       providers: [CuentasCdaService, { provide: PrismaService, useValue: prisma }],
@@ -59,7 +62,7 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('CREADA');
       // El hash llega calculado de afuera: argon2 (~64 MB, lento con 0.1 vCPU) no corre dentro de la transacción.
@@ -95,7 +98,7 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('VINCULADA');
       expect(prisma.usuario.create).not.toHaveBeenCalled();
@@ -104,10 +107,9 @@ describe('CuentasCdaService', () => {
         expect(args.data).not.toHaveProperty('passwordHash');
         expect(args.data).not.toHaveProperty('debeCambiarPwd');
       }
-      expect(prisma.usuarioRol.upsert).toHaveBeenCalledWith({
-        where: { usuarioId_rolId: { usuarioId: USR_ID, rolId: ROL_ID } },
-        create: { usuarioId: USR_ID, rolId: ROL_ID },
-        update: {},
+      expect(prisma.usuarioRol.createMany).toHaveBeenCalledWith({
+        data: [{ usuarioId: USR_ID, rolId: ROL_ID }],
+        skipDuplicates: true,
       });
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
@@ -117,10 +119,10 @@ describe('CuentasCdaService', () => {
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
       prisma.usuarioRol.count.mockResolvedValueOnce(0);
 
-      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(prisma.usuarioRol.count).toHaveBeenCalledWith({ where: { usuarioId: USR_ID, rolId: { not: ROL_ID } } });
-      expect(prisma.usuario.update).toHaveBeenCalledWith({ where: { id: USR_ID }, data: { activo: true } });
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({ where: { id: USR_ID, activo: false }, data: { activo: true } });
     });
 
     it('cuenta inactiva con otros roles (técnico o administrador dado de baja): vincula pero NO la reactiva', async () => {
@@ -128,10 +130,10 @@ describe('CuentasCdaService', () => {
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
       prisma.usuarioRol.count.mockResolvedValueOnce(1);
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('VINCULADA');
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
       expect(prisma.operadorCda.update).toHaveBeenCalledWith({ where: { id: OP_ID }, data: { usuarioId: USR_ID } });
     });
 
@@ -139,23 +141,23 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('YA_TENIA');
       expect(prisma.usuario.findUnique).toHaveBeenCalledWith({ where: { id: USR_ID }, select: { id: true, activo: true } });
       expect(prisma.usuario.create).not.toHaveBeenCalled();
-      expect(prisma.usuario.update).toHaveBeenCalledWith({ where: { id: USR_ID }, data: { activo: true } });
-      expect(prisma.usuarioRol.upsert).toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({ where: { id: USR_ID, activo: false }, data: { activo: true } });
+      expect(prisma.usuarioRol.createMany).toHaveBeenCalled();
     });
 
     it('ya vinculada y activa: no escribe el estado, solo garantiza el rol', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
       prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
 
-      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
-      expect(prisma.usuarioRol.upsert).toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.createMany).toHaveBeenCalled();
     });
 
     it.each([
@@ -164,11 +166,105 @@ describe('CuentasCdaService', () => {
     ])('no aplica a %s', async (_caso, cambios) => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(operador(cambios));
 
-      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial');
+      const r = await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
 
       expect(r).toBe('NO_APLICA');
       expect(prisma.usuario.create).not.toHaveBeenCalled();
-      expect(prisma.usuarioRol.upsert).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('asegurarCuenta — bitácora de la reactivación automática', () => {
+    it('reactiva una cuenta que solo era de Operador CDA y lo deja en la bitácora con quién y por qué', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+      prisma.usuarioRol.createMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
+
+      expect(prisma.bitacoraAuditoria.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: 'admin-1',
+          accion: 'USER_REACTIVADO_AUTO',
+          entidad: 'usuario',
+          entidadId: USR_ID,
+          datosDespues: { motivo: 'CAMBIO_CARGO_CDA', operadorCdaId: OP_ID, rolAgregado: 'OPERADOR_CDA', activo: true },
+        },
+      });
+    });
+
+    it('cuenta activa con otros roles a la que se le devuelve OPERADOR_CDA: ROLE_GRANT_AUTO, sin tocar activo', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
+      prisma.usuarioRol.createMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', { motivo: 'SINCRONIZACION_CDA' });
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+      expect(prisma.bitacoraAuditoria.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: null,
+          accion: 'ROLE_GRANT_AUTO',
+          entidad: 'usuario',
+          entidadId: USR_ID,
+          datosDespues: { motivo: 'SINCRONIZACION_CDA', operadorCdaId: OP_ID, rolAgregado: 'OPERADOR_CDA' },
+        },
+      });
+    });
+
+    it('si otro proceso ya la reactivó entretanto (updateMany count 0) y ya tenía el rol, no registra nada', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+      prisma.usuario.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
+
+      expect(prisma.bitacoraAuditoria.create).not.toHaveBeenCalled();
+    });
+
+    it('ya activa y con el rol: no registra nada', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador({ usuarioId: USR_ID }));
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: true });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
+
+      expect(prisma.bitacoraAuditoria.create).not.toHaveBeenCalled();
+    });
+
+    it('cuenta inactiva con otros roles: no la reactiva; si solo recupera el rol, registra ROLE_GRANT_AUTO', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+      prisma.usuarioRol.count.mockResolvedValueOnce(1);
+      prisma.usuarioRol.createMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+      expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data.accion).toBe('ROLE_GRANT_AUTO');
+      expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data.datosDespues).not.toHaveProperty('activo');
+    });
+
+    it('cuenta recién creada: no escribe en la bitácora (no es una reactivación)', async () => {
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce(null);
+
+      await service.asegurarCuenta(prisma as never, OP_ID, 'hash-inicial', ALTA);
+
+      expect(prisma.bitacoraAuditoria.create).not.toHaveBeenCalled();
+    });
+
+    it('sincronizar registra con motivo SINCRONIZACION_CDA y sin autor', async () => {
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ id: OP_ID, cedula: '1710034065' }]);
+      prisma.operadorCda.findUnique.mockResolvedValueOnce(operador());
+      prisma.usuario.findUnique.mockResolvedValueOnce({ id: USR_ID, activo: false });
+
+      await service.sincronizar();
+
+      expect(prisma.bitacoraAuditoria.create.mock.calls[0][0].data).toMatchObject({
+        usuarioId: null,
+        accion: 'USER_REACTIVADO_AUTO',
+        datosDespues: { motivo: 'SINCRONIZACION_CDA', operadorCdaId: OP_ID, rolAgregado: null, activo: true },
+      });
     });
   });
 
@@ -254,7 +350,7 @@ describe('CuentasCdaService', () => {
         .mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
 
-      await expect(service.crearOVincular(OP_ID)).resolves.toBe('CREADA');
+      await expect(service.crearOVincular(OP_ID, ALTA)).resolves.toBe('CREADA');
       expect(argon2.hash).toHaveBeenCalledWith('1710034065');
       expect(prisma.usuario.create.mock.calls[0][0].data.passwordHash).toBe('hash-inicial');
     });
@@ -263,7 +359,7 @@ describe('CuentasCdaService', () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ cedula: '1710034065' }).mockResolvedValueOnce(operador());
       prisma.usuario.findUnique.mockResolvedValueOnce(null);
 
-      await service.crearOVincular(OP_ID);
+      await service.crearOVincular(OP_ID, ALTA);
 
       const hash = (argon2.hash as jest.Mock).mock.invocationCallOrder[0];
       const tx = prisma.$transaction.mock.invocationCallOrder[0];
@@ -275,13 +371,13 @@ describe('CuentasCdaService', () => {
       prisma.usuario.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: USR_ID, activo: true });
       prisma.usuario.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
 
-      await expect(service.crearOVincular(OP_ID)).resolves.toBe('VINCULADA');
+      await expect(service.crearOVincular(OP_ID, ALTA)).resolves.toBe('VINCULADA');
       expect(argon2.hash).toHaveBeenCalledTimes(1);
     });
 
     it('persona inexistente: NO_APLICA sin calcular hash', async () => {
       prisma.operadorCda.findUnique.mockResolvedValueOnce(null);
-      await expect(service.crearOVincular(OP_ID)).resolves.toBe('NO_APLICA');
+      await expect(service.crearOVincular(OP_ID, ALTA)).resolves.toBe('NO_APLICA');
       expect(argon2.hash).not.toHaveBeenCalled();
     });
   });

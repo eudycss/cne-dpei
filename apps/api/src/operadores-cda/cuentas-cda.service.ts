@@ -16,6 +16,12 @@ export type ResultadoAsegurar = 'CREADA' | 'VINCULADA' | 'YA_TENIA' | 'NO_APLICA
 export type ResultadoRetiro = 'DESACTIVADA' | 'YA_INACTIVA' | 'ROL_RETIRADO' | 'SIN_CUENTA';
 /** Por qué se retira el acceso (queda en la bitácora). */
 export type MotivoRetiroCuenta = 'CAMBIO_CARGO_CDA' | 'OCULTADO_CDA';
+/** Por qué se reactiva la cuenta o se le devuelve el rol (queda en la bitácora). */
+export type MotivoAltaCuenta = 'CAMBIO_CARGO_CDA' | 'REACTIVADO_CDA' | 'ALTA_CDA' | 'SINCRONIZACION_CDA';
+export interface ContextoAltaCuenta {
+  motivo: MotivoAltaCuenta;
+  hechoPorId?: string | null;
+}
 
 type Tx = Prisma.TransactionClient;
 
@@ -61,10 +67,10 @@ export class CuentasCdaService implements OnApplicationBootstrap {
   }
 
   /** Crea o vincula la cuenta de una persona (hash de su cédula fuera de la transacción). */
-  async crearOVincular(operadorId: string): Promise<ResultadoAsegurar> {
+  async crearOVincular(operadorId: string, contexto: ContextoAltaCuenta): Promise<ResultadoAsegurar> {
     const op = await this.prisma.operadorCda.findUnique({ where: { id: operadorId }, select: { cedula: true } });
     if (!op) return 'NO_APLICA';
-    return this.asegurarConReintento(operadorId, await this.hashInicial(op.cedula));
+    return this.asegurarConReintento(operadorId, await this.hashInicial(op.cedula), contexto);
   }
 
   tieneCuenta(grupo: GrupoCda): boolean {
@@ -74,9 +80,15 @@ export class CuentasCdaService implements OnApplicationBootstrap {
   /**
    * Garantiza que la persona tenga una cuenta activa con rol OPERADOR_CDA.
    * Si ya existe un usuario con su cédula (cuenta vieja o de otro rol), se
-   * vincula sin tocar su contraseña ni sus otros roles.
+   * vincula sin tocar su contraseña ni sus otros roles. Si eso reactiva una
+   * cuenta o le devuelve el rol, queda en la bitácora (espejo de retirarCuenta).
    */
-  async asegurarCuenta(tx: Tx, operadorId: string, passwordHash: string): Promise<ResultadoAsegurar> {
+  async asegurarCuenta(
+    tx: Tx,
+    operadorId: string,
+    passwordHash: string,
+    contexto: ContextoAltaCuenta,
+  ): Promise<ResultadoAsegurar> {
     const op = await tx.operadorCda.findUnique({
       where: { id: operadorId },
       select: { id: true, cedula: true, apellidosNombres: true, telefono: true, grupo: true, activo: true, usuarioId: true },
@@ -86,17 +98,13 @@ export class CuentasCdaService implements OnApplicationBootstrap {
 
     if (op.usuarioId) {
       const vinculado = await tx.usuario.findUnique({ where: { id: op.usuarioId }, select: { id: true, activo: true } });
-      if (vinculado) {
-        await this.reactivarSiSoloCda(tx, vinculado, rolId);
-        await this.garantizarRol(tx, vinculado.id, rolId);
-      }
+      if (vinculado) await this.restituirAcceso(tx, vinculado, rolId, op.id, contexto);
       return 'YA_TENIA';
     }
 
     const existente = await tx.usuario.findUnique({ where: { cedula: op.cedula }, select: { id: true, activo: true } });
     if (existente) {
-      await this.reactivarSiSoloCda(tx, existente, rolId);
-      await this.garantizarRol(tx, existente.id, rolId);
+      await this.restituirAcceso(tx, existente, rolId, op.id, contexto);
       await tx.operadorCda.update({ where: { id: op.id }, data: { usuarioId: existente.id } });
       return 'VINCULADA';
     }
@@ -183,7 +191,7 @@ export class CuentasCdaService implements OnApplicationBootstrap {
     // Una transacción por persona: si una falla, se cuenta y se sigue con las demás.
     for (const { id, cedula } of pendientes) {
       try {
-        const r = await this.asegurarConReintento(id, await this.hashInicial(cedula));
+        const r = await this.asegurarConReintento(id, await this.hashInicial(cedula), { motivo: 'SINCRONIZACION_CDA' });
         if (r === 'CREADA') conteo.creadas++;
         if (r === 'VINCULADA') conteo.vinculadas++;
       } catch (e) {
@@ -238,32 +246,68 @@ export class CuentasCdaService implements OnApplicationBootstrap {
   }
 
   /** Dos pulsaciones simultáneas pueden crear la misma cédula: la segunda reintenta y vincula. */
-  private async asegurarConReintento(operadorId: string, passwordHash: string): Promise<ResultadoAsegurar> {
+  private async asegurarConReintento(
+    operadorId: string,
+    passwordHash: string,
+    contexto: ContextoAltaCuenta,
+  ): Promise<ResultadoAsegurar> {
     try {
-      return await this.prisma.$transaction((tx) => this.asegurarCuenta(tx, operadorId, passwordHash));
+      return await this.prisma.$transaction((tx) => this.asegurarCuenta(tx, operadorId, passwordHash, contexto));
     } catch (e) {
       if ((e as { code?: string } | null)?.code !== 'P2002') throw e;
-      return this.prisma.$transaction((tx) => this.asegurarCuenta(tx, operadorId, passwordHash));
+      return this.prisma.$transaction((tx) => this.asegurarCuenta(tx, operadorId, passwordHash, contexto));
     }
+  }
+
+  /**
+   * Reactiva (si corresponde) y devuelve el rol a una cuenta que ya existía, y
+   * deja constancia en la bitácora: esto no pasa por "Activar" de Usuarios.
+   */
+  private async restituirAcceso(
+    tx: Tx,
+    usuario: { id: string; activo: boolean },
+    rolId: string,
+    operadorId: string,
+    contexto: ContextoAltaCuenta,
+  ): Promise<void> {
+    const reactivada = await this.reactivarSiSoloCda(tx, usuario, rolId);
+    const rolAgregado = await this.garantizarRol(tx, usuario.id, rolId);
+    if (!reactivada && !rolAgregado) return;
+    await tx.bitacoraAuditoria.create({
+      data: {
+        usuarioId: contexto.hechoPorId ?? null,
+        accion: reactivada ? 'USER_REACTIVADO_AUTO' : 'ROLE_GRANT_AUTO',
+        entidad: 'usuario',
+        entidadId: usuario.id,
+        datosDespues: {
+          motivo: contexto.motivo,
+          operadorCdaId: operadorId,
+          rolAgregado: rolAgregado ? ROL_CDA : null,
+          ...(reactivada && { activo: true }),
+        },
+      },
+    });
   }
 
   /**
    * Reactiva solo cuentas que eran únicamente de Operador CDA: una cuenta de
    * técnico o administrador dada de baja a propósito en Usuarios no revive por
    * vincularla (queda "Inactiva" y el administrador decide en Usuarios).
+   * Devuelve true si la reactivó ahora (condicionado: si otro proceso ya la
+   * activó, no se registra dos veces).
    */
-  private async reactivarSiSoloCda(tx: Tx, usuario: { id: string; activo: boolean }, rolId: string): Promise<void> {
-    if (usuario.activo) return;
+  private async reactivarSiSoloCda(tx: Tx, usuario: { id: string; activo: boolean }, rolId: string): Promise<boolean> {
+    if (usuario.activo) return false;
     const otrosRoles = await tx.usuarioRol.count({ where: { usuarioId: usuario.id, rolId: { not: rolId } } });
-    if (otrosRoles === 0) await tx.usuario.update({ where: { id: usuario.id }, data: { activo: true } });
+    if (otrosRoles > 0) return false;
+    const { count } = await tx.usuario.updateMany({ where: { id: usuario.id, activo: false }, data: { activo: true } });
+    return count > 0;
   }
 
-  private async garantizarRol(tx: Tx, usuarioId: string, rolId: string): Promise<void> {
-    await tx.usuarioRol.upsert({
-      where: { usuarioId_rolId: { usuarioId, rolId } },
-      create: { usuarioId, rolId },
-      update: {},
-    });
+  /** Agrega el rol si no lo tenía; devuelve true si lo agregó ahora. */
+  private async garantizarRol(tx: Tx, usuarioId: string, rolId: string): Promise<boolean> {
+    const { count } = await tx.usuarioRol.createMany({ data: [{ usuarioId, rolId }], skipDuplicates: true });
+    return count > 0;
   }
 
   private async rolCdaId(tx: Tx): Promise<string> {

@@ -152,7 +152,7 @@ export class OperadoresCdaService {
     // Misma transacción: ocultar a alguien nunca le deja la app abierta.
     const editado = await this.prisma.$transaction(async (tx) => {
       const fila = await tx.operadorCda.update({ where: { id }, data: { activo } });
-      if (activo) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
+      if (activo) await this.cuentas.asegurarCuenta(tx, id, passwordHash, { motivo: 'REACTIVADO_CDA', hechoPorId });
       else await this.cuentas.retirarCuenta(tx, id, { motivo: 'OCULTADO_CDA', hechoPorId });
       return fila;
     });
@@ -215,7 +215,9 @@ export class OperadoresCdaService {
         const retiro = await this.cuentas.retirarCuenta(tx, id, { motivo: 'CAMBIO_CARGO_CDA', hechoPorId: usuarioId });
         cuentaDesactivada = retiro === 'DESACTIVADA';
       }
-      if (!teniaCuenta && tendraCuenta) await this.cuentas.asegurarCuenta(tx, id, passwordHash);
+      if (!teniaCuenta && tendraCuenta) {
+        await this.cuentas.asegurarCuenta(tx, id, passwordHash, { motivo: 'CAMBIO_CARGO_CDA', hechoPorId: usuarioId });
+      }
       return tx.operadorCda.findUniqueOrThrow({ where: { id } });
     });
     return {

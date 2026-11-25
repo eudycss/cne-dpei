@@ -558,8 +558,8 @@ describe('OperadoresCdaService', () => {
 
       prisma.operadorCda.findUnique.mockResolvedValueOnce({ id: 'o1', cedula: '1710034065' });
       prisma.operadorCda.update.mockResolvedValueOnce(FILA);
-      await service.cambiarActivo('o1', true);
-      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1', 'hash-inicial');
+      await service.cambiarActivo('o1', true, 'admin-1');
+      expect(cuentas.asegurarCuenta).toHaveBeenCalledWith(prisma, 'o1', 'hash-inicial', { motivo: 'REACTIVADO_CDA', hechoPorId: 'admin-1' });
       // Arranca con su cédula como contraseña.
       expect(cuentas.hashInicial).toHaveBeenCalledWith('1710034065');
     });
