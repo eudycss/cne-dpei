@@ -24,7 +24,7 @@ export function ForgotPassword() {
   }
 
   return (
-    <div className="center">
+    <main className="center">
       <form className="login-card" onSubmit={onSubmit}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
           <Logo height={60} />
@@ -35,8 +35,9 @@ export function ForgotPassword() {
           restablecer tu contraseña.
         </p>
         <div className="field">
-          <label>Email</label>
+          <label htmlFor="forgot-email">Correo</label>
           <input
+            id="forgot-email"
             type="email"
             autoComplete="username"
             required
@@ -44,9 +45,9 @@ export function ForgotPassword() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        {error && <div className="banner error">{error}</div>}
+        {error && <div className="banner error" role="alert">{error}</div>}
         {ok && (
-          <div className="banner success">
+          <div className="banner success" role="status">
             Si el correo existe, te enviamos un enlace de recuperación.
           </div>
         )}
@@ -57,6 +58,6 @@ export function ForgotPassword() {
           <Link to="/login">Volver a iniciar sesión</Link>
         </p>
       </form>
-    </div>
+    </main>
   );
 }

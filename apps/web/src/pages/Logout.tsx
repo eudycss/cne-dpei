@@ -12,10 +12,10 @@ export function Logout() {
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="center">
+    <main className="center">
       <div className="login-card">
         <h1>Cerrando sesión…</h1>
       </div>
-    </div>
+    </main>
   );
 }

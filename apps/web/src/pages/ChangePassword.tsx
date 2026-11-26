@@ -46,7 +46,7 @@ export function ChangePassword() {
   }
 
   return (
-    <div className="center">
+    <main className="center">
       <form className="login-card" onSubmit={onSubmit}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
           <Logo height={60} />
@@ -80,6 +80,6 @@ export function ChangePassword() {
           Cambiar contraseña
         </button>
       </form>
-    </div>
+    </main>
   );
 }
