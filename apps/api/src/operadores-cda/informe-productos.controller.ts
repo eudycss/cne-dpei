@@ -32,6 +32,13 @@ import { Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 
+/**
+ * Límites del formulario de la foto: 4 campos de texto cortos y 1 archivo.
+ * Sin `parts`: busboy lo corta al llegar al tope (5 partes ya da "Too many
+ * parts"); files y fields ya acotan el total.
+ */
+export const LIMITES_FOTO_INFORME = { fileSize: MAX_FOTO_BYTES, files: 1, fields: 4, fieldSize: 2048 };
+
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function enviarWord(res: Response, archivo: ArchivoInforme): void {
@@ -93,7 +100,7 @@ export class InformeProductosPublicoController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: 'Sube o reemplaza una de las 6 fotos (JPG, hasta 1 MB) con el consentimiento LOPDP' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 4, fieldSize: 2048, parts: 5 } }))
+  @UseInterceptors(FileInterceptor('foto', { limits: LIMITES_FOTO_INFORME }))
   async subir(
     @Req() req: Request,
     @UploadedFile() file: Express.Multer.File | undefined,
