@@ -358,6 +358,9 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 
 /* Indicador de carga (LatticeLoader) */
 .cargando { display: inline-flex; align-items: center; color: var(--text-muted); padding: 0.5rem 0; }
+.carga-de-pagina { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; min-height: 40vh; padding: 1.5rem; text-align: center; color: var(--text-muted); }
+.carga-de-pagina--error { color: var(--text); outline: none; }
+.carga-de-pagina--error .btn { min-height: 44px; }
 
 /* Monitoreo: tarjetas KPI por estado */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }

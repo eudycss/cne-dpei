@@ -147,7 +147,8 @@ describe('App — guards de ruta para el rol LECTOR', () => {
   it('/enlaces lleva al ADMINISTRADOR a la pestaña Enlaces de Recintos (marcadores viejos siguen sirviendo)', async () => {
     setSessionUser(['ADMINISTRADOR']);
     renderAppAt('/enlaces');
-    expect(screen.getByRole('tab', { name: 'Enlaces' })).toHaveAttribute('aria-selected', 'true');
+    // La primera carga del chunk de Recintos (con sus pestañas reales) tarda más en jsdom.
+    expect(await screen.findByRole('tab', { name: 'Enlaces' }, { timeout: 10_000 })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('página: enlaces')).toBeInTheDocument();
   });
 

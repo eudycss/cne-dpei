@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import {
   ChartColumn,
   FileChartColumn,
@@ -23,6 +23,7 @@ import { NotificationsBell } from '../components/NotificationsBell';
 import { etiquetaRol } from '../lib/roles';
 import { useModulos } from '../lib/useModulos';
 import { PASOS_PREPARACION } from '../lib/flujo';
+import { CargaDePagina } from '../components/CargaDePagina';
 
 /** Grupo del menú con título visible, anunciado como grupo por lectores de pantalla. */
 function SeccionMenu({ id, titulo, children }: { id: string; titulo: string; children: ReactNode }) {
@@ -37,6 +38,7 @@ function SeccionMenu({ id, titulo, children }: { id: string; titulo: string; chi
 export function Layout() {
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
+  const location = useLocation();
   const puedeVerNotificaciones =
     user?.roles.some((r) => r === 'ADMINISTRADOR' || r === 'TECNICO_SUPERVISOR') ?? false;
   const esAdmin = user?.roles.includes('ADMINISTRADOR') ?? false;
@@ -179,7 +181,10 @@ export function Layout() {
             </button>
             {puedeVerNotificaciones ? <NotificationsBell /> : null}
           </div>
-          <Outlet />
+          {/* Dentro del armazón: al cambiar de sección el menú queda visible mientras carga. */}
+          <CargaDePagina claveReinicio={location.pathname}>
+            <Outlet />
+          </CargaDePagina>
         </main>
       </div>
     </>
