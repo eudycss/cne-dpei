@@ -3,7 +3,7 @@ import { sileo } from 'sileo';
 import { guardarArchivo } from './queries/custodia';
 
 /** Texto de un Blob (FileReader como respaldo de navegadores sin Blob.text). */
-function textoDeBlob(b: Blob): Promise<string> {
+export function textoDeBlob(b: Blob): Promise<string> {
   if (typeof b.text === 'function') return b.text();
   return new Promise((resolve, reject) => {
     const r = new FileReader();

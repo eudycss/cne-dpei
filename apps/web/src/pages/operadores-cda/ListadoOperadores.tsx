@@ -11,6 +11,9 @@ import { useModulos } from '../../lib/useModulos';
 import { SearchInput } from '../../components/SearchInput';
 import { Cargando } from '../../components/Cargando';
 import { cambiarActivoOperadorCda, getOperadoresCda, urlFotoCdaGeneral } from '../../lib/queries/operadores-cda';
+import { descargarInformeCda, getAvanceInformesCda, urlInformeCda } from '../../lib/queries/informe-cda';
+import { useDescargaPdf } from '../../lib/useDescargaPdf';
+import { FOTOS_INFORME_CDA } from '@cne/shared-validation';
 import { AvatarPersona } from './AvatarPersona';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { RevisarFotoModal } from './RevisarFotoModal';
@@ -158,6 +161,15 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     campo.focus();
     setEnfocarBusqueda(false);
   }, [enfocarBusqueda, data]);
+  // Informe de productos: cuántas de las 6 fotos subió cada persona.
+  const { data: avanceInforme } = useQuery({
+    queryKey: ['informes-cda', 'avance'],
+    queryFn: getAvanceInformesCda,
+    enabled: puedeEnlaceFoto,
+    select: (filas) => new Map(filas.map((f) => [f.operadorId, f.fotos])),
+  });
+  const { descargando: descargandoInforme, descargar: descargarInforme } = useDescargaPdf('No se pudo generar el informe');
+
   const reactivar = useMutation({
     mutationFn: (o: OperadorCda) => cambiarActivoOperadorCda(o.id, true),
     onSuccess: (o) => {
@@ -199,6 +211,16 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
     }
   }
 
+  // Enlace único del informe de productos (6 fotos): cada quien escribe su cédula.
+  async function copiarEnlaceInforme() {
+    try {
+      await navigator.clipboard.writeText(urlInformeCda());
+      sileo.success({ title: 'Enlace del informe copiado: envíelo al personal', description: urlInformeCda() });
+    } catch {
+      sileo.error({ title: `No se pudo copiar. El enlace es ${urlInformeCda()}` });
+    }
+  }
+
   return (
     <>
       {(isAdmin || puedeCarnets || puedeEnlaceFoto) && (
@@ -206,6 +228,11 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
           {puedeEnlaceFoto && (
             <button type="button" className="btn secondary" onClick={copiarEnlaceFotos}>
               Copiar enlace de fotos
+            </button>
+          )}
+          {puedeEnlaceFoto && (
+            <button type="button" className="btn secondary" onClick={copiarEnlaceInforme}>
+              Copiar enlace del informe
             </button>
           )}
           {isAdmin && (
@@ -386,6 +413,16 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
                   mostrarCuenta={conCuentaApp}
                   onEnlace={puedeEnlaceFoto ? () => setEnlacePara(o) : undefined}
                   onRevisar={puedeEnlaceFoto && o.fotoPendiente ? () => setRevisarPara(o) : undefined}
+                  informe={
+                    puedeEnlaceFoto
+                      ? {
+                          fotos: avanceInforme?.get(o.id) ?? 0,
+                          descargando: descargandoInforme === o.id,
+                          onDescargar: () =>
+                            descargarInforme(o.id, () => descargarInformeCda(o.id), `informe_productos_${o.cedula}.docx`),
+                        }
+                      : undefined
+                  }
                   admin={
                     isAdmin
                       ? {
@@ -435,12 +472,14 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
 }
 
 type AccionesAdmin = { onEditar: () => void; onOcultar: () => void; onReactivar: () => void; reactivando: boolean };
+type InformeTarjeta = { fotos: number; descargando: boolean; onDescargar: () => void };
 
 function TarjetaOperador({
   operador: o,
   mostrarCuenta,
   onEnlace,
   onRevisar,
+  informe,
   admin,
 }: {
   operador: OperadorCda;
@@ -450,6 +489,8 @@ function TarjetaOperador({
   onEnlace?: () => void;
   /** Subió una foto nueva con su cédula: se aprueba o rechaza. */
   onRevisar?: () => void;
+  /** Informe de productos: avance de las 6 fotos y descarga (Word). */
+  informe?: InformeTarjeta;
   /** Solo el administrador agrega, edita u oculta. */
   admin?: AccionesAdmin;
 }) {
@@ -520,6 +561,23 @@ function TarjetaOperador({
               >
                 {accion}
               </button>
+            )}
+            {informe && (
+              <>
+                <span className={`ocda-estado ${informe.fotos >= FOTOS_INFORME_CDA ? 'ok' : informe.fotos > 0 ? 'aviso' : 'vacio'}`}>
+                  Informe: {informe.fotos}/{FOTOS_INFORME_CDA} fotos
+                </span>
+                <button
+                  type="button"
+                  className="btn secondary ocda-btn-chico"
+                  onClick={informe.onDescargar}
+                  disabled={informe.descargando}
+                  aria-busy={informe.descargando}
+                  aria-label={`Descargar informe de productos (Word): ${o.apellidosNombres}`}
+                >
+                  {informe.descargando ? 'Generando…' : 'Informe'}
+                </button>
+              </>
             )}
           </>
         ) : (

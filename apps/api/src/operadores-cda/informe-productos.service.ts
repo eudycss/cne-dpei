@@ -1,4 +1,13 @@
-import { BadRequestException, ConflictException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  GoneException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import type { AvanceInformeCda, EstadoFotoInformeCda, VisitaInformeCdaPublica } from '@cne/shared-types';
 import { FOTOS_INFORME_CDA } from '@cne/shared-validation';
@@ -13,6 +22,9 @@ import { FotoAnexo, generarWordInformeProductos, nombreArchivoInforme, tieneInfo
 /** Lo que dura una visita a la página: tiempo de sobra para subir 6 fotos y descargar. */
 export const VIGENCIA_VISITA_MS = 2 * 60 * 60 * 1000;
 const CATEGORIA = 'fotos-informe-cda';
+/** Visitas abiertas a la vez con una misma cédula (frena el uso con IP rotadas). */
+export const MAX_VISITAS_ACTIVAS = 5;
+const DEMASIADAS_VISITAS = 'Se ingresó muchas veces con esta cédula. Espere un momento e intente de nuevo.';
 export const VISITA_VENCIDA = 'La visita venció: escriba su cédula de nuevo.';
 const FOTO_INVALIDA = 'La foto debe ser una imagen JPG válida de hasta 1 MB. Intente de nuevo.';
 export const FALTAN_FOTOS =
@@ -49,6 +61,10 @@ export class InformeProductosService {
     if (!operador?.activo) throw new NotFoundException(CEDULA_NO_REGISTRADA_FOTO);
 
     const ahora = new Date();
+    const activas = await this.prisma.visitaInformeCda.count({
+      where: { operadorId: operador.id, expiraEn: { gt: ahora }, creadoEn: { gt: new Date(ahora.getTime() - 60 * 60 * 1000) } },
+    });
+    if (activas >= MAX_VISITAS_ACTIVAS) throw new HttpException(DEMASIADAS_VISITAS, HttpStatus.TOO_MANY_REQUESTS);
     const token = crypto.randomBytes(32).toString('base64url');
     const expiraEn = new Date(ahora.getTime() + VIGENCIA_VISITA_MS);
     const [, visita] = await this.prisma.$transaction([

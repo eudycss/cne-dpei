@@ -859,6 +859,40 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .fcda-consentimiento details ul { margin: 0.5rem 0 0; padding-left: 1rem; display: grid; gap: 0.35rem; color: var(--f-text-muted); }
 .fcda-acciones { margin-top: auto; display: grid; gap: 0.75rem; }
 .fcda-acciones .btn { width: 100%; min-height: 52px; font-size: 1rem; }
+
+/* Informe de productos CDA/CPE: 6 fotos con vista previa (usa la base .fcda). */
+.icda { max-width: 560px; }
+.icda-avance { display: grid; gap: 0.35rem; }
+.icda-avance progress { width: 100%; height: 10px; accent-color: var(--f-violeta); }
+.icda-fotos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.icda-casilla {
+  display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem; border-radius: 14px;
+  border: 1px dashed var(--f-border-subtle); background: var(--f-bg-surface);
+}
+.icda-casilla.cargada { border-style: solid; border-color: var(--f-violeta); }
+.icda-casilla.con-error { border-color: var(--f-error); }
+.icda-numero { font-size: 0.8rem; font-weight: 700; color: var(--f-text-muted); }
+.icda-miniatura, .icda-vacia {
+  aspect-ratio: 4 / 3; width: 100%; border-radius: 10px; overflow: hidden; display: grid; place-items: center;
+  background: var(--f-border-subtle); border: 0; padding: 0; font-size: 1.6rem; color: var(--f-text-muted);
+}
+.icda-miniatura { cursor: zoom-in; }
+.icda-miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.icda-miniatura:focus-visible { outline: 3px solid var(--f-violeta); outline-offset: 2px; }
+.icda-estado { margin: 0; font-size: 0.8rem; line-height: 1.3; color: var(--f-text-muted); min-height: 2.1em; }
+.icda-casilla.con-error .icda-estado { color: var(--f-error); }
+/* El input real queda oculto pero accesible; la etiqueta hace de botón (área táctil de 44 px). */
+.icda-archivo { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.icda-archivo:focus-visible + label { outline: 3px solid var(--f-violeta); outline-offset: 2px; }
+.icda-casilla label.btn { min-height: 44px; display: grid; place-items: center; text-align: center; cursor: pointer; }
+.icda-casilla label.btn.deshabilitado { opacity: 0.5; cursor: not-allowed; }
+.icda-dialogo { border: 0; border-radius: 16px; padding: 0.75rem; max-width: min(92vw, 900px); background: var(--f-bg-elevated); }
+.icda-dialogo::backdrop { background: rgb(0 0 0 / 0.7); }
+.icda-dialogo img { display: block; max-width: 100%; max-height: 75vh; margin: 0 auto 0.75rem; border-radius: 10px; }
+.icda-dialogo form { display: flex; justify-content: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .icda-casilla { transition: border-color 0.2s ease; }
+}
 .fcda-nota { margin: 0; text-align: center; font-size: 0.8rem; color: var(--f-aviso); }
 .fcda-pie { margin: 0; text-align: center; font-size: 0.8rem; color: var(--f-text-muted); }
 .fcda-circulo {

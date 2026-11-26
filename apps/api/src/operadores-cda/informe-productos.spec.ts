@@ -114,6 +114,7 @@ describe('InformeProductosService', () => {
         deleteMany: jest.fn().mockReturnValue('borrar'),
         create: jest.fn().mockReturnValue('crear'),
         findUnique: jest.fn().mockResolvedValue(visitaViva()),
+        count: jest.fn().mockResolvedValue(0),
       },
       fotoInformeCda: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -142,6 +143,12 @@ describe('InformeProductosService', () => {
     expect(datos.tokenHash).toBe(hashToken(r.token));
     expect(datos.expiraEn.getTime() - Date.now()).toBeGreaterThan(119 * 60_000);
     expect(prisma.visitaInformeCda.deleteMany).toHaveBeenCalledWith({ where: { expiraEn: { lt: expect.any(Date) } } });
+  });
+
+  it('con muchas visitas abiertas en la última hora con la misma cédula responde 429', async () => {
+    prisma.visitaInformeCda.count.mockResolvedValue(5);
+    await expect(service.consultar('1050123412')).rejects.toMatchObject({ status: 429 });
+    expect(prisma.visitaInformeCda.create).not.toHaveBeenCalled();
   });
 
   it('una cédula inactiva o desconocida es 404', async () => {

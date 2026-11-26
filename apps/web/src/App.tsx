@@ -35,6 +35,7 @@ const PermisosModulosPage = lazyPage(() => import('./pages/permisos-modulos/Perm
 const SimuladorPage = lazyPage(() => import('./pages/simulador/SimuladorPage'), 'SimuladorPage');
 const SimuladorPublicoPage = lazyPage(() => import('./pages/simulador-publico/SimuladorPublicoPage'), 'SimuladorPublicoPage');
 const EvaticsPublicoPage = lazyPage(() => import('./pages/evatics-publico/EvaticsPublicoPage'), 'EvaticsPublicoPage');
+const InformeCdaPage = lazyPage(() => import('./pages/informe-cda/InformeCdaPage'), 'InformeCdaPage');
 
 export default function App() {
   return (
@@ -50,6 +51,8 @@ export default function App() {
         <Route path="/simulador" element={<SimuladorPublicoPage />} />
         {/* Pública: subir el certificado Evatics con la cédula. */}
         <Route path="/evatics" element={<EvaticsPublicoPage />} />
+        {/* Pública: el personal CDA/CPE sube 6 fotos y descarga su informe de productos. */}
+        <Route path="/informe-cda" element={<InformeCdaPage />} />
         <Route
           path="/change-password"
           element={

@@ -214,6 +214,45 @@ describe('ListadoOperadores', () => {
   });
 });
 
+describe('ListadoOperadores — informe de productos (6 fotos)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.fotos.enlace']);
+  });
+
+  it('muestra cuántas fotos lleva cada persona, descarga su informe y copia el enlace /informe-cda', async () => {
+    const o = operador({});
+    getMock.mockImplementation(async (url: string) => {
+      if (url === '/operadores-cda/informes-productos/avance') return { data: [{ operadorId: o.id, fotos: 4 }] };
+      if (url.endsWith('/informe-productos')) return { data: new Blob(['docx']) };
+      return { data: [o] };
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:x');
+    globalThis.URL.revokeObjectURL = vi.fn();
+    renderPagina();
+
+    expect(await screen.findByText('Informe: 4/6 fotos')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: `Descargar informe de productos (Word): ${o.apellidosNombres}` }));
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith(`/operadores-cda/${o.id}/informe-productos`, { responseType: 'blob' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar enlace del informe' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/informe-cda`));
+  });
+
+  it('sin el permiso de fotos no se ve ni se consulta el avance', async () => {
+    permisos.actuales = new Set();
+    roles = ['LECTOR'];
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.queryByText(/Informe: /)).not.toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith('/operadores-cda/informes-productos/avance');
+  });
+});
+
 describe('ListadoOperadores — agregar, editar y ocultar (administrador)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

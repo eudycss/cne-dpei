@@ -93,7 +93,7 @@ export class InformeProductosPublicoController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: 'Sube o reemplaza una de las 6 fotos (JPG, hasta 1 MB) con el consentimiento LOPDP' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 4 } }))
+  @UseInterceptors(FileInterceptor('foto', { limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 4, fieldSize: 2048, parts: 5 } }))
   async subir(
     @Req() req: Request,
     @UploadedFile() file: Express.Multer.File | undefined,
