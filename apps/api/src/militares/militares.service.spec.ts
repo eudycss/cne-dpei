@@ -68,7 +68,8 @@ describe('MilitaresService', () => {
       expect(sql.sql).toContain('FROM militares t LEFT JOIN recintos r ON r.id = t.recinto_id');
       expect(sql.sql).toContain('t.nombres,t.apellidos,t.cedula,r.nombre,r.codigo_recinto');
       expect(sql.values).toContain('%apuela%');
-      expect(prisma.militar.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['m1'] } });
+      // Los ocultos (militares de prueba) nunca salen en el listado.
+      expect(prisma.militar.findMany.mock.calls[0][0].where).toEqual({ activo: true, id: { in: ['m1'] } });
     });
   });
 

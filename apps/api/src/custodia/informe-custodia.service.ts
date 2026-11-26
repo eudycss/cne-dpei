@@ -182,7 +182,7 @@ export class InformeCustodiaService {
         select: { codigoUnico: true, numero: true },
       }),
       this.prisma.militar.findMany({
-        where: { recintoId: { in: recintoIds } },
+        where: { recintoId: { in: recintoIds }, activo: true },
         select: { recintoId: true, nombres: true, apellidos: true, cedula: true, grado: true },
       }),
       this.prisma.usuario.findMany({

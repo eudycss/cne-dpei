@@ -341,6 +341,9 @@ model Militar {
   apellidos String   @db.VarChar(120)
   /// Grado militar abreviado (CBOP, SUBS, SGOP…); va en el acta de custodia.
   grado     String?  @db.VarChar(20)
+  /// false = oculto (p. ej. militares de prueba de simulacros con entregas que
+  /// no se pueden borrar): no sale en listados, app ni actas; su historial queda.
+  activo    Boolean  @default(true)
   recintoId String   @map("recinto_id") @db.Uuid
   creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
@@ -349,6 +352,7 @@ model Militar {
   entregasCustodio EntregaCustodioKit[]
 
   @@index([recintoId], map: "idx_militares_recinto")
+  @@index([recintoId, activo], map: "idx_militares_recinto_activo")
   @@map("militares")
 }
 
