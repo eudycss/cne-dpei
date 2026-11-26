@@ -24,6 +24,9 @@ jobs:
       # sin esto los modelos quedan como `any` y los tests no validan los tipos.
       - run: pnpm --filter @cne/api db:generate
       - run: pnpm --filter @cne/api test
+      # Scripts de verificación post-deploy (pruebas de humo, rollback, Telegram).
+      - name: Scripts de post-deploy
+        run: node --test infra/deploy/*.test.mjs
       # Los e2e necesitan Postgres y no corren aquí, pero al menos deben compilar.
       - name: Tipos de los e2e de la API
         working-directory: apps/api
