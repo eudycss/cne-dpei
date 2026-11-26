@@ -122,7 +122,7 @@ export class InformeCustodiaService {
     });
     if (!kit) throw new NotFoundException('Kit no encontrado en el evento activo');
     const datos = await this.cargar({}, [kitId]);
-    return generarActasPdf(this.armarActas(datos));
+    return generarActasPdf(this.armarActas(datos, await this.militaresPorRecinto(datos.kits)));
   }
 
   /** Todas las actas de los filtros en un solo PDF (para imprimir). */
@@ -133,7 +133,7 @@ export class InformeCustodiaService {
         `Son ${datos.kits.length} actas; el máximo por archivo es ${MAX_ACTAS_POR_PDF}. Filtra por cantón o recinto.`,
       );
     }
-    return generarActasPdf(this.armarActas(datos));
+    return generarActasPdf(this.armarActas(datos, await this.militaresPorRecinto(datos.kits)));
   }
 
   /** Acta de Constancia y Custodia (militar) de un kit, en Word. */
@@ -345,7 +345,10 @@ export class InformeCustodiaService {
     };
   }
 
-  private armarActas(datos: Awaited<ReturnType<InformeCustodiaService['cargar']>>): DatosActa[] {
+  private armarActas(
+    datos: Awaited<ReturnType<InformeCustodiaService['cargar']>>,
+    militaresPorRecinto: Map<string, MilitarRecinto[]>,
+  ): DatosActa[] {
     const actas: DatosActa[] = [];
     for (const k of datos.kits) {
       const entrega = datos.entregas.get(k.id);
@@ -411,7 +414,9 @@ export class InformeCustodiaService {
           };
         }),
         operador: persona(operadorRecepcion ?? k.operador),
-        militar: persona(entrega?.militar),
+        // Sin entrega registrada (o la de prueba, que no cuenta): el militar
+        // del cronograma del recinto, como en el acta militar en Word.
+        militar: persona(entrega?.militar ?? militarDelRecinto(militaresPorRecinto.get(k.recintoId ?? '') ?? [])),
         // Firma quien recibe al retorno; si aún no hay retorno, quien entregó;
         // si no hay ninguno, el único asistente transversal activo.
         asistente: persona(asistenteDevolucion ?? asistenteEntrega ?? datos.asistenteUnico),

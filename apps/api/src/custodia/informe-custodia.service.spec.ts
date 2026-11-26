@@ -213,6 +213,26 @@ describe('InformeCustodiaService', () => {
     expect(storage.readDecrypted.mock.calls).toEqual([['militares/a.bin'], ['militares/b.bin']]);
   });
 
+  it('actas PDF sin entrega (o con la de prueba): el militar del cronograma del recinto, no en blanco', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValueOnce([
+      kitRow({ entregaCustodio: { ...kitRow().entregaCustodio, militar: { ...militarNuevo, activo: false } } }),
+    ]);
+    prisma.militar.findMany.mockImplementation((args: any) =>
+      Promise.resolve(
+        args.where.recintoId
+          ? [{ recintoId, nombres: 'Victor Hugo', apellidos: 'Herrera Indacochea', cedula: '1204989931', grado: 'SGOS' }]
+          : [],
+      ),
+    );
+    const spy = jest.spyOn(actaPdf, 'generarActasPdf');
+    await service.actas({});
+    const [[acta]] = spy.mock.calls[0];
+    spy.mockRestore();
+
+    expect(acta.militar).toEqual({ nombre: 'Herrera Indacochea Victor Hugo', cedula: '1204989931' });
+    expect(acta.entrega).toBeNull();
+  });
+
   describe('asistente del acta sin entrega ni devolución', () => {
     const sinPasos = () => {
       prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow({ entregaCustodio: null })]);
