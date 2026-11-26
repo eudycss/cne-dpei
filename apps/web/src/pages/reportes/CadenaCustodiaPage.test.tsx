@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FilaInformeCustodia } from '@cne/shared-types';
 
-vi.mock('../../lib/api', () => ({ api: { get: vi.fn() } }));
+vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('xlsx', () => ({
   utils: { aoa_to_sheet: vi.fn(() => ({})), book_new: vi.fn(() => ({})), book_append_sheet: vi.fn() },
@@ -21,6 +21,7 @@ import { guardarArchivo } from '../../lib/queries/custodia';
 import { CadenaCustodiaPage } from './CadenaCustodiaPage';
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
 
 function fila(o: Partial<FilaInformeCustodia> = {}): FilaInformeCustodia {
   return {
@@ -33,6 +34,7 @@ function fila(o: Partial<FilaInformeCustodia> = {}): FilaInformeCustodia {
     cantonNombre: 'IBARRA',
     operadorNombre: 'Pérez Ana',
     operadorCedula: '1002003004',
+    militarActa: { nombre: 'Paz Juan', cedula: '1004005006', grado: 'CBOP' },
     entrega: {
       militarNombre: 'Paz Juan',
       militarCedula: '1004005006',
@@ -62,6 +64,8 @@ const filas = [
     recintoNombre: 'Colegio Otavalo',
     cantonId: 35,
     cantonNombre: 'OTAVALO',
+    operadorNombre: 'Ruiz Carla',
+    militarActa: { nombre: 'Herrera Indacochea Victor Hugo', cedula: '1204989931', grado: 'SGOS' },
     entrega: null,
     recepcion: null,
     devolucion: null,
@@ -84,6 +88,7 @@ describe('CadenaCustodiaPage', () => {
     getMock.mockImplementation((url: string) =>
       url === '/custodia/informe' ? Promise.resolve({ data: filas }) : Promise.resolve({ data: new Blob(['%PDF']) }),
     );
+    postMock.mockResolvedValue({ data: new Blob(['PK']) });
   });
 
   it('muestra cada kit con sus tres etapas, pendientes y avisos', async () => {
@@ -150,9 +155,50 @@ describe('CadenaCustodiaPage', () => {
     await user.selectOptions(screen.getByLabelText('Cantón'), '30');
     await user.click(screen.getByRole('button', { name: 'Actas militares (Word)' }));
     await waitFor(() =>
-      expect(getMock).toHaveBeenCalledWith('/custodia/actas-militares', { params: { cantonId: '30' }, responseType: 'blob' }),
+      expect(postMock).toHaveBeenCalledWith('/custodia/actas-militares/seleccion', { kitIds: ['k1'] }, { responseType: 'blob' }),
     );
     expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'actas_militares.zip');
+  });
+
+  it('busca por código o nombre del recinto, operador CDA o militar (sin tildes) y descarga solo esas actas', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('ABCD2345');
+    // El militar del cronograma se ve aunque el kit aún no se entregue.
+    expect(screen.getByText('Militar: SGOS. Herrera Indacochea Victor Hugo')).toBeInTheDocument();
+
+    const buscar = screen.getByLabelText('Buscar');
+    for (const texto of ['35', 'colegio otavalo', 'ruiz', 'indacochea', '1204989931', 'otavalo']) {
+      await user.clear(buscar);
+      await user.type(buscar, texto);
+      expect(screen.queryByText('ABCD2345')).not.toBeInTheDocument();
+      expect(screen.getByText('WXYZ6789')).toBeInTheDocument();
+    }
+    await user.clear(buscar);
+    await user.type(buscar, 'perez');
+    expect(screen.getByText('ABCD2345')).toBeInTheDocument();
+    expect(screen.queryByText('WXYZ6789')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Actas militares (Word)' }));
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith('/custodia/actas-militares/seleccion', { kitIds: ['k1'] }, { responseType: 'blob' }),
+    );
+
+    // Sin resultados: no hay actas que descargar.
+    await user.type(buscar, 'zzz');
+    expect(screen.getByText('No hay kits para los filtros elegidos.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actas militares (Word)' })).toBeDisabled();
+  });
+
+  it('con más de 200 kits en la tabla pide filtrar antes de descargar las actas militares', async () => {
+    const muchas = Array.from({ length: 201 }, (_, i) => fila({ kitId: `k${i}`, codigoUnico: `K${i}` }));
+    getMock.mockImplementation((url: string) =>
+      url === '/custodia/informe' ? Promise.resolve({ data: muchas }) : Promise.resolve({ data: new Blob(['%PDF']) }),
+    );
+    renderPage();
+    await screen.findByText('K0');
+    expect(screen.getByRole('button', { name: 'Actas militares (Word)' })).toBeDisabled();
+    expect(screen.getByText('Son 201 kits: filtre a 200 o menos para descargar las actas militares.')).toBeInTheDocument();
   });
 
   it('exporta a Excel solo las filas visibles', async () => {

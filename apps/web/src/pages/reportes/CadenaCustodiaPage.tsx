@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import type { FilaInformeCustodia } from '@cne/shared-types';
+import { coincideBusqueda, MAX_ACTAS_MILITARES } from '@cne/shared-validation';
 import { Logo } from '../../components/Logo';
 import { Cargando } from '../../components/Cargando';
 import {
@@ -30,6 +31,25 @@ function completo(f: FilaInformeCustodia): boolean {
   return !!f.entrega && !!f.recepcion && !!f.devolucion;
 }
 
+function nombreMilitar(m: NonNullable<FilaInformeCustodia['militarActa']>): string {
+  return m.grado ? `${m.grado}. ${m.nombre}` : m.nombre;
+}
+
+/** Textos por los que se busca un kit: recinto, cantón, operador CDA y militar. */
+function textosBusqueda(f: FilaInformeCustodia): (string | null | undefined)[] {
+  return [
+    f.codigoUnico,
+    f.recintoCodigo,
+    f.recintoNombre,
+    f.cantonNombre,
+    f.operadorNombre,
+    f.operadorCedula,
+    f.militarActa?.nombre,
+    f.militarActa?.cedula,
+    f.entrega?.militarNombre,
+  ];
+}
+
 /** Estado de una etapa en una celda: hecho (con hora y detalle) o pendiente. */
 function Etapa({ iso, detalle, aviso }: { iso: string | null; detalle?: string; aviso?: string }) {
   if (!iso) return <span style={{ color: 'var(--error)' }}>✗ Pendiente</span>;
@@ -55,6 +75,7 @@ export function CadenaCustodiaPage() {
   const [cantonId, setCantonId] = useState('');
   const [recintoId, setRecintoId] = useState('');
   const [etapa, setEtapa] = useState<FiltroEtapa>('TODOS');
+  const [buscar, setBuscar] = useState('');
   const { descargando, descargar } = useDescargaPdf('No se pudo descargar el acta');
 
   const filas = data ?? [];
@@ -77,8 +98,10 @@ export function CadenaCustodiaPage() {
     (f) =>
       (!cantonId || String(f.cantonId) === cantonId) &&
       (!recintoId || f.recintoId === recintoId) &&
-      (etapa === 'TODOS' || (etapa === 'COMPLETOS' ? completo(f) : !completo(f))),
+      (etapa === 'TODOS' || (etapa === 'COMPLETOS' ? completo(f) : !completo(f))) &&
+      coincideBusqueda(textosBusqueda(f), buscar),
   );
+  const demasiadasActas = visibles.length > MAX_ACTAS_MILITARES;
   const totales = {
     kits: visibles.length,
     entregados: visibles.filter((f) => f.entrega).length,
@@ -185,17 +208,13 @@ export function CadenaCustodiaPage() {
             </button>
             <button
               className="btn secondary"
-              disabled={!visibles.length || descargando !== null}
+              disabled={!visibles.length || demasiadasActas || descargando !== null}
               aria-busy={descargando === 'militares'}
-              title="Acta de Constancia y Custodia que firma el militar, una por kit (Word)"
+              aria-describedby="ayuda-actas-militares"
               onClick={() =>
                 descargar(
                   'militares',
-                  () =>
-                    descargarActasMilitares({
-                      cantonId: cantonId ? Number(cantonId) : undefined,
-                      recintoId: recintoId || undefined,
-                    }),
+                  () => descargarActasMilitares(visibles.map((f) => f.kitId)),
                   'actas_militares.zip',
                 )
               }
@@ -234,6 +253,20 @@ export function CadenaCustodiaPage() {
               ))}
             </select>
           </label>
+          <label className="row" style={{ gap: '0.35rem', alignItems: 'center', flex: '1 1 18rem' }}>
+            Buscar
+            <input
+              type="search"
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              placeholder="Recinto (código o nombre), operador CDA, militar o cantón"
+              aria-describedby="ayuda-buscar-custodia"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+          </label>
+          <span id="ayuda-buscar-custodia" className="sr-only">
+            Busca por código o nombre del recinto, nombre o cédula del operador CDA o del militar, o cantón. No importan las tildes.
+          </span>
           <label className="row" style={{ gap: '0.35rem', alignItems: 'center' }}>
             Estado
             <select value={etapa} onChange={(e) => setEtapa(e.target.value as FiltroEtapa)}>
@@ -243,6 +276,12 @@ export function CadenaCustodiaPage() {
             </select>
           </label>
         </div>
+
+        <p id="ayuda-actas-militares" className="muted no-print" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }} aria-live="polite">
+          {demasiadasActas
+            ? `Son ${visibles.length} kits: filtre a ${MAX_ACTAS_MILITARES} o menos para descargar las actas militares.`
+            : `"Actas militares (Word)" descarga un acta por cada kit de la tabla (${visibles.length}).`}
+        </p>
 
         <div className="sr-only" role="status">
           {descargando ? 'Generando el documento…' : ''}
@@ -295,7 +334,12 @@ export function CadenaCustodiaPage() {
                     </th>
                     <td>
                       {f.recintoCodigo ? `${f.recintoCodigo} — ${f.recintoNombre}` : '—'}
-                      <div className="muted" style={{ fontSize: '0.8rem' }}>{f.operadorNombre ?? 'Sin operador'}</div>
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>
+                        CDA: {f.operadorNombre ?? 'Sin operador'}
+                      </div>
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>
+                        Militar: {f.militarActa ? nombreMilitar(f.militarActa) : 'Sin militar en el cronograma'}
+                      </div>
                     </td>
                     <td>
                       <Etapa

@@ -226,6 +226,20 @@ describe('InformeCustodiaService — actas militares', () => {
     expect(texto).toContain(`el Ing. ${EN_BLANCO}`);
   });
 
+  it('la selección de la tabla: solo kits del evento activo, sin repetidos, un Word por kit', async () => {
+    const zip = new PizZip(await service.actasMilitaresSeleccion([kitId, kitId], asistente.id));
+    expect(Object.keys(zip.files)).toEqual(['acta_militar_17_1359.docx']);
+    expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ eventoId, id: { in: [kitId] } }) }),
+    );
+
+    prisma.kitElectoral.findMany.mockResolvedValueOnce([]);
+    await expect(service.actasMilitaresSeleccion([kitId], asistente.id)).rejects.toThrow('No hay kits del evento activo');
+    // Un kit de prueba no sale aunque se pida su id (en la tabla no aparece).
+    prisma.kitElectoral.findMany.mockResolvedValueOnce([kit({ esPrueba: true })]);
+    await expect(service.actasMilitaresSeleccion([kitId], asistente.id)).rejects.toThrow('No hay kits del evento activo');
+  });
+
   it('el .zip trae un Word por kit', async () => {
     const zip = new PizZip(await service.actasMilitares({ cantonId: 30 }, asistente.id));
     expect(Object.keys(zip.files)).toEqual(['acta_militar_17_1359.docx']);

@@ -96,6 +96,7 @@ describe('InformeCustodiaService', () => {
       cantonNombre: 'IBARRA',
       operadorNombre: 'Pérez Ana',
       operadorCedula: '1002003004',
+      militarActa: { nombre: 'Mora Pedro', cedula: '1005006007', grado: null },
       entrega: {
         militarNombre: 'Mora Pedro',
         militarCedula: '1005006007',
@@ -122,6 +123,23 @@ describe('InformeCustodiaService', () => {
 
     const [fila] = await service.informe({});
     expect(fila).toEqual(expect.objectContaining({ entrega: null, recepcion: null, devolucion: null, correcciones: 0 }));
+  });
+
+  it('sin entrega, el militar del acta es el del cronograma del recinto (para buscarlo en la tabla)', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValueOnce([kitRow({ entregaCustodio: null })]);
+    prisma.militar.findMany.mockImplementation((args: any) =>
+      Promise.resolve(
+        args.where.recintoId
+          ? [{ recintoId, nombres: 'Victor Hugo', apellidos: 'Herrera Indacochea', cedula: '1204989931', grado: 'SGOS' }]
+          : [militar, militarNuevo],
+      ),
+    );
+    const [fila] = await service.informe({});
+    expect(fila.militarActa).toEqual({ nombre: 'Herrera Indacochea Victor Hugo', cedula: '1204989931', grado: 'SGOS' });
+    expect(fila.entrega).toBeNull();
+    expect(prisma.militar.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { recintoId: { in: [recintoId] }, activo: true } }),
+    );
   });
 
   it('una entrega a un militar oculto (de prueba) sale como pendiente y su nombre no aparece', async () => {

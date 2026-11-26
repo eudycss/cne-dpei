@@ -697,6 +697,19 @@ const motivoCorreccionSchema = z
   .min(5, 'Explica el motivo (mínimo 5 caracteres)')
   .max(500, 'Máximo 500 caracteres');
 
+/** Máximo de actas militares (Word) por .zip: cuesta CPU en la API. */
+export const MAX_ACTAS_MILITARES = 200;
+
+/** Actas militares de los kits elegidos en la tabla (lo que el usuario filtró). */
+export const actasMilitaresSeleccionSchema = z
+  .object({
+    kitIds: z
+      .array(z.string().uuid('Kit inválido'))
+      .min(1, 'Elige al menos un kit')
+      .max(MAX_ACTAS_MILITARES, `Máximo ${MAX_ACTAS_MILITARES} actas por archivo: filtra más`),
+  })
+  .strict();
+
 export const registrarEntregaSchema = z.object({
   kitId: z.string().uuid('Kit inválido'),
   militarId: z.string().uuid('Selecciona un militar'),
