@@ -256,6 +256,8 @@ export interface Militar {
   cedula: string;
   nombres: string;
   apellidos: string;
+  /** Grado abreviado (CBOP, SUBS…); null si no se registró. */
+  grado: string | null;
   recintoId: string;
   recintoNombre?: string;
   recintoCodigo?: string;
@@ -266,6 +268,7 @@ export interface CreateMilitarRequest {
   cedula: string;
   nombres: string;
   apellidos: string;
+  grado?: string | null;
   recintoId: string;
 }
 
@@ -273,6 +276,7 @@ export interface UpdateMilitarRequest {
   cedula?: string;
   nombres?: string;
   apellidos?: string;
+  grado?: string | null;
   recintoId?: string;
 }
 
@@ -1111,6 +1115,7 @@ export interface MilitarResumen {
   cedula: string;
   nombres: string;
   apellidos: string;
+  grado: string | null;
   recintoId: string;
   recintoNombre: string;
 }

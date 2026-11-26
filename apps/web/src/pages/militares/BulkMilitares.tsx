@@ -49,7 +49,7 @@ export function BulkMilitares() {
       <form className="card" onSubmit={onSubmit} style={{ maxWidth: 720 }}>
         <p className="muted">
           Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con las columnas:{' '}
-          <code>cedula, nombres, apellidos, codigo_recinto</code>.
+          <code>cedula, nombres, apellidos, grado, codigo_recinto</code> (<code>grado</code> es opcional, ej. CBOP).
         </p>
         <p className="muted">
           El campo <code>codigo_recinto</code> debe ser el código único del recinto

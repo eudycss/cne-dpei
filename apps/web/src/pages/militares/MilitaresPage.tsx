@@ -11,6 +11,9 @@ import { SearchInput } from '../../components/SearchInput';
 import { ExcelUploadButton } from '../../components/ExcelUploadButton';
 import { PasoFlujo } from '../../components/PasoFlujo';
 
+// Grados del cronograma de despliegue 2027 (sugerencias; se puede escribir otro).
+const GRADOS_SUGERIDOS = ['CBOS', 'CBOP', 'SGOS', 'SGOP', 'SUBS', 'SUBP', 'SUBT', 'TNTE', 'CAPT', 'MAYO', 'TCRN'];
+
 export function MilitaresPage() {
   const { user } = useAuth();
   const isAdmin = actuaComoAdmin(user?.roles);
@@ -83,6 +86,7 @@ export function MilitaresPage() {
               <thead>
                 <tr>
                   <th>Cédula</th>
+                  <th>Grado</th>
                   <th>Nombres</th>
                   <th>Recinto asignado</th>
                   {isAdmin && <th style={{ width: 180 }}>Acciones</th>}
@@ -92,6 +96,14 @@ export function MilitaresPage() {
                 {data?.items.map((m) => (
                   <tr key={m.id}>
                     <td>{m.cedula}</td>
+                    <td>
+                      {m.grado ?? (
+                        <>
+                          <span className="muted" aria-hidden="true">—</span>
+                          <span className="sr-only">Sin grado</span>
+                        </>
+                      )}
+                    </td>
                     <td>{m.nombres} {m.apellidos}</td>
                     <td>
                       {m.recintoNombre ?? '—'}
@@ -125,7 +137,7 @@ export function MilitaresPage() {
                 {data?.items.length === 0 && (
                   <tr>
                     <td
-                      colSpan={isAdmin ? 4 : 3}
+                      colSpan={isAdmin ? 5 : 4}
                       className="muted"
                       style={{ textAlign: 'center', padding: '1.5rem' }}
                     >
@@ -202,6 +214,7 @@ function MilitarModal({
     cedula: militar?.cedula ?? '',
     nombres: militar?.nombres ?? '',
     apellidos: militar?.apellidos ?? '',
+    grado: militar?.grado ?? '',
     recintoId: militar?.recintoId ?? '',
   });
   const [recintoSearch, setRecintoSearch] = useState(
@@ -251,6 +264,7 @@ function MilitarModal({
       cedula: form.cedula,
       nombres: form.nombres,
       apellidos: form.apellidos,
+      grado: form.grado,
       recintoId: form.recintoId,
     };
     const schema = militar ? updateMilitarSchema : createMilitarSchema;
@@ -306,6 +320,28 @@ function MilitarModal({
         <div className="field">
           <label htmlFor="militares-apellidos">Apellidos</label>
           <input id="militares-apellidos" value={form.apellidos} onChange={field('apellidos')} required />
+        </div>
+
+        <div className="field">
+          <label htmlFor="militares-grado">Grado</label>
+          <input
+            id="militares-grado"
+            value={form.grado}
+            onChange={field('grado')}
+            list="militares-grados"
+            maxLength={20}
+            autoComplete="off"
+            placeholder="Ej. CBOP, SUBS, SGOP"
+            aria-describedby="militares-grado-ayuda"
+          />
+          <datalist id="militares-grados">
+            {GRADOS_SUGERIDOS.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+          <small id="militares-grado-ayuda" className="muted">
+            Va en el acta de custodia (ej. «CBOP. Herrera Cadena…»). Opcional.
+          </small>
         </div>
 
         {/* Selector de recinto con búsqueda */}

@@ -170,10 +170,22 @@ export type BulkUserRow = z.infer<typeof bulkUserRowSchema>;
 // ===================================================================
 
 // --- Militares (HU8) ---
+// Grado abreviado (CBOP, SUBS, SGOP…). Vacío = sin grado (null); se guarda
+// en mayúsculas y sin el punto final ("cbop." → "CBOP").
+export const gradoMilitarSchema = z
+  .string()
+  .trim()
+  .max(20, 'Grado: máximo 20 caracteres')
+  .regex(/^[A-Za-zÁÉÍÓÚÑáéíóúñ]*\.?$/, 'Grado: una abreviatura sin espacios (ej. CBOP, SUBS)')
+  .transform((g) => g.replace(/\.$/, '').toUpperCase() || null)
+  .nullable()
+  .optional();
+
 export const createMilitarSchema = z.object({
   cedula: cedulaSchema,
   nombres: nombreSchema,
   apellidos: nombreSchema,
+  grado: gradoMilitarSchema,
   recintoId: z.string().uuid('Recinto inválido'),
 });
 
@@ -181,6 +193,7 @@ export const updateMilitarSchema = z.object({
   cedula: cedulaSchema.optional(),
   nombres: nombreSchema.optional(),
   apellidos: nombreSchema.optional(),
+  grado: gradoMilitarSchema,
   recintoId: z.string().uuid().optional(),
 });
 
@@ -189,6 +202,7 @@ export const bulkMilitarRowSchema = z.object({
   cedula: cedulaSchema,
   nombres: nombreSchema,
   apellidos: nombreSchema,
+  grado: gradoMilitarSchema,
   codigo_recinto: z.string().min(1, 'Código de recinto requerido'),
 });
 

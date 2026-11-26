@@ -83,6 +83,8 @@ export class MilitaresService {
         cedula: parsed.cedula ?? existing.cedula,
         nombres: parsed.nombres ?? existing.nombres,
         apellidos: parsed.apellidos ?? existing.apellidos,
+        // undefined = no se tocó; null/"" = quitar el grado.
+        grado: parsed.grado !== undefined ? parsed.grado : existing.grado,
         recintoId: parsed.recintoId ?? existing.recintoId,
       },
       include: { recinto: true },
@@ -155,6 +157,7 @@ export class MilitaresService {
             cedula: parsed.data.cedula,
             nombres: parsed.data.nombres,
             apellidos: parsed.data.apellidos,
+            grado: parsed.data.grado ?? null,
             recintoId,
           },
         });
@@ -173,9 +176,10 @@ export class MilitaresService {
       { header: 'cedula', key: 'cedula', width: 14 },
       { header: 'nombres', key: 'nombres', width: 24 },
       { header: 'apellidos', key: 'apellidos', width: 24 },
+      { header: 'grado', key: 'grado', width: 10 },
       { header: 'codigo_recinto', key: 'codigo_recinto', width: 16 },
     ];
-    ws.addRow({ cedula: '1710034065', nombres: 'Pedro', apellidos: 'Suárez', codigo_recinto: '28' });
+    ws.addRow({ cedula: '1710034065', nombres: 'Pedro', apellidos: 'Suárez', grado: 'CBOP', codigo_recinto: '28' });
     ws.getRow(1).font = { bold: true };
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
     return Buffer.from(buffer);
@@ -233,6 +237,7 @@ function toMilitarDto(m: any): Militar {
     cedula: m.cedula,
     nombres: m.nombres,
     apellidos: m.apellidos,
+    grado: m.grado ?? null,
     recintoId: m.recintoId,
     recintoNombre: m.recinto?.nombre,
     recintoCodigo: m.recinto?.codigoRecinto,

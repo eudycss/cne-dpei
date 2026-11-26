@@ -15,7 +15,7 @@ const nuevoOperadorId = '99999999-9999-9999-9999-999999999999';
 const asistenteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 function militarRow(id = militarId, rec = recintoId) {
-  return { id, cedula: '1002003004', nombres: 'Juan', apellidos: 'Paz', recintoId: rec, recinto: { nombre: 'Escuela' } };
+  return { id, cedula: '1002003004', nombres: 'Juan', apellidos: 'Paz', grado: 'CBOP', recintoId: rec, recinto: { nombre: 'Escuela' } };
 }
 
 function kitRow(overrides: Record<string, unknown> = {}) {
@@ -87,12 +87,14 @@ describe('CustodiaService', () => {
       expect(prisma.kitElectoral.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { eventoId_codigoUnico: { eventoId, codigoUnico: 'ABCD2345' } } }),
       );
-      expect(prisma.militar.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { recintoId } }));
+      expect(prisma.militar.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { recintoId }, select: expect.objectContaining({ grado: true }) }),
+      );
       expect(r).toEqual(
         expect.objectContaining({
           editable: true,
           entrega: null,
-          militaresRecinto: [expect.objectContaining({ id: militarId, recintoNombre: 'Escuela' })],
+          militaresRecinto: [expect.objectContaining({ id: militarId, grado: 'CBOP', recintoNombre: 'Escuela' })],
         }),
       );
     });
