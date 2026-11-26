@@ -339,6 +339,8 @@ model Militar {
   cedula    String   @db.VarChar(10)
   nombres   String   @db.VarChar(120)
   apellidos String   @db.VarChar(120)
+  /// Grado militar abreviado (CBOP, SUBS, SGOP…); va en el acta de custodia.
+  grado     String?  @db.VarChar(20)
   recintoId String   @map("recinto_id") @db.Uuid
   creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 

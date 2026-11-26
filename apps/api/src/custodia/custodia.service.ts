@@ -28,6 +28,7 @@ const MILITAR_SELECT = {
   cedula: true,
   nombres: true,
   apellidos: true,
+  grado: true,
   recintoId: true,
   recinto: { select: { nombre: true } },
 } as const;
@@ -342,6 +343,7 @@ function toMilitar(m: {
   cedula: string;
   nombres: string;
   apellidos: string;
+  grado: string | null;
   recintoId: string;
   recinto: { nombre: string } | null;
 }): MilitarResumen {
@@ -350,6 +352,7 @@ function toMilitar(m: {
     cedula: m.cedula,
     nombres: m.nombres,
     apellidos: m.apellidos,
+    grado: m.grado,
     recintoId: m.recintoId,
     recintoNombre: m.recinto?.nombre ?? '',
   };

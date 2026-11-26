@@ -38,6 +38,7 @@ const militar: MilitarResumen = {
   cedula: '1002003004',
   nombres: 'Juan',
   apellidos: 'Paz',
+  grado: 'CBOP',
   recintoId,
   recintoNombre: 'Escuela Central',
 };

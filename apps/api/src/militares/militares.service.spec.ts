@@ -87,6 +87,7 @@ describe('MilitaresService', () => {
 
       expect(result.id).toBe(militarId);
       expect(result.recintoNombre).toBe('Recinto 1');
+      expect(result.grado).toBeNull();
       expect(prisma.militar.create).toHaveBeenCalled();
     });
   });
@@ -116,6 +117,21 @@ describe('MilitaresService', () => {
 
       expect(result.nombres).toBe('Pablo');
       expect(prisma.militar.update).toHaveBeenCalled();
+    });
+
+    it('guarda el grado normalizado y lo conserva si no viene en el cambio', async () => {
+      prisma.militar.findUnique.mockResolvedValue(militarRow({ grado: 'SUBS' }));
+      prisma.militar.update.mockResolvedValue(militarRow({ grado: 'CBOP' }));
+
+      const r = await service.update(militarId, { grado: 'cbop.' } as any);
+      expect(prisma.militar.update.mock.calls[0][0].data.grado).toBe('CBOP');
+      expect(r.grado).toBe('CBOP');
+
+      await service.update(militarId, { nombres: 'Pablo' } as any);
+      expect(prisma.militar.update.mock.calls[1][0].data.grado).toBe('SUBS');
+
+      await service.update(militarId, { grado: '' } as any);
+      expect(prisma.militar.update.mock.calls[2][0].data.grado).toBeNull();
     });
   });
 
@@ -183,6 +199,19 @@ describe('MilitaresService', () => {
       expect(result.creados).toBe(1);
       expect(result.errores).toHaveLength(2);
       expect(prisma.militar.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('la columna grado es opcional y se guarda normalizada', async () => {
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: recintoId, codigoRecinto: '28' }]);
+      prisma.militar.create.mockResolvedValue(militarRow());
+      const csv = ['cedula,nombres,apellidos,grado,codigo_recinto', '1034567899,Pedro,Suarez,sgop.,28', '1750123455,Maria,Lopez,,28'].join('\n');
+      const file = { originalname: 'm.csv', mimetype: 'text/csv', buffer: Buffer.from(csv, 'utf8') } as Express.Multer.File;
+
+      const result = await service.bulkUpload(file);
+
+      expect(result.creados).toBe(2);
+      expect(prisma.militar.create.mock.calls[0][0].data.grado).toBe('SGOP');
+      expect(prisma.militar.create.mock.calls[1][0].data.grado).toBeNull();
     });
   });
 });

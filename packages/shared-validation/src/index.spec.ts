@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   strongPasswordSchema,
+  createMilitarSchema,
+  updateMilitarSchema,
   resumenJornadaSchema,
   leerNumeroMochila,
   leerCodigoQrKit,
@@ -736,5 +738,24 @@ describe('sexo del personal CDA/CPE', () => {
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0].message).toBe('Sexo inválido (use M o F)');
     expect(operadorCdaFilaSchema.safeParse({ ...base, sexo: 'm' }).success).toBe(false);
+  });
+});
+
+describe('grado del militar (acta de custodia)', () => {
+  const base = { cedula: '1003199443', nombres: 'Christian Becker', apellidos: 'Herrera Cadena', recintoId: '11111111-1111-4111-8111-111111111111' };
+
+  it('se guarda en mayúsculas y sin el punto final', () => {
+    expect(createMilitarSchema.parse({ ...base, grado: ' cbop. ' }).grado).toBe('CBOP');
+  });
+
+  it('vacío queda en null y se puede omitir', () => {
+    expect(createMilitarSchema.parse({ ...base, grado: '' }).grado).toBeNull();
+    expect(createMilitarSchema.parse(base).grado).toBeUndefined();
+    expect(updateMilitarSchema.parse({ grado: null }).grado).toBeNull();
+  });
+
+  it('rechaza números o textos largos', () => {
+    expect(createMilitarSchema.safeParse({ ...base, grado: 'CB0P' }).success).toBe(false);
+    expect(createMilitarSchema.safeParse({ ...base, grado: 'A'.repeat(21) }).success).toBe(false);
   });
 });
