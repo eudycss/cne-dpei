@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { correrPruebas, PRUEBAS, resumen } from './smoke.mjs';
-import { cliente, esperar, revertir, ubicar } from './render.mjs';
+import { cliente, esperar, esUltimo, revertir, ubicar } from './render.mjs';
 import { avisar } from './telegram.mjs';
 
 const API = 'https://api.test';
@@ -74,8 +74,37 @@ test('reintenta antes de dar por caída (API arrancando)', async () => {
   assert.equal(n, 3);
 });
 
-test('las pruebas no escriben: solo GET o POST que el servidor rechaza', () => {
-  for (const p of PRUEBAS) assert.ok(!/login|crear|borrar/i.test(p.nombre), p.nombre);
+test('las pruebas no escriben: solo GET, o POST que el servidor debe rechazar (4xx)', async () => {
+  const f = fetchFalso(produccionSana());
+  await correrPruebas({ api: API, web: WEB, fetch: f, intentos: 1, esperaMs: 0 });
+  const posts = f.llamadas.filter((l) => l.clave.startsWith('POST'));
+  assert.deepEqual(
+    posts.map((l) => l.clave),
+    [`POST ${API}/publico/foto-cda/cedula/consultar`, `POST ${API}/publico/informe-cda/foto`],
+  );
+  // Cédula inválida (400 por validación) y token de visita falso (410): nada se guarda.
+  assert.equal(JSON.parse(posts[0].init.body).cedula, '123');
+  assert.equal(posts[1].init.body.get('token'), 'x'.repeat(43));
+});
+
+test('un 429 (límite por IP) se reintenta con espera larga y no cuenta como caída', async () => {
+  let n = 0;
+  const esperas = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms) => {
+    esperas.push(ms);
+    return realSetTimeout(fn, 0);
+  };
+  try {
+    const f = fetchFalso(
+      produccionSana({ [`GET ${API}/health`]: () => (++n === 1 ? new Response('', { status: 429 }) : new Response('{"status":"ok"}')) }),
+    );
+    const r = await correrPruebas({ api: API, web: WEB, fetch: f, intentos: 3, esperaMs: 10, esperaLimiteMs: 65_000 });
+    assert.equal(r.fallaCritica, false);
+    assert.ok(esperas.includes(65_000));
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
 });
 
 // ─── Render ──────────────────────────────────────────────────────────────
@@ -99,6 +128,10 @@ function renderFalso(secuencia) {
       this.rollbacks.push(id);
       return { id: 'depR' };
     },
+    autoDeploy: 'yes',
+    async servicio() {
+      return { autoDeploy: this.autoDeploy };
+    },
   };
 }
 
@@ -112,16 +145,36 @@ test('esperar: termina en live o en falla de build', async () => {
   assert.equal((await esperar(mal, 'c3', { cadaMs: 0 })).estado, 'build_failed');
 });
 
-test('esperar: si otro commit lo reemplazó no se revisa este', async () => {
+test('esperar: si otro commit lo reemplazó (desactivado o cancelado) no se revisa este', async () => {
   const r = renderFalso([[d('dep4', 'c4', 'live'), d('dep3', 'c3', 'deactivated'), d('dep2', 'c2', 'deactivated')]]);
   assert.equal((await esperar(r, 'c3', { cadaMs: 0 })).estado, 'reemplazado');
+  const cancelado = renderFalso([[d('dep4', 'c4', 'build_in_progress'), d('dep3', 'c3', 'canceled'), d('dep2', 'c2', 'live')]]);
+  assert.equal((await esperar(cancelado, 'c3', { cadaMs: 0 })).estado, 'reemplazado');
+});
+
+test('esperar: sin deploy para el commit o sin terminar a tiempo', async () => {
+  const sin = renderFalso([[d('dep2', 'c2', 'live')]]);
+  assert.equal((await esperar(sin, 'c9', { cadaMs: 1, sinDeployMs: 0 })).estado, 'sin_deploy');
+  const lento = renderFalso([[d('dep3', 'c3', 'build_in_progress')]]);
+  assert.equal((await esperar(lento, 'c3', { cadaMs: 1, maxMs: 5 })).estado, 'tiempo_agotado');
+});
+
+test('esUltimo: no se revierte si ya entró un commit más nuevo', async () => {
+  assert.equal(await esUltimo(renderFalso([[d('dep4', 'c4', 'build_in_progress'), d('dep3', 'c3', 'live')]]), 'c3'), false);
+  assert.equal(await esUltimo(renderFalso([[d('dep3', 'c3', 'live')]]), 'c3'), true);
+});
+
+test('revertir: un rollback que falla se informa, y se revisa el autodeploy', async () => {
+  const r = renderFalso([[d('depR', 'c2', 'update_failed')]]);
+  r.autoDeploy = 'no';
+  assert.deepEqual(await revertir(r, 'dep2', { cadaMs: 0 }), { ok: false, id: 'depR', estado: 'update_failed', autoDeploy: 'no' });
 });
 
 test('revertir: pide el rollback al deploy anterior y espera a que quede en vivo', async () => {
   const r = renderFalso([[d('depR', 'c2', 'update_in_progress')], [d('depR', 'c2', 'live')]]);
   const res = await revertir(r, 'dep2', { cadaMs: 0 });
   assert.deepEqual(r.rollbacks, ['dep2']);
-  assert.deepEqual(res, { ok: true, id: 'depR' });
+  assert.deepEqual(res, { ok: true, id: 'depR', estado: 'live', autoDeploy: 'yes' });
 });
 
 test('cliente de Render: usa la API v1 con la clave y no la imprime en errores', async () => {
@@ -129,12 +182,29 @@ test('cliente de Render: usa la API v1 con la clave y no la imprime en errores',
     [`GET https://api.render.com/v1/services/srv1/deploys?limit=20`]: json([{ deploy: d('dep1', 'c1', 'live'), cursor: 'x' }]),
     [`POST https://api.render.com/v1/services/srv1/rollback`]: texto('prohibido', 403),
   });
-  const c = cliente({ apiKey: 'rnd_secreta', serviceId: 'srv1', fetch: f });
+  const c = cliente({ apiKey: 'rnd_secreta', serviceId: 'srv1', fetch: f, esperaMs: 0 });
   assert.equal((await c.deploys())[0].id, 'dep1');
   assert.equal(f.llamadas[0].init.headers.Authorization, 'Bearer rnd_secreta');
   await assert.rejects(c.rollback('dep0'), (e) => !e.message.includes('rnd_secreta') && /403/.test(e.message));
   assert.equal(JSON.parse(f.llamadas[1].init.body).deployId, 'dep0');
   assert.throws(() => cliente({ serviceId: 'srv1' }), /RENDER_API_KEY/);
+});
+
+test('cliente de Render: reintenta un 5xx o un error de red; un 401 no', async () => {
+  let n = 0;
+  const f = async () => {
+    n++;
+    if (n === 1) throw new TypeError('fetch failed');
+    if (n === 2) return new Response('caído', { status: 503 });
+    return new Response('[]', { status: 200 });
+  };
+  assert.deepEqual(await cliente({ apiKey: 'k', serviceId: 's', fetch: f, esperaMs: 0 }).deploys(), []);
+  assert.equal(n, 3);
+
+  let m = 0;
+  const no = async () => (m++, new Response('clave inválida', { status: 401 }));
+  await assert.rejects(cliente({ apiKey: 'k', serviceId: 's', fetch: no, esperaMs: 0 }).deploys(), /401/);
+  assert.equal(m, 1);
 });
 
 // ─── Telegram ────────────────────────────────────────────────────────────
@@ -146,4 +216,20 @@ test('telegram: sin secretos no falla; con secretos envía al chat privado', asy
   const cuerpo = JSON.parse(f.llamadas[0].init.body);
   assert.equal(cuerpo.chat_id, '123');
   assert.ok(cuerpo.text.length <= 3901);
+  assert.ok(cuerpo.text.endsWith('…'));
+});
+
+test('telegram: un error de red no rompe el workflow ni muestra el token', async () => {
+  const logs = [];
+  const log = console.log;
+  console.log = (m) => logs.push(m);
+  try {
+    const f = async () => {
+      throw new TypeError('fetch failed https://api.telegram.org/botSECRETO/sendMessage');
+    };
+    assert.equal(await avisar('hola', { token: 'SECRETO', chatId: '1', fetch: f }), false);
+  } finally {
+    console.log = log;
+  }
+  assert.ok(logs.every((l) => !l.includes('SECRETO')));
 });

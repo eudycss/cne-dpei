@@ -15,11 +15,18 @@ export async function avisar(texto, { token, chatId, fetch: f = fetch } = {}) {
     return false;
   }
   const cuerpo = texto.length > LIMITE ? `${texto.slice(0, LIMITE)}…` : texto;
-  const r = await f(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: cuerpo, disable_web_page_preview: true }),
-  });
+  let r;
+  try {
+    r = await f(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: cuerpo, disable_web_page_preview: true }),
+    });
+  } catch (e) {
+    // Error de red: solo el nombre (el mensaje podría llevar la URL con el token).
+    console.log(`[telegram] no se pudo enviar: ${e?.name ?? 'error'}`);
+    return false;
+  }
   if (!r.ok) {
     // Sin el token en el mensaje de error.
     console.log(`[telegram] no se pudo enviar: HTTP ${r.status}`);

@@ -98,7 +98,17 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
  * Corre todas las pruebas. Cada una se reintenta (la API de Render puede estar
  * arrancando) antes de darla por fallida.
  */
-export async function correrPruebas({ api, web, fetch: f = fetch, intentos = 3, esperaMs = 10_000, pruebas = PRUEBAS }) {
+export async function correrPruebas({
+  api,
+  web,
+  fetch: f = fetch,
+  intentos = 3,
+  esperaMs = 10_000,
+  // Un 429 (límite por IP; los runners de GitHub comparten IP) no es una
+  // falla de la API: se espera a que pase la ventana de 60 s.
+  esperaLimiteMs = 65_000,
+  pruebas = PRUEBAS,
+}) {
   const ctx = { api: api.replace(/\/$/, ''), web: web.replace(/\/$/, ''), fetch: f };
   const resultados = [];
   for (const p of pruebas) {
@@ -110,7 +120,7 @@ export async function correrPruebas({ api, web, fetch: f = fetch, intentos = 3, 
         break;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
-        if (i < intentos) await dormir(esperaMs);
+        if (i < intentos) await dormir(/respondió 429/.test(error) ? esperaLimiteMs : esperaMs);
       }
     }
     resultados.push({ nombre: p.nombre, critica: p.critica, ok: error === null, error });
@@ -141,7 +151,9 @@ if (esCli) {
   if (process.env.GITHUB_OUTPUT) {
     const { appendFileSync } = await import('node:fs');
     appendFileSync(process.env.GITHUB_OUTPUT, `falla_critica=${r.fallaCritica}\nfalla_aviso=${r.fallaAviso}\n`);
-    appendFileSync(process.env.GITHUB_OUTPUT, `resumen<<FIN\n${resumen(r.resultados)}\nFIN\n`);
+    // Delimitador aleatorio: el resumen lleva texto de las respuestas de producción.
+    const fin = `FIN_${(await import('node:crypto')).randomUUID()}`;
+    appendFileSync(process.env.GITHUB_OUTPUT, `resumen<<${fin}\n${resumen(r.resultados)}\n${fin}\n`);
   }
   process.exit(r.fallaCritica ? 1 : 0);
 }

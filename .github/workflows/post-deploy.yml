@@ -29,6 +29,8 @@ env:
 
 jobs:
   verificar:
+    # Con los secretos y el rollback: solo desde la rama de producción.
+    if: github.ref == 'refs/heads/probarweb'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -55,12 +57,22 @@ jobs:
         continue-on-error: true
         run: node infra/deploy/smoke.mjs "$API_URL" "$WEB_URL"
 
-      - name: Rollback de la API al deploy anterior
-        id: rollback
-        if: steps.humo.outputs.falla_critica == 'true' && steps.render.outputs.anterior != ''
+      # Si ya entró un commit más nuevo, revertir lo borraría también: su propio
+      # workflow lo verifica.
+      - name: ¿Sigue siendo el deploy más reciente?
+        id: ultimo
+        if: steps.humo.outputs.falla_critica == 'true'
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-        run: node infra/deploy/render.mjs rollback "${{ steps.render.outputs.anterior }}"
+        run: node infra/deploy/render.mjs ultimo "$GITHUB_SHA"
+
+      - name: Rollback de la API al deploy anterior
+        id: rollback
+        if: steps.ultimo.outputs.es_ultimo == 'true' && steps.render.outputs.anterior != ''
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          ANTERIOR: ${{ steps.render.outputs.anterior }}
+        run: node infra/deploy/render.mjs rollback "$ANTERIOR"
 
       - name: Pruebas de humo después del rollback
         id: humo2
@@ -80,6 +92,8 @@ jobs:
           FALLA_AVISO: ${{ steps.humo.outputs.falla_aviso }}
           RESUMEN: ${{ steps.humo.outputs.resumen }}
           ROLLBACK: ${{ steps.rollback.outcome }}
+          ES_ULTIMO: ${{ steps.ultimo.outputs.es_ultimo }}
+          AUTO_DEPLOY: ${{ steps.rollback.outputs.auto_deploy }}
           RESUMEN2: ${{ steps.humo2.outputs.resumen }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -87,7 +101,9 @@ jobs:
           case "$ESTADO" in
             reemplazado|sin_deploy) exit 0 ;;
             live) ;;
-            "") titulo="⚠️ No se pudo seguir el deploy (¿falta RENDER_API_KEY?)" ;;
+            sin_clave) titulo="⚠️ No se verificó el deploy: falta el secreto RENDER_API_KEY en GitHub" ;;
+            error_api|"") titulo="⚠️ No se pudo consultar Render para seguir el deploy (revisar el run)" ;;
+            tiempo_agotado) titulo="⚠️ El deploy de la API no terminó en 25 min (puede seguir en curso)" ;;
             *) titulo="🔴 El deploy de la API falló en Render ($ESTADO). Sigue en vivo la versión anterior." ;;
           esac
           if [ "$ESTADO" = "live" ]; then
@@ -95,6 +111,11 @@ jobs:
               if [ "$ROLLBACK" = "success" ]; then
                 titulo="🔴 Deploy REVERTIDO automáticamente: falló una prueba crítica"
                 extra=$'\n\nDespués del rollback:\n'"$RESUMEN2"
+                if [ "$AUTO_DEPLOY" != "yes" ]; then
+                  extra="$extra"$'\n\n⚠️ El autodeploy de Render quedó en "'"$AUTO_DEPLOY"'": reactivarlo en el dashboard.'
+                fi
+              elif [ "$ES_ULTIMO" = "false" ]; then
+                titulo="⚠️ Falló una prueba crítica, pero ya entró un commit más nuevo: no se revierte (su verificación sigue)"
               else
                 titulo="🚨 Falló una prueba crítica y NO se pudo revertir: revisar ya"
               fi
