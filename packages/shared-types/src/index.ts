@@ -1181,6 +1181,11 @@ export interface FilaInformeCustodia {
   cantonNombre: string | null;
   operadorNombre: string | null;
   operadorCedula: string | null;
+  /**
+   * El militar que va en el acta de constancia y custodia: el de la entrega
+   * registrada o, si aún no se entrega, el del cronograma del recinto.
+   */
+  militarActa: { nombre: string; cedula: string; grado: string | null } | null;
   /** Paso 1: Asistente → militar en el DPEI. */
   entrega: {
     militarNombre: string;

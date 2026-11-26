@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { FilaInformeCustodia, ItemChecklist } from '@cne/shared-types';
+import { MAX_ACTAS_MILITARES } from '@cne/shared-validation';
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DatosActa, generarActasPdf, Persona } from './acta-custodia.pdf';
@@ -19,8 +20,8 @@ export interface FiltrosInforme {
 // Cada acta lleva una foto: en el plan gratuito de Render (512 MB) un PDF
 // enorme puede agotar la memoria. Por encima del tope se pide filtrar.
 export const MAX_ACTAS_POR_PDF = 100;
-// Las actas militares no llevan foto: caben las 137 de la provincia (+ kits extra).
-export const MAX_ACTAS_MILITARES = 200;
+// Las actas militares no llevan foto: caben las 137 de la provincia (+ kits
+// extra). El tope (MAX_ACTAS_MILITARES) está en shared-validation: lo usa la web.
 const NO_DISPONIBLE: Persona = { nombre: '(usuario no disponible)', cedula: '—' };
 
 type Usuario = { id: string; nombres: string; apellidos: string; cedula: string };
@@ -35,6 +36,7 @@ function nombreDirecto(p: { nombres: string; apellidos: string }): string {
 }
 
 type MilitarActa = { nombres: string; apellidos: string; cedula: string; grado: string | null };
+type MilitarRecinto = MilitarActa & { recintoId: string };
 
 /**
  * El militar del recinto para un acta sin entrega: el único con grado (los
@@ -66,8 +68,10 @@ export class InformeCustodiaService {
 
   async informe(filtros: FiltrosInforme): Promise<FilaInformeCustodia[]> {
     const datos = await this.cargar(filtros);
+    const militaresPorRecinto = await this.militaresPorRecinto(datos.kits);
     return datos.kits.map((k) => {
       const entrega = datos.entregas.get(k.id);
+      const militarActa = entrega?.militar ?? militarDelRecinto(militaresPorRecinto.get(k.recintoId ?? '') ?? []);
       const recepcion = datos.recepciones.get(k.id);
       const devolucion = datos.devoluciones.get(k.id);
       const items = (devolucion?.items as ItemChecklist[] | null) ?? [];
@@ -81,6 +85,9 @@ export class InformeCustodiaService {
         cantonNombre: k.recinto?.canton?.nombre ?? null,
         operadorNombre: k.operador ? nombre(k.operador) : null,
         operadorCedula: k.operador?.cedula ?? null,
+        militarActa: militarActa
+          ? { nombre: nombre(militarActa), cedula: militarActa.cedula, grado: militarActa.grado ?? null }
+          : null,
         entrega: entrega
           ? {
               militarNombre: nombre(entrega.militar),
@@ -163,7 +170,34 @@ export class InformeCustodiaService {
     return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
   }
 
+  /**
+   * Actas militares de los kits que el usuario eligió en la tabla (filtró por
+   * recinto, operador, militar…). Solo kits del evento activo; el tope lo
+   * valida el esquema (máx. MAX_ACTAS_MILITARES).
+   */
+  async actasMilitaresSeleccion(kitIds: string[], usuarioId: string): Promise<Buffer> {
+    const cargados = await this.cargar({}, [...new Set(kitIds)]);
+    // Como en la tabla: los kits de prueba no tienen acta aunque se pida su id.
+    const datos = { ...cargados, kits: cargados.kits.filter((k) => !k.esPrueba) };
+    if (!datos.kits.length) throw new NotFoundException('No hay kits del evento activo en la selección');
+    return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
+  }
+
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  /** Militares visibles de los recintos de los kits, agrupados por recinto. */
+  private async militaresPorRecinto(kits: { recintoId: string | null }[]): Promise<Map<string, MilitarRecinto[]>> {
+    const recintoIds = [...new Set(kits.map((k) => k.recintoId).filter((x): x is string => !!x))];
+    const militares = recintoIds.length
+      ? await this.prisma.militar.findMany({
+          where: { recintoId: { in: recintoIds }, activo: true },
+          select: { recintoId: true, nombres: true, apellidos: true, cedula: true, grado: true },
+        })
+      : [];
+    const porRecinto = new Map<string, MilitarRecinto[]>();
+    for (const m of militares) porRecinto.set(m.recintoId, [...(porRecinto.get(m.recintoId) ?? []), m]);
+    return porRecinto;
+  }
 
   /**
    * Datos del acta militar de cada kit. Con la entrega registrada salen el
@@ -174,17 +208,13 @@ export class InformeCustodiaService {
     datos: Awaited<ReturnType<InformeCustodiaService['cargar']>>,
     usuarioId: string,
   ): Promise<{ archivo: string; datos: DatosActaMilitar }[]> {
-    const recintoIds = [...new Set(datos.kits.map((k) => k.recintoId).filter((x): x is string => !!x))];
     const idsResponsable = new Set<string>([usuarioId, ...[...datos.entregas.values()].map((e) => e.entregadoPorId)]);
-    const [mochilas, militaresRecinto, responsables] = await Promise.all([
+    const [mochilas, militaresPorRecinto, responsables] = await Promise.all([
       this.prisma.mochilaKit.findMany({
         where: { codigoUnico: { in: datos.kits.map((k) => k.codigoUnico) } },
         select: { codigoUnico: true, numero: true },
       }),
-      this.prisma.militar.findMany({
-        where: { recintoId: { in: recintoIds }, activo: true },
-        select: { recintoId: true, nombres: true, apellidos: true, cedula: true, grado: true },
-      }),
+      this.militaresPorRecinto(datos.kits),
       this.prisma.usuario.findMany({
         where: { id: { in: [...idsResponsable] } },
         select: { id: true, nombres: true, apellidos: true, cedula: true, roles: { select: { rol: { select: { nombre: true } } } } },
@@ -192,10 +222,6 @@ export class InformeCustodiaService {
     ]);
     const numeroPorCodigo = new Map<string, number>(mochilas.map((m) => [m.codigoUnico, m.numero]));
     const responsablePorId = new Map<string, (typeof responsables)[number]>(responsables.map((u) => [u.id, u]));
-    const militaresPorRecinto = new Map<string, typeof militaresRecinto>();
-    for (const m of militaresRecinto) {
-      militaresPorRecinto.set(m.recintoId, [...(militaresPorRecinto.get(m.recintoId) ?? []), m]);
-    }
 
     const hoy = new Date();
     return datos.kits.map((k) => {

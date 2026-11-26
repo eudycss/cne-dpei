@@ -25,9 +25,9 @@ export const descargarActas = (filtros: FiltrosCustodia) =>
 export const descargarActaMilitarKit = (kitId: string) =>
   api.get<Blob>(`/custodia/kits/${kitId}/acta-militar`, { responseType: 'blob' });
 
-/** Actas militares de los filtros: un Word por kit en un .zip. */
-export const descargarActasMilitares = (filtros: FiltrosCustodia) =>
-  api.get<Blob>('/custodia/actas-militares', { params: params(filtros), responseType: 'blob' });
+/** Actas militares de los kits que quedaron en la tabla: un Word por kit en un .zip. */
+export const descargarActasMilitares = (kitIds: string[]) =>
+  api.post<Blob>('/custodia/actas-militares/seleccion', { kitIds }, { responseType: 'blob' });
 
 /** Guarda un blob como archivo (mismo patrón que la descarga de QR de kits). */
 export function guardarArchivo(blob: Blob, nombre: string): void {

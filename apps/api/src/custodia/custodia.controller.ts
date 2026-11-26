@@ -16,11 +16,13 @@ import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
+  actasMilitaresSeleccionSchema,
   cambiarOperadorSchema,
   corregirMilitarSchema,
   registrarEntregaSchema,
   validarKitSchema,
 } from '@cne/shared-validation';
+import type { z } from 'zod';
 import type {
   CambiarOperadorRequest,
   CorregirMilitarRequest,
@@ -179,6 +181,24 @@ export class CustodiaController {
     @Query('recintoId') recintoId?: unknown,
   ) {
     const zip = await this.informes.actasMilitares(filtrosInforme(cantonId, recintoId), user.sub);
+    enviarArchivo(res, zip, 'actas_militares.zip', 'application/zip');
+  }
+
+  // Las actas de lo que quedó en la tabla (buscador por recinto, operador,
+  // militar, cantón…): los ids van en el cuerpo (hasta 200, no caben en la URL).
+  @Post('actas-militares/seleccion')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
+  @Throttle({ default: { limit: 4, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Actas de constancia y custodia de los kits elegidos (un Word por kit, en .zip)' })
+  async actasMilitaresSeleccion(
+    @Res() res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(actasMilitaresSeleccionSchema)) body: z.infer<typeof actasMilitaresSeleccionSchema>,
+  ) {
+    const zip = await this.informes.actasMilitaresSeleccion(body.kitIds, user.sub);
     enviarArchivo(res, zip, 'actas_militares.zip', 'application/zip');
   }
 }
