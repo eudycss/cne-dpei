@@ -7,6 +7,7 @@ import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
 import { logoUrl } from './components/Logo';
+import { iniciarMonitoreo } from './lib/monitoreo';
 import './tailwind.css';
 import './styles.css';
 
@@ -15,6 +16,9 @@ const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? d
 favicon.rel = 'icon';
 favicon.href = logoUrl;
 document.head.appendChild(favicon);
+
+// Reporte de errores (Sentry) solo si hay DSN; no bloquea el arranque.
+void iniciarMonitoreo();
 
 const queryClient = new QueryClient({
   defaultOptions: {
