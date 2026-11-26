@@ -1,16 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
-import helmet from 'helmet';
 
 import { AppModule } from './app.module';
-import { ZodValidationExceptionFilter } from './common/zod-validation.filter';
 import { parseOriginPatterns, parseWebOrigins } from './common/web-origin.util';
-import { configurarBodyParsers } from './common/body-parsers';
-import { TRUST_PROXY } from './common/trust-proxy';
+import { configurarHttp } from './common/configurar-http';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -18,14 +14,8 @@ async function bootstrap() {
     bodyParser: false,
   });
   app.useLogger(app.get(Logger));
-  configurarBodyParsers(app);
-
-  app.use(helmet());
-
-  // En Render la petición llega por Cloudflare y un proxy local: sin esto req.ip
-  // no es la del cliente (bitácora) y los límites por IP (@Throttle del login y
-  // de la página pública de foto) se comparten entre usuarios. Ver trust-proxy.ts.
-  app.set('trust proxy', TRUST_PROXY);
+  // Parsers, helmet, trust proxy, pipes y filtros (lo mismo que usan las pruebas de endpoints).
+  configurarHttp(app);
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   app.enableCors({
@@ -36,15 +26,6 @@ async function bootstrap() {
     // La web lee el nombre del archivo de las descargas (actas en Word, PDF y ZIP).
     exposedHeaders: ['Content-Disposition'],
   });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-  app.useGlobalFilters(new ZodValidationExceptionFilter());
 
   if (process.env.NODE_ENV !== 'production') {
     const swaggerConfig = new DocumentBuilder()

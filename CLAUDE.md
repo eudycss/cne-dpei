@@ -94,6 +94,8 @@ Changes to either shared package require rebuilding them (`pnpm --filter @cne/<p
   pnpm --filter @cne/shared-validation build
   ```
 - **Modified `apps/api/prisma/schema.prisma`** → always run `pnpm --filter @cne/api db:generate` after migrating.
+- **New or changed endpoint (especially public / multipart / file downloads)** → add or update a `*.http.spec.ts` next to it using `crearAppHttp` (`apps/api/src/common/testing/app-http.ts`): real controller + production HTTP config (multer, Zod, filters), mocked service. Service specs alone don't catch HTTP-layer bugs (e.g. the 26-nov multer "Too many parts").
+- **After merging to `probarweb`** → `.github/workflows/post-deploy.yml` runs read-only smoke tests against production and rolls the API back on a critical failure; if a new public endpoint is critical, add a check to `infra/deploy/smoke.mjs`.
 - **Modified `.env`** → always sync to `apps/api/.env`:
   ```bash
   cp .env apps/api/.env
