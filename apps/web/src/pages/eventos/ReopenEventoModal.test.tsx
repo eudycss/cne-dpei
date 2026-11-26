@@ -14,7 +14,8 @@ vi.mock('../../lib/queries/tipos-evento', () => ({
 }));
 
 import { api } from '../../lib/api';
-import { EventosPage, ReopenEventoModal } from './EventosPage';
+import { EventosPage } from './EventosPage';
+import { ReopenEventoModal } from './ReopenEventoModal';
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const postMock = api.post as unknown as ReturnType<typeof vi.fn>;

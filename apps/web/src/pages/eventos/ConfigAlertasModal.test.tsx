@@ -8,7 +8,7 @@ vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), patch: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn() } }));
 
 import { api } from '../../lib/api';
-import { ConfigAlertasModal, configATexto, textoAConfig } from './EventosPage';
+import { ConfigAlertasModal, configATexto, textoAConfig } from './ConfigAlertasModal';
 
 const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
 const patchMock = api.patch as unknown as ReturnType<typeof vi.fn>;
