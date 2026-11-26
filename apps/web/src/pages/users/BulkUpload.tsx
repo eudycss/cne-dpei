@@ -55,8 +55,8 @@ export function BulkUpload() {
           Descargar plantilla
         </button>
         <div className="field" style={{ marginTop: '1rem' }}>
-          <label>Archivo</label>
-          <input
+          <label htmlFor="bulkupload-archivo">Archivo</label>
+          <input id="bulkupload-archivo"
             type="file"
             accept=".xlsx,.csv"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}

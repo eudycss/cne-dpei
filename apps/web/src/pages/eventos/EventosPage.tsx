@@ -376,8 +376,8 @@ function EventoModal({
         <h1 id="evento-modal-titulo">{evento ? 'Editar evento' : 'Nuevo evento electoral'}</h1>
 
         <div className="field">
-          <label>Nombre</label>
-          <input
+          <label htmlFor="eventos-nombre">Nombre</label>
+          <input id="eventos-nombre"
             value={form.nombre}
             onChange={field('nombre')}
             required
@@ -387,8 +387,8 @@ function EventoModal({
         </div>
 
         <div className="field">
-          <label>Tipo</label>
-          <select value={form.tipo} onChange={field('tipo')}>
+          <label htmlFor="eventos-tipo">Tipo</label>
+          <select id="eventos-tipo" value={form.tipo} onChange={field('tipo')}>
             {tiposEvento.map((t) => (
               <option key={t.codigo} value={t.codigo}>
                 {t.etiqueta}
@@ -398,8 +398,8 @@ function EventoModal({
         </div>
 
         <div className="field">
-          <label>Fecha de jornada</label>
-          <input
+          <label htmlFor="eventos-fecha-de-jornada">Fecha de jornada</label>
+          <input id="eventos-fecha-de-jornada"
             type="date"
             value={form.fechaJornada}
             onChange={field('fechaJornada')}
@@ -408,8 +408,8 @@ function EventoModal({
         </div>
 
         <div className="field">
-          <label>Descripción (opcional)</label>
-          <textarea
+          <label htmlFor="eventos-descripcion-opcional">Descripción (opcional)</label>
+          <textarea id="eventos-descripcion-opcional"
             value={form.descripcion}
             onChange={field('descripcion')}
             rows={3}

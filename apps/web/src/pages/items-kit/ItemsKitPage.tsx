@@ -152,8 +152,8 @@ function ItemModal({
 
         {!item && (
           <div className="field">
-            <label>Código interno</label>
-            <input
+            <label htmlFor="itemskit-codigo-interno">Código interno</label>
+            <input id="itemskit-codigo-interno"
               value={codigo}
               onChange={(e) => setCodigo(e.target.value)}
               placeholder="Ej.: LINTERNA"
@@ -165,8 +165,8 @@ function ItemModal({
         )}
 
         <div className="field">
-          <label>Etiqueta</label>
-          <input
+          <label htmlFor="itemskit-etiqueta">Etiqueta</label>
+          <input id="itemskit-etiqueta"
             value={etiqueta}
             onChange={(e) => setEtiqueta(e.target.value)}
             placeholder="Ej.: Linterna"

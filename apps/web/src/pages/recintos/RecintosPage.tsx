@@ -661,8 +661,8 @@ function RecintoModal({
         </h1>
 
         <div className="field">
-          <label>Código de recinto</label>
-          <input
+          <label htmlFor="recintos-codigo-de-recinto">Código de recinto</label>
+          <input id="recintos-codigo-de-recinto"
             value={form.codigoRecinto}
             onChange={textField('codigoRecinto')}
             required
@@ -671,18 +671,18 @@ function RecintoModal({
         </div>
 
         <div className="field">
-          <label>Nombre</label>
-          <input value={form.nombre} onChange={textField('nombre')} required maxLength={255} />
+          <label htmlFor="recintos-nombre">Nombre</label>
+          <input id="recintos-nombre" value={form.nombre} onChange={textField('nombre')} required maxLength={255} />
         </div>
 
         <div className="field">
-          <label>Dirección (opcional)</label>
-          <input value={form.direccion} onChange={textField('direccion')} maxLength={255} />
+          <label htmlFor="recintos-direccion-opcional">Dirección (opcional)</label>
+          <input id="recintos-direccion-opcional" value={form.direccion} onChange={textField('direccion')} maxLength={255} />
         </div>
 
         <div className="field">
-          <label>Cantón</label>
-          <select value={form.cantonId} onChange={textField('cantonId')} required>
+          <label htmlFor="recintos-canton">Cantón</label>
+          <select id="recintos-canton" value={form.cantonId} onChange={textField('cantonId')} required>
             <option value="">Selecciona…</option>
             {cantones?.map((c) => (
               <option key={c.id} value={c.id}>{c.nombre}</option>
@@ -692,18 +692,18 @@ function RecintoModal({
 
         <div className="row" style={{ gap: '0.75rem' }}>
           <div className="field" style={{ flex: 1 }}>
-            <label>Parroquia (opcional)</label>
-            <input value={form.parroquia} onChange={textField('parroquia')} maxLength={120} />
+            <label htmlFor="recintos-parroquia-opcional">Parroquia (opcional)</label>
+            <input id="recintos-parroquia-opcional" value={form.parroquia} onChange={textField('parroquia')} maxLength={120} />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Zona (opcional)</label>
-            <input value={form.zona} onChange={textField('zona')} maxLength={120} />
+            <label htmlFor="recintos-zona-opcional">Zona (opcional)</label>
+            <input id="recintos-zona-opcional" value={form.zona} onChange={textField('zona')} maxLength={120} />
           </div>
         </div>
 
         <div className="field">
-          <label>Tipo</label>
-          <select
+          <label htmlFor="recintos-tipo">Tipo</label>
+          <select id="recintos-tipo"
             value={form.tipo}
             onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoRecinto }))}
           >
@@ -715,8 +715,8 @@ function RecintoModal({
 
         <div className="row" style={{ gap: '0.75rem' }}>
           <div className="field" style={{ flex: 1 }}>
-            <label>Latitud</label>
-            <input
+            <label htmlFor="recintos-latitud">Latitud</label>
+            <input id="recintos-latitud"
               type="number"
               step="any"
               value={form.latitud}
@@ -726,8 +726,8 @@ function RecintoModal({
             />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Longitud</label>
-            <input
+            <label htmlFor="recintos-longitud">Longitud</label>
+            <input id="recintos-longitud"
               type="number"
               step="any"
               value={form.longitud}
@@ -740,8 +740,8 @@ function RecintoModal({
 
         <div className="row" style={{ gap: '0.75rem' }}>
           <div className="field" style={{ flex: 1 }}>
-            <label>Juntas Femeninas (JF)</label>
-            <input
+            <label htmlFor="recintos-juntas-femeninas-jf">Juntas Femeninas (JF)</label>
+            <input id="recintos-juntas-femeninas-jf"
               type="number"
               min={0}
               value={form.juntasFemeninas}
@@ -750,8 +750,8 @@ function RecintoModal({
             />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Juntas Masculinas (JM)</label>
-            <input
+            <label htmlFor="recintos-juntas-masculinas-jm">Juntas Masculinas (JM)</label>
+            <input id="recintos-juntas-masculinas-jm"
               type="number"
               min={0}
               value={form.juntasMasculinas}
@@ -794,8 +794,8 @@ function RecintoModal({
         )}
 
         <div className="field">
-          <label>Número de electores (opcional)</label>
-          <input
+          <label htmlFor="recintos-numero-de-electores-opcional">Número de electores (opcional)</label>
+          <input id="recintos-numero-de-electores-opcional"
             type="number"
             min={0}
             value={form.numeroElectores}
