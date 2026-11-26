@@ -138,6 +138,23 @@ describe('CadenaCustodiaPage', () => {
     );
   });
 
+  it('descarga el acta del militar (Word) de un kit y las del cantón en .zip', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('ABCD2345');
+
+    await user.click(screen.getByRole('button', { name: 'Descargar acta del militar (Word) del kit ABCD2345' }));
+    await waitFor(() => expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), 'acta_militar_ABCD2345.docx'));
+    expect(getMock).toHaveBeenCalledWith('/custodia/kits/k1/acta-militar', { responseType: 'blob' });
+
+    await user.selectOptions(screen.getByLabelText('Cantón'), '30');
+    await user.click(screen.getByRole('button', { name: 'Actas militares (Word)' }));
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith('/custodia/actas-militares', { params: { cantonId: '30' }, responseType: 'blob' }),
+    );
+    expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'actas_militares.zip');
+  });
+
   it('exporta a Excel solo las filas visibles', async () => {
     const user = userEvent.setup();
     renderPage();
