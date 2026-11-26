@@ -12,8 +12,8 @@ const recintoId = '44444444-4444-4444-4444-444444444444';
 
 const operador = { id: 'op1', nombres: 'Ana', apellidos: 'Pérez', cedula: '1002003004' };
 const asistente = { id: 'as1', nombres: 'Jairo', apellidos: 'Leal', cedula: '1003004005' };
-const militar = { id: 'mi1', nombres: 'Juan', apellidos: 'Paz', cedula: '1004005006' };
-const militarNuevo = { id: 'mi2', nombres: 'Pedro', apellidos: 'Mora', cedula: '1005006007' };
+const militar = { id: 'mi1', nombres: 'Juan', apellidos: 'Paz', cedula: '1004005006', activo: true };
+const militarNuevo = { id: 'mi2', nombres: 'Pedro', apellidos: 'Mora', cedula: '1005006007', activo: true };
 
 function kitRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -122,6 +122,17 @@ describe('InformeCustodiaService', () => {
 
     const [fila] = await service.informe({});
     expect(fila).toEqual(expect.objectContaining({ entrega: null, recepcion: null, devolucion: null, correcciones: 0 }));
+  });
+
+  it('una entrega a un militar oculto (de prueba) sale como pendiente y su nombre no aparece', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValueOnce([
+      kitRow({ entregaCustodio: { ...kitRow().entregaCustodio, militar: { ...militarNuevo, activo: false } } }),
+    ]);
+    const [fila] = await service.informe({});
+    expect(fila.entrega).toBeNull();
+    expect(JSON.stringify(fila)).not.toContain('Mora');
+    // El historial de correcciones tampoco nombra a militares ocultos.
+    expect(prisma.militar.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ activo: true }) }));
   });
 
   it('filtra por cantón y recinto, solo kits reales del evento activo', async () => {

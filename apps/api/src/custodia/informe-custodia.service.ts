@@ -264,8 +264,10 @@ export class InformeCustodiaService {
     const devoluciones = new Map<string, (typeof devolucionesKit)[number]>(devolucionesKit.map((d) => [d.kitId, d]));
     const correcciones = new Map<string, typeof correccionesKit>();
     for (const c of correccionesKit) correcciones.set(c.kitId, [...(correcciones.get(c.kitId) ?? []), c]);
+    // Una entrega a un militar oculto (de prueba) no cuenta: el kit sale como
+    // pendiente y el acta militar lleva al militar del cronograma del recinto.
     const entregas = new Map<string, NonNullable<(typeof kits)[number]['entregaCustodio']>>(
-      kits.filter((k) => k.entregaCustodio).map((k) => [k.id, k.entregaCustodio!]),
+      kits.filter((k) => k.entregaCustodio?.militar.activo).map((k) => [k.id, k.entregaCustodio!]),
     );
 
     // Usuarios y militares referidos por id (quién registró, quién verificó,
@@ -284,8 +286,9 @@ export class InformeCustodiaService {
         where: { id: { in: [...idsUsuario] } },
         select: { id: true, nombres: true, apellidos: true, cedula: true },
       }),
+      // Los ocultos no salen ni en el historial de correcciones (quedan "—").
       this.prisma.militar.findMany({
-        where: { id: { in: [...idsMilitar] } },
+        where: { id: { in: [...idsMilitar] }, activo: true },
         select: { id: true, nombres: true, apellidos: true, cedula: true },
       }),
       // Para kits sin entrega ni devolución registradas: si hay un solo
