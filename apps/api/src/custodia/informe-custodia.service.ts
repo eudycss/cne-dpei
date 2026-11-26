@@ -3,6 +3,13 @@ import type { FilaInformeCustodia, ItemChecklist } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DatosActa, generarActasPdf, Persona } from './acta-custodia.pdf';
+import {
+  DatosActaMilitar,
+  generarWordActaMilitar,
+  nombreArchivoActaMilitar,
+  zipActasMilitares,
+} from './acta-militar.documento';
+import { cargoDeQuienEntrega } from '../operadores-cda/actas-cda.service';
 
 export interface FiltrosInforme {
   cantonId?: number;
@@ -12,12 +19,32 @@ export interface FiltrosInforme {
 // Cada acta lleva una foto: en el plan gratuito de Render (512 MB) un PDF
 // enorme puede agotar la memoria. Por encima del tope se pide filtrar.
 export const MAX_ACTAS_POR_PDF = 100;
+// Las actas militares no llevan foto: caben las 137 de la provincia (+ kits extra).
+export const MAX_ACTAS_MILITARES = 200;
 const NO_DISPONIBLE: Persona = { nombre: '(usuario no disponible)', cedula: '—' };
 
 type Usuario = { id: string; nombres: string; apellidos: string; cedula: string };
 
 function nombre(p: { nombres: string; apellidos: string }): string {
   return `${p.apellidos} ${p.nombres}`.trim();
+}
+
+/** "Jairo Leal": nombres y luego apellidos, como en el acta militar. */
+function nombreDirecto(p: { nombres: string; apellidos: string }): string {
+  return `${p.nombres.trim()} ${p.apellidos.trim()}`.trim();
+}
+
+type MilitarActa = { nombres: string; apellidos: string; cedula: string; grado: string | null };
+
+/**
+ * El militar del recinto para un acta sin entrega: el único con grado (los
+ * del cronograma lo traen) o, si no, el único registrado. Si hay duda, en blanco.
+ */
+export function militarDelRecinto(militares: MilitarActa[]): MilitarActa | null {
+  const conGrado = militares.filter((m) => m.grado);
+  if (conGrado.length === 1) return conGrado[0];
+  if (conGrado.length === 0 && militares.length === 1) return militares[0];
+  return null;
 }
 
 function persona(p: { nombres: string; apellidos: string; cedula: string } | null | undefined): Persona | null {
@@ -102,7 +129,97 @@ export class InformeCustodiaService {
     return generarActasPdf(this.armarActas(datos));
   }
 
+  /** Acta de Constancia y Custodia (militar) de un kit, en Word. */
+  async actaMilitarKit(kitId: string, usuarioId: string): Promise<{ nombre: string; contenido: Buffer }> {
+    const evento = await this.eventoActivo();
+    const kit = await this.prisma.kitElectoral.findFirst({
+      where: { id: kitId, eventoId: evento.id },
+      select: { id: true },
+    });
+    if (!kit) throw new NotFoundException('Kit no encontrado en el evento activo');
+    const [acta] = await this.armarActasMilitares(await this.cargar({}, [kitId]), usuarioId);
+    return { nombre: acta.archivo, contenido: generarWordActaMilitar(acta.datos) };
+  }
+
+  /** Actas militares de los filtros: un Word por kit dentro de un .zip. */
+  async actasMilitares(filtros: FiltrosInforme, usuarioId: string): Promise<Buffer> {
+    // Se cuenta antes de cargar todo: un pedido enorme no llega a la memoria.
+    const evento = await this.eventoActivo();
+    const total = await this.prisma.kitElectoral.count({
+      where: {
+        eventoId: evento.id,
+        esPrueba: false,
+        recintoId: filtros.recintoId,
+        recinto: filtros.cantonId ? { cantonId: filtros.cantonId } : undefined,
+      },
+    });
+    if (total === 0) throw new NotFoundException('No hay kits con esos filtros');
+    if (total > MAX_ACTAS_MILITARES) {
+      throw new BadRequestException(
+        `Son ${total} actas; el máximo por archivo es ${MAX_ACTAS_MILITARES}. Filtra por cantón.`,
+      );
+    }
+    const datos = await this.cargar(filtros);
+    return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
+  }
+
   // ─── internos ─────────────────────────────────────────────────────────────
+
+  /**
+   * Datos del acta militar de cada kit. Con la entrega registrada salen el
+   * militar, quien entregó y la fecha reales; si aún no se entrega (acta que
+   * se imprime antes), el militar asignado al recinto, quien descarga y hoy.
+   */
+  private async armarActasMilitares(
+    datos: Awaited<ReturnType<InformeCustodiaService['cargar']>>,
+    usuarioId: string,
+  ): Promise<{ archivo: string; datos: DatosActaMilitar }[]> {
+    const recintoIds = [...new Set(datos.kits.map((k) => k.recintoId).filter((x): x is string => !!x))];
+    const idsResponsable = new Set<string>([usuarioId, ...[...datos.entregas.values()].map((e) => e.entregadoPorId)]);
+    const [mochilas, militaresRecinto, responsables] = await Promise.all([
+      this.prisma.mochilaKit.findMany({
+        where: { codigoUnico: { in: datos.kits.map((k) => k.codigoUnico) } },
+        select: { codigoUnico: true, numero: true },
+      }),
+      this.prisma.militar.findMany({
+        where: { recintoId: { in: recintoIds } },
+        select: { recintoId: true, nombres: true, apellidos: true, cedula: true, grado: true },
+      }),
+      this.prisma.usuario.findMany({
+        where: { id: { in: [...idsResponsable] } },
+        select: { id: true, nombres: true, apellidos: true, cedula: true, roles: { select: { rol: { select: { nombre: true } } } } },
+      }),
+    ]);
+    const numeroPorCodigo = new Map<string, number>(mochilas.map((m) => [m.codigoUnico, m.numero]));
+    const responsablePorId = new Map<string, (typeof responsables)[number]>(responsables.map((u) => [u.id, u]));
+    const militaresPorRecinto = new Map<string, typeof militaresRecinto>();
+    for (const m of militaresRecinto) {
+      militaresPorRecinto.set(m.recintoId, [...(militaresPorRecinto.get(m.recintoId) ?? []), m]);
+    }
+
+    const hoy = new Date();
+    return datos.kits.map((k) => {
+      const entrega = datos.entregas.get(k.id);
+      const militar = entrega?.militar ?? militarDelRecinto(militaresPorRecinto.get(k.recintoId ?? '') ?? []);
+      const resp = responsablePorId.get(entrega?.entregadoPorId ?? usuarioId);
+      const kitNumero = String(numeroPorCodigo.get(k.codigoUnico) ?? k.codigoUnico);
+      return {
+        archivo: nombreArchivoActaMilitar(kitNumero, k.recinto?.codigoRecinto ?? null),
+        datos: {
+          fecha: entrega?.entregadoEn ?? hoy,
+          responsable: resp
+            ? { nombre: nombreDirecto(resp), cedula: resp.cedula, cargo: cargoDeQuienEntrega(resp.roles.map((r) => r.rol.nombre)) }
+            : null,
+          militar: militar ? { nombre: nombre(militar), cedula: militar.cedula, grado: militar.grado } : null,
+          kitNumero,
+          // El nombre del kit ya es "1359 — Recinto (kit 2)"; la plantilla usa la raya corta.
+          recintoTexto: k.nombre.replace(' — ', ' – '),
+          operador: k.operador ? { nombre: nombreDirecto(k.operador), cedula: k.operador.cedula } : null,
+        },
+      };
+    });
+  }
+
 
   private async eventoActivo() {
     const evento = await this.prisma.eventoElectoral.findFirst({

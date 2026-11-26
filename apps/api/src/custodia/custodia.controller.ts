@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   cambiarOperadorSchema,
   corregirMilitarSchema,
@@ -147,6 +148,49 @@ export class CustodiaController {
   async actaKit(@Res() res: Response, @Param('kitId', ParseUUIDPipe) kitId: string) {
     enviarPdf(res, await this.informes.actaKit(kitId), 'acta-custodia.pdf');
   }
+
+  // Acta de Constancia y Custodia que firma el militar (Word, formato oficial).
+  @Get('kits/:kitId/acta-militar')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Acta de constancia y custodia del militar de un kit (Word)' })
+  async actaMilitarKit(
+    @Res() res: Response,
+    @Param('kitId', ParseUUIDPipe) kitId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const acta = await this.informes.actaMilitarKit(kitId, user.sub);
+    enviarArchivo(res, acta.contenido, acta.nombre, DOCX);
+  }
+
+  @Get('actas-militares')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
+  // Hasta 200 Word en un .zip: cuesta CPU (Render 0.1 vCPU).
+  @Throttle({ default: { limit: 4, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Actas de constancia y custodia de los kits filtrados (un Word por kit, en .zip)' })
+  async actasMilitares(
+    @Res() res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('cantonId') cantonId?: unknown,
+    @Query('recintoId') recintoId?: unknown,
+  ) {
+    const zip = await this.informes.actasMilitares(filtrosInforme(cantonId, recintoId), user.sub);
+    enviarArchivo(res, zip, 'actas_militares.zip', 'application/zip');
+  }
+}
+
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function enviarArchivo(res: Response, contenido: Buffer, nombre: string, tipo: string): void {
+  res.setHeader('Content-Type', tipo);
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  // Llevan cédulas: que ningún caché los guarde.
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(contenido);
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -6,7 +6,9 @@ import { Logo } from '../../components/Logo';
 import { Cargando } from '../../components/Cargando';
 import {
   descargarActaKit,
+  descargarActaMilitarKit,
   descargarActas,
+  descargarActasMilitares,
   getInformeCustodia,
 } from '../../lib/queries/custodia';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
@@ -181,6 +183,29 @@ export function CadenaCustodiaPage() {
                 </>
               )}
             </button>
+            <button
+              className="btn secondary"
+              disabled={!visibles.length || descargando !== null}
+              aria-busy={descargando === 'militares'}
+              title="Acta de Constancia y Custodia que firma el militar, una por kit (Word)"
+              onClick={() =>
+                descargar(
+                  'militares',
+                  () =>
+                    descargarActasMilitares({
+                      cantonId: cantonId ? Number(cantonId) : undefined,
+                      recintoId: recintoId || undefined,
+                    }),
+                  'actas_militares.zip',
+                )
+              }
+            >
+              {descargando === 'militares' ? 'Generando…' : (
+                <>
+                  <span aria-hidden="true">↓ </span>Actas militares (Word)
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -220,7 +245,7 @@ export function CadenaCustodiaPage() {
         </div>
 
         <div className="sr-only" role="status">
-          {descargando ? 'Generando el acta en PDF…' : ''}
+          {descargando ? 'Generando el documento…' : ''}
         </div>
         <div className="row" style={{ gap: '1.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }} aria-live="polite">
           <span><strong>Kits:</strong> {totales.kits}</span>
@@ -302,6 +327,18 @@ export function CadenaCustodiaPage() {
                         onClick={() => descargar(f.kitId, () => descargarActaKit(f.kitId), `acta_${f.codigoUnico}.pdf`)}
                       >
                         {descargando === f.kitId ? 'Generando…' : 'PDF'}
+                      </button>{' '}
+                      <button
+                        className="btn secondary"
+                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                        disabled={descargando !== null}
+                        aria-busy={descargando === `m-${f.kitId}`}
+                        aria-label={`Descargar acta del militar (Word) del kit ${f.codigoUnico}`}
+                        onClick={() =>
+                          descargar(`m-${f.kitId}`, () => descargarActaMilitarKit(f.kitId), `acta_militar_${f.codigoUnico}.docx`)
+                        }
+                      >
+                        {descargando === `m-${f.kitId}` ? 'Generando…' : 'Militar'}
                       </button>
                     </td>
                   </tr>

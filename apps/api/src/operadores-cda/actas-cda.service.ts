@@ -35,6 +35,11 @@ const ROLES_ENTREGA = ['ADMINISTRADOR', 'ASISTENTE_TRANSVERSAL'];
 const CARGO_ANALISTA = 'Analista Provincial de Seguridad Informática y Proyectos Tecnológicos Electorales 1';
 const CARGO_TRANSVERSAL = 'Asistente Electoral Transversal';
 
+/** Edison Mafla y William Paspuel (administradores) son analistas; los técnicos de enlaces, transversales. */
+export function cargoDeQuienEntrega(roles: string[]): string {
+  return roles.includes('ADMINISTRADOR') ? CARGO_ANALISTA : CARGO_TRANSVERSAL;
+}
+
 export interface ArchivoActa {
   nombre: string;
   contenido: Buffer;
@@ -109,8 +114,7 @@ export class ActasCdaService {
       usuarioId: u.id,
       nombre: `${u.nombres.trim()} ${u.apellidos.trim()}`,
       cedula: u.cedula,
-      // Edison Mafla y William Paspuel (administradores) son analistas; los técnicos de enlaces, transversales.
-      cargoSugerido: u.roles.some((r) => r.rol.nombre === 'ADMINISTRADOR') ? CARGO_ANALISTA : CARGO_TRANSVERSAL,
+      cargoSugerido: cargoDeQuienEntrega(u.roles.map((r) => r.rol.nombre)),
     }));
   }
 
