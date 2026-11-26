@@ -142,6 +142,45 @@ describe('CustodiaService', () => {
       expect(prisma.entregaCustodioKit.create).not.toHaveBeenCalled();
     });
 
+    it('si el kit quedó entregado a un militar oculto (de prueba), el registro real la reemplaza', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
+      prisma.entregaCustodioKit.findUnique
+        .mockResolvedValueOnce({ kitId, militarId: otroMilitarId, militar: { activo: false } })
+        .mockResolvedValueOnce(entregaGuardada());
+
+      const r = await service.registrarEntrega(asistenteId, { kitId, militarId } as any);
+
+      expect(prisma.entregaCustodioKit.create).not.toHaveBeenCalled();
+      expect(prisma.entregaCustodioKit.updateMany).toHaveBeenCalledWith({
+        where: { kitId, militarId: otroMilitarId },
+        data: expect.objectContaining({ militarId, entregadoPorId: asistenteId, militarDeOtroRecinto: false }),
+      });
+      expect(r.militar.id).toBe(militarId);
+    });
+
+    it('reemplazo de la entrega de prueba: si el CDA recibió el kit en medio, 409 (se revierte)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
+      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce({ kitId, militarId: otroMilitarId, militar: { activo: false } });
+      prisma.kitElectoral.count.mockResolvedValueOnce(0);
+
+      await expect(service.registrarEntrega(asistenteId, { kitId, militarId } as any)).rejects.toThrow(ConflictException);
+    });
+
+    it('reemplazo de la entrega de prueba con doble toque: el segundo responde como reintento, no 409', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
+      prisma.entregaCustodioKit.findUnique
+        .mockResolvedValueOnce({ kitId, militarId: otroMilitarId, militar: { activo: false } })
+        .mockResolvedValueOnce({ kitId, militarId }) // ya la reemplazó el primero
+        .mockResolvedValueOnce(entregaGuardada());
+      prisma.entregaCustodioKit.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      const r = await service.registrarEntrega(asistenteId, { kitId, militarId } as any);
+      expect(r.militar.id).toBe(militarId);
+    });
+
     it('repetir con el mismo militar es idempotente; con otro militar es 409', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValue(kitRow());
       prisma.militar.findUnique.mockResolvedValueOnce(militarRow());
@@ -208,6 +247,15 @@ describe('CustodiaService', () => {
   });
 
   describe('corregirMilitar', () => {
+    it('una entrega a un militar oculto (de prueba) no se corrige: 400 (se registra)', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce({ ...entregaGuardada(), militar: { activo: false } });
+      await expect(
+        service.corregirMilitar(asistenteId, ['ASISTENTE_TRANSVERSAL'], kitId, { militarId: otroMilitarId, motivo: 'Reemplazo' } as any),
+      ).rejects.toThrow('aún no tiene una entrega registrada');
+      expect(prisma.entregaCustodioKit.updateMany).not.toHaveBeenCalled();
+    });
+
     const input = { militarId: otroMilitarId, motivo: 'El militar asignado fue reemplazado' };
 
     it('cambia el militar y guarda la corrección con el valor anterior y el motivo', async () => {
@@ -360,7 +408,8 @@ describe('CustodiaService', () => {
         expect.objectContaining({ where: { eventoId, esPrueba: false, operadorId: { not: null } } }),
       );
       expect(prisma.entregaCustodioKit.count).toHaveBeenCalledWith({
-        where: { eventoId, kitId: { in: ['k1', 'k2', 'k3'] } },
+        // Las entregas a militares ocultos (de prueba) no cuentan.
+        where: { eventoId, kitId: { in: ['k1', 'k2', 'k3'] }, militar: { activo: true } },
       });
     });
 

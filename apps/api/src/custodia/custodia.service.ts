@@ -109,7 +109,13 @@ export class CustodiaService {
     }
     const militar = await this.militarOrThrow(parsed.militarId);
 
-    const existente = await this.prisma.entregaCustodioKit.findUnique({ where: { kitId: kit.id } });
+    const existente = await this.prisma.entregaCustodioKit.findUnique({
+      where: { kitId: kit.id },
+      include: { militar: { select: { activo: true } } },
+    });
+    if (existente && !existente.militar.activo) {
+      return this.reemplazarEntregaDePrueba(usuarioId, kit, existente.militarId, militar);
+    }
     if (existente) return this.entregaExistente(kit.id, existente.militarId, militar.id);
 
     try {
@@ -140,6 +146,42 @@ export class CustodiaService {
     return this.entregaDtoOrThrow(kit.id);
   }
 
+  /**
+   * El kit quedó "entregado" a un militar oculto (de prueba): esa entrega no
+   * cuenta, así que el registro real la reemplaza (militar, quién y cuándo).
+   */
+  private async reemplazarEntregaDePrueba(
+    usuarioId: string,
+    kit: { id: string; recintoId: string | null },
+    militarAnterior: string,
+    militar: { id: string; recintoId: string },
+  ): Promise<EntregaCustodio> {
+    const reemplazada = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.entregaCustodioKit.updateMany({
+        where: { kitId: kit.id, militarId: militarAnterior },
+        data: {
+          militarId: militar.id,
+          entregadoPorId: usuarioId,
+          entregadoEn: new Date(),
+          militarDeOtroRecinto: militar.recintoId !== kit.recintoId,
+        },
+      });
+      if (!count) return false;
+      // El CDA pudo recibir el kit mientras tanto: entonces no se registra.
+      const sigueAsignado = await tx.kitElectoral.count({ where: { id: kit.id, estado: 'ASIGNADO' } });
+      if (!sigueAsignado) {
+        throw new ConflictException('El operador CDA acaba de recibir este kit: vuelve a escanearlo');
+      }
+      return true;
+    });
+    if (reemplazada) return this.entregaDtoOrThrow(kit.id);
+    // Otro registro la reemplazó antes (doble toque, dos asistentes): mismo
+    // militar = reintento; otro militar = 409.
+    const actual = await this.prisma.entregaCustodioKit.findUnique({ where: { kitId: kit.id } });
+    if (!actual) throw new ConflictException('La entrega de este kit acaba de cambiar: vuelve a escanearlo');
+    return this.entregaExistente(kit.id, actual.militarId, militar.id);
+  }
+
   /** Reintento del mismo registro: idempotente; con otro militar, 409. */
   private async entregaExistente(kitId: string, militarRegistrado: string, militarPedido: string) {
     if (militarRegistrado === militarPedido) return this.entregaDtoOrThrow(kitId);
@@ -158,8 +200,14 @@ export class CustodiaService {
     if (kit.estado !== 'ASIGNADO' && !esAdmin) {
       throw new BadRequestException(SOLO_ADMIN_CORRIGE);
     }
-    const entrega = await this.prisma.entregaCustodioKit.findUnique({ where: { kitId: kit.id } });
-    if (!entrega) throw new BadRequestException('Este kit aún no tiene una entrega registrada');
+    const entrega = await this.prisma.entregaCustodioKit.findUnique({
+      where: { kitId: kit.id },
+      include: { militar: { select: { activo: true } } },
+    });
+    // La entrega a un militar oculto (de prueba) no cuenta: se registra, no se corrige.
+    if (!entrega || !entrega.militar.activo) {
+      throw new BadRequestException('Este kit aún no tiene una entrega registrada');
+    }
     const militar = await this.militarOrThrow(parsed.militarId);
     if (militar.id === entrega.militarId) {
       throw new BadRequestException('Ese militar ya es el registrado en la entrega');
@@ -250,7 +298,7 @@ export class CustodiaService {
       select: { id: true },
     });
     const entregados = await this.prisma.entregaCustodioKit.count({
-      where: { eventoId: evento.id, kitId: { in: kits.map((k) => k.id) } },
+      where: { eventoId: evento.id, kitId: { in: kits.map((k) => k.id) }, militar: { activo: true } },
     });
     return { entregados, total: kits.length };
   }
@@ -324,9 +372,10 @@ export class CustodiaService {
   private async entregaDto(kitId: string): Promise<EntregaCustodio | null> {
     const entrega = await this.prisma.entregaCustodioKit.findUnique({
       where: { kitId },
-      include: { militar: { select: MILITAR_SELECT } },
+      include: { militar: { select: { ...MILITAR_SELECT, activo: true } } },
     });
-    if (!entrega) return null;
+    // La entrega a un militar oculto (de prueba) no cuenta: el kit sale pendiente.
+    if (!entrega || !entrega.militar.activo) return null;
     const por = await this.prisma.usuario.findUnique({
       where: { id: entrega.entregadoPorId },
       select: { nombres: true, apellidos: true },

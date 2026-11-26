@@ -173,7 +173,7 @@ describe('InformeCustodiaService — actas militares', () => {
           entregadoPorId: admin.id,
           entregadoEn: new Date('2026-11-28T13:00:00Z'),
           militarDeOtroRecinto: true,
-          militar: { nombres: 'Pedro', apellidos: 'Mora Vega', cedula: '1005006007', grado: 'SGOS' },
+          militar: { nombres: 'Pedro', apellidos: 'Mora Vega', cedula: '1005006007', grado: 'SGOS', activo: true },
         },
       }),
     ]);
@@ -183,6 +183,25 @@ describe('InformeCustodiaService — actas militares', () => {
     expect(texto).toContain('el Ing. Edison Mafla');
     expect(texto).toContain('en calidad de Analista Provincial de Seguridad Informática');
     expect(texto).toContain('custodia al SGOS. Mora Vega Pedro');
+  });
+
+  it('una entrega a un militar oculto (de prueba) no cuenta: sale el militar del cronograma, con fecha de hoy', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValue([
+      kit({
+        entregaCustodio: {
+          entregadoPorId: admin.id,
+          entregadoEn: new Date('2026-11-16T13:00:00Z'),
+          militarDeOtroRecinto: false,
+          militar: { nombres: 'Ficticio', apellidos: 'De Prueba', cedula: '1005006007', grado: null, activo: false },
+        },
+      }),
+    ]);
+    const texto = textoWord((await service.actaMilitarKit(kitId, asistente.id)).contenido);
+
+    expect(texto).not.toContain('Ficticio');
+    expect(texto).not.toContain('16 de noviembre');
+    expect(texto).toContain('custodia al CBOP. Herrera Cadena Christian Becker');
+    expect(texto).toContain('el Ing. Jairo Leal');
   });
 
   it('un kit de otro evento no tiene acta (404)', async () => {

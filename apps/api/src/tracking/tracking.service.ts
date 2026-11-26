@@ -873,8 +873,9 @@ export class TrackingService {
     operadorId: string,
   ): Promise<void> {
     try {
-      const entrega = await this.prisma.entregaCustodioKit.findUnique({
-        where: { kitId: kit.id },
+      // Una entrega a un militar oculto (de prueba) no cuenta.
+      const entrega = await this.prisma.entregaCustodioKit.findFirst({
+        where: { kitId: kit.id, militar: { activo: true } },
         select: { id: true },
       });
       if (entrega) return;

@@ -26,7 +26,7 @@ describe('TrackingService', () => {
     eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
-    entregaCustodioKit: { findUnique: jest.fn() },
+    entregaCustodioKit: { findFirst: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     asignacionSupervisor: { findFirst: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
@@ -1300,11 +1300,16 @@ describe('TrackingService', () => {
 
     it('sin entrega al militar registrada, recibe igual pero genera la alerta (no bloquea)', async () => {
       recepcionNueva();
-      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce(null);
+      prisma.entregaCustodioKit.findFirst.mockResolvedValueOnce(null);
 
       const result = await service.confirmarRecepcionKit(operadorId, input as any);
 
       expect(result.id).toBe('rk1');
+      // Una entrega a un militar oculto (de prueba) no cuenta como entrega.
+      expect(prisma.entregaCustodioKit.findFirst).toHaveBeenCalledWith({
+        where: { kitId, militar: { activo: true } },
+        select: { id: true },
+      });
       expect(prisma.kitElectoral.update).toHaveBeenCalledWith({ where: { id: kitId }, data: { estado: 'ENTREGADO' } });
       expect(alertas.generarEntregaMilitarNoRegistrada).toHaveBeenCalledWith({
         eventoId,
@@ -1316,7 +1321,7 @@ describe('TrackingService', () => {
 
     it('si generar la alerta falla, la recepción ya guardada no se rompe', async () => {
       recepcionNueva();
-      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce(null);
+      prisma.entregaCustodioKit.findFirst.mockResolvedValueOnce(null);
       alertas.generarEntregaMilitarNoRegistrada.mockRejectedValueOnce(new Error('BD caída'));
 
       await expect(service.confirmarRecepcionKit(operadorId, input as any)).resolves.toEqual(
@@ -1326,7 +1331,7 @@ describe('TrackingService', () => {
 
     it('con la entrega al militar registrada, no genera alerta', async () => {
       recepcionNueva();
-      prisma.entregaCustodioKit.findUnique.mockResolvedValueOnce({ id: 'e1' });
+      prisma.entregaCustodioKit.findFirst.mockResolvedValueOnce({ id: 'e1' });
 
       await service.confirmarRecepcionKit(operadorId, input as any);
 
