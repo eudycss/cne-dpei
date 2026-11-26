@@ -42,7 +42,7 @@ export function Login() {
   }
 
   return (
-    <div className="center">
+    <main className="center">
       <form className="login-card" onSubmit={onSubmit}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
           <Logo height={72} />
@@ -87,7 +87,7 @@ export function Login() {
           <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
         </p>
       </form>
-    </div>
+    </main>
   );
 }
 

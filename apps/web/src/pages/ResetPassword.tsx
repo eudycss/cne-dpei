@@ -37,19 +37,19 @@ export function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="center">
+      <main className="center">
         <div className="login-card">
           <div className="banner error">Enlace de recuperación inválido o expirado</div>
           <p className="muted" style={{ textAlign: 'center', marginTop: '1rem' }}>
             <Link to="/forgot-password">Solicitar un nuevo enlace</Link>
           </p>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="center">
+    <main className="center">
       <form className="login-card" onSubmit={onSubmit}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
           <Logo height={60} />
@@ -76,6 +76,6 @@ export function ResetPassword() {
           Restablecer contraseña
         </button>
       </form>
-    </div>
+    </main>
   );
 }

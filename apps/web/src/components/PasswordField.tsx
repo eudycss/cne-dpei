@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface PasswordFieldProps {
@@ -11,12 +11,14 @@ interface PasswordFieldProps {
 
 export function PasswordField({ value, onChange, label, autoComplete, required }: PasswordFieldProps) {
   const [show, setShow] = useState(false);
+  const id = useId();
 
   return (
     <div className="field">
-      <label>{label}</label>
+      <label htmlFor={id}>{label}</label>
       <div style={{ position: 'relative' }}>
         <input
+          id={id}
           type={show ? 'text' : 'password'}
           autoComplete={autoComplete}
           required={required}
@@ -28,6 +30,7 @@ export function PasswordField({ value, onChange, label, autoComplete, required }
           type="button"
           onClick={() => setShow((s) => !s)}
           aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          aria-pressed={show}
           style={{
             position: 'absolute',
             right: '0.5rem',
