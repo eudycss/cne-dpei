@@ -143,13 +143,23 @@ export class InformeCustodiaService {
 
   /** Actas militares de los filtros: un Word por kit dentro de un .zip. */
   async actasMilitares(filtros: FiltrosInforme, usuarioId: string): Promise<Buffer> {
-    const datos = await this.cargar(filtros);
-    if (datos.kits.length === 0) throw new NotFoundException('No hay kits con esos filtros');
-    if (datos.kits.length > MAX_ACTAS_MILITARES) {
+    // Se cuenta antes de cargar todo: un pedido enorme no llega a la memoria.
+    const evento = await this.eventoActivo();
+    const total = await this.prisma.kitElectoral.count({
+      where: {
+        eventoId: evento.id,
+        esPrueba: false,
+        recintoId: filtros.recintoId,
+        recinto: filtros.cantonId ? { cantonId: filtros.cantonId } : undefined,
+      },
+    });
+    if (total === 0) throw new NotFoundException('No hay kits con esos filtros');
+    if (total > MAX_ACTAS_MILITARES) {
       throw new BadRequestException(
-        `Son ${datos.kits.length} actas; el máximo por archivo es ${MAX_ACTAS_MILITARES}. Filtra por cantón.`,
+        `Son ${total} actas; el máximo por archivo es ${MAX_ACTAS_MILITARES}. Filtra por cantón.`,
       );
     }
+    const datos = await this.cargar(filtros);
     return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
   }
 

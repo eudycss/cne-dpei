@@ -65,19 +65,26 @@ describe('acta de constancia y custodia (militar)', () => {
     expect(sinMilitar.militarGrado).toBe('');
   });
 
+  it('un nombre con < & " no rompe el XML del Word', () => {
+    const texto = textoWord(generarWordActaMilitar({ ...datos, operador: { nombre: 'Ana <b> & "Pérez"', cedula: '1' } }));
+    expect(texto).toContain('Ana &lt;b&gt; &amp; &quot;Pérez&quot;');
+  });
+
   it('quita caracteres de control que dañarían el Word', () => {
     const c = camposActaMilitar({ ...datos, operador: { nombre: 'Ana\u0007 Pérez', cedula: '1' } });
     expect(c.operadorNombre).toBe('Ana Pérez');
   });
 
-  it('el .zip lleva un Word por kit y los nombres de archivo son seguros', () => {
+  it('el .zip lleva un Word por kit, sin perder actas con nombre repetido', async () => {
     const zip = new PizZip(
-      zipActasMilitares([
+      await zipActasMilitares([
         { archivo: 'a.docx', datos },
         { archivo: 'b.docx', datos },
+        { archivo: 'a.docx', datos },
+        { archivo: 'a.docx', datos },
       ]),
     );
-    expect(Object.keys(zip.files).sort()).toEqual(['a.docx', 'b.docx']);
+    expect(Object.keys(zip.files).sort()).toEqual(['a.docx', 'a_2.docx', 'a_3.docx', 'b.docx']);
     expect(nombreArchivoActaMilitar('17', '1359')).toBe('acta_militar_17_1359.docx');
     expect(nombreArchivoActaMilitar('../x"y', null)).toBe('acta_militar_xy.docx');
   });
@@ -127,7 +134,11 @@ describe('InformeCustodiaService — actas militares', () => {
   beforeEach(() => {
     prisma = {
       eventoElectoral: { findFirst: jest.fn().mockResolvedValue({ id: eventoId, nombre: 'Elecciones 2027' }) },
-      kitElectoral: { findMany: jest.fn().mockResolvedValue([kit()]), findFirst: jest.fn().mockResolvedValue({ id: kitId }) },
+      kitElectoral: {
+        findMany: jest.fn().mockResolvedValue([kit()]),
+        findFirst: jest.fn().mockResolvedValue({ id: kitId }),
+        count: jest.fn().mockResolvedValue(1),
+      },
       recepcionKit: { findMany: jest.fn().mockResolvedValue([]) },
       recepcionDpiKit: { findMany: jest.fn().mockResolvedValue([]) },
       correccionCustodiaKit: { findMany: jest.fn().mockResolvedValue([]) },
@@ -179,12 +190,21 @@ describe('InformeCustodiaService — actas militares', () => {
     await expect(service.actaMilitarKit(kitId, asistente.id)).rejects.toThrow('Kit no encontrado');
   });
 
-  it('el .zip de actas pide filtrar si no hay kits o si pasan el tope', async () => {
-    prisma.kitElectoral.findMany.mockResolvedValue([]);
+  it('el .zip de actas pide filtrar si no hay kits o si pasan el tope, sin cargarlos', async () => {
+    prisma.kitElectoral.count.mockResolvedValueOnce(0);
     await expect(service.actasMilitares({}, asistente.id)).rejects.toThrow('No hay kits');
 
-    prisma.kitElectoral.findMany.mockResolvedValue(Array.from({ length: 201 }, (_, i) => kit({ id: `k${i}` })));
-    await expect(service.actasMilitares({}, asistente.id)).rejects.toThrow('Filtra por cantón');
+    prisma.kitElectoral.count.mockResolvedValueOnce(201);
+    await expect(service.actasMilitares({ cantonId: 30 }, asistente.id)).rejects.toThrow('Filtra por cantón');
+    expect(prisma.kitElectoral.count).toHaveBeenLastCalledWith({
+      where: { eventoId, esPrueba: false, recintoId: undefined, recinto: { cantonId: 30 } },
+    });
+    expect(prisma.kitElectoral.findMany).not.toHaveBeenCalled();
+  });
+
+  it('si quien descarga no se encuentra, el responsable queda en blanco', async () => {
+    const texto = textoWord((await service.actaMilitarKit(kitId, 'no-existe')).contenido);
+    expect(texto).toContain(`el Ing. ${EN_BLANCO}`);
   });
 
   it('el .zip trae un Word por kit', async () => {

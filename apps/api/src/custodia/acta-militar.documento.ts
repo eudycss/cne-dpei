@@ -88,10 +88,21 @@ export function generarWordActaMilitar(d: DatosActaMilitar): Buffer {
   return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-/** Varias actas en un .zip (un Word por kit). */
-export function zipActasMilitares(actas: { archivo: string; datos: DatosActaMilitar }[]): Buffer {
+/**
+ * Varias actas en un .zip (un Word por kit). Un nombre repetido lleva "_2",
+ * "_3"… (el zip lo sobrescribiría en silencio). Entre acta y acta se cede el
+ * event loop para no congelar la API (Render: 0.1 vCPU).
+ */
+export async function zipActasMilitares(actas: { archivo: string; datos: DatosActaMilitar }[]): Promise<Buffer> {
   const zip = new PizZip();
-  for (const a of actas) zip.file(a.archivo, generarWordActaMilitar(a.datos));
+  const usados = new Set<string>();
+  for (const a of actas) {
+    let archivo = a.archivo;
+    for (let n = 2; usados.has(archivo); n++) archivo = a.archivo.replace(/\.docx$/, `_${n}.docx`);
+    usados.add(archivo);
+    zip.file(archivo, generarWordActaMilitar(a.datos));
+    await new Promise<void>((r) => setImmediate(r));
+  }
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
