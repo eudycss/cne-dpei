@@ -2631,3 +2631,31 @@ export interface CandidatoDistribucion {
   cedula: string;
   cargo: string;
 }
+
+// --- Informe de productos CDA/CPE (enlace público por cédula, 6 fotos) ---
+
+export interface EstadoFotoInformeCda {
+  posicion: number;
+  cargada: boolean;
+  /** Subida en esta visita: solo esas se pueden ver y entran al informe descargable. */
+  deEstaVisita: boolean;
+}
+
+export interface VisitaInformeCdaPublica {
+  /** Token de la visita (va en el cuerpo de cada pedido, nunca en la URL). */
+  token: string;
+  expiraEn: string;
+  nombreCorto: string;
+  /** Cédula enmascarada (p. ej. 1050xxxx12). */
+  cedula: string;
+  cargo: string;
+  /** Su cargo tiene plantilla de informe. */
+  tieneInforme: boolean;
+  fotos: EstadoFotoInformeCda[];
+}
+
+/** Avance de cada persona (listado de la Delegación). */
+export interface AvanceInformeCda {
+  operadorId: string;
+  fotos: number;
+}

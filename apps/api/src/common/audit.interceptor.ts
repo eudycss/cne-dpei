@@ -451,6 +451,41 @@ const AUDIT_TABLE: Array<{
       return { consentimientoVersion: typeof v === 'string' ? v.slice(0, 20) : null, pendiente };
     },
   },
+  // Informe de productos CDA/CPE (enlace por cédula): nunca la cédula ni el token de la visita.
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/informe-cda\/foto$/,
+    accion: 'FOTO_INFORME_CDA_SUBIR',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+    resumen: (_res, req) => {
+      const b = (req.body ?? {}) as { version?: unknown; posicion?: unknown };
+      return {
+        posicion: typeof b.posicion === 'string' ? b.posicion.slice(0, 1) : null,
+        consentimientoVersion: typeof b.version === 'string' ? b.version.slice(0, 30) : null,
+      };
+    },
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/publico\/informe-cda\/generar$/,
+    accion: 'INFORME_CDA_DESCARGAR_PUBLICO',
+    entidad: 'operador_cda',
+    entidadId: (req) => {
+      const id = (req as Request & { operadorCdaId?: unknown }).operadorCdaId;
+      return typeof id === 'string' ? id : undefined;
+    },
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/[^/]+\/informe-productos$/,
+    accion: 'INFORME_CDA_DESCARGAR',
+    entidad: 'operador_cda',
+    entidadId: (req) => idUuid(req.params?.id),
+  },
   // Revisión de la foto nueva: quién la aprobó o rechazó (sin datos de la imagen).
   {
     method: 'POST',
