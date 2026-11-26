@@ -1,6 +1,7 @@
 import { Component, Suspense, createRef, type ErrorInfo, type ReactNode } from 'react';
 import { Cargando } from './Cargando';
 import { ErrorCargaPagina } from '../lib/lazy-page';
+import { reportarError } from '../lib/monitoreo';
 
 interface Props {
   children: ReactNode;
@@ -43,6 +44,7 @@ class ErrorDeCarga extends Component<Props, Estado> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('No se pudo mostrar la página', error, info.componentStack);
+    reportarError(error, { componentStack: info.componentStack });
     // El menú sigue visible: llevar el foco al aviso para que el lector de pantalla y el teclado lo encuentren.
     this.aviso.current?.focus();
   }
