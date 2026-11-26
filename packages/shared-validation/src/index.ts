@@ -176,8 +176,8 @@ export const gradoMilitarSchema = z
   .string()
   .trim()
   .max(20, 'Grado: máximo 20 caracteres')
-  .regex(/^[A-Za-zÁÉÍÓÚÑáéíóúñ. ]*$/, 'Grado: solo letras (ej. CBOP, SUBS)')
-  .transform((g) => g.replace(/\.+$/, '').trim().toUpperCase() || null)
+  .regex(/^[A-Za-zÁÉÍÓÚÑáéíóúñ]*\.?$/, 'Grado: una abreviatura sin espacios (ej. CBOP, SUBS)')
+  .transform((g) => g.replace(/\.$/, '').toUpperCase() || null)
   .nullable()
   .optional();
 

@@ -96,7 +96,14 @@ export function MilitaresPage() {
                 {data?.items.map((m) => (
                   <tr key={m.id}>
                     <td>{m.cedula}</td>
-                    <td>{m.grado ?? <span className="muted">—</span>}</td>
+                    <td>
+                      {m.grado ?? (
+                        <>
+                          <span className="muted" aria-hidden="true">—</span>
+                          <span className="sr-only">Sin grado</span>
+                        </>
+                      )}
+                    </td>
                     <td>{m.nombres} {m.apellidos}</td>
                     <td>
                       {m.recintoNombre ?? '—'}

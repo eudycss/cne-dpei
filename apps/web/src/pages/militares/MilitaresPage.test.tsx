@@ -66,7 +66,7 @@ describe('MilitaresPage — grado', () => {
     renderPage();
     expect(await screen.findByRole('columnheader', { name: 'Grado' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'CBOP' })).toBeInTheDocument();
-    expect(screen.getByRole('cell', { name: '—' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: /sin grado/i })).toBeInTheDocument();
   });
 
   it('al editar envía el grado normalizado', async () => {

@@ -754,6 +754,16 @@ describe('grado del militar (acta de custodia)', () => {
     expect(updateMilitarSchema.parse({ grado: null }).grado).toBeNull();
   });
 
+  it('acepta 20 letras; solo un punto queda en null', () => {
+    expect(createMilitarSchema.parse({ ...base, grado: 'A'.repeat(20) }).grado).toBe('A'.repeat(20));
+    expect(createMilitarSchema.parse({ ...base, grado: '.' }).grado).toBeNull();
+    expect(createMilitarSchema.parse({ ...base, grado: '   ' }).grado).toBeNull();
+  });
+
+  it('rechaza espacios o puntos internos ("C. B. O.")', () => {
+    expect(createMilitarSchema.safeParse({ ...base, grado: 'C. B. O.' }).success).toBe(false);
+  });
+
   it('rechaza números o textos largos', () => {
     expect(createMilitarSchema.safeParse({ ...base, grado: 'CB0P' }).success).toBe(false);
     expect(createMilitarSchema.safeParse({ ...base, grado: 'A'.repeat(21) }).success).toBe(false);

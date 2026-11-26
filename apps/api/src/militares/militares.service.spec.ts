@@ -163,6 +163,16 @@ describe('MilitaresService', () => {
     });
   });
 
+  describe('generateTemplate', () => {
+    it('incluye la columna grado', async () => {
+      const ExcelJS = await import('exceljs');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load((await service.generateTemplate()) as any);
+      const headers = (wb.worksheets[0].getRow(1).values as unknown[]).filter(Boolean);
+      expect(headers).toEqual(['cedula', 'nombres', 'apellidos', 'grado', 'codigo_recinto']);
+    });
+  });
+
   describe('bulkUpload', () => {
     it('lanza BadRequestException si no se envía archivo', async () => {
       await expect(service.bulkUpload(undefined as any)).rejects.toThrow(BadRequestException);
@@ -212,6 +222,18 @@ describe('MilitaresService', () => {
       expect(result.creados).toBe(2);
       expect(prisma.militar.create.mock.calls[0][0].data.grado).toBe('SGOP');
       expect(prisma.militar.create.mock.calls[1][0].data.grado).toBeNull();
+    });
+
+    it('una fila con grado inválido se reporta y no frena el resto', async () => {
+      prisma.recinto.findMany.mockResolvedValueOnce([{ id: recintoId, codigoRecinto: '28' }]);
+      prisma.militar.create.mockResolvedValue(militarRow());
+      const csv = ['cedula,nombres,apellidos,grado,codigo_recinto', '1034567899,Pedro,Suarez,CB0P,28', '1750123455,Maria,Lopez,CBOS,28'].join('\n');
+      const file = { originalname: 'm.csv', mimetype: 'text/csv', buffer: Buffer.from(csv, 'utf8') } as Express.Multer.File;
+
+      const result = await service.bulkUpload(file);
+
+      expect(result.creados).toBe(1);
+      expect(result.errores).toEqual([expect.objectContaining({ fila: 2, error: expect.stringContaining('grado') })]);
     });
   });
 });
