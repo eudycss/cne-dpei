@@ -1,14 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router';
 
 import { AuthProvider } from '../auth/AuthContext';
-import { Login } from './Login';
-import { api } from '../lib/api';
+import { LOGIN_LENTO_MS, Login } from './Login';
+import { api, apiPublico } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
   api: { post: vi.fn() },
+  apiPublico: { get: vi.fn().mockResolvedValue({ data: { status: 'ok' } }) },
   tokenStore: { set: vi.fn(), clear: vi.fn() },
 }));
 
@@ -133,5 +134,36 @@ describe('Login', () => {
     await submitLogin(container, 'x@x.com', 'Abc123!!');
 
     expect(await screen.findByText('pantalla home')).toBeInTheDocument();
+  });
+
+  it('al abrir el login despierta la API con un ping a /health', () => {
+    renderLogin();
+    expect(apiPublico.get).toHaveBeenCalledWith('/health');
+  });
+
+  describe('servidor lento (Render despertando)', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function enviarSinRespuesta() {
+      postMock.mockReturnValueOnce(new Promise(() => {}));
+      const { container } = renderLogin();
+      fireEvent.change(screen.getByLabelText('Cédula o correo'), { target: { value: '1034567899' } });
+      fireEvent.change(container.querySelector('input[type="password"]')!, { target: { value: 'Clave1*' } });
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+    }
+
+    it('no avisa nada si responde antes de 4 s', () => {
+      enviarSinRespuesta();
+      act(() => vi.advanceTimersByTime(LOGIN_LENTO_MS - 1));
+      expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    });
+
+    it('pasados 4 s sin respuesta, anuncia que se está conectando con el servidor', () => {
+      enviarSinRespuesta();
+      act(() => vi.advanceTimersByTime(LOGIN_LENTO_MS));
+      expect(screen.getByRole('status')).toHaveTextContent('Conectando con el servidor');
+      expect(screen.getByRole('button', { name: /ingresando/i })).toBeDisabled();
+    });
   });
 });

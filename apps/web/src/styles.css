@@ -190,6 +190,8 @@ a:hover { text-decoration: underline; }
   border-radius: 0 0 10px 10px;
 }
 .muted { color: var(--text-muted); font-size: 0.85rem; }
+.login-despertando { text-align: center; margin: 0.75rem 0 0; min-height: 1.2em; }
+.login-despertando:empty { margin: 0; min-height: 0; }
 
 /* Form */
 .field { margin-bottom: 0.85rem; }
