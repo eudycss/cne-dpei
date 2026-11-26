@@ -1589,3 +1589,34 @@ export type IntercambiarPersonaDistribucionInput = z.infer<typeof intercambiarPe
 export function tieneCupoDia(mismoSexoDestino: number, mismoSexoOrigen: number): boolean {
   return mismoSexoDestino < mismoSexoOrigen;
 }
+
+// Informe de productos CDA/CPE: la persona escribe su cédula y sube 6 fotos.
+
+/** Versión del aviso LOPDP de la página del informe (cambiarla obliga a leerlo de nuevo). */
+export const VERSION_AVISO_INFORME_CDA = 'LOPDP-2026-11-INFORME';
+export const FOTOS_INFORME_CDA = 6;
+
+const tokenVisitaInformeSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'La visita venció: escriba su cédula de nuevo');
+// Llega como texto (multipart) o número (JSON).
+const posicionFotoInformeSchema = z
+  .union([z.string().regex(/^[1-6]$/), z.number().int().min(1).max(FOTOS_INFORME_CDA)], {
+    errorMap: () => ({ message: 'Foto inválida (1 a 6)' }),
+  })
+  .transform(Number);
+
+export const consultarInformeCdaSchema = z.object({ cedula: cedulaSchema }).strict();
+
+/** Campos de texto que acompañan a la foto (multipart). */
+export const subirFotoInformeCdaSchema = z.object({
+  token: tokenVisitaInformeSchema,
+  posicion: posicionFotoInformeSchema,
+  consentimiento: z.literal('true', {
+    errorMap: () => ({ message: 'Debe autorizar el uso de las fotos para continuar' }),
+  }),
+  version: z.literal(VERSION_AVISO_INFORME_CDA, {
+    errorMap: () => ({ message: 'El aviso cambió: recargue la página y léalo de nuevo' }),
+  }),
+});
+
+export const verFotoInformeCdaSchema = z.object({ token: tokenVisitaInformeSchema, posicion: posicionFotoInformeSchema }).strict();
+export const generarInformeCdaSchema = z.object({ token: tokenVisitaInformeSchema }).strict();

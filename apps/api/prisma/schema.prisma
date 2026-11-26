@@ -877,9 +877,50 @@ model OperadorCda {
   intentosDigitacion   IntentoDigitacion[]
   puestosPerimetro     PuestoPerimetro[]
   distribucionesDias   DistribucionDiasPersona[]
+  visitasInforme       VisitaInformeCda[]
+  fotosInforme         FotoInformeCda[]
 
   @@index([grupo, activo])
   @@map("operadores_cda")
+}
+
+/// Visita a la página pública del informe de productos (la persona escribe su
+/// cédula). Solo dentro de la misma visita se ven las fotos que subió y se
+/// descarga el informe: una cédula ajena no da acceso a fotos ya subidas.
+model VisitaInformeCda {
+  id         String      @id @default(uuid()) @db.Uuid
+  operadorId String      @map("operador_id") @db.Uuid
+  operador   OperadorCda @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  /// SHA-256 del token: quien lea la tabla no puede usar la visita.
+  tokenHash  String      @unique @map("token_hash") @db.VarChar(64)
+  expiraEn   DateTime    @map("expira_en") @db.Timestamptz(6)
+  creadoEn   DateTime    @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  fotos FotoInformeCda[]
+
+  @@index([expiraEn], map: "idx_visitas_informe_cda_expira")
+  @@map("visitas_informe_cda")
+}
+
+/// Registro fotográfico del informe de productos: 6 fotos por persona
+/// (posición 1 a 6). Reemplazar una foto sobrescribe su posición.
+model FotoInformeCda {
+  id                    String            @id @default(uuid()) @db.Uuid
+  operadorId            String            @map("operador_id") @db.Uuid
+  operador              OperadorCda       @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  /// 1 a 6 (CHECK en la migración).
+  posicion              Int
+  fotoKey               String            @map("foto_key") @db.VarChar(255)
+  ancho                 Int
+  alto                  Int
+  /// Visita en la que se subió; al vencer la visita queda en null.
+  visitaId              String?           @map("visita_id") @db.Uuid
+  visita                VisitaInformeCda? @relation(fields: [visitaId], references: [id], onDelete: SetNull)
+  consentimientoVersion String            @map("consentimiento_version") @db.VarChar(40)
+  subidoEn              DateTime          @default(now()) @map("subido_en") @db.Timestamptz(6)
+
+  @@unique([operadorId, posicion])
+  @@map("fotos_informe_cda")
 }
 
 /// Una fila por operador y día: check de entrada y de salida con hora y
