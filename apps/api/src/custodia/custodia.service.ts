@@ -74,7 +74,7 @@ export class CustodiaService {
     const [militaresRecinto, entrega] = await Promise.all([
       kit.recintoId
         ? this.prisma.militar.findMany({
-            where: { recintoId: kit.recintoId },
+            where: { recintoId: kit.recintoId, activo: true },
             select: MILITAR_SELECT,
             orderBy: [{ apellidos: 'asc' }, { nombres: 'asc' }],
           })
@@ -260,6 +260,7 @@ export class CustodiaService {
     if (q.length < 2) return [];
     const militares = await this.prisma.militar.findMany({
       where: {
+        activo: true,
         OR: [
           { cedula: { startsWith: q } },
           { nombres: { contains: q, mode: 'insensitive' } },
@@ -309,7 +310,8 @@ export class CustodiaService {
 
   private async militarOrThrow(id: string) {
     const militar = await this.prisma.militar.findUnique({ where: { id } });
-    if (!militar) throw new NotFoundException('Militar no encontrado');
+    // Un militar oculto no recibe kits nuevos (su historial sí se conserva).
+    if (!militar || !militar.activo) throw new NotFoundException('Militar no encontrado');
     return militar;
   }
 

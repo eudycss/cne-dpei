@@ -138,6 +138,11 @@ describe('TrackingService', () => {
       expect(result.delegacion).toEqual({ latitud: 0.35849, longitud: -78.11886 });
       expect(result.margenLlegadaDpiMetros).toBe(200);
       expect(result.margenLlegadaMetros).toBe(120);
+      // La app muestra solo militares visibles; con varios, el del cronograma (con grado) primero.
+      expect(prisma.militar.findFirst).toHaveBeenCalledWith({
+        where: { recintoId, activo: true },
+        orderBy: [{ grado: { sort: 'asc', nulls: 'last' } }, { creadoEn: 'asc' }],
+      });
     });
 
     it('expone items con las etiquetas del catálogo vinculadas al kit', async () => {

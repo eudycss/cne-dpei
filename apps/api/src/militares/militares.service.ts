@@ -37,7 +37,8 @@ export class MilitaresService {
   }): Promise<Paginated<Militar>> {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
-    const where: any = {};
+    // Los ocultos (militares de prueba) no salen en el listado.
+    const where: any = { activo: true };
     // Sin tildes y por palabras en cualquier orden. También por el recinto
     // asignado: "¿qué militares van a Apuela?".
     const ids = await idsPorBusqueda(

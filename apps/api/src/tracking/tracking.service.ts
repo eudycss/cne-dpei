@@ -244,9 +244,10 @@ export class TrackingService {
       orderBy: { nombre: 'asc' },
     });
 
+    // Solo militares visibles; con varios, el del cronograma (con grado) primero.
     const militar = await this.prisma.militar.findFirst({
-      where: { recintoId },
-      orderBy: { creadoEn: 'asc' },
+      where: { recintoId, activo: true },
+      orderBy: [{ grado: { sort: 'asc', nulls: 'last' } }, { creadoEn: 'asc' }],
     });
 
     // Todas las parejas CDA de la jornada en este recinto (la tarjeta "Su pareja"

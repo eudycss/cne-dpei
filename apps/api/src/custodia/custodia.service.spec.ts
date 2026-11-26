@@ -15,7 +15,7 @@ const nuevoOperadorId = '99999999-9999-9999-9999-999999999999';
 const asistenteId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 function militarRow(id = militarId, rec = recintoId) {
-  return { id, cedula: '1002003004', nombres: 'Juan', apellidos: 'Paz', grado: 'CBOP', recintoId: rec, recinto: { nombre: 'Escuela' } };
+  return { id, cedula: '1002003004', nombres: 'Juan', apellidos: 'Paz', grado: 'CBOP', activo: true, recintoId: rec, recinto: { nombre: 'Escuela' } };
 }
 
 function kitRow(overrides: Record<string, unknown> = {}) {
@@ -88,7 +88,7 @@ describe('CustodiaService', () => {
         expect.objectContaining({ where: { eventoId_codigoUnico: { eventoId, codigoUnico: 'ABCD2345' } } }),
       );
       expect(prisma.militar.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { recintoId }, select: expect.objectContaining({ grado: true }) }),
+        expect.objectContaining({ where: { recintoId, activo: true }, select: expect.objectContaining({ grado: true }) }),
       );
       expect(r).toEqual(
         expect.objectContaining({
@@ -131,6 +131,15 @@ describe('CustodiaService', () => {
       expect(prisma.entregaCustodioKit.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ militarDeOtroRecinto: true }),
       });
+    });
+
+    it('un militar oculto (de prueba) no recibe kits: 404', async () => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitRow());
+      prisma.militar.findUnique.mockResolvedValueOnce({ ...militarRow(), activo: false });
+      await expect(
+        service.registrarEntrega(asistenteId, { kitId, militarId }),
+      ).rejects.toThrow('Militar no encontrado');
+      expect(prisma.entregaCustodioKit.create).not.toHaveBeenCalled();
     });
 
     it('repetir con el mismo militar es idempotente; con otro militar es 409', async () => {
@@ -374,7 +383,7 @@ describe('CustodiaService', () => {
       prisma.militar.findMany.mockResolvedValueOnce([militarRow(otroMilitarId, otroRecintoId)]);
       const r = await service.buscarMilitares('paz');
       expect(prisma.militar.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 20, where: { OR: expect.any(Array) } }),
+        expect.objectContaining({ take: 20, where: { activo: true, OR: expect.any(Array) } }),
       );
       expect(r[0].recintoId).toBe(otroRecintoId);
     });
