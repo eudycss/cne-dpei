@@ -287,8 +287,8 @@ function MilitarModal({
         <h1>{militar ? 'Editar militar' : 'Nuevo militar'}</h1>
 
         <div className="field">
-          <label>Cédula</label>
-          <input
+          <label htmlFor="militares-cedula">Cédula</label>
+          <input id="militares-cedula"
             value={form.cedula}
             onChange={field('cedula')}
             required
@@ -299,20 +299,21 @@ function MilitarModal({
         </div>
 
         <div className="field">
-          <label>Nombres</label>
-          <input value={form.nombres} onChange={field('nombres')} required />
+          <label htmlFor="militares-nombres">Nombres</label>
+          <input id="militares-nombres" value={form.nombres} onChange={field('nombres')} required />
         </div>
 
         <div className="field">
-          <label>Apellidos</label>
-          <input value={form.apellidos} onChange={field('apellidos')} required />
+          <label htmlFor="militares-apellidos">Apellidos</label>
+          <input id="militares-apellidos" value={form.apellidos} onChange={field('apellidos')} required />
         </div>
 
         {/* Selector de recinto con búsqueda */}
         <div className="field" style={{ position: 'relative' }}>
-          <label>Recinto</label>
+          <label htmlFor="militares-recinto">Recinto</label>
           <div style={{ position: 'relative' }}>
             <input
+              id="militares-recinto"
               placeholder="Escribe el nombre o código del recinto…"
               value={recintoSearch}
               onChange={(e) => {

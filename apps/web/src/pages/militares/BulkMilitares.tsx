@@ -61,8 +61,8 @@ export function BulkMilitares() {
         </button>
 
         <div className="field" style={{ marginTop: '1rem' }}>
-          <label>Archivo (.xlsx o .csv)</label>
-          <input
+          <label htmlFor="bulkmilitares-archivo-xlsx-o-csv">Archivo (.xlsx o .csv)</label>
+          <input id="bulkmilitares-archivo-xlsx-o-csv"
             type="file"
             accept=".xlsx,.csv"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}

@@ -152,8 +152,8 @@ function TipoModal({
 
         {!tipo && (
           <div className="field">
-            <label>Código interno</label>
-            <input
+            <label htmlFor="tiposevento-codigo-interno">Código interno</label>
+            <input id="tiposevento-codigo-interno"
               value={codigo}
               onChange={(e) => setCodigo(e.target.value)}
               placeholder="Ej.: ELECCION_PRESIDENCIAL"
@@ -165,8 +165,8 @@ function TipoModal({
         )}
 
         <div className="field">
-          <label>Etiqueta</label>
-          <input
+          <label htmlFor="tiposevento-etiqueta">Etiqueta</label>
+          <input id="tiposevento-etiqueta"
             value={etiqueta}
             onChange={(e) => setEtiqueta(e.target.value)}
             placeholder="Ej.: Elección Presidencial"

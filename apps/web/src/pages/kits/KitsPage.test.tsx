@@ -196,7 +196,7 @@ describe('KitsPage — CreateKitModal', () => {
     recintosOcupadosActuales = ['99999999-9999-9999-9999-999999999999'];
     const user = await openCreateModal();
 
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
 
     expect(screen.getByText('28 — Escuela Central')).toBeInTheDocument();
     expect(screen.queryByText('30 — Escuela Norte')).not.toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('KitsPage — CreateKitModal', () => {
     postMock.mockResolvedValueOnce({ data: {} });
 
     await user.click(screen.getByLabelText(/Este recinto lleva otro dispositivo/));
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
     await user.click(screen.getByText('30 — Escuela Norte (ya tiene kit)'));
     await user.click(screen.getByRole('button', { name: 'Crear kit' }));
 
@@ -227,11 +227,11 @@ describe('KitsPage — CreateKitModal', () => {
     const casilla = screen.getByLabelText(/Este recinto lleva otro dispositivo/);
     expect(casilla).toHaveAccessibleDescription(/Solo se muestran recintos sin kit/);
     await user.click(casilla);
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
     await user.click(screen.getByText('30 — Escuela Norte (ya tiene kit)'));
     await user.click(casilla);
 
-    expect(screen.getByRole('button', { name: '— Selecciona un recinto —' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/Se quitó el recinto elegido porque ya tiene kit/);
   });
 
@@ -239,7 +239,7 @@ describe('KitsPage — CreateKitModal', () => {
     const user = await openCreateModal();
     postMock.mockResolvedValueOnce({ data: {} });
 
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
     await user.click(screen.getByText('28 — Escuela Central'));
     await user.click(screen.getByRole('button', { name: 'Crear kit' }));
 
@@ -269,7 +269,7 @@ describe('KitsPage — CreateKitModal', () => {
     const user = await openCreateModal();
     postMock.mockResolvedValueOnce({ data: {} });
 
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
     await user.click(screen.getByText('28 — Escuela Central'));
     await user.click(screen.getByLabelText('Mouse'));
     await user.click(screen.getByRole('button', { name: 'Crear kit' }));
@@ -291,7 +291,7 @@ describe('KitsPage — CreateKitModal', () => {
     const user = await openCreateModal();
     postMock.mockResolvedValueOnce({ data: {} });
 
-    await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+    await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
     await user.click(screen.getByText('28 — Escuela Central'));
     await user.type(screen.getByLabelText('Número de serie de Computador'), '5CD445577S');
     await user.selectOptions(screen.getByLabelText('Estado de Mouse'), 'REGULAR');
@@ -328,7 +328,7 @@ describe('KitsPage — CreateKitModal', () => {
       postMock.mockResolvedValueOnce({ data: {} });
 
       expect(getMock).toHaveBeenCalledWith('/parejas-cda/disponibles-kit?eventoId=55555555-5555-5555-5555-555555555555');
-      await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+      await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
       await user.click(screen.getByText('28 — Escuela Central'));
       await user.click(screen.getByRole('button', { name: /Sin operador/ }));
       await user.click(await screen.findByText('PÉREZ ANA'));
@@ -385,7 +385,7 @@ describe('KitsPage — CreateKitModal', () => {
         .mockRejectedValueOnce({ response: { data: { message: 'Las asignaciones están congeladas', frozen: true } } })
         .mockResolvedValueOnce({ data: {} });
 
-      await user.click(screen.getByRole('button', { name: '— Selecciona un recinto —' }));
+      await user.click(screen.getByRole('button', { name: 'Recinto (CDA) — Selecciona un recinto —' }));
       await user.click(screen.getByText('28 — Escuela Central'));
       await user.click(screen.getByRole('button', { name: /Sin operador/ }));
       await user.click(await screen.findByText('PÉREZ ANA'));
@@ -689,7 +689,7 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     expect(within(modal).getByText('Recinto:').parentElement).toHaveTextContent('28 — Escuela Central');
 
     patchMock.mockResolvedValueOnce({ data: kit({ operadorId }) });
-    await user.click(within(modal).getByRole('button', { name: '— Selecciona un operador —' }));
+    await user.click(within(modal).getByRole('button', { name: 'Operador — Selecciona un operador —' }));
     await user.click(screen.getByText(/Juan Pérez/));
     await user.click(within(modal).getByRole('button', { name: 'Asignar' }));
 
@@ -710,11 +710,11 @@ describe('KitsPage — tabla, AsignarKitModal y EditKitModal', () => {
     const heading = await screen.findByText('Editar kit');
     const modal = heading.closest('form') as HTMLElement;
 
-    expect(within(modal).getByRole('button', { name: '28 — Escuela Central' })).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: 'Recinto (CDA) 28 — Escuela Central' })).toBeInTheDocument();
     expect(within(modal).getByLabelText('Computador')).toBeChecked();
 
     patchMock.mockResolvedValueOnce({ data: kit({ recintoId: otroRecintoId }) });
-    await user.click(within(modal).getByRole('button', { name: '28 — Escuela Central' }));
+    await user.click(within(modal).getByRole('button', { name: 'Recinto (CDA) 28 — Escuela Central' }));
     await user.click(screen.getByText('30 — Escuela Norte'));
     await user.click(within(modal).getByRole('button', { name: 'Guardar cambios' }));
 

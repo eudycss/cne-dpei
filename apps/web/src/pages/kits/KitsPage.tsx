@@ -836,8 +836,8 @@ function CreateKitModal({
         </p>
 
         <div className="field">
-          <label>Recinto (CDA)</label>
-          <SearchableSelect
+          <label id="kits-recinto-cda">Recinto (CDA)</label>
+          <SearchableSelect labelId="kits-recinto-cda"
             options={recintoOptions}
             value={recintoId}
             onChange={setRecintoId}
@@ -1037,8 +1037,8 @@ function AsignarKitModal({
         </p>
 
         <div className="field">
-          <label>Operador</label>
-          <SearchableSelect
+          <label id="kits-operador">Operador</label>
+          <SearchableSelect labelId="kits-operador"
             options={operadorOptions}
             value={operadorId}
             onChange={setOperadorId}
@@ -1050,8 +1050,8 @@ function AsignarKitModal({
 
         {frozen && (
           <div className="field">
-            <label>Justificación (requerida)</label>
-            <textarea
+            <label htmlFor="kits-justificacion-requerida">Justificación (requerida)</label>
+            <textarea id="kits-justificacion-requerida"
               value={justificacion}
               onChange={(e) => setJustificacion(e.target.value)}
               rows={3}
@@ -1163,8 +1163,8 @@ function EditKitModal({
         </p>
 
         <div className="field">
-          <label>Recinto (CDA)</label>
-          <SearchableSelect
+          <label id="kits-recinto-cda-2">Recinto (CDA)</label>
+          <SearchableSelect labelId="kits-recinto-cda-2"
             options={recintoOptions}
             value={recintoId}
             onChange={setRecintoId}
@@ -1187,8 +1187,8 @@ function EditKitModal({
 
         {frozen && (
           <div className="field">
-            <label>Justificación (requerida)</label>
-            <textarea
+            <label htmlFor="kits-justificacion-requerida-2">Justificación (requerida)</label>
+            <textarea id="kits-justificacion-requerida-2"
               value={justificacion}
               onChange={(e) => setJustificacion(e.target.value)}
               rows={3}
