@@ -1,0 +1,116 @@
+name: Verificación después del deploy
+
+# Tras cada merge a probarweb: espera el deploy de la API en Render, corre las
+# pruebas de humo contra producción (solo lectura) y, si falla una crítica,
+# vuelve la API al deploy anterior. Avisa por Telegram al chat privado del
+# administrador (no a los grupos de técnicos).
+#
+# Secretos (Settings → Secrets and variables → Actions):
+#   RENDER_API_KEY           clave de API de Render (Account Settings → API Keys)
+#   TELEGRAM_BOT_TOKEN       token del bot (el mismo de Render)
+#   TELEGRAM_DEPLOY_CHAT_ID  chat_id privado del administrador
+
+on:
+  push:
+    branches: [probarweb]
+  workflow_dispatch:
+
+concurrency:
+  group: post-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  API_URL: https://cne-imbabura-api.onrender.com
+  WEB_URL: https://cne-dpei-web.vercel.app
+  RENDER_SERVICE_ID: srv-d8o26aegvqtc739sb6c0
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Esperar el deploy de la API (Render)
+        id: render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node infra/deploy/render.mjs esperar "$GITHUB_SHA"
+
+      # Vercel suele terminar antes que Render; un margen para la web.
+      - name: Margen para Vercel
+        if: steps.render.outputs.estado == 'live'
+        run: sleep 30
+
+      - name: Pruebas de humo
+        id: humo
+        if: steps.render.outputs.estado == 'live'
+        continue-on-error: true
+        run: node infra/deploy/smoke.mjs "$API_URL" "$WEB_URL"
+
+      - name: Rollback de la API al deploy anterior
+        id: rollback
+        if: steps.humo.outputs.falla_critica == 'true' && steps.render.outputs.anterior != ''
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node infra/deploy/render.mjs rollback "${{ steps.render.outputs.anterior }}"
+
+      - name: Pruebas de humo después del rollback
+        id: humo2
+        if: steps.rollback.outcome == 'success'
+        continue-on-error: true
+        run: node infra/deploy/smoke.mjs "$API_URL" "$WEB_URL"
+
+      - name: Aviso por Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_DEPLOY_CHAT_ID: ${{ secrets.TELEGRAM_DEPLOY_CHAT_ID }}
+          # Por env (no ${{ }} dentro del script): el mensaje del commit no se ejecuta.
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ESTADO: ${{ steps.render.outputs.estado }}
+          FALLA_CRITICA: ${{ steps.humo.outputs.falla_critica }}
+          FALLA_AVISO: ${{ steps.humo.outputs.falla_aviso }}
+          RESUMEN: ${{ steps.humo.outputs.resumen }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+          RESUMEN2: ${{ steps.humo2.outputs.resumen }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          commit="${GITHUB_SHA:0:7} — $(printf '%s' "$COMMIT_MSG" | head -n 1 | cut -c1-120)"
+          case "$ESTADO" in
+            reemplazado|sin_deploy) exit 0 ;;
+            live) ;;
+            "") titulo="⚠️ No se pudo seguir el deploy (¿falta RENDER_API_KEY?)" ;;
+            *) titulo="🔴 El deploy de la API falló en Render ($ESTADO). Sigue en vivo la versión anterior." ;;
+          esac
+          if [ "$ESTADO" = "live" ]; then
+            if [ "$FALLA_CRITICA" = "true" ]; then
+              if [ "$ROLLBACK" = "success" ]; then
+                titulo="🔴 Deploy REVERTIDO automáticamente: falló una prueba crítica"
+                extra=$'\n\nDespués del rollback:\n'"$RESUMEN2"
+              else
+                titulo="🚨 Falló una prueba crítica y NO se pudo revertir: revisar ya"
+              fi
+            elif [ "$FALLA_AVISO" = "true" ]; then
+              titulo="⚠️ Deploy en vivo con un aviso (la API sigue)"
+            else
+              titulo="✅ Deploy en producción verificado"
+            fi
+          fi
+          printf '%s\n%s\n\n%s%s\n\n%s' "$titulo" "$commit" "$RESUMEN" "${extra:-}" "$RUN_URL" | node infra/deploy/telegram.mjs
+
+      - name: Resultado
+        if: always()
+        env:
+          ESTADO: ${{ steps.render.outputs.estado }}
+          FALLA_CRITICA: ${{ steps.humo.outputs.falla_critica }}
+        run: |
+          case "$ESTADO" in live|reemplazado|sin_deploy) ;; *) echo "Deploy: $ESTADO"; exit 1 ;; esac
+          if [ "$FALLA_CRITICA" = "true" ]; then echo "Falló una prueba crítica"; exit 1; fi
