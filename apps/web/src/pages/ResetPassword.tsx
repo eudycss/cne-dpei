@@ -39,7 +39,10 @@ export function ResetPassword() {
     return (
       <main className="center">
         <div className="login-card">
-          <div className="banner error">Enlace de recuperación inválido o expirado</div>
+          <h1>Restablecer contraseña</h1>
+          <div className="banner error" role="alert">
+            Enlace de recuperación inválido o expirado
+          </div>
           <p className="muted" style={{ textAlign: 'center', marginTop: '1rem' }}>
             <Link to="/forgot-password">Solicitar un nuevo enlace</Link>
           </p>
