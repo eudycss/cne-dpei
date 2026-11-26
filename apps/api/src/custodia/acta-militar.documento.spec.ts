@@ -29,6 +29,16 @@ function textoWord(docx: Buffer): string {
 }
 
 describe('acta de constancia y custodia (militar)', () => {
+  it('sin resaltado amarillo ni colores de marca: la negrita solo en nombres, kit y proceso', () => {
+    const xml = new PizZip(generarWordActaMilitar(datos)).file('word/document.xml')!.asText();
+    expect(xml).not.toContain('<w:highlight');
+    expect(xml).not.toContain('C45911');
+    // En la nota, la cédula del operador va sin negrita (solo su nombre).
+    const nota = xml.split('Nota:')[1].split('</w:p>')[0];
+    const runCedula = (nota.match(/<w:r[ >].*?<\/w:r>/g) ?? []).find((r) => r.includes(datos.operador!.cedula))!;
+    expect(runCedula).not.toContain('<w:b/>');
+  });
+
   it('llena la plantilla oficial igual que el acta de ejemplo', () => {
     const texto = textoWord(generarWordActaMilitar(datos));
 
