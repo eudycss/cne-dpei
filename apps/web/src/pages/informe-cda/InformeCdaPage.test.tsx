@@ -114,6 +114,24 @@ describe('InformeCdaPage', () => {
     expect(postMock).toHaveBeenLastCalledWith('/publico/informe-cda/generar', { token: TOKEN }, { responseType: 'blob' });
   });
 
+  it('al reemplazar libera la vista previa anterior; un error de la API se muestra en la casilla', async () => {
+    const user = userEvent.setup();
+    (URL.createObjectURL as ReturnType<typeof vi.fn>).mockReturnValueOnce('blob:a').mockReturnValueOnce('blob:b');
+    await entrar(user);
+    await user.click(screen.getByRole('checkbox'));
+    const input = document.getElementById('icda-foto-3') as HTMLInputElement;
+    postMock.mockResolvedValue({ data: { fotos: fotos([3]) } });
+    await user.upload(input, new File(['x'], 'a.jpg', { type: 'image/jpeg' }));
+    await user.upload(input, new File(['y'], 'b.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:a'));
+
+    postMock.mockRejectedValueOnce({
+      response: { status: 429, data: { message: 'Se ingresó muchas veces con esta cédula. Espere 15 minutos e intente de nuevo.' } },
+    });
+    await user.upload(document.getElementById('icda-foto-5') as HTMLInputElement, new File(['z'], 'c.jpg', { type: 'image/jpeg' }));
+    expect(await screen.findByText(/Espere 15 minutos/, { selector: '.icda-estado' })).toBeInTheDocument();
+  });
+
   it('si la visita venció, pide volver a ingresar', async () => {
     const user = userEvent.setup();
     await entrar(user);

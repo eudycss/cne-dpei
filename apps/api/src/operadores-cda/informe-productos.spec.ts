@@ -145,10 +145,16 @@ describe('InformeProductosService', () => {
     expect(prisma.visitaInformeCda.deleteMany).toHaveBeenCalledWith({ where: { expiraEn: { lt: expect.any(Date) } } });
   });
 
-  it('con muchas visitas abiertas en la última hora con la misma cédula responde 429', async () => {
-    prisma.visitaInformeCda.count.mockResolvedValue(5);
+  it('con 10 visitas en 15 min con la misma cédula responde 429; con 9 sí entra', async () => {
+    prisma.visitaInformeCda.count.mockResolvedValue(10);
     await expect(service.consultar('1050123412')).rejects.toMatchObject({ status: 429 });
     expect(prisma.visitaInformeCda.create).not.toHaveBeenCalled();
+    const where = prisma.visitaInformeCda.count.mock.calls[0][0].where;
+    expect(where.operadorId).toBe('op1');
+    expect(Date.now() - where.creadoEn.gt.getTime()).toBeGreaterThanOrEqual(15 * 60_000 - 1000);
+
+    prisma.visitaInformeCda.count.mockResolvedValue(9);
+    await expect(service.consultar('1050123412')).resolves.toMatchObject({ cedula: '1050xxxx12' });
   });
 
   it('una cédula inactiva o desconocida es 404', async () => {

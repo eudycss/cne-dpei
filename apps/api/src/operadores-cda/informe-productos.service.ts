@@ -22,9 +22,13 @@ import { FotoAnexo, generarWordInformeProductos, nombreArchivoInforme, tieneInfo
 /** Lo que dura una visita a la página: tiempo de sobra para subir 6 fotos y descargar. */
 export const VIGENCIA_VISITA_MS = 2 * 60 * 60 * 1000;
 const CATEGORIA = 'fotos-informe-cda';
-/** Visitas abiertas a la vez con una misma cédula (frena el uso con IP rotadas). */
-export const MAX_VISITAS_ACTIVAS = 5;
-const DEMASIADAS_VISITAS = 'Se ingresó muchas veces con esta cédula. Espere un momento e intente de nuevo.';
+/**
+ * Visitas abiertas con una misma cédula en los últimos 15 min: frena el uso
+ * con IP rotadas, y si alguien la usa de mala fe, el bloqueo dura poco.
+ */
+export const MAX_VISITAS_ACTIVAS = 10;
+const VENTANA_VISITAS_MS = 15 * 60 * 1000;
+const DEMASIADAS_VISITAS = 'Se ingresó muchas veces con esta cédula. Espere 15 minutos e intente de nuevo.';
 export const VISITA_VENCIDA = 'La visita venció: escriba su cédula de nuevo.';
 const FOTO_INVALIDA = 'La foto debe ser una imagen JPG válida de hasta 1 MB. Intente de nuevo.';
 export const FALTAN_FOTOS =
@@ -62,7 +66,7 @@ export class InformeProductosService {
 
     const ahora = new Date();
     const activas = await this.prisma.visitaInformeCda.count({
-      where: { operadorId: operador.id, expiraEn: { gt: ahora }, creadoEn: { gt: new Date(ahora.getTime() - 60 * 60 * 1000) } },
+      where: { operadorId: operador.id, expiraEn: { gt: ahora }, creadoEn: { gt: new Date(ahora.getTime() - VENTANA_VISITAS_MS) } },
     });
     if (activas >= MAX_VISITAS_ACTIVAS) throw new HttpException(DEMASIADAS_VISITAS, HttpStatus.TOO_MANY_REQUESTS);
     const token = crypto.randomBytes(32).toString('base64url');

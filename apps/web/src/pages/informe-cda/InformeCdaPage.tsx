@@ -16,14 +16,18 @@ const BYTES_FOTO = 600 * 1024;
 const estado = (e: unknown) => (e as { response?: { status?: number } })?.response?.status;
 
 async function mensajeDe(e: unknown, porDefecto: string): Promise<string> {
-  if (estado(e) === 429) return 'Demasiados intentos. Espere un minuto e intente de nuevo.';
   const cuerpo = (e as { response?: { data?: unknown } })?.response?.data;
+  let mensaje: string | undefined;
   try {
-    if (cuerpo instanceof Blob) return JSON.parse(await textoDeBlob(cuerpo))?.message ?? porDefecto;
+    mensaje = cuerpo instanceof Blob ? JSON.parse(await textoDeBlob(cuerpo))?.message : (cuerpo as { message?: string })?.message;
   } catch {
     /* mensaje genérico */
   }
-  return (cuerpo as { message?: string } | undefined)?.message ?? porDefecto;
+  // El límite por IP responde en inglés (Nest): se traduce; el de la API ya viene en español.
+  if (estado(e) === 429 && (!mensaje || /too many/i.test(mensaje))) {
+    return 'Demasiados intentos. Espere un minuto e intente de nuevo.';
+  }
+  return mensaje ?? porDefecto;
 }
 
 /** Que el enlace no se filtre por Referer ni aparezca en buscadores. */
@@ -169,10 +173,17 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
   const [aviso, setAviso] = useState('');
   const [ampliada, setAmpliada] = useState<number | null>(null);
   const [errorInforme, setErrorInforme] = useState<string | null>(null);
-  const urls = useRef<string[]>([]);
+  // Vista previa vigente de cada posición: al reemplazar se libera la anterior.
+  const urls = useRef<(string | null)[]>(Array(FOTOS_INFORME_CDA).fill(null));
 
   // Las vistas previas viven solo en esta página: se liberan al salir.
-  useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+  useEffect(
+    () => () =>
+      urls.current.forEach((u) => {
+        if (u) URL.revokeObjectURL(u);
+      }),
+    [],
+  );
 
   const cargadas = fotos.filter((f) => f.cargada).length;
   const deAntes = fotos.filter((f) => f.cargada && !f.deEstaVisita).map((f) => f.posicion);
@@ -193,8 +204,8 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
       const reducida = await reducirFoto(archivo, { ladoMaximo: LADO_FOTO, bytesObjetivo: BYTES_FOTO });
       const nuevas = await subirFotoInformeCda(visita.token, posicion, reducida);
       const url = URL.createObjectURL(reducida);
-      urls.current.push(url);
-      const anterior = casillas[i].url;
+      const anterior = urls.current[i];
+      urls.current[i] = url;
       if (anterior) URL.revokeObjectURL(anterior);
       setFotos(nuevas);
       actualizar(i, { subiendo: false, url });
@@ -299,6 +310,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
         {fotos.map((f) => {
           const c = casillas[f.posicion - 1];
           const id = `icda-foto-${f.posicion}`;
+          const ayuda = [`${id}-estado`, !acepta ? 'icda-falta-autorizacion' : null].filter(Boolean).join(' ');
           return (
             <li key={f.posicion} className={`icda-casilla${f.cargada ? ' cargada' : ''}${c.error ? ' con-error' : ''}`}>
               <span className="icda-numero">Foto {f.posicion}</span>
@@ -316,7 +328,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
                   {f.cargada ? '✓' : '+'}
                 </div>
               )}
-              <p className="icda-estado">
+              <p id={`${id}-estado`} className="icda-estado">
                 {c.subiendo
                   ? 'Subiendo…'
                   : c.error
@@ -333,12 +345,12 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
                 type="file"
                 accept="image/*"
                 disabled={!acepta || c.subiendo}
+                aria-describedby={ayuda}
                 onChange={(e) => elegir(f.posicion, e)}
               />
               <label
                 htmlFor={id}
                 className={`btn${f.cargada ? ' secondary' : ''}${!acepta || c.subiendo ? ' deshabilitado' : ''}`}
-                aria-disabled={!acepta || c.subiendo}
               >
                 {f.cargada ? 'Reemplazar' : 'Subir foto'}
                 <span className="sr-only"> {f.posicion}</span>
@@ -347,7 +359,11 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
           );
         })}
       </ol>
-      {!acepta && <p className="fcda-texto">Marque la autorización para poder subir las fotos.</p>}
+      {!acepta && (
+        <p id="icda-falta-autorizacion" className="fcda-texto">
+          Marque la autorización para poder subir las fotos.
+        </p>
+      )}
 
       <div className="sr-only" role="status" aria-live="polite">
         {aviso}
@@ -359,7 +375,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
         </div>
       )}
       {deAntes.length > 0 && cargadas === FOTOS_INFORME_CDA && (
-        <p className="fcda-texto">
+        <p className="fcda-texto" role="status">
           Las fotos {deAntes.join(', ')} se subieron en otra visita. Reemplácelas aquí para descargar el informe, o
           pídalo a la Delegación.
         </p>
@@ -395,7 +411,7 @@ function Ampliada({ url, posicion, onCerrar }: { url: string | null; posicion: n
     if (!url && d.open) d.close?.();
   }, [url]);
   return (
-    <dialog ref={ref} className="icda-dialogo" aria-label={`Foto ${posicion ?? ''}`} onClose={onCerrar}>
+    <dialog ref={ref} className="icda-dialogo" aria-label={posicion ? `Foto ${posicion}` : 'Foto'} onClose={onCerrar}>
       {url && <img src={url} alt={`Foto ${posicion} que subió`} />}
       <form method="dialog">
         <button className="btn" autoFocus>
