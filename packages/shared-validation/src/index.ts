@@ -1246,6 +1246,21 @@ export const crearReservasParejaCdaSchema = z
 /** Cuerpo de "Aplicar a la app" y de quitar una pareja. */
 export const justificacionBodyParejaCdaSchema = z.object({ justificacion: justificacionParejaCdaSchema }).strict();
 
+/** Máximo de parejas por "Asignar kit" en lote (un día tiene unas 60-140). */
+export const MAX_ASIGNAR_KITS = 300;
+/** "Asignar kit" a varias parejas del día a la vez (todas las sin kit o las elegidas). */
+export const asignarKitsParejasCdaSchema = z
+  .object({
+    ids: z
+      .array(z.string().uuid('Pareja inválida'))
+      .min(1, 'Elija al menos una pareja')
+      .max(MAX_ASIGNAR_KITS, `Máximo ${MAX_ASIGNAR_KITS} parejas a la vez`)
+      .refine((ids) => new Set(ids).size === ids.length, 'Hay parejas repetidas'),
+    justificacion: justificacionParejaCdaSchema,
+  })
+  .strict();
+export type AsignarKitsParejasCdaInput = z.infer<typeof asignarKitsParejasCdaSchema>;
+
 const textoOpcional = (max: number) =>
   z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().trim().max(max).optional());
 

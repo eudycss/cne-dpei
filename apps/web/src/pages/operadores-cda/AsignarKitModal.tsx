@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AplicarParejasCdaResult, ParejaCdaFila } from '@cne/shared-types';
 import { Modal } from '../../components/Modal';
 import { asignarKitParejaCda } from '../../lib/queries/operadores-cda';
-import { mensajeError } from './utils';
+import { mensajeError, portadorDe } from './utils';
 
 /**
  * Botón "Asignar kit" de una fila "Sin kit": la pareja recibe su kit (uno
@@ -39,8 +39,7 @@ export function AsignarKitModal({
   });
   const errores = asignar.data?.errores ?? [];
   // Lo lleva el de Android de la pareja (lo decide la API); sin dato, el operador.
-  const portador =
-    pareja.portador ?? [pareja.operador, pareja.asistente].find((x) => x?.dispositivo === 'ANDROID') ?? pareja.operador;
+  const portador = portadorDe(pareja);
   const iphone = portador.dispositivo === 'IPHONE';
   const puedeAsignar = (!congelado || !!motivo) && !asignar.isPending;
 

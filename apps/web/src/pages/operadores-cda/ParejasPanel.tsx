@@ -1,5 +1,5 @@
 import { actuaComoAdmin } from '../../lib/roles';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { coincideBusqueda } from '@cne/shared-validation';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ import { ImportarParejasModal } from './ImportarParejasModal';
 import { CopiarParejasModal } from './CopiarParejasModal';
 import { AccionesDiaParejas } from './AccionesDiaParejas';
 import { AsignarKitModal } from './AsignarKitModal';
+import { AsignarKitsModal } from './AsignarKitsModal';
 import { ReporteTecnicosModal } from './ReporteTecnicosModal';
 import { DispositivoPersona } from './DispositivoPersona';
 import { PasarAReservaModal, ReservaParejas } from './ReservaParejas';
@@ -126,8 +127,21 @@ export function ParejasPanel() {
   const [soloSinPareja, setSoloSinPareja] = useState(false);
   const [soloMasDeUna, setSoloMasDeUna] = useState(false);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
-  // Los QR elegidos son de la lista de un día: al cambiar de día se empieza de cero.
-  useEffect(() => setElegidas(new Set()), [dia]);
+  // "Solo sin kit": parejas elegidas para asignarles el kit en lote.
+  const [soloSinKit, setSoloSinKit] = useState(false);
+  const [paraKit, setParaKit] = useState<Set<string>>(new Set());
+  const [asignandoKits, setAsignandoKits] = useState<ParejaCdaFila[] | null>(null);
+  // Los QR y las parejas elegidas son de la lista de un día: al cambiar de día se empieza de cero.
+  useEffect(() => {
+    setElegidas(new Set());
+    setParaKit(new Set());
+  }, [dia]);
+  /** Los filtros de la tabla son excluyentes: marcar uno desmarca los demás. */
+  const soloFiltro = (cual: 'SIN_PAREJA' | 'MAS_DE_UNA' | 'SIN_KIT' | null) => {
+    setSoloSinPareja(cual === 'SIN_PAREJA');
+    setSoloMasDeUna(cual === 'MAS_DE_UNA');
+    setSoloSinKit(cual === 'SIN_KIT');
+  };
   const [busqueda, setBusqueda] = useState('');
   const [cambiando, setCambiando] = useState<{ pareja: ParejaCdaFila; campo: CampoParejaCda } | null>(null);
   const [importando, setImportando] = useState(false);
@@ -250,13 +264,20 @@ export function ParejasPanel() {
   // Recintos con 2+ parejas: para elegir cuáles QR imprimir (el de cada pareja adicional es otro kit).
   const hayVarias = parejas.some((p) => p.parejasEnRecinto > 1);
   const filtroVarias = soloMasDeUna && hayVarias;
-  const soloVacios = soloSinPareja && sinPareja.length > 0 && !filtroVarias;
+  // Parejas sin kit: el administrador les asigna el kit en lote (todas o las elegidas).
+  const sinKit = parejas.filter((p) => p.estado === 'SIN_KIT');
+  const filtroSinKit = isAdmin && soloSinKit && sinKit.length > 0 && !filtroVarias;
+  const soloVacios = soloSinPareja && sinPareja.length > 0 && !filtroVarias && !filtroSinKit;
   const conKit = parejas.some((p) => p.kitCodigo);
   // N° por recinto, como el Excel: las parejas del mismo recinto forman un bloque.
   const numeroRecinto = new Map<string, number>();
   for (const p of parejas) if (!numeroRecinto.has(p.recinto.id)) numeroRecinto.set(p.recinto.id, numeroRecinto.size + 1);
   // Orden estable por bloque: aunque dos recintos se llamen igual, sus parejas no se mezclan.
-  const porMostrar = filtroVarias ? visibles.filter((p) => p.parejasEnRecinto > 1) : visibles;
+  const porMostrar = filtroVarias
+    ? visibles.filter((p) => p.parejasEnRecinto > 1)
+    : filtroSinKit
+      ? visibles.filter((p) => p.estado === 'SIN_KIT')
+      : visibles;
   const filas = soloVacios ? [] : [...porMostrar].sort((a, b) => (numeroRecinto.get(a.recinto.id) ?? 0) - (numeroRecinto.get(b.recinto.id) ?? 0));
   const inicioBloque = (i: number) => i === 0 || filas[i - 1].recinto.id !== filas[i].recinto.id;
   const filasDelBloque = (i: number) => {
@@ -266,6 +287,25 @@ export function ParejasPanel() {
   };
   // Solo cuentan las elegidas que siguen a la vista (con kit); lo que se filtró no se descarga sin querer.
   const elegidasVisibles = filas.filter((p) => p.kitCodigo && elegidas.has(p.id)).map((p) => p.id);
+  // Solo cuentan las elegidas que siguen a la vista y sin kit (una ya asignada no se reenvía).
+  const paraKitVisibles = filas.filter((p) => p.estado === 'SIN_KIT' && paraKit.has(p.id));
+  const sinKitVisibles = filas.filter((p) => p.estado === 'SIN_KIT');
+  const todasElegidas = sinKitVisibles.length > 0 && paraKitVisibles.length === sinKitVisibles.length;
+  // Casilla del encabezado a medias cuando hay solo algunas elegidas (también para el lector de pantalla).
+  const casillaTodas = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (casillaTodas.current) casillaTodas.current.indeterminate = paraKitVisibles.length > 0 && !todasElegidas;
+  });
+  // Ya no quedan parejas sin kit: se apaga el filtro (si no, volvería solo con la próxima).
+  useEffect(() => {
+    if (soloSinKit && data && sinKit.length === 0) setSoloSinKit(false);
+  }, [soloSinKit, data, sinKit.length]);
+  const alternarParaKit = (id: string) =>
+    setParaKit((prev) => {
+      const nuevo = new Set(prev);
+      if (!nuevo.delete(id)) nuevo.add(id);
+      return nuevo;
+    });
   const alternarElegida = (id: string) =>
     setElegidas((prev) => {
       const nuevo = new Set(prev);
@@ -285,6 +325,7 @@ export function ParejasPanel() {
         ? `${sinParejaVisibles.length} de ${sinPareja.length} recinto(s) sin pareja`
         : `Ningún recinto sin pareja coincide con "${q}".`;
     }
+    if (filtroSinKit) return `${porMostrar.length} pareja(s) sin kit · ${paraKitVisibles.length} elegida(s)`;
     if (filtroVarias) {
       const recintosVarios = new Set(porMostrar.map((p) => p.recinto.id)).size;
       return `${recintosVarios} recinto(s) con más de una pareja · ${porMostrar.length} pareja(s) · ${elegidasVisibles.length} QR elegido(s)`;
@@ -468,25 +509,36 @@ export function ParejasPanel() {
                   </span>
                   {sinPareja.length > 0 && (
                     <label className="ocda-check-linea" style={{ margin: 0 }}>
-                      <input type="checkbox" checked={soloSinPareja}
-                        onChange={(e) => {
-                          setSoloSinPareja(e.target.checked);
-                          if (e.target.checked) setSoloMasDeUna(false);
-                        }}
-                      />
+                      <input type="checkbox" checked={soloSinPareja} onChange={(e) => soloFiltro(e.target.checked ? 'SIN_PAREJA' : null)} />
                       Solo sin pareja
                     </label>
                   )}
                   {hayVarias && (
                     <label className="ocda-check-linea" style={{ margin: 0 }}>
-                      <input type="checkbox" checked={soloMasDeUna}
-                        onChange={(e) => {
-                          setSoloMasDeUna(e.target.checked);
-                          if (e.target.checked) setSoloSinPareja(false);
-                        }}
-                      />
+                      <input type="checkbox" checked={soloMasDeUna} onChange={(e) => soloFiltro(e.target.checked ? 'MAS_DE_UNA' : null)} />
                       Solo recintos con +1 pareja
                     </label>
+                  )}
+                  {isAdmin && sinKit.length > 0 && (
+                    <label className="ocda-check-linea" style={{ margin: 0 }}>
+                      <input type="checkbox" checked={soloSinKit} onChange={(e) => soloFiltro(e.target.checked ? 'SIN_KIT' : null)} />
+                      Solo sin kit ({sinKit.length})
+                    </label>
+                  )}
+                  {filtroSinKit && (
+                    <>
+                      <button type="button" className="btn" onClick={() => setAsignandoKits(sinKitVisibles)} disabled={sinKitVisibles.length === 0}>
+                        {q ? `Asignar kit a las mostradas (${sinKitVisibles.length})` : `Asignar kit a todas las sin kit (${sinKitVisibles.length})`}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => setAsignandoKits(paraKitVisibles)}
+                        disabled={paraKitVisibles.length === 0}
+                      >
+                        Asignar kit a las elegidas ({paraKitVisibles.length})
+                      </button>
+                    </>
                   )}
                   {filtroVarias && (
                     <>
@@ -522,6 +574,17 @@ export function ParejasPanel() {
                       <tr>
                         <th scope="col">N°</th>
                         {filtroVarias && <th scope="col">QR</th>}
+                        {filtroSinKit && (
+                          <th scope="col">
+                            <input
+                              ref={casillaTodas}
+                              type="checkbox"
+                              checked={todasElegidas}
+                              onChange={() => setParaKit(todasElegidas ? new Set() : new Set(sinKitVisibles.map((p) => p.id)))}
+                              aria-label="Elegir todas las parejas sin kit"
+                            />
+                          </th>
+                        )}
                         <th scope="col">Operador CDA</th>
                         <th scope="col">Asistente CDA</th>
                         <th scope="col">Recinto</th>
@@ -542,6 +605,16 @@ export function ParejasPanel() {
                             >
                               {numeroRecinto.get(p.recinto.id)}
                             </th>
+                          )}
+                          {filtroSinKit && (
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={paraKit.has(p.id)}
+                                onChange={() => alternarParaKit(p.id)}
+                                aria-label={`Elegir a ${p.operador.apellidosNombres} (${p.recinto.nombre}) para asignarle el kit`}
+                              />
+                            </td>
                           )}
                           {filtroVarias && (
                             <td>
@@ -720,6 +793,20 @@ export function ParejasPanel() {
           justificacionInicial={justificacion}
           onResultado={mostrarResultado}
           onClose={() => setCambiando(null)}
+        />
+      )}
+      {asignandoKits && (
+        <AsignarKitsModal
+          dia={dia}
+          parejas={asignandoKits}
+          congelado={congelado}
+          justificacionInicial={justificacion}
+          onResultado={(r) => {
+            mostrarResultado(r);
+            // Con errores quedan elegidas las que siguen sin kit, para reintentar solo esas.
+            if (!r.errores.length) setParaKit(new Set());
+          }}
+          onClose={() => setAsignandoKits(null)}
         />
       )}
       {asignandoKit && (

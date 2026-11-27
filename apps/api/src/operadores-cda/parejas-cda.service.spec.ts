@@ -1492,6 +1492,71 @@ describe('ParejasCdaService', () => {
     });
   });
 
+  describe('asignar el kit a varias parejas (todas las sin kit o las elegidas)', () => {
+    const p2 = () =>
+      pareja({ id: 'p2', recintoId: 'r2', recinto: { id: 'r2', codigoRecinto: '1126', nombre: 'UE B' }, operador: { ...OPERADOR, id: 'op2', usuarioId: 'u2' } });
+    const p3 = () =>
+      pareja({ id: 'p3', recintoId: 'r3', recinto: { id: 'r3', codigoRecinto: '1127', nombre: 'UE C' }, operador: { ...OPERADOR, id: 'op3', usuarioId: 'u3' } });
+
+    it('asigna solo las elegidas (no las demás del día) y suma el resultado', async () => {
+      prisma.parejaCda.findMany
+        .mockResolvedValueOnce([pareja(), p2()]) // validación de los ids
+        .mockResolvedValueOnce([pareja(), p2(), p3()]); // parejas del día
+      prisma.kitElectoral.findFirst
+        .mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' })
+        .mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'EN_BODEGA' });
+
+      const r = await service.asignarKits(DIA, ['p1', 'p2']);
+
+      expect(kits.asignar).toHaveBeenCalledTimes(2);
+      expect(kits.asignar).toHaveBeenCalledWith('k1', { operadorId: 'u1' });
+      expect(kits.asignar).toHaveBeenCalledWith('k2', { operadorId: 'u2' });
+      expect(kits.asignar).not.toHaveBeenCalledWith(expect.anything(), { operadorId: 'u3' });
+      expect(r).toMatchObject({ enApp: 2, errores: [] });
+    });
+
+    it('una pareja de otro día o que ya no existe: 400 sin asignar nada', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ fecha: new Date('2026-10-31T00:00:00Z') })]);
+      await expect(service.asignarKits(DIA, ['p1'])).rejects.toThrow(`no es del ${DIA}`);
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      await expect(service.asignarKits(DIA, ['p1', 'p2'])).rejects.toThrow(`no es del ${DIA}`);
+      expect(kits.asignar).not.toHaveBeenCalled();
+    });
+
+    it('una pareja que cambió mientras tanto (ya no está en el día) vuelve como error, no en silencio', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja(), p2()]).mockResolvedValueOnce([pareja()]);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' });
+      const r = await service.asignarKits(DIA, ['p1', 'p2']);
+      expect(r.enApp).toBe(1);
+      expect(r.errores).toEqual([{ pareja: '1 pareja(s)', error: expect.stringContaining('recargue la lista') }]);
+    });
+
+    it('una reserva (sin recinto) no lleva kit: 400', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja({ recintoId: null })]);
+      await expect(service.asignarKits(DIA, ['p1'])).rejects.toThrow(BadRequestException);
+      expect(kits.asignar).not.toHaveBeenCalled();
+    });
+
+    it('sin evento ACTIVO con jornada ese día: 400 que lo explica', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja()]);
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+      await expect(service.asignarKits(DIA, ['p1'])).rejects.toThrow(`No hay un evento ACTIVO con jornada el ${DIA}`);
+    });
+
+    it('si una pareja falla, las demás igual reciben su kit y el error vuelve con su nombre', async () => {
+      prisma.parejaCda.findMany.mockResolvedValueOnce([pareja(), p2()]).mockResolvedValueOnce([pareja(), p2()]);
+      prisma.kitElectoral.findFirst
+        .mockResolvedValueOnce({ id: 'k1', operadorId: null, estado: 'EN_BODEGA' })
+        .mockResolvedValueOnce({ id: 'k2', operadorId: null, estado: 'EN_BODEGA' });
+      kits.asignar.mockRejectedValueOnce(new Error('Ese operador ya tiene otro recinto'));
+
+      const r = await service.asignarKits(DIA, ['p1', 'p2']);
+
+      expect(r.enApp).toBe(1);
+      expect(r.errores).toEqual([{ pareja: expect.stringContaining('957'), error: 'Ese operador ya tiene otro recinto' }]);
+    });
+  });
+
   describe('asignar el kit a una pareja (botón en la fila)', () => {
     beforeEach(() => prisma.parejaCda.findUnique.mockResolvedValue(pareja()));
 

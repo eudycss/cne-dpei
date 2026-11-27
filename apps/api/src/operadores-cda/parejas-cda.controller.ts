@@ -21,7 +21,9 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
+  asignarKitsParejasCdaSchema,
   asignarRecintoParejaCdaSchema,
+  type AsignarKitsParejasCdaInput,
   cargarPropuestaParejasCdaSchema,
   copiarParejasCdaSchema,
   crearKitConParejaCdaSchema,
@@ -282,6 +284,16 @@ export class ParejasCdaController {
   @ApiOperation({ summary: 'Cambia la fecha de toda la lista de un día (sin kits ni jornada real)' })
   moverDia(@Body(new ZodValidationPipe(copiarParejasCdaSchema)) body: CopiarParejasCdaRequest) {
     return this.parejas.moverDia(body.desde, body.hacia);
+  }
+
+  @Post('asignar-kits')
+  @Roles('ADMINISTRADOR')
+  @ApiOperation({ summary: 'Asigna su kit a varias parejas de ?fecha= (todas las sin kit o las elegidas) y las pone en la app' })
+  asignarKits(
+    @Query('fecha') fecha: unknown,
+    @Body(new ZodValidationPipe(asignarKitsParejasCdaSchema)) body: AsignarKitsParejasCdaInput,
+  ) {
+    return this.parejas.asignarKits(parsearFecha(fecha), body.ids, body.justificacion);
   }
 
   @Post('aplicar')

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { DisponiblesParejasCda, ImportParejasCdaResult, ParejaCdaFila, ParejasCdaDia } from '@cne/shared-types';
 
+import { TANDA_ASIGNAR_KITS } from './AsignarKitsModal';
 import { OperadoresCdaPage } from './OperadoresCdaPage';
 import { api } from '../../lib/api';
 import { sileo } from 'sileo';
@@ -955,6 +956,132 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(within(tabla).queryByRole('combobox')).not.toBeInTheDocument();
       expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Operador: iPhone');
       expect(within(tabla).getAllByRole('row')[1]).toHaveTextContent('Asistente: —');
+    });
+  });
+
+  describe('asignar kit en lote (Solo sin kit)', () => {
+    const ANA = fila({ estado: 'SIN_KIT', kitCodigo: null });
+    const MORA = fila({ id: 'p2', operador: LUIS, portador: LUIS, estado: 'SIN_KIT', kitCodigo: null, recinto: { id: 'r2', codigo: '1126', nombre: 'UE B' } });
+    const CON_KIT = fila({ id: 'p3', recinto: { id: 'r3', codigo: '1127', nombre: 'UE C' } });
+    const conLote = (over: Partial<ParejasCdaDia> = {}) => mockApi({ parejas: [ANA, MORA, CON_KIT], ...over });
+    const filtrar = async () => userEvent.click(await screen.findByRole('checkbox', { name: 'Solo sin kit (2)' }));
+
+    it('el filtro deja solo las sin kit; "Asignar kit a todas" manda sus ids y muestra quién llevará cada kit', async () => {
+      conLote();
+      postMock.mockResolvedValueOnce({ data: { enApp: 2, kitsCreados: 1, sinKit: 0, errores: [] } });
+      renderPagina();
+      await filtrar();
+      const tabla = screen.getByRole('region', { name: `Parejas del ${DIA}` });
+      expect(within(tabla).queryByText(/1127/)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar kit a todas las sin kit (2)' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit a 2 pareja(s)' });
+      expect(dialogo).toHaveTextContent('PÉREZ ANA');
+      expect(dialogo).toHaveTextContent('MORA LUIS');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar 2 kit(s)' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith(`/parejas-cda/asignar-kits?fecha=${DIA}`, { ids: ['p1', 'p2'] }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('"Asignar kit a las elegidas" manda solo las marcadas; "Elegir todas" marca y desmarca', async () => {
+      conLote();
+      postMock.mockResolvedValueOnce({ data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [] } });
+      renderPagina();
+      await filtrar();
+      const elegidas = screen.getByRole('button', { name: 'Asignar kit a las elegidas (0)' });
+      expect(elegidas).toBeDisabled();
+      const todas = screen.getByRole('checkbox', { name: 'Elegir todas las parejas sin kit' });
+      await userEvent.click(todas);
+      expect(screen.getByRole('button', { name: 'Asignar kit a las elegidas (2)' })).toBeEnabled();
+      await userEvent.click(todas);
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Elegir a MORA LUIS (UE B) para asignarle el kit' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar kit a las elegidas (1)' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit a 1 pareja(s)' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar 1 kit(s)' }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledWith(`/parejas-cda/asignar-kits?fecha=${DIA}`, { ids: ['p2'] }));
+    });
+
+    it('con la jornada iniciada pide la justificación y la envía', async () => {
+      conLote({ congelado: true });
+      postMock.mockResolvedValueOnce({ data: { enApp: 2, kitsCreados: 0, sinKit: 0, errores: [] } });
+      renderPagina();
+      await filtrar();
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar kit a todas las sin kit (2)' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit a 2 pareja(s)' });
+      const boton = within(dialogo).getByRole('button', { name: 'Asignar 2 kit(s)' });
+      expect(boton).toBeDisabled();
+      await userEvent.type(within(dialogo).getByLabelText('Justificación (la jornada ya inició)'), 'Kits que faltaban');
+      await userEvent.click(boton);
+      await waitFor(() =>
+        expect(postMock).toHaveBeenCalledWith(`/parejas-cda/asignar-kits?fecha=${DIA}`, { ids: ['p1', 'p2'], justificacion: 'Kits que faltaban' }),
+      );
+    });
+
+    it('si alguna pareja falla, la ventana queda abierta con el motivo de cada una', async () => {
+      conLote();
+      postMock.mockResolvedValueOnce({
+        data: { enApp: 1, kitsCreados: 0, sinKit: 0, errores: [{ pareja: 'MORA LUIS · 1126', error: 'Ya tiene otro recinto' }] },
+      });
+      renderPagina();
+      await filtrar();
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar kit a todas las sin kit (2)' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit a 2 pareja(s)' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar 2 kit(s)' }));
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('1 kit(s) asignado(s) · 1 pareja(s) sin kit');
+      expect(within(dialogo).getByRole('alert')).toHaveTextContent('MORA LUIS · 1126: Ya tiene otro recinto');
+      expect(within(dialogo).getByRole('button', { name: 'Cerrar' })).toBeEnabled();
+    });
+
+    it(`un lote grande va en tandas de ${TANDA_ASIGNAR_KITS} (sin pasar el límite de tiempo) y suma el resultado`, async () => {
+      const muchas = Array.from({ length: TANDA_ASIGNAR_KITS + 3 }, (_, i) =>
+        fila({ id: `x${i}`, estado: 'SIN_KIT', kitCodigo: null, recinto: { id: `r${i}`, codigo: String(2000 + i), nombre: `UE ${i}` } }),
+      );
+      mockApi({ parejas: muchas });
+      postMock
+        .mockResolvedValueOnce({ data: { enApp: TANDA_ASIGNAR_KITS, kitsCreados: 0, sinKit: 0, errores: [] } })
+        .mockResolvedValueOnce({ data: { enApp: 3, kitsCreados: 0, sinKit: 0, errores: [] } });
+      renderPagina();
+      await userEvent.click(await screen.findByRole('checkbox', { name: `Solo sin kit (${muchas.length})` }));
+      await userEvent.click(screen.getByRole('button', { name: `Asignar kit a todas las sin kit (${muchas.length})` }));
+      const dialogo = screen.getByRole('dialog', { name: `Asignar kit a ${muchas.length} pareja(s)` });
+      await userEvent.click(within(dialogo).getByRole('button', { name: `Asignar ${muchas.length} kit(s)` }));
+      await waitFor(() => expect(postMock).toHaveBeenCalledTimes(2));
+      expect(postMock.mock.calls[0][1].ids).toHaveLength(TANDA_ASIGNAR_KITS);
+      expect(postMock.mock.calls[1][1].ids).toEqual(['x20', 'x21', 'x22']);
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('si una tanda falla (la lista cambió), no deja reintentar con la lista vieja', async () => {
+      conLote();
+      postMock.mockRejectedValueOnce({ response: { status: 400, data: { message: 'Alguna de las parejas elegidas no es del día: recargue la lista' } } });
+      renderPagina();
+      await filtrar();
+      await userEvent.click(screen.getByRole('button', { name: 'Asignar kit a todas las sin kit (2)' }));
+      const dialogo = screen.getByRole('dialog', { name: 'Asignar kit a 2 pareja(s)' });
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Asignar 2 kit(s)' }));
+      expect(await within(dialogo).findByRole('alert')).toHaveTextContent('recargue la lista');
+      expect(within(dialogo).queryByRole('button', { name: /^Asignar/ })).not.toBeInTheDocument();
+      expect(within(dialogo).getByRole('button', { name: 'Cerrar' })).toBeEnabled();
+    });
+
+    it('con el buscador, el botón dice "las mostradas" (no promete asignar a todas)', async () => {
+      conLote();
+      renderPagina();
+      await filtrar();
+      await userEvent.type(screen.getByLabelText('Buscar por persona, código o nombre de recinto'), '1126');
+      expect(await screen.findByRole('button', { name: 'Asignar kit a las mostradas (1)' })).toBeInTheDocument();
+    });
+
+    it('sin parejas sin kit, o para quien no es administrador, no aparece el filtro', async () => {
+      mockApi({ parejas: [CON_KIT] });
+      const { unmount } = renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('checkbox', { name: /Solo sin kit/ })).not.toBeInTheDocument();
+      unmount();
+      auth.roles = ['TECNICO_SUPERVISOR'];
+      conLote();
+      renderPagina();
+      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
+      expect(screen.queryByRole('checkbox', { name: /Solo sin kit/ })).not.toBeInTheDocument();
     });
   });
 
