@@ -53,10 +53,20 @@ export class FotoIlegibleError extends Error {
   }
 }
 
+/** La foto ya reducida no alcanza la medida mínima que pide quien llama. */
+export class FotoPequenaError extends Error {}
+
+interface OpcionesReducir {
+  ladoMaximo?: number;
+  bytesObjetivo?: number;
+  /** Si se da, se revisa con las medidas ya reducidas (las que llegan al servidor). */
+  minimo?: { aceptada: (ancho: number, alto: number) => boolean; mensaje: string };
+}
+
 /** Devuelve la foto reducida, como JPEG y sin metadatos. Por defecto, la de la credencial. */
 export async function reducirFoto(
   archivo: Blob,
-  { ladoMaximo = LADO_MAXIMO, bytesObjetivo = BYTES_OBJETIVO }: { ladoMaximo?: number; bytesObjetivo?: number } = {},
+  { ladoMaximo = LADO_MAXIMO, bytesObjetivo = BYTES_OBJETIVO, minimo }: OpcionesReducir = {},
 ): Promise<Blob> {
   let imagen: Awaited<ReturnType<typeof abrirImagen>>;
   try {
@@ -65,6 +75,7 @@ export async function reducirFoto(
     throw new FotoIlegibleError();
   }
   const { ancho, alto } = medidasReducidas(imagen.width, imagen.height, ladoMaximo);
+  if (minimo && !minimo.aceptada(ancho, alto)) throw new FotoPequenaError(minimo.mensaje);
   const canvas = document.createElement('canvas');
   canvas.width = ancho;
   canvas.height = alto;

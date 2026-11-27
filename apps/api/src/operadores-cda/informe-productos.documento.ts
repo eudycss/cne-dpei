@@ -46,19 +46,28 @@ export interface FotoAnexo {
 // Caracteres de control: dejan el XML del Word inválido ("archivo dañado").
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
-// Cada foto cabe en una caja de 3,4 × 2,45 pulgadas: 3 filas × 2 columnas en
-// una hoja A4 con los márgenes del formato de anexos (1,27 cm).
+// Todas las fotos miden lo mismo: 3,35 × 2,4 pulgadas, 3 filas × 2 columnas en
+// una hoja A4 con los márgenes del formato de anexos (1,27 cm), junto al título.
 const EMU_POR_PULGADA = 914400;
-const CAJA_ANCHO = 3.4 * EMU_POR_PULGADA;
-const CAJA_ALTO = 2.45 * EMU_POR_PULGADA;
+export const CAJA = { cx: Math.round(3.35 * EMU_POR_PULGADA), cy: Math.round(2.4 * EMU_POR_PULGADA) };
 
-/** Medidas en EMU que caben en la caja sin deformar la foto. */
-export function medidaEnCaja(ancho: number, alto: number): { cx: number; cy: number } {
-  const escala = Math.min(CAJA_ANCHO / ancho, CAJA_ALTO / alto);
-  return { cx: Math.round(ancho * escala), cy: Math.round(alto * escala) };
+/** Recorte (en milésimas de %) para que la foto llene la caja sin deformarse: se corta al centro lo que sobra. */
+export function recorteEnCaja(ancho: number, alto: number): { l: number; t: number; r: number; b: number } {
+  // Medidas inválidas: sin recorte (nunca "NaN" en el XML, que dañaría el Word).
+  if (!(ancho > 0 && alto > 0)) return { l: 0, t: 0, r: 0, b: 0 };
+  const proporcionCaja = CAJA.cx / CAJA.cy;
+  const proporcionFoto = ancho / alto;
+  if (proporcionFoto > proporcionCaja) {
+    const lado = Math.round(((1 - proporcionCaja / proporcionFoto) / 2) * 100000);
+    return { l: lado, t: 0, r: lado, b: 0 };
+  }
+  const lado = Math.round(((1 - proporcionFoto / proporcionCaja) / 2) * 100000);
+  return { l: 0, t: lado, r: 0, b: lado };
 }
 
-function dibujo(rId: string, id: number, cx: number, cy: number): string {
+function dibujo(rId: string, id: number, ancho: number, alto: number): string {
+  const { cx, cy } = CAJA;
+  const { l, t, r, b } = recorteEnCaja(ancho, alto);
   return (
     `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">` +
     `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Foto ${id}"/>` +
@@ -66,22 +75,25 @@ function dibujo(rId: string, id: number, cx: number, cy: number): string {
     `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:nvPicPr><pic:cNvPr id="${id}" name="foto${id}.jpg"/><pic:cNvPicPr/></pic:nvPicPr>` +
-    `<pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:blipFill><a:blip r:embed="${rId}"/><a:srcRect l="${l}" t="${t}" r="${r}" b="${b}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
     `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
     `</a:graphicData></a:graphic></wp:inline></w:drawing>`
   );
 }
 
+/** Alto fijo de cada fila (twips): la foto + su margen + holgura de redondeo; así una foto que falta no descuadra la hoja. */
+const ALTO_FILA = Math.round((CAJA.cy / EMU_POR_PULGADA) * 1440) + 160;
+
 /** Tabla 3 × 2 sin bordes; una celda vacía si falta la foto de esa posición. */
 function tablaFotos(celdas: (string | null)[]): string {
   const celda = (contenido: string | null) =>
     `<w:tc><w:tcPr><w:tcW w:w="5230" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>` +
-    `<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:jc w:val="center"/></w:pPr>` +
+    `<w:p><w:pPr><w:spacing w:before="60" w:after="60" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>` +
     `${contenido ? `<w:r>${contenido}</w:r>` : ''}</w:p></w:tc>`;
   const filas: string[] = [];
   for (let f = 0; f < 3; f++) {
-    filas.push(`<w:tr><w:trPr><w:cantSplit/></w:trPr>${celda(celdas[f * 2])}${celda(celdas[f * 2 + 1])}</w:tr>`);
+    filas.push(`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${ALTO_FILA}" w:hRule="exact"/></w:trPr>${celda(celdas[f * 2])}${celda(celdas[f * 2 + 1])}</w:tr>`);
   }
   return (
     `<w:tbl><w:tblPr><w:tblW w:w="10460" w:type="dxa"/><w:jc w:val="center"/>` +
@@ -127,8 +139,7 @@ export function generarWordInformeProductos(grupo: string, apellidosNombres: str
       '</Relationships>',
       `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${archivo}"/></Relationships>`,
     );
-    const { cx, cy } = medidaEnCaja(f.ancho, f.alto);
-    celdas[f.posicion - 1] = dibujo(rId, 9000 + f.posicion, cx, cy);
+    celdas[f.posicion - 1] = dibujo(rId, 9000 + f.posicion, f.ancho, f.alto);
   }
   zip.file('word/_rels/document.xml.rels', rels);
 

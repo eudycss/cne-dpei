@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { cedulaSchema, FOTOS_INFORME_CDA } from '@cne/shared-validation';
+import {
+  cedulaSchema,
+  FOTO_INFORME_PEQUENA,
+  FOTOS_INFORME_CDA,
+  fotoInformeTieneTamano,
+} from '@cne/shared-validation';
 import type { EstadoFotoInformeCda, VisitaInformeCdaPublica } from '@cne/shared-types';
 
 import { consultarInformeCda, generarInformeCda, subirFotoInformeCda } from '../../lib/queries/informe-cda';
 import { guardarArchivo } from '../../lib/queries/custodia';
 import { textoDeBlob } from '../../lib/useDescargaPdf';
 import { cargoCorto } from '../operadores-cda/utils';
-import { FotoIlegibleError, reducirFoto } from '../foto-cda/reducirFoto';
+import { FotoIlegibleError, FotoPequenaError, reducirFoto } from '../foto-cda/reducirFoto';
 
 // Las fotos del informe se ven bien impresas a media página: lado mayor de 1600 px.
 const LADO_FOTO = 1600;
@@ -201,7 +206,11 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
     actualizar(i, { subiendo: true, error: null });
     setAviso(`Subiendo la foto ${posicion}…`);
     try {
-      const reducida = await reducirFoto(archivo, { ladoMaximo: LADO_FOTO, bytesObjetivo: BYTES_FOTO });
+      const reducida = await reducirFoto(archivo, {
+        ladoMaximo: LADO_FOTO,
+        bytesObjetivo: BYTES_FOTO,
+        minimo: { aceptada: fotoInformeTieneTamano, mensaje: FOTO_INFORME_PEQUENA },
+      });
       const nuevas = await subirFotoInformeCda(visita.token, posicion, reducida);
       const url = URL.createObjectURL(reducida);
       const anterior = urls.current[i];
@@ -213,7 +222,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
     } catch (err) {
       if (estado(err) === 410) setVencida(true);
       const mensaje =
-        err instanceof FotoIlegibleError ? err.message : await mensajeDe(err, 'No se pudo subir la foto. Intente de nuevo.');
+        err instanceof FotoIlegibleError || err instanceof FotoPequenaError ? err.message : await mensajeDe(err, 'No se pudo subir la foto. Intente de nuevo.');
       actualizar(i, { subiendo: false, error: mensaje });
       setAviso(`Foto ${posicion}: ${mensaje}`);
     }
@@ -328,7 +337,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
                   {f.cargada ? '✓' : '+'}
                 </div>
               )}
-              <p id={`${id}-estado`} className="icda-estado">
+              <p id={`${id}-estado`} className="icda-estado" role={c.error ? 'alert' : undefined}>
                 {c.subiendo
                   ? 'Subiendo…'
                   : c.error
@@ -345,6 +354,7 @@ function Fotos({ visita, onSalir }: { visita: VisitaInformeCdaPublica; onSalir: 
                 type="file"
                 accept="image/*"
                 disabled={!acepta || c.subiendo}
+                aria-invalid={c.error ? true : undefined}
                 aria-describedby={ayuda}
                 onChange={(e) => elegir(f.posicion, e)}
               />
