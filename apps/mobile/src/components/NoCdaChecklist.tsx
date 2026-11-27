@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { MiAsignacionRecinto } from '@cne/shared-types';
+import type { MiAsignacionRecinto, MiAsignacionResponse } from '@cne/shared-types';
 import { postLlegadaNoCda } from '../lib/queries/tracking';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
@@ -35,6 +35,20 @@ function mensajeError(e: unknown): string {
 /** Motivo por defecto del bloqueo antes de llegar al CDA. */
 export const BLOQUEO_ANTES_DE_LLEGAR = 'Se habilita cuando registre su llegada al CDA.';
 export const BLOQUEO_TRAS_SALIDA = 'Ya registró la salida del CDA: los NO CDA ya no se marcan.';
+
+/**
+ * Los NO CDA se marcan solo mientras el operador está en su CDA (entre su
+ * llegada y su salida). Una llegada al CDA que aún está en la cola sin señal
+ * cuenta como hecha: la cola la envía antes que las marcas de NO CDA.
+ */
+export function bloqueoNoCda(
+  a: Pick<MiAsignacionResponse, 'yaRegistroLlegada' | 'yaRegistroSalidaRecinto'>,
+  llegadaEnCola = false,
+): string | null {
+  if (!a.yaRegistroLlegada && !llegadaEnCola) return BLOQUEO_ANTES_DE_LLEGAR;
+  if (a.yaRegistroSalidaRecinto) return BLOQUEO_TRAS_SALIDA;
+  return null;
+}
 
 /**
  * Lista de los NO CDA del CDA como tarjetas. Cada pendiente tiene un botón

@@ -4,7 +4,7 @@ import type { MiAsignacionResponse } from '@cne/shared-types';
 import { getMiAsignacion } from '../lib/queries/tracking';
 import { hayPendiente } from '../lib/offline-queue';
 import { SuParejaCard } from './SuParejaCard';
-import { BLOQUEO_ANTES_DE_LLEGAR, BLOQUEO_TRAS_SALIDA, NoCdaChecklist, juntasTotales as jt } from './NoCdaChecklist';
+import { bloqueoNoCda, NoCdaChecklist, juntasTotales as jt } from './NoCdaChecklist';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily } from '../theme/typography';
 import { Colors } from '../theme/colors';
@@ -12,20 +12,6 @@ import { Colors } from '../theme/colors';
 interface Props {
   visible: boolean;
   onClose: () => void;
-}
-
-/**
- * Los NO CDA se marcan solo mientras el operador está en su CDA (entre su
- * llegada y su salida). Una llegada al CDA que aún está en la cola sin señal
- * cuenta como hecha: la cola la envía antes que las marcas de NO CDA.
- */
-export function bloqueoNoCda(
-  a: Pick<MiAsignacionResponse, 'yaRegistroLlegada' | 'yaRegistroSalidaRecinto'>,
-  llegadaEnCola = false,
-): string | null {
-  if (!a.yaRegistroLlegada && !llegadaEnCola) return BLOQUEO_ANTES_DE_LLEGAR;
-  if (a.yaRegistroSalidaRecinto) return BLOQUEO_TRAS_SALIDA;
-  return null;
 }
 
 export function MiRecintoModal({ visible, onClose }: Props) {

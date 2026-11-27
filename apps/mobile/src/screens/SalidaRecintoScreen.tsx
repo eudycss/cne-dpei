@@ -53,6 +53,8 @@ import {
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
+import { NoCdaPanel } from '../components/NoCdaPanel';
+import { bloqueoNoCda } from '../components/NoCdaChecklist';
 
 type Paso = 1 | 2 | 3;
 type Styles = ReturnType<typeof makeStyles>;
@@ -637,6 +639,14 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Fija al pie: siempre a la vista mientras está en el recinto; al llegar se abre sola una vez. */}
+      <NoCdaPanel
+        noCdas={asignacion?.noCdas ?? []}
+        bloqueo={asignacion ? bloqueoNoCda(asignacion) : null}
+        onMarcado={refrescarNoCdas}
+        bienvenidaClave={asignacion ? `${asignacion.eventoId}_${asignacion.recinto.id}` : undefined}
+      />
 
       <JustificacionNoCdaModal
         visible={pedirMotivo}

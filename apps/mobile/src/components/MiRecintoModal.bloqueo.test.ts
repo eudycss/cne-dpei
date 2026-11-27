@@ -3,8 +3,7 @@ jest.mock('../lib/offline-queue', () => ({ hayPendiente: jest.fn() }));
 jest.mock('../theme/ThemeContext', () => ({ useTheme: () => ({ colors: {} }) }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
-import { bloqueoNoCda } from './MiRecintoModal';
-import { BLOQUEO_ANTES_DE_LLEGAR, BLOQUEO_TRAS_SALIDA } from './NoCdaChecklist';
+import { BLOQUEO_ANTES_DE_LLEGAR, BLOQUEO_TRAS_SALIDA, bloqueoNoCda } from './NoCdaChecklist';
 
 describe('bloqueoNoCda (Mi recinto)', () => {
   it('antes de llegar al CDA, los NO CDA quedan bloqueados', () => {

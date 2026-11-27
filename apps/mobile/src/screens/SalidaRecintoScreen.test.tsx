@@ -6,6 +6,7 @@ import type { MiAsignacionResponse } from '@cne/shared-types';
 // react-test-renderer directamente (mismo patrón que LlegadaRecintoScreen.test.tsx).
 jest.setTimeout(30000);
 
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('../lib/queries/tracking', () => ({
   getMiAsignacion: jest.fn(),
 }));
