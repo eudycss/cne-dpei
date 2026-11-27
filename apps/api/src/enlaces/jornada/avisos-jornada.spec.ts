@@ -198,6 +198,14 @@ describe('avisosJornada: llegada a la Delegación', () => {
     expect(aviso.texto).not.toContain('falta marcar');
   });
 
+  it('la llegada que registró sola el escaneo del kit: nota del kit y sin "+X min" (la hora es la de la entrega)', () => {
+    const u = unidad({ tiempoViajeMin: 30, registros: { ...recorrido, LLEGADA_DPI: { en: min(-2), sinSenal: false, porKit: true } } });
+    const avisos = llegadas(jornada([u]), ['RETRASO_VUELTA:op-1']);
+    expect(avisos[0].clave).toBe('LLEGADA_DPEI:op-1');
+    expect(avisos[0].texto).toContain('Registrada al entregar el kit al Asistente Transversal');
+    expect(avisos[0].texto).not.toContain(' min');
+  });
+
   it('sin unidades no hay cierre', () => {
     expect(llegadas(jornada([]))).toEqual([]);
   });

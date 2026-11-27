@@ -44,6 +44,8 @@ export interface RegistroJornada {
   en: Date;
   /** Se registró sin señal: la hora puede haber llegado tarde al servidor. */
   sinSenal: boolean;
+  /** La registró sola el escaneo del kit (motivo de motivos-marcas), no el operador. */
+  porKit?: boolean;
 }
 
 /** El operador escaneó su kit en la llegada al recinto (con la foto del militar que se lo entregó). */
@@ -355,11 +357,16 @@ export function kitRecibidoDeRetorno(u: UnidadJornada): Date | null {
  * marcó después), la recepción de su kit por el Asistente Transversal.
  * `porKit` = no la marcó: la hora es la del kit.
  */
-export function llegadaDpeiDe(u: UnidadJornada): { registro: RegistroJornada; porKit: boolean } | null {
+export function llegadaDpeiDe(
+  u: UnidadJornada,
+): { registro: RegistroJornada; porKit: boolean; registrada: boolean } | null {
   const marcada = u.registros.LLEGADA_DPI;
   const kit = kitRecibidoDeRetorno(u);
-  if (marcada && (!kit || marcada.en <= kit)) return { registro: marcada, porKit: false };
-  if (kit) return { registro: { en: kit, sinSenal: false }, porKit: !marcada };
+  // La llegada que registró sola el escaneo del kit en la DPEI cuenta como "por kit".
+  // registrada = hay una LLEGADA_DPI guardada (de la app o del escaneo); si no, falta marcarla.
+  if (marcada?.porKit) return { registro: marcada, porKit: true, registrada: true };
+  if (marcada && (!kit || marcada.en <= kit)) return { registro: marcada, porKit: false, registrada: true };
+  if (kit) return { registro: { en: kit, sinSenal: false }, porKit: !marcada, registrada: !!marcada };
   return null;
 }
 
