@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
-import { checklistDesdeBd, NO_CDA_ANTES_DE_LLEGAR, NO_CDA_TRAS_SALIDA, TrackingService } from './tracking.service';
+import { checklistDesdeBd, MOTIVO_KIT_EN_DPEI, NO_CDA_ANTES_DE_LLEGAR, NO_CDA_TRAS_SALIDA, TrackingService } from './tracking.service';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
@@ -23,9 +23,9 @@ describe('TrackingService', () => {
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
     parejaCda: { findMany: jest.fn() },
-    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
+    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn(), delete: jest.fn(), count: jest.fn() },
     recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
-    recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
+    recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     entregaCustodioKit: { findFirst: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     asignacionSupervisor: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -1227,6 +1227,101 @@ describe('TrackingService', () => {
       });
     });
 
+    describe('el kit escaneado en la DPEI completa el retorno', () => {
+      const kitEnRecinto = { ...kit, estado: 'EN_RECINTO', recintoId };
+      const preparar = (tipos: string[], { activo = true } = {}) => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitEnRecinto);
+        prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+        prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(activo ? { id: eventoId } : null);
+        prisma.eventoTracking.findMany.mockResolvedValueOnce(tipos.map((tipo) => ({ tipo })));
+      };
+      const marcas = () => prisma.eventoTracking.create.mock.calls.map(([a]: any[]) => a.data);
+      const verificar = () => service.confirmarVerificacionKitRetorno('asist1', ['ASISTENTE_TRANSVERSAL'], input);
+
+      it('sin salida del recinto ni llegada: registra ambas a nombre de quien escaneó, con el motivo', async () => {
+        preparar(['SALIDA_DPI', 'LLEGADA_RECINTO']);
+        prisma.eventoTracking.create.mockResolvedValueOnce({ id: 's' }).mockResolvedValueOnce({ id: 'l' });
+        prisma.eventoTracking.count.mockResolvedValueOnce(1);
+
+        await verificar();
+
+        const esperado = { eventoId, operadorId, recintoId, registradoPorId: 'asist1', motivoManual: MOTIVO_KIT_EN_DPEI, ocurridoEn: new Date(ocurridoEn) };
+        expect(marcas()).toEqual([
+          { ...esperado, tipo: 'SALIDA_RECINTO' },
+          { ...esperado, tipo: 'LLEGADA_DPI' },
+        ]);
+        expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+          where: { eventoId, operadorId, estado: 'EN_RECINTO' },
+          data: { estado: 'EN_RETORNO' },
+        });
+        expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+          where: { id: kitId, estado: { in: ['ENTREGADO', 'EN_RECINTO', 'EN_RETORNO'] } },
+          data: { estado: 'RETORNADO' },
+        });
+        expect(prisma.recepcionDpiKit.update).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { salidaPendiente: false } });
+        expect(notifications.encolarSalidaRecinto).toHaveBeenCalledTimes(1);
+        expect(notifications.encolarLlegadaDpi).toHaveBeenCalledTimes(1);
+      });
+
+      it('si ya marcó la salida del recinto: solo registra la llegada a la DPEI', async () => {
+        preparar(['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO']);
+        prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'l' });
+        await verificar();
+        expect(marcas().map((m: any) => m.tipo)).toEqual(['LLEGADA_DPI']);
+        expect(notifications.encolarSalidaRecinto).not.toHaveBeenCalled();
+      });
+
+      it('sin llegada al recinto no inventa la salida del recinto; sí la llegada a la DPEI', async () => {
+        preparar(['SALIDA_DPI']);
+        prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'l' });
+        await verificar();
+        expect(marcas().map((m: any) => m.tipo)).toEqual(['LLEGADA_DPI']);
+      });
+
+      it('si ya llegó a la DPEI, nunca salió de ella o el evento no está activo: no registra nada', async () => {
+        preparar(['SALIDA_DPI', 'SALIDA_RECINTO', 'LLEGADA_DPI']);
+        await verificar();
+        preparar([]);
+        await verificar();
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitEnRecinto);
+        prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
+        prisma.recepcionDpiKit.create.mockResolvedValueOnce({ id: 'r1', confirmadoEn: new Date(ocurridoEn) });
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(null);
+        await verificar();
+        expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+      });
+
+      it('si el operador marcó la salida en el mismo instante, se queda la suya y se quita la automática', async () => {
+        preparar(['SALIDA_DPI', 'LLEGADA_RECINTO']);
+        prisma.eventoTracking.create.mockResolvedValueOnce({ id: 's' }).mockResolvedValueOnce({ id: 'l' });
+        prisma.eventoTracking.count.mockResolvedValueOnce(2);
+        await verificar();
+        expect(prisma.eventoTracking.deleteMany).toHaveBeenCalledWith({
+          where: { eventoId, operadorId, tipo: 'SALIDA_RECINTO', motivoManual: MOTIVO_KIT_EN_DPEI },
+        });
+        expect(notifications.encolarSalidaRecinto).not.toHaveBeenCalled();
+      });
+
+      it('si el operador marcó la llegada al mismo tiempo (único repetido) no falla ni avisa dos veces', async () => {
+        preparar(['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO']);
+        prisma.eventoTracking.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+        await expect(verificar()).resolves.toMatchObject({ id: 'r1' });
+        expect(notifications.encolarLlegadaDpi).not.toHaveBeenCalled();
+      });
+
+      it('volver a escanear un kit ya verificado reintenta completar el retorno (si antes falló)', async () => {
+        prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitEnRecinto);
+        prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce({ id: 'r0', confirmadoEn: new Date(ocurridoEn) });
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce({ id: eventoId });
+        prisma.eventoTracking.findMany.mockResolvedValueOnce([{ tipo: 'SALIDA_DPI' }, { tipo: 'SALIDA_RECINTO' }]);
+        prisma.eventoTracking.create.mockResolvedValueOnce({ id: 'l' });
+        await verificar();
+        expect(marcas().map((m: any) => m.tipo)).toEqual(['LLEGADA_DPI']);
+        expect(prisma.recepcionDpiKit.create).not.toHaveBeenCalled();
+      });
+    });
+
     it('el ASISTENTE_TRANSVERSAL verifica el kit de cualquier operador y queda registrado a su nombre', async () => {
       prisma.kitElectoral.findUnique.mockResolvedValueOnce(kit);
       prisma.recepcionDpiKit.findFirst.mockResolvedValueOnce(null);
@@ -1464,6 +1559,20 @@ describe('TrackingService', () => {
       await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it('la salida real (p. ej. de la cola sin señal) reemplaza a la registrada sola al recibir el kit, sin repetir el aviso', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce({ id: 'auto', motivoManual: MOTIVO_KIT_EN_DPEI })
+        .mockResolvedValueOnce({ id: 'tk-llegada' });
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-real' }]);
+
+      await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).resolves.toMatchObject({ id: 'salida-real' });
+      expect(prisma.eventoTracking.delete).toHaveBeenCalledWith({ where: { id: 'auto' } });
+      expect(notifications.encolarSalidaRecinto).not.toHaveBeenCalled();
     });
 
     it('lanza BadRequestException si no registró la llegada al recinto antes', async () => {
