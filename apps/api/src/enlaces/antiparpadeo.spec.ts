@@ -11,8 +11,9 @@ describe('evaluarLectura', () => {
       confirmado: 'ACTIVO',
       cambio: null,
     });
-    expect(evaluarLectura('ACTIVO', { estado: 'FALLO', estadoConfirmado: 'FALLO' })).toEqual({
-      confirmado: 'FALLO',
+    // Sin caída confirmada, un ACTIVO suelto tampoco cambia nada.
+    expect(evaluarLectura('ACTIVO', { estado: 'FALLO', estadoConfirmado: 'ACTIVO' })).toEqual({
+      confirmado: 'ACTIVO',
       cambio: null,
     });
   });
@@ -62,5 +63,29 @@ describe('clasificarIntermitencia', () => {
   it('la recuperación de un intermitente siempre se avisa (si no, el grupo lo cree caído)', () => {
     expect(clasificarIntermitencia('RECUPERACION', CAIDAS_INTERMITENTE)).toBe('avisar');
     expect(clasificarIntermitencia('RECUPERACION', CAIDAS_INTERMITENTE + 5)).toBe('avisar');
+  });
+});
+
+describe('evaluarLectura: recuperación sin esperar otro ciclo', () => {
+  it('un caído confirmado que se lee ACTIVO se recupera en ese mismo ciclo', () => {
+    expect(evaluarLectura('ACTIVO', { estado: 'FALLO', estadoConfirmado: 'FALLO' })).toEqual({
+      confirmado: 'ACTIVO',
+      cambio: 'RECUPERACION',
+    });
+  });
+
+  it('un parpadeo después de recuperarse no vuelve a avisar caída hasta dos FALLO seguidos', () => {
+    // FALLO, FALLO (caída) → ACTIVO (recuperado) → FALLO (nada) → ACTIVO (nada) → FALLO, FALLO (caída).
+    let guardado: { estado: 'ACTIVO' | 'FALLO'; estadoConfirmado: 'ACTIVO' | 'FALLO' | null } = {
+      estado: 'FALLO',
+      estadoConfirmado: 'ACTIVO',
+    };
+    const cambios: (string | null)[] = [];
+    for (const lectura of ['FALLO', 'ACTIVO', 'FALLO', 'ACTIVO', 'FALLO', 'FALLO'] as const) {
+      const r = evaluarLectura(lectura, guardado);
+      cambios.push(r.cambio);
+      guardado = { estado: lectura, estadoConfirmado: r.confirmado };
+    }
+    expect(cambios).toEqual(['CAIDA', 'RECUPERACION', null, null, null, 'CAIDA']);
   });
 });
