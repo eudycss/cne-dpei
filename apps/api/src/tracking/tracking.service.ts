@@ -164,6 +164,9 @@ export const NO_CDA_ANTES_DE_LLEGAR = 'Primero registre su llegada al CDA; despu
 /** Llegada de un NO CDA cuando el operador ya salió del CDA. */
 export const NO_CDA_TRAS_SALIDA = 'Ya registró la salida del CDA: los NO CDA ya no se marcan desde la app.';
 
+/** Motivo de la salida del recinto / llegada a la DPEI que se registran solas al escanear el kit en la DPEI. */
+export const MOTIVO_KIT_EN_DPEI = 'Registrada al recibir el kit en la DPEI';
+
 @Injectable()
 export class TrackingService {
   private readonly logger = new Logger(TrackingService.name);
@@ -670,9 +673,11 @@ export class TrackingService {
   }
 
   /**
-   * Inserta el registro independiente de verificación de retorno al DPI.
-   * No altera EstadoKit ni el flujo de salida/llegada ya existente.
-   * Idempotente: si el kit ya fue verificado, retorna el registro existente.
+   * Inserta el registro de verificación de retorno al DPI y, como el kit en la
+   * DPEI prueba que la pareja volvió, completa su salida del recinto y su
+   * llegada a la DPEI si faltan (completarRetornoPorKit).
+   * Idempotente: si el kit ya fue verificado, retorna el registro existente
+   * (y reintenta completar el retorno, por si antes falló).
    */
   async confirmarVerificacionKitRetorno(
     supervisorId: string,
@@ -697,6 +702,7 @@ export class TrackingService {
       select: { id: true, confirmadoEn: true },
     });
     if (existente) {
+      await this.completarRetornoPorKit(kit, supervisorId, existente.id, existente.confirmadoEn);
       return { id: existente.id, kitId: kit.id, confirmadoEn: existente.confirmadoEn.toISOString() };
     }
 
@@ -710,7 +716,104 @@ export class TrackingService {
       },
     });
 
+    await this.completarRetornoPorKit(kit, supervisorId, creado.id, creado.confirmadoEn);
+
     return { id: creado.id, kitId: kit.id, confirmadoEn: creado.confirmadoEn.toISOString() };
+  }
+
+  /**
+   * El kit escaneado en la DPEI prueba que la pareja ya volvió. Si faltan, se
+   * registran a la hora del escaneo y a nombre de quien escaneó
+   * (registradoPorId + motivo MOTIVO_KIT_EN_DPEI), para que en el historial se
+   * vea que no las marcó el operador:
+   *  - la salida del recinto, solo si registró la llegada al recinto;
+   *  - la llegada a la DPEI, si salió de la DPEI.
+   * Ese kit queda RETORNADO. Solo en el evento ACTIVO. Si después llega la
+   * salida real del operador (sin señal, en la cola), reemplaza a la
+   * automática (registrarSalidaRecinto). Un fallo aquí no anula la recepción;
+   * volver a escanear el kit lo reintenta.
+   */
+  private async completarRetornoPorKit(
+    kit: { id: string; eventoId: string; operadorId: string | null; recintoId: string | null },
+    registradoPorId: string,
+    recepcionId: string,
+    ocurridoEn: Date,
+  ): Promise<void> {
+    const { eventoId, operadorId, recintoId } = kit;
+    if (!operadorId) return;
+    try {
+      const activo = await this.prisma.eventoElectoral.findFirst({
+        where: { id: eventoId, estado: 'ACTIVO' },
+        select: { id: true },
+      });
+      if (!activo) return;
+      const tipos = new Set(
+        (
+          await this.prisma.eventoTracking.findMany({
+            where: {
+              eventoId,
+              operadorId,
+              tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
+            },
+            select: { tipo: true },
+          })
+        ).map((t) => t.tipo),
+      );
+      if (!tipos.has('SALIDA_DPI') || tipos.has('LLEGADA_DPI')) return;
+
+      const marca = { eventoId, operadorId, recintoId, ocurridoEn, registradoPorId, motivoManual: MOTIVO_KIT_EN_DPEI };
+      let salidaCreada = false;
+      if (!tipos.has('SALIDA_RECINTO') && tipos.has('LLEGADA_RECINTO')) {
+        salidaCreada = await this.crearMarcaTracking({ ...marca, tipo: 'SALIDA_RECINTO' });
+        // SALIDA_RECINTO no tiene índice único: si el operador la marcó en el mismo
+        // instante, se deja la suya y se quita la automática.
+        if (salidaCreada) {
+          const salidas = await this.prisma.eventoTracking.count({ where: { eventoId, operadorId, tipo: 'SALIDA_RECINTO' } });
+          if (salidas > 1) {
+            await this.prisma.eventoTracking.deleteMany({
+              where: { eventoId, operadorId, tipo: 'SALIDA_RECINTO', motivoManual: MOTIVO_KIT_EN_DPEI },
+            });
+            salidaCreada = false;
+          }
+        }
+        if (salidaCreada) {
+          await this.prisma.kitElectoral.updateMany({
+            where: { eventoId, operadorId, estado: 'EN_RECINTO' },
+            data: { estado: 'EN_RETORNO' },
+          });
+          await this.prisma.recepcionDpiKit.update({ where: { id: recepcionId }, data: { salidaPendiente: false } });
+        }
+      }
+      const llegadaCreada = await this.crearMarcaTracking({ ...marca, tipo: 'LLEGADA_DPI' });
+      // Este kit está en la mano: queda RETORNADO aunque nunca haya pasado por EN_RECINTO.
+      await this.prisma.kitElectoral.updateMany({
+        where: { id: kit.id, estado: { in: ['ENTREGADO', 'EN_RECINTO', 'EN_RETORNO'] } },
+        data: { estado: 'RETORNADO' },
+      });
+      if (salidaCreada) await this.notificarSalidaRecinto(eventoId, operadorId, recintoId, ocurridoEn);
+      if (llegadaCreada) await this.cerrarLlegadaDpi(eventoId, operadorId, recintoId, ocurridoEn);
+    } catch (e) {
+      this.logger.warn(`No se completó el retorno por kit de ${operadorId}: ${(e as Error).message}`);
+    }
+  }
+
+  /** Crea una marca de tracking; false si ya existía (la marcó el operador al mismo tiempo). */
+  private async crearMarcaTracking(data: {
+    eventoId: string;
+    operadorId: string;
+    recintoId: string | null;
+    ocurridoEn: Date;
+    registradoPorId: string;
+    motivoManual: string;
+    tipo: 'SALIDA_RECINTO' | 'LLEGADA_DPI';
+  }): Promise<boolean> {
+    try {
+      await this.prisma.eventoTracking.create({ data, select: { id: true } });
+      return true;
+    } catch (e) {
+      if (esUnicoRepetido(e)) return false;
+      throw e;
+    }
   }
 
   /**
@@ -1390,9 +1493,12 @@ export class TrackingService {
 
     const existente = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
-      select: { id: true },
+      select: { id: true, motivoManual: true },
     });
-    if (existente) throw new ConflictException('Ya registraste tu salida del recinto');
+    // La registrada sola al recibir el kit en la DPEI no impide la real (llega
+    // de la cola sin señal, con sus actas y su hora): la reemplaza.
+    const reemplazaAutomatica = existente?.motivoManual === MOTIVO_KIT_EN_DPEI;
+    if (existente && !reemplazaAutomatica) throw new ConflictException('Ya registraste tu salida del recinto');
 
     const llegadaPrevia = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
@@ -1422,6 +1528,8 @@ export class TrackingService {
     const recintoId = kit?.recintoId ?? null;
     const ocurridoEn = new Date(parsed.ocurridoEn);
 
+    if (reemplazaAutomatica) await this.prisma.eventoTracking.delete({ where: { id: existente!.id } });
+
     const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, acta_instalacion_url, acta_escrutinio_url, justificacion_no_cda)
       VALUES (
@@ -1446,6 +1554,14 @@ export class TrackingService {
       data: { estado: 'EN_RETORNO' },
     });
 
+    // Si reemplaza a la automática, el aviso de salida ya se mandó.
+    if (!reemplazaAutomatica) await this.notificarSalidaRecinto(evento.id, operadorId, recintoId, ocurridoEn);
+
+    return { id, ocurridoEn: ocurridoEn.toISOString() };
+  }
+
+  /** Aviso de salida del recinto a supervisor y administradores. */
+  private async notificarSalidaRecinto(eventoId: string, operadorId: string, recintoId: string | null, ocurridoEn: Date) {
     const operador = await this.prisma.usuario.findUnique({
       where: { id: operadorId },
       select: { nombres: true, apellidos: true },
@@ -1456,7 +1572,7 @@ export class TrackingService {
 
     await this.notifications.encolarSalidaRecinto({
       operadorId,
-      eventoId: evento.id,
+      eventoId,
       payload: {
         operadorId,
         operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
@@ -1464,8 +1580,6 @@ export class TrackingService {
         ocurridoEn: ocurridoEn.toISOString(),
       },
     });
-
-    return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
 
   /**
