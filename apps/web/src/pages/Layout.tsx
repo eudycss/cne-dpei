@@ -15,12 +15,13 @@ import {
   SlidersHorizontal,
   Keyboard,
   Fence,
+  ScanLine,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { Logo } from '../components/Logo';
 import { NotificationsBell } from '../components/NotificationsBell';
-import { etiquetaRol } from '../lib/roles';
+import { etiquetaRol, puedeEntregarKitsMilitar } from '../lib/roles';
 import { useModulos } from '../lib/useModulos';
 import { PASOS_PREPARACION } from '../lib/flujo';
 import { CargaDePagina } from '../components/CargaDePagina';
@@ -48,7 +49,10 @@ export function Layout() {
   const verPreparacion = puedeVer('inicio') || pasosVisibles.length > 0;
   const verOperacion = puedeVer('monitoreo') || puedeVer('incidencias') || puedeVer('alertas') || puedeVer('plan-perimetro');
   const verPersonal = puedeVer('operadores-cda') || puedeVer('simulador-digitacion');
-  const verInformes = puedeVer('cadena-custodia') || puedeVer('reportes') || puedeVer('powerbi-cdas');
+  // Entregar kits a militares (también desde el celular): lo hacen el asistente transversal y el administrador.
+  // Sin módulo propio: como la app móvil, depende solo del rol (el API exige el mismo).
+  const puedeEntregarKits = puedeEntregarKitsMilitar(user?.roles);
+  const verInformes = puedeEntregarKits || puedeVer('cadena-custodia') || puedeVer('reportes') || puedeVer('powerbi-cdas');
 
   return (
     <>
@@ -121,6 +125,12 @@ export function Layout() {
             )}
             {verInformes && (
               <SeccionMenu id="menu-informes" titulo="Informes">
+                {puedeEntregarKits && (
+                  <NavLink to="/custodia/entrega" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <ScanLine size={16} aria-hidden="true" />
+                    <span>Entrega a militares</span>
+                  </NavLink>
+                )}
                 {puedeVer('cadena-custodia') && (
                   <NavLink to="/reportes/cadena-custodia" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <PackageCheck size={16} aria-hidden="true" />

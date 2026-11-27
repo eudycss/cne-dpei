@@ -151,7 +151,7 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
       'Kits Electorales',
     ]);
     expect(etiquetas('Operación')).toEqual(['Monitoreo', 'Incidencias', 'Alertas', 'Plan de perímetro']);
-    expect(etiquetas('Informes')).toEqual(['Cadena de custodia', 'Reportes', 'Power BI CDAS']);
+    expect(etiquetas('Informes')).toEqual(['Entrega a militares', 'Cadena de custodia', 'Reportes', 'Power BI CDAS']);
     const hrefs = within(screen.getByRole('group', { name: 'Preparación' }))
       .getAllByRole('link')
       .map((l) => l.getAttribute('href'));
@@ -177,14 +177,16 @@ describe('Layout — visibilidad del menú lateral por rol', () => {
     expect(etiquetas('Informes')).toEqual(['Power BI CDAS']);
   });
 
-  it('ASISTENTE_TRANSVERSAL solo ve "CDA y CPE" y "Cadena de custodia" (el resto no le corresponde)', () => {
+  it('ASISTENTE_TRANSVERSAL solo ve "CDA y CPE", "Entrega a militares" y "Cadena de custodia" (el resto no le corresponde)', () => {
     setSessionUser(['ASISTENTE_TRANSVERSAL']);
     renderLayout();
     const menu = screen.getByRole('navigation', { name: 'Menú principal' });
     expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual([
       'CDA y CPE',
+      'Entrega a militares',
       'Cadena de custodia',
     ]);
+    expect(within(menu).getByRole('link', { name: 'Entrega a militares' })).toHaveAttribute('href', '/custodia/entrega');
   });
 
   it('"CDA y CPE" aparece en el grupo Personal para administrador y técnico supervisor, no para el lector', () => {

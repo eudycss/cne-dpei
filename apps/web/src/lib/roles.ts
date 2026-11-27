@@ -14,6 +14,13 @@ export function esSoloAsistente(roles: readonly RoleName[] | undefined): boolean
   return !!roles?.length && roles.every((r) => r === 'ASISTENTE_TRANSVERSAL');
 }
 
+/** Entregar kits a militares (página /custodia/entrega): el menú y la ruta usan esta misma regla. */
+export const ROLES_ENTREGA_MILITAR: RoleName[] = ['ADMINISTRADOR', 'ASISTENTE_TRANSVERSAL'];
+
+export function puedeEntregarKitsMilitar(roles: readonly RoleName[] | undefined): boolean {
+  return !!roles?.some((r) => ROLES_ENTREGA_MILITAR.includes(r));
+}
+
 /** Nombre legible del rol; si llega uno desconocido se muestra tal cual. */
 export function etiquetaRol(rol: string): string {
   return ETIQUETAS_ROL[rol as RoleName] ?? rol;
