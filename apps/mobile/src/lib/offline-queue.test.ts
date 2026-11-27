@@ -6,6 +6,7 @@ import {
   descartarRechazadas,
   enqueue,
   flushQueue,
+  hayPendiente,
   isNetworkError,
   leerRechazadas,
   sincronizarPendientes,
@@ -647,5 +648,14 @@ describe('un atraso de posiciones GPS no frena los registros de la jornada', () 
 
     await expect(leerRechazadas()).resolves.toEqual([]);
     await expect(contarPendientes()).resolves.toBe(0);
+  });
+});
+
+describe('hayPendiente', () => {
+  it('dice si un endpoint tiene un registro sin enviar (la llegada al recinto antes que los NO CDA)', async () => {
+    expect(await hayPendiente('/tracking/llegada-recinto')).toBe(false);
+    await enqueue({ endpoint: '/tracking/llegada-recinto', method: 'post', payload: {} });
+    expect(await hayPendiente('/tracking/llegada-recinto')).toBe(true);
+    expect(await hayPendiente('/tracking/salida-dpi')).toBe(false);
   });
 });

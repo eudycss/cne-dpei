@@ -8,7 +8,7 @@ jest.mock('../theme/ThemeContext', () => ({
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
-import { juntasTotales, NoCdaChecklist } from './NoCdaChecklist';
+import { BLOQUEO_ANTES_DE_LLEGAR, juntasTotales, NoCdaChecklist } from './NoCdaChecklist';
 import { postLlegadaNoCda } from '../lib/queries/tracking';
 
 const flush = () => new Promise((r) => setImmediate(r));
@@ -83,6 +83,63 @@ describe('NoCdaChecklist', () => {
     });
     expect(onMarcado).toHaveBeenCalledTimes(1);
     expect(filas(r)[1].props.disabled).toBe(false);
+  });
+
+  it('bloqueada: aviso con el motivo, tarjetas deshabilitadas con candado y sin marcar al tocar', () => {
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(
+        <NoCdaChecklist noCdas={[nc('1'), nc('2', '2026-11-23T15:05:00Z')]} onMarcado={jest.fn()} bloqueo={BLOQUEO_ANTES_DE_LLEGAR} />,
+      );
+    });
+    expect(r.root.findByProps({ testID: 'no-cda-bloqueo' })).toBeTruthy();
+    expect(textos(r)).toContain(BLOQUEO_ANTES_DE_LLEGAR);
+    const [pendiente, marcado] = filas(r);
+    expect(pendiente.props.disabled).toBe(true);
+    expect(pendiente.props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(pendiente.props.accessibilityLabel).toBe('Escuela 1, 1, bloqueado hasta llegar al CDA');
+    expect(pendiente.props.accessibilityHint).toBeUndefined();
+    expect(textos(r)).toContain('Bloqueado');
+    // Lo ya marcado se sigue viendo como llegado.
+    expect(marcado.props.accessibilityState.checked).toBe(true);
+    expect(postLlegadaNoCda).not.toHaveBeenCalled();
+  });
+
+  it('habilitada: cada pendiente tiene su botón "Marcar llegada" y el progreso dice cuántos llegaron', () => {
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(<NoCdaChecklist noCdas={[nc('1'), nc('2', '2026-11-23T15:05:00Z')]} onMarcado={jest.fn()} conProgreso />);
+    });
+    expect(r.root.findAllByProps({ testID: 'no-cda-bloqueo' })).toHaveLength(0);
+    expect(textos(r)).toContain('Marcar llegada');
+    expect(textos(r)).toContain('Llegaron 1 de 2');
+    expect(textos(r)).toMatch(/Llegó \d/);
+  });
+
+  it('si la API rechaza la marca (p. ej. 400 antes de llegar), muestra su mensaje', async () => {
+    (postLlegadaNoCda as jest.Mock).mockRejectedValue({ response: { status: 400, data: { message: 'Primero registre su llegada al CDA' } } });
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(<NoCdaChecklist noCdas={[nc('1')]} onMarcado={jest.fn()} />);
+    });
+    await act(async () => {
+      filas(r)[0].props.onPress();
+      await flush();
+    });
+    expect(textos(r)).toContain('Primero registre su llegada al CDA');
+  });
+
+  it('si la API manda varios mensajes, los junta', async () => {
+    (postLlegadaNoCda as jest.Mock).mockRejectedValue({ response: { status: 400, data: { message: ['Uno', 'Dos'] } } });
+    let r!: ReactTestRenderer;
+    act(() => {
+      r = create(<NoCdaChecklist noCdas={[nc('1')]} onMarcado={jest.fn()} />);
+    });
+    await act(async () => {
+      filas(r)[0].props.onPress();
+      await flush();
+    });
+    expect(textos(r)).toContain('Uno. Dos');
   });
 
   it('si falla la marca muestra el error', async () => {

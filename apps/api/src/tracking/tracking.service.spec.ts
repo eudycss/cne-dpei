@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
-import { checklistDesdeBd, TrackingService } from './tracking.service';
+import { checklistDesdeBd, NO_CDA_ANTES_DE_LLEGAR, NO_CDA_TRAS_SALIDA, TrackingService } from './tracking.service';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
@@ -2814,12 +2814,63 @@ describe('TrackingService', () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId }]);
       prisma.recinto.findUnique.mockResolvedValueOnce({ id: noCdaId, cdaDestinoId: recintoId });
+      prisma.eventoTracking.findMany.mockResolvedValueOnce([{ tipo: 'LLEGADA_RECINTO' }]);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce(null);
       prisma.$queryRaw.mockResolvedValueOnce([{ id: 'no-cda-id' }]);
 
       await service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId, ...offline } as any);
 
       expect(valoresInsert('eventos_tracking')).toContain(true);
+    });
+
+    describe('llegada a un NO-CDA: solo mientras el operador está en su CDA', () => {
+      const noCdaId = '55555555-5555-5555-5555-555555555555';
+      const preparar = (etapas: { tipo: string }[]) => {
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId }]);
+        prisma.recinto.findUnique.mockResolvedValueOnce({ id: noCdaId, cdaDestinoId: recintoId });
+        prisma.eventoTracking.findMany.mockResolvedValueOnce(etapas);
+        prisma.eventoTracking.findFirst.mockResolvedValueOnce(null); // sin duplicado
+      };
+
+      it('antes de registrar la llegada al CDA responde 400 y no guarda nada', async () => {
+        preparar([]);
+        await expect(service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId } as any)).rejects.toThrow(
+          new BadRequestException(NO_CDA_ANTES_DE_LLEGAR),
+        );
+        expect(prisma.$queryRaw).not.toHaveBeenCalled();
+        const where = prisma.eventoTracking.findMany.mock.calls.at(-1)![0].where;
+        expect(where).toMatchObject({ operadorId, tipo: { in: ['LLEGADA_RECINTO', 'SALIDA_RECINTO'] } });
+      });
+
+      it('después de la salida del CDA responde 409 y no guarda nada', async () => {
+        preparar([{ tipo: 'LLEGADA_RECINTO' }, { tipo: 'SALIDA_RECINTO' }]);
+        await expect(service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId } as any)).rejects.toThrow(
+          new ConflictException(NO_CDA_TRAS_SALIDA),
+        );
+        expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      });
+
+      it('un reintento de un NO CDA ya registrado sigue siendo "ya registrado" aunque ya salió', async () => {
+        // El duplicado se revisa antes que las etapas: no hace falta consultarlas.
+        prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+        prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId }]);
+        prisma.recinto.findUnique.mockResolvedValueOnce({ id: noCdaId, cdaDestinoId: recintoId });
+        prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'previo' });
+        await expect(service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId } as any)).rejects.toThrow(
+          'Ya registraste la llegada a este NO-CDA',
+        );
+        expect(prisma.eventoTracking.findMany).not.toHaveBeenCalled();
+      });
+
+      it('ya en el CDA, registra la llegada', async () => {
+        preparar([{ tipo: 'LLEGADA_RECINTO' }]);
+        prisma.$queryRaw.mockResolvedValueOnce([{ id: 'no-cda-id' }]);
+        await expect(service.registrarLlegadaNoCda(operadorId, { recintoId: noCdaId } as any)).resolves.toMatchObject({
+          id: 'no-cda-id',
+          recintoId: noCdaId,
+        });
+      });
     });
 
     it('salida del recinto: guarda desde_offline=true si llega desde la cola', async () => {

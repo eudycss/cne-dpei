@@ -220,6 +220,11 @@ export async function contarPendientes(): Promise<number> {
   return (await getQueue()).length;
 }
 
+/** true si hay en la cola un registro de ese endpoint aún sin enviar (p. ej. la llegada al recinto). */
+export async function hayPendiente(endpoint: string): Promise<boolean> {
+  return (await getQueue()).some((a) => a.endpoint === endpoint);
+}
+
 /** Registros de la jornada sin enviar: las posiciones GPS atrasadas no cuentan, no frenan a nadie. */
 async function contarRegistrosPendientes(): Promise<number> {
   return (await getQueue()).filter((a) => !esGps(a)).length;
