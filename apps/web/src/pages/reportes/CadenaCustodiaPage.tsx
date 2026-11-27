@@ -64,7 +64,7 @@ function Etapa({ iso, detalle, aviso }: { iso: string | null; detalle?: string; 
 
 /**
  * Cadena de custodia de los kits del evento activo: quién entregó cada kit
- * al militar, cuándo lo recibió el operador CDA y cuándo volvió al DPEI.
+ * al militar, cuándo lo recibió el operador CDA y cuándo volvió a la DPEI.
  * Exporta a Excel, imprime la tabla y descarga las actas en PDF.
  */
 export function CadenaCustodiaPage() {
@@ -125,7 +125,7 @@ export function CadenaCustodiaPage() {
         'Registró',
         'Recibido por el CDA',
         'Foto del militar',
-        'Devuelto al DPEI',
+        'Devuelto a la DPEI',
         'Verificó',
         'Contenido completo',
         'Observaciones',
@@ -174,7 +174,7 @@ export function CadenaCustodiaPage() {
             <Logo height={56} />
             <div>
               <h2 style={{ margin: 0 }}>Cadena de custodia de kits</h2>
-              <div className="muted">Entrega al militar · recepción del CDA · devolución al DPEI</div>
+              <div className="muted">Entrega al militar · recepción del CDA · devolución a la DPEI</div>
             </div>
           </div>
           <div className="row no-print" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -290,7 +290,7 @@ export function CadenaCustodiaPage() {
           <span><strong>Kits:</strong> {totales.kits}</span>
           <span><strong>Entregados al militar:</strong> {totales.entregados}</span>
           <span><strong>Recibidos por el CDA:</strong> {totales.recibidos}</span>
-          <span><strong>Devueltos al DPEI:</strong> {totales.devueltos}</span>
+          <span><strong>Devueltos a la DPEI:</strong> {totales.devueltos}</span>
         </div>
       </div>
 
@@ -312,7 +312,7 @@ export function CadenaCustodiaPage() {
                 <th scope="col">Recinto / operador CDA</th>
                 <th scope="col">1. Entrega al militar</th>
                 <th scope="col">2. Recepción del CDA</th>
-                <th scope="col">3. Devolución al DPEI</th>
+                <th scope="col">3. Devolución a la DPEI</th>
                 <th scope="col" className="no-print">Acta</th>
               </tr>
             </thead>

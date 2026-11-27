@@ -6,7 +6,7 @@ import type {
 import { api } from '../api';
 
 /**
- * HU6: operadores de CDA en su tramo de retorno al DPI, con su última posición
+ * HU6: operadores de CDA en su tramo de retorno a la DPEI, con su última posición
  * GPS y kits asignados. El backend filtra por el supervisor autenticado.
  */
 export async function getOperadoresEnRetorno(): Promise<OperadorEnRetorno[]> {

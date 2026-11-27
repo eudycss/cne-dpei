@@ -41,7 +41,7 @@ import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
 import { CustodiaService } from './custodia.service';
 import { FiltrosInforme, InformeCustodiaService } from './informe-custodia.service';
 
-/** Cadena de custodia del kit en el DPEI (Asistente Electoral Transversal). */
+/** Cadena de custodia del kit en la DPEI (Asistente Electoral Transversal). */
 @ApiTags('custodia')
 @ApiBearerAuth()
 @RequiereModulo('cadena-custodia')
@@ -69,7 +69,7 @@ export class CustodiaController {
 
   @Post('entregas')
   @UseGuards(EventoNoReabiertoGuard)
-  @ApiOperation({ summary: 'Registra la entrega del kit a un militar en el DPEI' })
+  @ApiOperation({ summary: 'Registra la entrega del kit a un militar en la DPEI' })
   registrarEntrega(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(registrarEntregaSchema)) body: RegistrarEntregaRequest,

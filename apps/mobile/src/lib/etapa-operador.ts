@@ -17,13 +17,15 @@ export type OperadorEtapa = (typeof ORDEN)[number];
 type RegistrosPrevios = Pick<
   MiAsignacionResponse,
   'yaRegistroSalida' | 'yaRegistroLlegada' | 'yaRegistroSalidaRecinto' | 'yaRegistroLlegadaDpi'
->;
+> & { kits?: { recibido: boolean }[] };
 
 /** Etapa en la que el servidor ubica al operador según lo ya registrado. */
 export function etapaDesdeAsignacion(data: RegistrosPrevios): OperadorEtapa {
   if (data.yaRegistroLlegadaDpi) return 'RETORNADO';
   if (data.yaRegistroSalidaRecinto) return 'EN_RETORNO';
-  if (data.yaRegistroLlegada) return 'EN_RECINTO';
+  // La llegada puede estar registrada ya por el escaneo del primer kit: mientras
+  // falte escanear alguno, sigue en la pantalla de llegada (escanear kits).
+  if (data.yaRegistroLlegada) return data.kits?.some((k) => !k.recibido) ? 'LLEGADA' : 'EN_RECINTO';
   if (data.yaRegistroSalida) return 'EN_TRANSITO';
   return 'SALIDA';
 }

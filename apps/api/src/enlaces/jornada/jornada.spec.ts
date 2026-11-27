@@ -148,7 +148,7 @@ describe('Jornada (Telegram)', () => {
       expect(e.cumplidos.map((i) => i.codigoRecinto)).toEqual(['971']);
     });
 
-    it('kit pendiente: llegó al DPEI sin recibir el kit, o el kit se recibió sin marcar la llegada', () => {
+    it('kit pendiente: llegó a la DPEI sin recibir el kit, o el kit se recibió sin marcar la llegada', () => {
       const j = jornada({
         unidades: [
           unidad('1', JAIRO, { registros: { LLEGADA_DPI: { en: A_LAS('18:40'), sinSenal: false } } }),
@@ -159,8 +159,8 @@ describe('Jornada (Telegram)', () => {
       });
       const e = estadoVista(j, 'KIT');
       expect(e.faltan.map((i) => [i.codigoRecinto, i.nota])).toEqual([
-        ['1', 'llegó al DPEI · el kit no se ha recibido'],
-        ['2', 'kit recibido · falta marcar la llegada al DPEI'],
+        ['1', 'llegó a la DPEI · el kit no se ha recibido'],
+        ['2', 'kit recibido · falta marcar la llegada a la DPEI'],
       ]);
       expect(e.cumplidos).toEqual([]);
     });
@@ -192,7 +192,7 @@ describe('Jornada (Telegram)', () => {
         'SALIDA_DPI',
         AHORA,
       );
-      expect(texto).toContain('<b>🚐 Salida del DPEI</b> · 09:00');
+      expect(texto).toContain('<b>🚐 Salida de la DPEI</b> · 09:00');
       expect(texto).toContain('<b>1 de 3</b> · faltan 2');
       expect(texto).toMatch(/Jairo {2}<code>[▓░]{5}<\/code> 1\/2 {2}faltan 1/);
       expect(texto).toMatch(/Carlos {2}<code>░{5}<\/code> 0\/1 {2}faltan 1/);
@@ -202,7 +202,7 @@ describe('Jornada (Telegram)', () => {
 
     it('por cantón: una línea por cantón y el título lo dice', () => {
       const texto = formatearResumenJornada(jornada(), 'SALIDA_DPI', AHORA, 'can');
-      expect(texto).toContain('<b>🚐 Salida del DPEI · por cantón</b>');
+      expect(texto).toContain('<b>🚐 Salida de la DPEI · por cantón</b>');
       expect(texto).toMatch(/IBARRA {2}<code>[▓░]{5}<\/code> 1\/2 {2}faltan 1/);
       expect(texto).toMatch(/OTAVALO {2}<code>░{5}<\/code> 0\/1 {2}faltan 1/);
       expect(texto).not.toContain('Jairo');
@@ -263,7 +263,7 @@ describe('Jornada (Telegram)', () => {
   describe('detalle de un técnico o cantón', () => {
     it('primero los que faltan (recinto en negrita, personas y teléfono) y después los que cumplieron con la hora', () => {
       const [pagina] = paginasDetalleJornada(jornada(), 'SALIDA_DPI', 1, AHORA);
-      expect(pagina).toContain('<b>🚐 Salida del DPEI · Jairo</b>');
+      expect(pagina).toContain('<b>🚐 Salida de la DPEI · Jairo</b>');
       expect(pagina).toContain('Faltan <b>1</b> de 2');
       expect(pagina).toContain('<b>1290 · Recinto 1290</b>\n   OP 1290 (Op.) +593991234567 · AS 1290 (Asis.)');
       expect(pagina).toContain('<b>✅ YA SALIERON (1)</b>');
@@ -274,7 +274,7 @@ describe('Jornada (Telegram)', () => {
 
     it('un cantón lista solo sus recintos', () => {
       const [pagina] = paginasDetalleJornada(jornada(), 'SALIDA_DPI', 35, AHORA, 'can');
-      expect(pagina).toContain('Salida del DPEI · OTAVALO');
+      expect(pagina).toContain('Salida de la DPEI · OTAVALO');
       expect(pagina).toContain('1487');
       expect(pagina).not.toContain('1290');
     });
@@ -337,7 +337,7 @@ describe('Jornada (Telegram)', () => {
       for (const [i, p] of paginas.entries()) {
         expect(p.length).toBeLessThanOrEqual(4096);
         expect(p).toContain(`pág. ${i + 1}/${paginas.length}`);
-        expect(p).toContain('Salida del DPEI · Jairo');
+        expect(p).toContain('Salida de la DPEI · Jairo');
       }
       const recintos = paginas.join('\n').match(/<b>1\d{3} · /g) ?? [];
       expect(recintos).toHaveLength(80);
@@ -345,7 +345,7 @@ describe('Jornada (Telegram)', () => {
 
     it('"Sin técnico" para los recintos que no están en el distributivo', () => {
       const [pagina] = paginasDetalleJornada(jornada({ unidades: [unidad('1', SIN)] }), 'SALIDA_DPI', 'sin', AHORA);
-      expect(pagina).toContain('Salida del DPEI · Sin técnico');
+      expect(pagina).toContain('Salida de la DPEI · Sin técnico');
     });
   });
 
@@ -502,11 +502,11 @@ describe('Jornada (Telegram)', () => {
       );
       const texto = formatearResumenAutomatico(enCurso(), AHORA, { conteos: antes, en: A_LAS('08:45') });
       expect(texto).toContain(
-        'Desde las 08:45: 🚐 +1 salieron del DPEI · 📍 +2 llegaron al recinto · 🏁 +1 salieron del recinto · 🏫 +2 NO CDA llegaron',
+        'Desde las 08:45: 🚐 +1 salieron de la DPEI · 📍 +2 llegaron al recinto · 🏁 +1 salieron del recinto · 🏫 +2 NO CDA llegaron',
       );
     });
 
-    it('empezada con la primera salida del DPEI; cerrada con todos en el DPEI y sin kits pendientes', () => {
+    it('empezada con la primera salida de la DPEI; cerrada con todos en la DPEI y sin kits pendientes', () => {
       expect(jornadaEmpezada(jornada({ unidades: [unidad('1', JAIRO)] }))).toBe(false);
       expect(jornadaEmpezada(enCurso())).toBe(true);
       expect(jornadaCerrada(enCurso())).toBe(false);
@@ -550,11 +550,11 @@ describe('Jornada (Telegram)', () => {
       const ficha = formatearFichaCda(j, '1133', AHORA)!;
       expect(ficha).toContain('<b>🔎 1133 · UE Manuel J. Calle</b> · 09:00');
       expect(ficha).toContain('OTAVALO · Técnico: Jairo');
-      expect(ficha).toContain('🚐 Salió del DPEI 07:10');
+      expect(ficha).toContain('🚐 Salió de la DPEI 07:10');
       expect(ficha).toContain('📍 Llegó al recinto 08:02 📴');
       expect(ficha).toContain('🏁 Falta salir del recinto');
-      expect(ficha).toContain('🏢 Falta llegar al DPEI');
-      expect(ficha).toContain('📦 Kit: aún no se recibe en el DPEI');
+      expect(ficha).toContain('🏢 Falta llegar a la DPEI');
+      expect(ficha).toContain('📦 Kit: aún no se recibe en la DPEI');
       expect(ficha).toContain('OP 1133 (Op.) +593991234567 · AS 1133 (Asis.)');
       expect(ficha).toContain('🏫 <b>NO CDA: 1 de 2 llegaron</b>\n   ⏳ 5968 · NC 5968\n   ✅ 542 · NC 542 · 10:15');
     });
@@ -627,7 +627,7 @@ describe('Jornada (Telegram)', () => {
       ).toContain('📄 Escrutinio ❌');
     });
 
-    it('si ya volvió al DPEI sin marcar la salida del recinto (ni la llegada), lo que no hizo pasa a ❌', () => {
+    it('si ya volvió a la DPEI sin marcar la salida del recinto (ni la llegada), lo que no hizo pasa a ❌', () => {
       const volvio = unidad('4', JAIRO, { registros: { LLEGADA_DPI: r('19:00') } });
       expect(marcasCumplimiento(volvio)).toBe('📷 Kit y militar ❌ · 📄 Instalación ❌ · 📄 Escrutinio ❌');
     });

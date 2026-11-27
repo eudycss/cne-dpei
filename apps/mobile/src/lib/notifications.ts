@@ -38,16 +38,16 @@ export function describirNotificacion(n: NotificacionItem): string {
   const recinto = (p.recintoNombre as string) ?? 'su recinto';
   switch (n.tipoEvento) {
     case 'SALIDA_DPI':
-      return `${operador} salió del DPI hacia ${recinto}`;
+      return `${operador} salió de la DPEI hacia ${recinto}`;
     case 'LLEGADA_RECINTO': {
       const kits = p.kitsRecibidos as number | undefined;
       const sufijo = kits != null ? ` y recibió ${kits} kit${kits === 1 ? '' : 's'}` : '';
       return `${operador} llegó a ${recinto}${sufijo}`;
     }
     case 'SALIDA_RECINTO':
-      return `${operador} salió de ${recinto} e inició el retorno al DPI`;
+      return `${operador} salió de ${recinto} e inició el retorno a la DPEI`;
     case 'LLEGADA_DPI':
-      return `${operador} llegó al DPI y completó su jornada`;
+      return `${operador} llegó a la DPEI y completó su jornada`;
     case 'ENLACE_CAIDO': {
       const codigo = (p.codigoRecinto as string) ?? '';
       const nombre = (p.nombreRecinto as string) ?? recinto;

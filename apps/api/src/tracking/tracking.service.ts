@@ -236,7 +236,7 @@ export class TrackingService {
       configAlerta?.margenLlegadaDpiMetros ?? MARGEN_LLEGADA_DPI_METROS_DEFAULT;
 
     // HU5: coordenadas de la Delegación (si ya se configuraron), para que el
-    // mobile pueda gatear el botón "Ya llegué al DPI" en EnRetornoScreen antes
+    // mobile pueda gatear el botón "Ya llegué a la DPEI" en EnRetornoScreen antes
     // de que el operador entre a marcar los kits — mismo patrón que el gate de
     // llegada al recinto. Igual que en registrarLlegadaDpi, si todavía no hay
     // coordenada cargada la query no devuelve filas.
@@ -405,7 +405,7 @@ export class TrackingService {
       select: { id: true, ocurridoEn: true },
     });
     if (existente) {
-      throw new ConflictException('Ya registraste tu salida del DPI');
+      throw new ConflictException('Ya registraste tu salida de la DPEI');
     }
 
     const kit = await this.prisma.kitElectoral.findFirst({
@@ -612,7 +612,7 @@ export class TrackingService {
   }
 
   /**
-   * Verificación de kits al retorno al DPI (rol TECNICO_SUPERVISOR): busca el
+   * Verificación de kits al retorno a la DPEI (rol TECNICO_SUPERVISOR): busca el
    * kit por código y devuelve su checklist de contenidos (parseado desde
    * `contenidos`) para que el supervisor confirme qué viene completo.
    */
@@ -676,7 +676,7 @@ export class TrackingService {
   }
 
   /**
-   * Inserta el registro de verificación de retorno al DPI y, como el kit en la
+   * Inserta el registro de verificación de retorno a la DPEI y, como el kit en la
    * DPEI prueba que la pareja volvió, completa su salida del recinto y su
    * llegada a la DPEI si faltan (completarRetornoPorKit).
    * Idempotente: si el kit ya fue verificado, retorna el registro existente
@@ -1217,7 +1217,7 @@ export class TrackingService {
       select: { id: true },
     });
     if (!salidaPrevia) {
-      throw new BadRequestException('Debes registrar la salida del DPI antes de la llegada al recinto');
+      throw new BadRequestException('Debes registrar la salida de la DPEI antes de la llegada al recinto');
     }
 
     const kits = await this.prisma.kitElectoral.findMany({
@@ -1738,8 +1738,8 @@ export class TrackingService {
    * HU4-CA3: ingesta de un lote de posiciones GPS capturadas por el móvil durante
    * el tramo de ida (DPI→recinto) o de retorno (recinto→DPI). Solo se aceptan
    * puntos mientras el operador esté en tránsito (estado EN_TRANSITO o
-   * EN_RETORNO, ver deriveEstadoOperador) — no antes de salir del DPI, no
-   * mientras está parado en el recinto, no tras llegar de vuelta al DPI.
+   * EN_RETORNO, ver deriveEstadoOperador) — no antes de salir de la DPEI, no
+   * mientras está parado en el recinto, no tras llegar de vuelta a la DPEI.
    */
   async ingestarPosiciones(
     operadorId: string,
@@ -1760,9 +1760,9 @@ export class TrackingService {
     const estado = this.deriveEstadoOperador(new Set<string>(tracking.map((t) => t.tipo)));
     if (estado !== 'EN_TRANSITO' && estado !== 'EN_RETORNO') {
       const mensajes: Partial<Record<EstadoOperadorCda, string>> = {
-        EN_DPI: 'Aún no has registrado tu salida del DPI',
+        EN_DPI: 'Aún no has registrado tu salida de la DPEI',
         EN_RECINTO: 'Aún no has registrado tu salida del recinto',
-        RETORNADO: 'Ya registraste tu llegada al DPI; el rastreo finalizó',
+        RETORNADO: 'Ya registraste tu llegada a la DPEI; el rastreo finalizó',
       };
       throw new BadRequestException(mensajes[estado] ?? 'No puedes enviar posiciones en este momento');
     }
@@ -1850,7 +1850,7 @@ export class TrackingService {
 
     const resultado: OperadorEnRetorno[] = [];
     for (const id of operadorIds) {
-      // Distancia en línea recta al DPEI (geography, metros); NULL si el evento no tiene la Delegación.
+      // Distancia en línea recta a la DPEI (geography, metros); NULL si el evento no tiene la Delegación.
       const ultima = await this.prisma.$queryRaw<
         { lat: number; lng: number; capturado_en: Date; falta_m: number | null }[]
       >`
@@ -2597,7 +2597,7 @@ export class TrackingService {
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
       select: { id: true },
     });
-    if (existente) throw new ConflictException('Ya registraste tu llegada al DPI');
+    if (existente) throw new ConflictException('Ya registraste tu llegada a la DPEI');
 
     const salidaRecintoPrevia = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
@@ -2605,7 +2605,7 @@ export class TrackingService {
     });
     if (!salidaRecintoPrevia) {
       throw new BadRequestException(
-        'Debes registrar la salida del recinto antes de la llegada al DPI',
+        'Debes registrar la salida del recinto antes de la llegada a la DPEI',
       );
     }
 
@@ -2678,7 +2678,7 @@ export class TrackingService {
       RETURNING id;
     `.catch((e: unknown) => {
       // El administrador la registró desde la web al mismo tiempo (uq_tracking_llegada_dpi).
-      if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu llegada al DPI');
+      if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu llegada a la DPEI');
       throw e;
     }))[0].id;
 
@@ -2687,7 +2687,7 @@ export class TrackingService {
   }
 
   /**
-   * El operador olvidó marcar la llegada al DPEI y sigue en el mapa: un
+   * El operador olvidó marcar la llegada a la DPEI y sigue en el mapa: un
    * administrador la registra desde la web con la hora actual y un motivo.
    * Queda como una llegada más (historial e informe), marcada como manual;
    * a diferencia de "Resetear estado", no borra nada.
@@ -2706,7 +2706,7 @@ export class TrackingService {
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
       select: { id: true },
     });
-    if (existente) throw new ConflictException('Este operador ya tiene registrada la llegada al DPEI');
+    if (existente) throw new ConflictException('Este operador ya tiene registrada la llegada a la DPEI');
 
     const salida = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_RECINTO' },
@@ -2734,7 +2734,7 @@ export class TrackingService {
       })
       .catch((e: unknown) => {
         // El operador la marcó en la app al mismo tiempo (uq_tracking_llegada_dpi).
-        if (esUnicoRepetido(e)) throw new ConflictException('Este operador ya tiene registrada la llegada al DPEI');
+        if (esUnicoRepetido(e)) throw new ConflictException('Este operador ya tiene registrada la llegada a la DPEI');
         throw e;
       });
 
@@ -2742,7 +2742,7 @@ export class TrackingService {
     return { id: llegada.id, ocurridoEn: llegada.ocurridoEn.toISOString() };
   }
 
-  /** Tras registrar la llegada al DPEI: kits en retorno → RETORNADO y aviso a supervisor y administradores. */
+  /** Tras registrar la llegada a la DPEI: kits en retorno → RETORNADO y aviso a supervisor y administradores. */
   private async cerrarLlegadaDpi(eventoId: string, operadorId: string, recintoId: string | null, ocurridoEn: Date) {
     await this.prisma.kitElectoral.updateMany({
       where: { eventoId, operadorId, estado: 'EN_RETORNO' },

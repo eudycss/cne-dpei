@@ -34,10 +34,10 @@ describe('FiltroEstado', () => {
     const onChange = vi.fn();
     render(<Controlado onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole('radio', { name: /Llegó al DPEI/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /Llegó a la DPEI/ }));
 
     expect(onChange).toHaveBeenLastCalledWith('RETORNADO');
-    expect(screen.getByRole('radio', { name: /Llegó al DPEI/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Llegó a la DPEI/ })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('se activa con un click sin pointerdown (lectores de pantalla, Voice Control)', () => {

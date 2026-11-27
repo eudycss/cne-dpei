@@ -206,14 +206,14 @@ describe('generarInformesOperadorPdf', () => {
           ['Salida DPI', '01/10/2026, 09:09'],
           ['Llegada al recinto', 'Pendiente'],
           ['Salida del recinto', 'Pendiente'],
-          ['Llegada al DPI', 'Pendiente'],
+          ['Llegada a la DPEI', 'Pendiente'],
         ],
       );
 
       await generarInformesOperadorPdf([sinFotos], responsable, true);
       expect(espia).toHaveBeenLastCalledWith(
         expect.anything(),
-        ['Salida DPI', 'Llegada al recinto', 'Prueba de conexión', 'Salida del recinto', 'Llegada al DPI'],
+        ['Salida DPI', 'Llegada al recinto', 'Prueba de conexión', 'Salida del recinto', 'Llegada a la DPEI'],
         expect.any(Array),
         [['01/10/2026, 09:09', 'Pendiente', 'Pendiente', 'Pendiente', 'Pendiente']],
       );
@@ -222,7 +222,7 @@ describe('generarInformesOperadorPdf', () => {
     }
   });
 
-  it('la llegada al DPI registrada por el administrador queda señalada en el informe', async () => {
+  it('la llegada a la DPEI registrada por el administrador queda señalada en el informe', async () => {
     const espia = jest.spyOn(pdfComun, 'tabla');
     try {
       await generarInformesOperadorPdf(
@@ -231,7 +231,7 @@ describe('generarInformesOperadorPdf', () => {
         false,
       );
       const filas = espia.mock.calls.at(-1)![3] as string[][];
-      expect(filas.at(-1)).toEqual(['Llegada al DPI', '01/10/2026, 18:30 (registrada por el administrador)']);
+      expect(filas.at(-1)).toEqual(['Llegada a la DPEI', '01/10/2026, 18:30 (registrada por el administrador)']);
     } finally {
       espia.mockRestore();
     }

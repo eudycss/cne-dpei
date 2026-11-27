@@ -96,7 +96,7 @@ export function VerificacionDpiScreen() {
     <View style={styles.container}>
       <AppBar subtitle="Verificación de retorno" />
       <ScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.title}>Verificación de kits al retorno al DPI</Text>
+        <Text style={styles.title}>Verificación de kits al retorno a la DPEI</Text>
         <Text style={styles.subtitle}>
           Escanea el QR de cada kit que el operador entrega y confirma que el contenido vuelve
           completo.

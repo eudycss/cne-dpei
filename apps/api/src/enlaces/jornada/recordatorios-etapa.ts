@@ -2,8 +2,8 @@ import type { Jornada, UnidadJornada } from './jornada';
 
 /**
  * Recordatorios en la app (campana de notificaciones) para quien no registró
- * la etapa que le toca: salida del DPEI, llegada al recinto, prueba de
- * conexión, salida del recinto o llegada al DPEI. Solo funciones puras; el
+ * la etapa que le toca: salida de la DPEI, llegada al recinto, prueba de
+ * conexión, salida del recinto o llegada a la DPEI. Solo funciones puras; el
  * servicio guarda lo ya avisado y crea las notificaciones.
  */
 
@@ -20,11 +20,11 @@ const MINUTO = 60_000;
 
 /** Texto que muestra la campana de la app (campo tipoEvento, máx. 60 caracteres). */
 export const TEXTO_RECORDATORIO: Record<EtapaRecordada, string> = {
-  SALIDA_DPI: 'Falta registrar: salida del DPEI',
+  SALIDA_DPI: 'Falta registrar: salida de la DPEI',
   LLEGADA_RECINTO: 'Falta registrar: llegada al recinto',
   PRUEBA_CONEXION: 'Falta registrar: prueba de conexión',
   SALIDA_RECINTO: 'Falta registrar: salida del recinto',
-  LLEGADA_DPI: 'Falta registrar: llegada al DPEI',
+  LLEGADA_DPI: 'Falta registrar: llegada a la DPEI',
 };
 
 export interface Recordatorio {

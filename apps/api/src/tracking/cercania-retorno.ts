@@ -1,12 +1,12 @@
 import type { CercaniaRetorno } from '@cne/shared-types';
 
-/** A esta distancia del DPEI o menos: "Muy cerca" (ya dentro de Ibarra). */
+/** A esta distancia de la DPEI o menos: "Muy cerca" (ya dentro de Ibarra). */
 export const METROS_MUY_CERCA = 3_000;
-/** A esta distancia del DPEI o menos: "Cerca" (entrando a Ibarra). Más lejos: "Lejos". */
+/** A esta distancia de la DPEI o menos: "Cerca" (entrando a Ibarra). Más lejos: "Lejos". */
 export const METROS_CERCA = 10_000;
 
 /**
- * Qué tan cerca del DPEI va un operador en retorno, por los metros que le faltan
+ * Qué tan cerca de la DPEI va un operador en retorno, por los metros que le faltan
  * (en línea recta). Los tramos son los mismos para todos, venga del recinto que venga,
  * para que el color diga quién llega pronto. Sin la distancia no se puede medir.
  */

@@ -34,10 +34,10 @@ export type TipoAlertaReenviada = (typeof ALERTAS_REENVIADAS)[number];
 const NOMBRE_ALERTA: Record<TipoAlertaReenviada, string> = {
   KIT_NO_CORRESPONDE: 'Kit que no corresponde',
   LLEGADA_RECINTO_FUERA_DE_RANGO: 'Llegada al recinto fuera del lugar',
-  LLEGADA_DPI_FUERA_DE_RANGO: 'Llegada al DPEI fuera del lugar',
+  LLEGADA_DPI_FUERA_DE_RANGO: 'Llegada a la DPEI fuera del lugar',
   ENTREGA_MILITAR_NO_REGISTRADA: 'Entrega del militar no registrada',
   NO_LLEGO_RECINTO: 'No llegó al recinto',
-  NO_LLEGO_DPI: 'No llegó al DPEI',
+  NO_LLEGO_DPI: 'No llegó a la DPEI',
   SIN_SINCRONIZAR: 'Sin sincronizar',
 };
 
@@ -58,15 +58,15 @@ interface Tramo {
   id: 'IDA' | 'VUELTA';
   sale: MomentoJornada;
   llega: MomentoJornada;
-  /** "al recinto" / "al DPEI". */
+  /** "al recinto" / "a la DPEI". */
   destino: string;
-  /** "del DPEI" / "del recinto". */
+  /** "de la DPEI" / "del recinto". */
   origen: string;
 }
 
 const TRAMOS: Tramo[] = [
-  { id: 'IDA', sale: 'SALIDA_DPI', llega: 'LLEGADA_RECINTO', destino: 'al recinto', origen: 'del DPEI' },
-  { id: 'VUELTA', sale: 'SALIDA_RECINTO', llega: 'LLEGADA_DPI', destino: 'al DPEI', origen: 'del recinto' },
+  { id: 'IDA', sale: 'SALIDA_DPI', llega: 'LLEGADA_RECINTO', destino: 'al recinto', origen: 'de la DPEI' },
+  { id: 'VUELTA', sale: 'SALIDA_RECINTO', llega: 'LLEGADA_DPI', destino: 'a la DPEI', origen: 'del recinto' },
 ];
 
 const MINUTO = 60_000;
@@ -179,7 +179,7 @@ function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string
       return {
         clave: `LLEGADA_DPEI:${u.operadorId}`,
         texto:
-          `🏁 <b>Llegó a la Delegación</b> · ${hora(llegada.en)}${tarde > 0 ? ` · +${tarde} min` : ''}\n${cabecera(u)}\n` +
+          `🏁 <b>Llegó a la DPEI</b> · ${hora(llegada.en)}${tarde > 0 ? ` · +${tarde} min` : ''}\n${cabecera(u)}\n` +
           lineaPersonas(u.personas) +
           (llegada.sinSenal ? '\n   📴 marcado sin señal' : '') +
           (porKit ? (registrada ? NOTA_KIT : NOTA_KIT_SIN_MARCA) : '') +

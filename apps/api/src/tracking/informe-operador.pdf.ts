@@ -96,7 +96,7 @@ export async function generarReporteGeneralPdf(
       columnas.push('Prueba de conexión');
       proporciones.push(0.09);
     }
-    columnas.push('Salida del recinto', 'Llegada al DPI');
+    columnas.push('Salida del recinto', 'Llegada a la DPEI');
     proporciones.push(0.09, 0.09);
     // Lo que sobra (sin la columna de prueba) se reparte en Operador y CDA.
     const sobra = 1 - proporciones.reduce((a, b) => a + b, 0);
@@ -181,7 +181,7 @@ function dibujarInforme(
     columnas.push('Prueba de conexión');
     valores.push(a.pruebaConexion ? `Conexión verificada ${fecha(a.pruebaConexion)}` : 'Pendiente');
   }
-  columnas.push('Salida del recinto', 'Llegada al DPI');
+  columnas.push('Salida del recinto', 'Llegada a la DPEI');
   valores.push(hito(a.salidaRecinto), hitoLlegadaDpi(a));
   if (incluirJornada) {
     // Día de elecciones: una fila con todos los hitos (como el reporte de flujo).

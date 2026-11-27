@@ -34,7 +34,7 @@ describe('avisosJornada: retrasos', () => {
     const [aviso] = avisosJornada(j, AHORA, new Set());
     expect(aviso.clave).toBe('RETRASO_IDA:op-1');
     expect(aviso.texto).toContain('Retraso al recinto</b> · +15 min');
-    expect(aviso.texto).toContain('Salió del DPEI 08:45 · debía llegar 09:45 (60 min)');
+    expect(aviso.texto).toContain('Salió de la DPEI 08:45 · debía llegar 09:45 (60 min)');
     expect(aviso.texto).toContain('UE &lt;Chaltura&gt;');
     expect(aviso.texto).toContain('ANA (Op.)');
   });
@@ -63,7 +63,7 @@ describe('avisosJornada: retrasos', () => {
     });
     const [aviso] = avisosJornada(jornada([u]), AHORA, new Set());
     expect(aviso.clave).toBe('RETRASO_VUELTA:op-1');
-    expect(aviso.texto).toContain('Retraso al DPEI</b> · +1 min');
+    expect(aviso.texto).toContain('Retraso a la DPEI</b> · +1 min');
     expect(aviso.texto).toContain('Salió del recinto');
   });
 });
@@ -86,7 +86,7 @@ describe('avisosJornada: llegada a la Delegación', () => {
     const [aviso, ...resto] = llegadas(j);
     expect(resto).toEqual([]);
     expect(aviso.clave).toBe('LLEGADA_DPEI:op-1');
-    expect(aviso.texto).toContain('🏁 <b>Llegó a la Delegación</b> · 09:55');
+    expect(aviso.texto).toContain('🏁 <b>Llegó a la DPEI</b> · 09:55');
     expect(aviso.texto).toContain('Recinto 100');
     expect(aviso.texto).toContain('ANA (Op.)');
     expect(aviso.texto).toContain('llegaron <b>1 de 3</b> · faltan 2');
@@ -157,7 +157,7 @@ describe('avisosJornada: llegada a la Delegación', () => {
     const j = jornada([conKit, pareja('op-2', '200')]);
     const [aviso] = llegadas(j);
     expect(aviso.clave).toBe('LLEGADA_DPEI:op-1');
-    expect(aviso.texto).toContain('Llegó a la Delegación</b> · 09:56');
+    expect(aviso.texto).toContain('Llegó a la DPEI</b> · 09:56');
     expect(aviso.texto).toContain('Kit entregado al Asistente Transversal · falta marcar la llegada en la app');
     expect(aviso.texto).toContain('llegaron <b>1 de 2</b> · faltan 1');
   });

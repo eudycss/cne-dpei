@@ -35,11 +35,11 @@ describe('etapaPendiente', () => {
     expect(etapaPendiente(unidad())).toBeNull();
   });
 
-  it('con el kit recibido espera la salida del DPEI a los 30 min', () => {
+  it('con el kit recibido espera la salida de la DPEI a los 30 min', () => {
     expect(etapaPendiente(unidad({ kitRecibido: min(-100) }))).toEqual({ etapa: 'SALIDA_DPI', vence: min(-70) });
   });
 
-  it('tras salir del DPEI espera la llegada al recinto según el tiempo de viaje', () => {
+  it('tras salir de la DPEI espera la llegada al recinto según el tiempo de viaje', () => {
     const u = unidad({ registros: { SALIDA_DPI: reg(-90) } });
     expect(etapaPendiente(u)).toEqual({ etapa: 'LLEGADA_RECINTO', vence: min(-30) });
   });
@@ -64,7 +64,7 @@ describe('etapaPendiente', () => {
     expect(etapaPendiente(u)).toEqual({ etapa: 'SALIDA_RECINTO', vence: min(-10) });
   });
 
-  it('tras salir del recinto espera la llegada al DPEI; al llegar ya no hay nada pendiente', () => {
+  it('tras salir del recinto espera la llegada a la DPEI; al llegar ya no hay nada pendiente', () => {
     const salio = { SALIDA_DPI: reg(-300), LLEGADA_RECINTO: reg(-200), SALIDA_RECINTO: reg(-90) };
     expect(etapaPendiente(unidad({ registros: salio }))).toEqual({ etapa: 'LLEGADA_DPI', vence: min(-30) });
     expect(etapaPendiente(unidad({ registros: { ...salio, LLEGADA_DPI: reg(-10) } }))).toBeNull();

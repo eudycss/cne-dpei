@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -46,6 +46,7 @@ import {
 import { fontFamily } from '../theme/typography';
 import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
 import { NoCdaPanel } from '../components/NoCdaPanel';
+import { useLlegadaEnCola } from '../lib/useLlegadaEnCola';
 import { bloqueoNoCda } from '../components/NoCdaChecklist';
 
 type Paso = 1 | 2 | 3;
@@ -82,6 +83,23 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
 
   // Paso 3: confirmar llegada
   const [registrando, setRegistrando] = useState(false);
+  const llegadaEnCola = useLlegadaEnCola(asignacion);
+
+  // Recargas en segundo plano (tras un kit o un NO CDA): solo vale la última
+  // respuesta y nunca después de desmontar la pantalla.
+  const ultimaRecarga = useRef(0);
+  useEffect(() => () => {
+    ultimaRecarga.current = -1;
+  }, []);
+  const recargarSinSpinner = useCallback(() => {
+    if (ultimaRecarga.current < 0) return;
+    const n = ++ultimaRecarga.current;
+    getMiAsignacion()
+      .then((data) => {
+        if (n === ultimaRecarga.current) setAsignacion(data);
+      })
+      .catch(() => {});
+  }, []);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -89,7 +107,10 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     try {
       const data = await getMiAsignacion();
       setAsignacion(data);
-      if (data.yaRegistroLlegada) {
+      // La llegada puede estar registrada ya por el escaneo del kit: se pasa a
+      // "Salida del recinto" solo con todos sus kits escaneados.
+      if (data.yaRegistroLlegada && data.kits.every((k) => k.recibido)) {
+        await Promise.resolve(detenerRastreo()).catch(() => {}); // termina el rastreo de la ida
         onLlegadaRegistrada();
         return;
       }
@@ -202,6 +223,9 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       setKitsRecibidos(nuevos);
       setKitPreview(null);
       if (asignacion.kits.length === nuevos.size) setPaso(3);
+      // El escaneo en el recinto registra la llegada en el servidor: se recarga sin
+      // spinner para habilitar ya la barra de NO CDA.
+      if (result !== null) recargarSinSpinner();
     } catch (e: any) {
       if (e instanceof FotoMilitarPerdidaError) {
         // La foto guardada ya no existe: hay que volver a tomarla antes de seguir.
@@ -236,6 +260,7 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
     } catch (e: any) {
       if (e?.response?.status === 409) {
         Alert.alert('Llegada ya registrada', 'Ya registraste tu llegada al recinto.');
+        await Promise.resolve(detenerRastreo()).catch(() => {});
         onLlegadaRegistrada();
       } else {
         manejarErrorUbicacion(e, 'No se pudo registrar la llegada al recinto.');
@@ -357,10 +382,10 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
       {/* Se ve desde ya con candado: se habilita al registrar la llegada al recinto. */}
       <NoCdaPanel
         noCdas={asignacion.noCdas}
-        bloqueo={bloqueoNoCda(asignacion)}
+        bloqueo={bloqueoNoCda(asignacion, llegadaEnCola)}
         onMarcado={() => {
           // Recarga silenciosa: `cargar` pondría la pantalla en spinner y reiniciaría los pasos.
-          getMiAsignacion().then(setAsignacion).catch(() => {});
+          recargarSinSpinner();
         }}
       />
 

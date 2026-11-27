@@ -148,6 +148,31 @@ describe('LlegadaRecintoScreen', () => {
     kits: [{ id: 'k1', codigoUnico: 'K001', nombre: 'Kit 1', contenidos: null, items: [], recibido: false }],
   };
 
+  it('con la llegada ya registrada por el escaneo y un kit pendiente, se queda en la pantalla de kits', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValue({
+      ...asignacionFixture,
+      yaRegistroLlegada: true,
+      yaRegistroSalidaRecinto: false,
+      kits: [{ ...asignacionFixture.kits[0], recibido: false }],
+    });
+    const onLlegadaRegistrada = jest.fn();
+    await act(async () => {
+      create(<LlegadaRecintoScreen onLlegadaRegistrada={onLlegadaRegistrada} />);
+      await flushPromises();
+    });
+    expect(onLlegadaRegistrada).not.toHaveBeenCalled();
+  });
+
+  it('con la llegada registrada y todos los kits escaneados, pasa a la salida del recinto', async () => {
+    (getMiAsignacion as jest.Mock).mockResolvedValue({ ...asignacionFixture, yaRegistroLlegada: true, yaRegistroSalidaRecinto: false });
+    const onLlegadaRegistrada = jest.fn();
+    await act(async () => {
+      create(<LlegadaRecintoScreen onLlegadaRegistrada={onLlegadaRegistrada} />);
+      await flushPromises();
+    });
+    expect(onLlegadaRegistrada).toHaveBeenCalledTimes(1);
+  });
+
   it('sin señal, la foto del militar queda guardada en el celular y deja seguir con los kits', async () => {
     (getMiAsignacion as jest.Mock).mockResolvedValue(sinFotoNiKits);
     (guardarYSubirFotoMilitar as jest.Mock).mockResolvedValue({

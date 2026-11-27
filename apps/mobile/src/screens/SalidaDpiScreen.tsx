@@ -63,7 +63,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
 
   function confirmarSalida() {
     Alert.alert(
-      'Confirmar salida del DPI',
+      'Confirmar salida de la DPEI',
       '¿Confirmas que estás saliendo de la Delegación Provincial de Imbabura hacia tu recinto?',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -112,7 +112,7 @@ export function SalidaDpiScreen({ onSalidaRegistrada }: Props) {
           'Los servicios de ubicación están desactivados. Actívalos para continuar.',
         );
       } else if (e?.response?.status === 409) {
-        Alert.alert('Salida ya registrada', 'Ya registraste tu salida del DPI.');
+        Alert.alert('Salida ya registrada', 'Ya registraste tu salida de la DPEI.');
         onSalidaRegistrada();
       } else {
         Alert.alert(

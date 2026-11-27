@@ -230,7 +230,7 @@ describe('AlertasService — visibilidad por técnico asignado', () => {
       });
     });
 
-    it('usa el tipo de la Delegación para la llegada al DPI', async () => {
+    it('usa el tipo de la Delegación para la llegada a la DPEI', async () => {
       await service.generarLlegadaFueraDeRango({
         eventoId,
         operadorId: operadorPropio,

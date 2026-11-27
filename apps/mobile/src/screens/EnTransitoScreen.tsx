@@ -90,7 +90,7 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
         </View>
         <Text style={styles.title}>Salida registrada</Text>
         <Text style={styles.subtitle}>
-          Hola {user?.nombres}, tu salida del DPI ha sido registrada. Continúa hacia tu
+          Hola {user?.nombres}, tu salida de la DPEI ha sido registrada. Continúa hacia tu
           recinto electoral.
         </Text>
         <Text style={styles.message}>

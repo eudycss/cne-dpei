@@ -9,7 +9,7 @@ import {
 
 /**
  * Grupo "Jornada" de Telegram: quién falta y quién ya cumplió cada momento del
- * día (salida del DPEI, llegada y salida del recinto, llegada al DPEI), las
+ * día (salida de la DPEI, llegada y salida del recinto, llegada a la DPEI), las
  * visitas a los NO CDA y los kits pendientes de entregar, agrupado por técnico
  * o por cantón, y la ficha de un CDA ("Consultar CDA"). Aquí solo hay funciones
  * puras (estado y formato); los datos los arma JornadaService.
@@ -135,10 +135,10 @@ export const BOTON_CONSULTAR_CDA = '🔎 Consultar CDA';
 const BOTONES_ANTERIORES: [VistaJornada, string][] = [['NO_CDA', '🏫 Visitas NO CDA']];
 
 const TITULOS: Record<VistaJornada, string> = {
-  SALIDA_DPI: '🚐 Salida del DPEI',
+  SALIDA_DPI: '🚐 Salida de la DPEI',
   LLEGADA_RECINTO: '📍 Llegada al recinto',
   SALIDA_RECINTO: '🏁 Salida del recinto',
-  LLEGADA_DPI: '🏢 Llegada al DPEI',
+  LLEGADA_DPI: '🏢 Llegada a la DPEI',
   NO_CDA: '🏫 Llegada de los NO CDA a su CDA',
   KIT: '📦 Kit pendiente',
   CUMPLIMIENTO: '✅ Cumplimiento (kit, militar y reportes)',
@@ -299,7 +299,7 @@ const porCodigo = (a: { codigoRecinto: string; nombreRecinto: string }, b: { cod
   a.nombreRecinto.localeCompare(b.nombreRecinto, 'es');
 
 /** Faltan y cumplidos de una vista. En "Kit pendiente" no hay cumplidos: solo
- * quien llegó al DPEI sin que se reciba el kit, o al revés. */
+ * quien llegó a la DPEI sin que se reciba el kit, o al revés. */
 export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
   if (vista === 'NO_CDA') {
     const items = noCdasQueCuentan(j).map(
@@ -370,13 +370,13 @@ export function llegadaDpeiDe(
   return null;
 }
 
-/** Llegó al DPEI sin que se reciba el kit, o se recibió el kit sin marcar la llegada; null si está en regla. */
+/** Llegó a la DPEI sin que se reciba el kit, o se recibió el kit sin marcar la llegada; null si está en regla. */
 function kitPendiente(u: UnidadJornada): { registro: RegistroJornada; nota: string } | null {
   const llegada = u.registros.LLEGADA_DPI ?? null;
-  if (llegada && !u.kitRecibido) return { registro: llegada, nota: 'llegó al DPEI · el kit no se ha recibido' };
+  if (llegada && !u.kitRecibido) return { registro: llegada, nota: 'llegó a la DPEI · el kit no se ha recibido' };
   const porKit = llegadaDpeiDe(u);
   if (!llegada && u.kitRecibido) {
-    return { registro: porKit?.registro ?? { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
+    return { registro: porKit?.registro ?? { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada a la DPEI' };
   }
   return null;
 }
@@ -400,11 +400,11 @@ export function cumplioTodo(u: UnidadJornada): boolean {
 /**
  * "📷 Kit y militar ✅ 09:12 · 📄 Instalación ⏳ · 📄 Escrutinio ⏳". ⏳ = aún no le
  * toca (el kit se escanea en la llegada al recinto; los reportes se ligan al
- * marcar la salida); ❌ = ya pasó ese momento (o ya volvió al DPEI) y no lo hizo.
+ * marcar la salida); ❌ = ya pasó ese momento (o ya volvió a la DPEI) y no lo hizo.
  */
 export function marcasCumplimiento(u: UnidadJornada): string {
   const { LLEGADA_RECINTO, SALIDA_RECINTO, LLEGADA_DPI } = u.registros;
-  // Pasó el momento de escanear (llegó al recinto o ya va más adelante) / de subir los reportes (ya volvió al DPEI).
+  // Pasó el momento de escanear (llegó al recinto o ya va más adelante) / de subir los reportes (ya volvió a la DPEI).
   const pasoEscaneo = !!(LLEGADA_RECINTO || SALIDA_RECINTO || LLEGADA_DPI);
   const pasoReportes = !!(SALIDA_RECINTO || LLEGADA_DPI);
   const kit = u.kitEscaneado
@@ -829,10 +829,10 @@ export const CALLBACK_NO_CDA_POR_CDA = callbackJornada({ vista: 'NO_CDA', agrupa
 // ─── Consultar CDA ──────────────────────────────────────────────────────────
 
 const ETIQUETA_MOMENTO: Record<MomentoJornada, [hecho: string, falta: string]> = {
-  SALIDA_DPI: ['🚐 Salió del DPEI', '🚐 Falta salir del DPEI'],
+  SALIDA_DPI: ['🚐 Salió de la DPEI', '🚐 Falta salir de la DPEI'],
   LLEGADA_RECINTO: ['📍 Llegó al recinto', '📍 Falta llegar al recinto'],
   SALIDA_RECINTO: ['🏁 Salió del recinto', '🏁 Falta salir del recinto'],
-  LLEGADA_DPI: ['🏢 Llegó al DPEI', '🏢 Falta llegar al DPEI'],
+  LLEGADA_DPI: ['🏢 Llegó a la DPEI', '🏢 Falta llegar a la DPEI'],
 };
 
 /**
@@ -864,8 +864,8 @@ export function formatearFichaCda(j: Jornada, codigo: string, ahora: Date): stri
     const pendiente = kitPendiente(u);
     lineas.push(
       u.kitRecibido
-        ? `📦 Kit recibido en el DPEI ${hora(u.kitRecibido)}${pendiente ? ' · falta marcar la llegada al DPEI' : ''}`
-        : `📦 Kit: aún no se recibe en el DPEI${pendiente ? ' · ⚠️ ya llegó al DPEI' : ''}`,
+        ? `📦 Kit recibido en la DPEI ${hora(u.kitRecibido)}${pendiente ? ' · falta marcar la llegada a la DPEI' : ''}`
+        : `📦 Kit: aún no se recibe en la DPEI${pendiente ? ' · ⚠️ ya llegó a la DPEI' : ''}`,
     );
     lineas.push(marcasCumplimiento(u));
     lineas.push(lineaPersonas(u.personas, ''));
@@ -1037,12 +1037,12 @@ export function mismosConteos(a: ConteosJornada, b: ConteosJornada): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** La jornada del día empezó: al menos una pareja salió del DPEI. */
+/** La jornada del día empezó: al menos una pareja salió de la DPEI. */
 export function jornadaEmpezada(j: Jornada): boolean {
   return j.unidades.some((u) => u.registros.SALIDA_DPI);
 }
 
-/** Todos llegaron al DPEI y no queda ningún kit pendiente. */
+/** Todos llegaron a la DPEI y no queda ningún kit pendiente. */
 export function jornadaCerrada(j: Jornada): boolean {
   return j.unidades.length > 0 && j.unidades.every((u) => u.registros.LLEGADA_DPI) && !j.unidades.some((u) => kitPendiente(u));
 }
@@ -1050,10 +1050,10 @@ export function jornadaCerrada(j: Jornada): boolean {
 const ORDEN_RESUMEN: (MomentoJornada | 'NO_CDA')[] = [...MOMENTOS_JORNADA, 'NO_CDA'];
 
 const CAMBIO: Record<MomentoJornada | 'NO_CDA', string> = {
-  SALIDA_DPI: '🚐 +{n} salieron del DPEI',
+  SALIDA_DPI: '🚐 +{n} salieron de la DPEI',
   LLEGADA_RECINTO: '📍 +{n} llegaron al recinto',
   SALIDA_RECINTO: '🏁 +{n} salieron del recinto',
-  LLEGADA_DPI: '🏢 +{n} llegaron al DPEI',
+  LLEGADA_DPI: '🏢 +{n} llegaron a la DPEI',
   NO_CDA: '🏫 +{n} NO CDA llegaron',
 };
 
@@ -1070,7 +1070,7 @@ export function formatearResumenAutomatico(
   const cerrada = jornadaCerrada(j);
   const lineas = [
     cerrada
-      ? `<b>✅ Jornada cerrada</b> · ${hora(ahora)}\nTodos llegaron al DPEI y se recibieron todos los kits.`
+      ? `<b>✅ Jornada cerrada</b> · ${hora(ahora)}\nTodos llegaron a la DPEI y se recibieron todos los kits.`
       : `<b>📋 Jornada</b> · ${hora(ahora)} · resumen automático`,
     `<i>${escapeHtml(j.evento)}</i>`,
     '',

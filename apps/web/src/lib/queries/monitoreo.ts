@@ -2,7 +2,7 @@ import type { CdaEstadoDto, EstadisticasJornadaDto, LlegadaDpiResponse, Operador
 import { api } from '../api';
 
 /**
- * HU6: operadores de CDA actualmente en su tramo de retorno al DPI, con su
+ * HU6: operadores de CDA actualmente en su tramo de retorno a la DPEI, con su
  * última posición GPS y kits asignados. El backend filtra por supervisor
  * asignado (los administradores ven a todos).
  */
@@ -12,7 +12,7 @@ export async function getOperadoresEnRetorno(): Promise<OperadorEnRetorno[]> {
 }
 
 /**
- * El operador olvidó marcar la llegada al DPEI: el administrador la registra
+ * El operador olvidó marcar la llegada a la DPEI: el administrador la registra
  * con un motivo (no borra su recorrido) y el operador sale del mapa.
  */
 export async function registrarLlegadaDpiManual(operadorId: string, motivo: string): Promise<LlegadaDpiResponse> {

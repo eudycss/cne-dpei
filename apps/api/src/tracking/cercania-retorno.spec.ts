@@ -1,7 +1,7 @@
 import { cercaniaRetorno } from './cercania-retorno';
 
 describe('cercaniaRetorno', () => {
-  it('a más de 10 km del DPEI: lejos', () => {
+  it('a más de 10 km de la DPEI: lejos', () => {
     expect(cercaniaRetorno(10_001)).toBe('LEJOS');
     expect(cercaniaRetorno(43_000)).toBe('LEJOS');
   });

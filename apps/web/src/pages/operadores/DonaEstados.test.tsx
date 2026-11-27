@@ -14,7 +14,7 @@ describe('DonaEstados', () => {
   it('describe el reparto en texto y lo lista con cifra y porcentaje', () => {
     render(<DonaEstados reparto={reparto} />);
     expect(
-      screen.getByRole('img', { name: 'Parejas por estado. Total 4. En DPI: 2, En tránsito: 1, En el recinto: 1, En retorno: 0, Llegó al DPEI: 0' }),
+      screen.getByRole('img', { name: 'Parejas por estado. Total 4. En DPI: 2, En tránsito: 1, En el recinto: 1, En retorno: 0, Llegó a la DPEI: 0' }),
     ).toBeInTheDocument();
     const lista = screen.getByRole('list');
     expect(within(lista).getByText('2 · 50 %')).toBeInTheDocument();

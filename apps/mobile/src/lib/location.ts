@@ -83,7 +83,7 @@ export async function obtenerUbicacionPuntual(opciones: OpcionesUbicacion = {}):
   } else {
     // Los registros exigen un fix nuevo, pero con límite: sin datos (sin
     // A-GPS) o bajo techo el GPS puede no responder nunca y dejar el botón en
-    // "Registrando…" (caso salida del DPI, simulacro 2026-11-01).
+    // "Registrando…" (caso salida de la DPEI, simulacro 2026-11-01).
     pos = await fixATiempo(actual, opciones.limiteMs ?? LIMITE_GPS_REGISTRO_MS);
   }
   if (!pos) throw new UbicacionNoDisponibleError();
@@ -133,7 +133,7 @@ export async function solicitarPermisoBackground(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// HU4-CA3: rastreo GPS continuo en segundo plano durante el retorno al DPI.
+// HU4-CA3: rastreo GPS continuo en segundo plano durante el retorno a la DPEI.
 // expo-task-manager ejecuta la tarea aun con la app minimizada; cada actualización
 // envía las posiciones recibidas al backend. El batching offline robusto (para
 // zonas sin señal) se aborda en HU13.
@@ -183,7 +183,7 @@ export async function iniciarRastreo(): Promise<void> {
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'Rastreo activo',
-      notificationBody: 'Registrando tu retorno al DPI durante la jornada electoral.',
+      notificationBody: 'Registrando tu retorno a la DPEI durante la jornada electoral.',
     },
   });
 }

@@ -119,7 +119,7 @@ export function NoCdaChecklist({ noCdas, onMarcado, bloqueo = null, conProgreso 
               llegado
                 ? `, llegó a las ${formatHora(nc.llegadaRegistradaEn!)}`
                 : bloqueo
-                  ? ', bloqueado hasta llegar al CDA'
+                  ? `, bloqueado: ${bloqueo}`
                   : ', sin marcar'
             }`}
             accessibilityHint={llegado || bloqueo ? undefined : 'Toque para marcar que este NO CDA ya llegó'}

@@ -31,7 +31,7 @@ describe('JornadaService', () => {
     responderEn: jest.fn((_chat: string, fn: () => Promise<unknown>) => fn()),
   };
 
-  /** Dos kits: 971 (Jairo, con pareja, salió del DPEI) y 1487 (Carlos, sin pareja). Un CDA sin kit. */
+  /** Dos kits: 971 (Jairo, con pareja, salió de la DPEI) y 1487 (Carlos, sin pareja). Un CDA sin kit. */
   function datosBase() {
     prisma.eventoElectoral.findFirst.mockResolvedValue({ id: 'ev1', nombre: 'Elecciones 2027' });
     prisma.kitElectoral.findMany.mockResolvedValue([
@@ -278,13 +278,13 @@ describe('JornadaService', () => {
       await service.cargar(T('2026-11-29T15:00:00Z').getTime());
       const desde = T('2026-11-29T09:00:00Z');
       const [tracking, visitas] = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where);
-      // Ida (salida del DPEI, llegada al recinto): desde las 00:00; regreso y prueba: desde las 04:00.
+      // Ida (salida de la DPEI, llegada al recinto): desde las 00:00; regreso y prueba: desde las 04:00.
       expect(tracking.OR).toEqual([
         { tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO'] }, ocurridoEn: { gte: T('2026-11-29T05:00:00Z') } },
         { tipo: { in: ['SALIDA_RECINTO', 'LLEGADA_DPI', 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: desde } },
       ]);
       expect(visitas.ocurridoEn).toEqual({ gte: desde });
-      // El kit se recibe y se escanea en la ida: cuentan desde las 00:00, igual que la salida del DPEI.
+      // El kit se recibe y se escanea en la ida: cuentan desde las 00:00, igual que la salida de la DPEI.
       const desdeMedianoche = T('2026-11-29T05:00:00Z');
       expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desdeMedianoche });
       expect(prisma.recepcionKit.findMany.mock.calls[0][0].where).toEqual({
@@ -414,7 +414,7 @@ describe('JornadaService', () => {
       expect(j.unidades.every((u) => u.tecnico.numero === null)).toBe(true);
     });
 
-    it('la primera recepción del kit en el DPEI cuenta como kit recibido', async () => {
+    it('la primera recepción del kit en la DPEI cuenta como kit recibido', async () => {
       prisma.recepcionDpiKit.findMany.mockResolvedValue([
         { kitId: 'k2', confirmadoEn: T('2026-11-29T23:30:00Z') },
         { kitId: 'k2', confirmadoEn: T('2026-11-29T23:10:00Z') },
@@ -582,7 +582,7 @@ describe('JornadaService', () => {
       expect(telegram.responderBoton).toHaveBeenCalledWith('cb');
       const [messageId, texto] = telegram.editarHtml.mock.calls[0];
       expect(messageId).toBe(55);
-      expect(texto).toContain('Salida del DPEI · Jairo');
+      expect(texto).toContain('Salida de la DPEI · Jairo');
       expect(texto).toContain('<b>971 · UE Chaltura</b> · 08:12 📴');
       expect(texto).toContain('+593991111111');
     });
@@ -590,7 +590,7 @@ describe('JornadaService', () => {
     it('por cantón: un cantón muestra solo sus recintos y el resumen se arma por cantón', async () => {
       await service.atenderBoton(CHAT, 'cb', 'jor:sd:c:30:0', 55);
       const detalle = telegram.editarHtml.mock.calls[0][1];
-      expect(detalle).toContain('Salida del DPEI · IBARRA');
+      expect(detalle).toContain('Salida de la DPEI · IBARRA');
       expect(detalle).toContain('1487');
       expect(detalle).not.toContain('971 ·');
 
@@ -644,7 +644,7 @@ describe('JornadaService', () => {
       const [ficha, , botones] = telegram.enviarHtml.mock.calls[1];
       expect(ficha).toContain('<b>🔎 971 · UE Chaltura</b>');
       expect(ficha).toContain('ANTONIO ANTE · Técnico: Jairo');
-      expect(ficha).toContain('🚐 Salió del DPEI 08:12 📴');
+      expect(ficha).toContain('🚐 Salió de la DPEI 08:12 📴');
       expect(ficha).toContain('🏫 <b>NO CDA: 1 de 1 llegó</b>');
       expect(JSON.stringify(botones)).toContain('jor:cda:971');
 

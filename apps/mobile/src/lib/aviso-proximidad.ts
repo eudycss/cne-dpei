@@ -77,7 +77,7 @@ export function revisarProximidad(pos: PosicionGps): Promise<boolean> {
       etapaDesdeAsignacion(asignacion),
     );
     if (etapa === 'SALIDA') {
-      // Respaldo: el reinicio normal lo hace useEtapaOperador al volver a "Salida del DPI".
+      // Respaldo: el reinicio normal lo hace useEtapaOperador al volver a "Salida de la DPEI".
       await reiniciarAvisos(asignacion.eventoId);
       return false;
     }

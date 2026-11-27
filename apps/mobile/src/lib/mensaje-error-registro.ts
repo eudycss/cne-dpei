@@ -16,7 +16,7 @@ function esGpsNoDisponible(e: unknown): boolean {
 /**
  * Mensaje para el operador cuando falla un registro (llegada, salida, kits).
  * Distingue GPS, red y servidor: con un mensaje genérico no se sabe qué
- * falló ni qué hacer (caso salida del DPI, simulacro 2026-11-01).
+ * falló ni qué hacer (caso salida de la DPEI, simulacro 2026-11-01).
  */
 export function mensajeErrorRegistro(e: unknown, generico: string): string {
   if (esGpsNoDisponible(e)) return MENSAJE_GPS_NO_DISPONIBLE;
