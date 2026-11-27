@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   actasMilitaresSeleccionSchema,
   opcionesActaMilitarSchema,
+  puedeElegirResponsableActa,
   type OpcionesActaMilitar,
   cambiarOperadorSchema,
   corregirMilitarSchema,
@@ -166,12 +168,13 @@ export class CustodiaController {
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(opcionesActaMilitarSchema)) opciones: OpcionesActaMilitar,
   ) {
+    asegurarEligeResponsable(opciones, user);
     const acta = await this.informes.actaMilitarKit(kitId, user.sub, opciones);
     enviarArchivo(res, acta.contenido, acta.nombre, acta.tipo);
   }
 
   @Get('responsables-acta')
-  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR')
   @RequiereModulo('cadena-custodia')
   @UseGuards(ModuloGuard)
   @ApiOperation({ summary: 'Asistentes Transversales activos que pueden firmar como responsables del acta militar' })
@@ -211,11 +214,19 @@ export class CustodiaController {
     @Body(new ZodValidationPipe(actasMilitaresSeleccionSchema)) body: z.infer<typeof actasMilitaresSeleccionSchema>,
   ) {
     const { kitIds, ...opciones } = body;
+    asegurarEligeResponsable(opciones, user);
     const archivo = await this.informes.actasMilitaresSeleccion(kitIds, user.sub, opciones);
     enviarArchivo(res, archivo.contenido, archivo.nombre, archivo.tipo);
   }
 }
 
+
+/** Firmar como otra persona: solo Administrador (o analista) y Asistente Transversal. */
+function asegurarEligeResponsable(opciones: OpcionesActaMilitar, user: AuthenticatedUser): void {
+  if (opciones.responsableId && !puedeElegirResponsableActa(user.roles)) {
+    throw new ForbiddenException('Solo el Administrador o un Asistente Transversal puede elegir el responsable del acta');
+  }
+}
 
 function enviarArchivo(res: Response, contenido: Buffer, nombre: string, tipo: string): void {
   res.setHeader('Content-Type', tipo);

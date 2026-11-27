@@ -791,6 +791,17 @@ describe('grado del militar (acta de custodia)', () => {
   });
 });
 
+describe('puedeElegirResponsableActa', () => {
+  it('Administrador, analista y Asistente Transversal sí; Lector y Supervisor no', async () => {
+    const { puedeElegirResponsableActa } = await import('./index');
+    expect(puedeElegirResponsableActa(['ADMINISTRADOR'])).toBe(true);
+    expect(puedeElegirResponsableActa(['ANALISTA_PROVINCIAL'])).toBe(true);
+    expect(puedeElegirResponsableActa(['ASISTENTE_TRANSVERSAL'])).toBe(true);
+    expect(puedeElegirResponsableActa(['LECTOR', 'TECNICO_SUPERVISOR'])).toBe(false);
+    expect(puedeElegirResponsableActa(undefined)).toBe(false);
+  });
+});
+
 describe('opciones del acta militar', () => {
   it('por defecto Word, sin responsable ni fecha (como antes)', async () => {
     const { opcionesActaMilitarSchema } = await import('./index');

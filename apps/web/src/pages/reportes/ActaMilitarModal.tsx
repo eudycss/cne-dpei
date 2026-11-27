@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FECHA_ACTA_MILITAR_POR_DEFECTO, coincideBusqueda } from '@cne/shared-validation';
+import { FECHA_ACTA_MILITAR_POR_DEFECTO, coincideBusqueda, puedeElegirResponsableActa } from '@cne/shared-validation';
 import { Modal } from '../../components/Modal';
 import { useAuth } from '../../auth/AuthContext';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
@@ -30,10 +30,13 @@ export function ActaMilitarModal({
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  // Solo Administrador y Asistente Transversal eligen quién firma; los demás, quien registró la entrega.
+  const eligeResponsable = puedeElegirResponsableActa(user?.roles);
   const { data: responsables, isLoading, error } = useQuery({
     queryKey: ['custodia-responsables-acta'],
     queryFn: getResponsablesActa,
     staleTime: 5 * 60_000,
+    enabled: eligeResponsable,
   });
   const [responsableId, setResponsableId] = useState('');
   const [fecha, setFecha] = useState(FECHA_ACTA_MILITAR_POR_DEFECTO);
@@ -55,7 +58,7 @@ export function ActaMilitarModal({
 
   function enviar(e: FormEvent) {
     e.preventDefault();
-    const error = !responsableId
+    const error = eligeResponsable && !responsableId
       ? ({ campo: 'responsable', texto: 'Elija el responsable.' } as const)
       : !fecha
         ? ({ campo: 'fecha', texto: 'Elija la fecha del acta.' } as const)
@@ -66,7 +69,7 @@ export function ActaMilitarModal({
       document.getElementById(`acta-militar-${error.campo}`)?.focus();
       return;
     }
-    const opciones: OpcionesActaMilitar = { formato, responsableId, fecha };
+    const opciones: OpcionesActaMilitar = eligeResponsable ? { formato, responsableId, fecha } : { formato, fecha };
     if (una) {
       const [k] = kits;
       void descargar('acta', () => descargarActaMilitarKit(k.kitId, opciones), `acta_militar_${k.codigoUnico}.${formato}`);
@@ -104,24 +107,31 @@ export function ActaMilitarModal({
         )}
 
         <div className="ocda-form">
-          <div className="field">
-            <label htmlFor="acta-militar-responsable">Responsable (Asistente Transversal)</label>
-            <select
-              id="acta-militar-responsable"
-              value={responsableId}
-              onChange={(e) => setResponsableId(e.target.value)}
-              disabled={!responsables?.length}
-              aria-invalid={aviso?.campo === 'responsable' || undefined}
-              aria-describedby={aviso?.campo === 'responsable' ? 'acta-militar-aviso' : undefined}
-            >
-              {!responsables?.length && <option value="">Sin Asistentes Transversales activos</option>}
-              {responsables?.map((r) => (
-                <option key={r.id} value={r.id}>
-                  Ing. {r.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!eligeResponsable && (
+            <p className="muted" style={{ margin: 0 }}>
+              Responsable: el Asistente Transversal que registró la entrega del kit.
+            </p>
+          )}
+          {eligeResponsable && (
+            <div className="field">
+              <label htmlFor="acta-militar-responsable">Responsable (Asistente Transversal)</label>
+              <select
+                id="acta-militar-responsable"
+                value={responsableId}
+                onChange={(e) => setResponsableId(e.target.value)}
+                disabled={!responsables?.length}
+                aria-invalid={aviso?.campo === 'responsable' || undefined}
+                aria-describedby={aviso?.campo === 'responsable' ? 'acta-militar-aviso' : undefined}
+              >
+                {!responsables?.length && <option value="">Sin Asistentes Transversales activos</option>}
+                {responsables?.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    Ing. {r.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="acta-militar-fecha">Fecha del acta</label>
             <input
@@ -176,7 +186,7 @@ export function ActaMilitarModal({
           <button type="button" className="btn secondary" onClick={onClose}>
             Cerrar
           </button>
-          <button type="submit" className="btn" disabled={ocupado || !responsables?.length}>
+          <button type="submit" className="btn" disabled={ocupado || (eligeResponsable && !responsables?.length)}>
             {ocupado ? 'Generando…' : `Descargar ${formato === 'pdf' ? 'PDF' : una ? 'Word' : '.zip (Word)'}`}
           </button>
         </div>

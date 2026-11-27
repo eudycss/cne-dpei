@@ -704,6 +704,17 @@ export const MAX_ACTAS_MILITARES = 200;
 export const FECHA_ACTA_MILITAR_POR_DEFECTO = '2026-11-28';
 
 /**
+ * Quién puede elegir el responsable del acta militar (firma como otra persona):
+ * el Administrador (y el analista provincial, que actúa como tal) y los
+ * Asistentes Transversales. Los demás descargan el acta con quien registró la entrega.
+ */
+export const ROLES_ELIGEN_RESPONSABLE_ACTA = ['ADMINISTRADOR', 'ANALISTA_PROVINCIAL', 'ASISTENTE_TRANSVERSAL'] as const;
+
+export function puedeElegirResponsableActa(roles: readonly string[] | undefined): boolean {
+  return !!roles?.some((r) => (ROLES_ELIGEN_RESPONSABLE_ACTA as readonly string[]).includes(r));
+}
+
+/**
  * Cómo sale el acta militar: formato (Word o PDF), el Asistente Transversal
  * responsable y la fecha impresa. Sin responsable ni fecha: quien entregó (o
  * quien descarga) y la fecha de la entrega (o hoy), como antes.
