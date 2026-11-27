@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import type { AvanceInformeCda, EstadoFotoInformeCda, VisitaInformeCdaPublica } from '@cne/shared-types';
-import { FOTOS_INFORME_CDA } from '@cne/shared-validation';
+import { FOTO_INFORME_PEQUENA, FOTOS_INFORME_CDA, fotoInformeTieneTamano } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -100,6 +100,7 @@ export class InformeProductosService {
     const visita = await this.visita(token);
     const jpeg = file?.buffer && file.size <= MAX_FOTO_BYTES ? limpiarJpeg(file.buffer) : null;
     if (!jpeg || !jpeg.ancho || !jpeg.alto) throw new BadRequestException(FOTO_INVALIDA);
+    if (!fotoInformeTieneTamano(jpeg.ancho, jpeg.alto)) throw new BadRequestException(FOTO_INFORME_PEQUENA);
 
     const fotoKey = await this.storage.saveEncrypted({ categoria: CATEGORIA, buffer: jpeg.limpio, maxBytes: MAX_FOTO_BYTES });
     let anterior: string | null = null;

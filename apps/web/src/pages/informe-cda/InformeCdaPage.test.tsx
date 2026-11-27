@@ -6,7 +6,8 @@ import type { EstadoFotoInformeCda, VisitaInformeCdaPublica } from '@cne/shared-
 
 import { InformeCdaPage } from './InformeCdaPage';
 import { api } from '../../lib/api';
-import { reducirFoto } from '../foto-cda/reducirFoto';
+import { FotoPequenaError, reducirFoto } from '../foto-cda/reducirFoto';
+import { FOTO_INFORME_PEQUENA, fotoInformeTieneTamano } from '@cne/shared-validation';
 import { guardarArchivo } from '../../lib/queries/custodia';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
@@ -89,7 +90,24 @@ describe('InformeCdaPage', () => {
     expect(url).toBe('/publico/informe-cda/foto');
     expect((fd as FormData).get('posicion')).toBe('2');
     expect((fd as FormData).get('token')).toBe(TOKEN);
-    expect(reducirMock).toHaveBeenCalledWith(expect.any(File), { ladoMaximo: 1600, bytesObjetivo: 600 * 1024 });
+    expect(reducirMock).toHaveBeenCalledWith(expect.any(File), {
+      ladoMaximo: 1600,
+      bytesObjetivo: 600 * 1024,
+      minimo: { aceptada: fotoInformeTieneTamano, mensaje: FOTO_INFORME_PEQUENA },
+    });
+  });
+
+  it('una foto muy pequeña no se sube y la casilla dice la medida mínima', async () => {
+    const user = userEvent.setup();
+    await entrar(user);
+    await user.click(screen.getByRole('checkbox'));
+    reducirMock.mockRejectedValueOnce(new FotoPequenaError(FOTO_INFORME_PEQUENA));
+
+    await user.upload(document.getElementById('icda-foto-1') as HTMLInputElement, new File(['x'], 'p.jpg', { type: 'image/jpeg' }));
+
+    expect(await screen.findByText(/al menos 800 × 600 píxeles/, { selector: '.icda-estado' })).toHaveAttribute('role', 'alert');
+    expect(document.getElementById('icda-foto-1')).toHaveAttribute('aria-invalid', 'true');
+    expect(postMock).toHaveBeenCalledTimes(1); // solo la consulta de la cédula
   });
 
   it('las fotos de otra visita salen como cargadas sin imagen y bloquean la descarga aquí', async () => {

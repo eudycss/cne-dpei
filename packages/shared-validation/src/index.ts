@@ -1608,6 +1608,14 @@ export function tieneCupoDia(mismoSexoDestino: number, mismoSexoOrigen: number):
 /** Versión del aviso LOPDP de la página del informe (cambiarla obliga a leerlo de nuevo). */
 export const VERSION_AVISO_INFORME_CDA = 'LOPDP-2026-11-INFORME';
 export const FOTOS_INFORME_CDA = 6;
+/** Medida mínima de cada foto del anexo (en cualquier orientación): más chica se ve borrosa al imprimir. */
+export const FOTO_INFORME_MIN = { ladoMayor: 800, ladoMenor: 600 } as const;
+export const FOTO_INFORME_PEQUENA = `La foto debe medir al menos ${FOTO_INFORME_MIN.ladoMayor} × ${FOTO_INFORME_MIN.ladoMenor} píxeles. Tome otra con la cámara del celular.`;
+
+/** true si la foto alcanza la medida mínima del anexo. */
+export function fotoInformeTieneTamano(ancho: number, alto: number): boolean {
+  return Math.max(ancho, alto) >= FOTO_INFORME_MIN.ladoMayor && Math.min(ancho, alto) >= FOTO_INFORME_MIN.ladoMenor;
+}
 
 const tokenVisitaInformeSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'La visita venció: escriba su cédula de nuevo');
 // Llega como texto (multipart) o número (JSON).

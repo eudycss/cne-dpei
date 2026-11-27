@@ -5,11 +5,13 @@ import Docxtemplater from 'docxtemplater';
 import {
   CARGOS_CON_INFORME,
   generarWordInformeProductos,
-  medidaEnCaja,
+  CAJA,
+  recorteEnCaja,
   nombreArchivoInforme,
 } from './informe-productos.documento';
 import { InformeProductosService, FALTAN_FOTOS } from './informe-productos.service';
 import { hashToken } from './foto-cda.service';
+import { FOTO_INFORME_PEQUENA } from '@cne/shared-validation';
 
 /** JPEG mínimo válido (el mismo armado que jpeg.spec.ts). */
 function jpegDePrueba(ancho = 800, alto = 600): Buffer {
@@ -85,12 +87,53 @@ describe('informe de productos (Word)', () => {
     expect(() => generarWordInformeProductos('ARCHIVADOR_ACTAS', 'X', [])).toThrow('No hay informe');
   });
 
-  it('la foto cabe en la caja sin deformarse', () => {
-    const horizontal = medidaEnCaja(800, 600);
-    expect(horizontal.cx / horizontal.cy).toBeCloseTo(800 / 600, 2);
-    const vertical = medidaEnCaja(600, 800);
-    expect(vertical.cy).toBeLessThanOrEqual(Math.round(2.45 * 914400));
-    expect(vertical.cx / vertical.cy).toBeCloseTo(600 / 800, 2);
+  it('todas las fotos salen del mismo tamaño, en filas de alto fijo', () => {
+    const mezcla = [
+      { posicion: 1, jpeg: jpegDePrueba(1600, 1200), ancho: 1600, alto: 1200 },
+      { posicion: 2, jpeg: jpegDePrueba(900, 1600), ancho: 900, alto: 1600 },
+      { posicion: 3, jpeg: jpegDePrueba(1600, 600), ancho: 1600, alto: 600 },
+    ];
+    const xml = new PizZip(generarWordInformeProductos('ASISTENTE', 'Paz Ana', mezcla)).file('word/document.xml')!.asText();
+    const medidas = xml.match(/<wp:extent cx="\d+" cy="\d+"\/>/g)!;
+    expect(medidas).toHaveLength(3);
+    expect(new Set(medidas)).toEqual(new Set([`<wp:extent cx="${CAJA.cx}" cy="${CAJA.cy}"/>`]));
+    expect(xml.match(/<w:trHeight w:val="\d+" w:hRule="exact"\/>/g)).toHaveLength(3);
+  });
+
+  it('recorta al centro lo que sobra para llenar la caja sin deformar', () => {
+    const proporcion = CAJA.cx / CAJA.cy;
+    // Vertical: se corta arriba y abajo por igual.
+    const vertical = recorteEnCaja(900, 1600);
+    expect(vertical.l).toBe(0);
+    expect(vertical.r).toBe(0);
+    expect(vertical.t).toBe(vertical.b);
+    const altoVisible = 1600 * (1 - (vertical.t + vertical.b) / 100000);
+    expect(900 / altoVisible).toBeCloseTo(proporcion, 2);
+    // Panorámica: se corta a los lados.
+    const ancha = recorteEnCaja(1600, 600);
+    expect(ancha.t).toBe(0);
+    expect(ancha.l).toBe(ancha.r);
+    const anchoVisible = 1600 * (1 - (ancha.l + ancha.r) / 100000);
+    expect(anchoVisible / 600).toBeCloseTo(proporcion, 2);
+    // Con la misma proporción de la caja no se corta nada.
+    expect(recorteEnCaja(CAJA.cx, CAJA.cy)).toEqual({ l: 0, t: 0, r: 0, b: 0 });
+    // Medidas inválidas: sin recorte, nunca NaN.
+    expect(recorteEnCaja(0, 600)).toEqual({ l: 0, t: 0, r: 0, b: 0 });
+    expect(recorteEnCaja(800, Number.NaN)).toEqual({ l: 0, t: 0, r: 0, b: 0 });
+  });
+
+  it.each(CARGOS_CON_INFORME)('la hoja del anexo de %s lleva el pie oficial del FORMATO ANEXOS, no el del informe', (grupo) => {
+    const zip = new PizZip(generarWordInformeProductos(grupo, 'Paz Ana', fotos));
+    const xml = zip.file('word/document.xml')!.asText();
+    const seccionAnexo = xml.slice(xml.lastIndexOf('<w:sectPr'));
+    const rId = seccionAnexo.match(/<w:footerReference w:type="default" r:id="(rId\d+)"\/>/)?.[1];
+    expect(rId).toBeDefined();
+    const rels = zip.file('word/_rels/document.xml.rels')!.asText();
+    const destino = rels.match(new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`))?.[1];
+    const pie = textoWord(zip.file(`word/${destino}`)!.asText());
+    expect(pie).toContain('DELEGACIÓN PROVINCIAL ELECTORAL DE IMBABURA');
+    expect(pie).not.toContain('FO-03');
+    expect(zip.file('[Content_Types].xml')!.asText()).toContain(`/word/${destino}`);
   });
 
   it('el nombre del archivo solo lleva los dígitos de la cédula', () => {
@@ -181,6 +224,25 @@ describe('InformeProductosService', () => {
     expect(upsert.update).toMatchObject({ fotoKey: 'fotos-informe-cda/nueva', ancho: 1024, alto: 768, visitaId: 'v1' });
     expect(storage.remove).toHaveBeenCalledWith('fotos-informe-cda/vieja');
     expect(r.fotos[2]).toEqual({ posicion: 3, cargada: true, deEstaVisita: true });
+  });
+
+  it.each([
+    [799, 600],
+    [600, 799],
+    [1600, 599],
+  ])('una foto de %i × %i px es muy pequeña: no se guarda', async (ancho, alto) => {
+    const file = { buffer: jpegDePrueba(ancho, alto), size: 500 } as Express.Multer.File;
+    await expect(service.subirFoto(token, 1, file, 'LOPDP')).rejects.toThrow(FOTO_INFORME_PEQUENA);
+    expect(storage.saveEncrypted).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [800, 600],
+    [600, 800],
+  ])('una foto de %i × %i px (la medida mínima) sí se guarda', async (ancho, alto) => {
+    const file = { buffer: jpegDePrueba(ancho, alto), size: 500 } as Express.Multer.File;
+    await service.subirFoto(token, 1, file, 'LOPDP');
+    expect(storage.saveEncrypted).toHaveBeenCalled();
   });
 
   it('un archivo que no es JPEG no se guarda', async () => {
