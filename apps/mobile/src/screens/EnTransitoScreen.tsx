@@ -15,6 +15,8 @@ import { pedirPermisoAvisos } from '../lib/aviso-proximidad';
 import { useMiAsignacion } from '../lib/useMiAsignacion';
 import { useProximidad } from '../lib/useProximidad';
 import { useEstadoRastreo } from '../lib/useEstadoRastreo';
+import { NoCdaPanel } from '../components/NoCdaPanel';
+import { BLOQUEO_ANTES_DE_LLEGAR } from '../components/NoCdaChecklist';
 
 interface Props {
   onMarcarLlegada: () => void;
@@ -133,6 +135,9 @@ export function EnTransitoScreen({ onMarcarLlegada }: Props) {
           <Text style={styles.btnSecondaryText}>Cerrar sesión</Text>
         </Pressable>
       </View>
+
+      {/* En camino: los NO CDA a su cargo, con candado hasta llegar al recinto. */}
+      <NoCdaPanel noCdas={asignacion?.noCdas ?? []} bloqueo={BLOQUEO_ANTES_DE_LLEGAR} onMarcado={() => void recargar()} />
     </View>
   );
 }

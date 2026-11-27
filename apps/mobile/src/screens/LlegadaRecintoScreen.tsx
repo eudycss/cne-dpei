@@ -45,6 +45,8 @@ import {
 } from '../lib/location';
 import { fontFamily } from '../theme/typography';
 import { mensajeErrorRegistro } from '../lib/mensaje-error-registro';
+import { NoCdaPanel } from '../components/NoCdaPanel';
+import { bloqueoNoCda } from '../components/NoCdaChecklist';
 
 type Paso = 1 | 2 | 3;
 type Styles = ReturnType<typeof makeStyles>;
@@ -351,6 +353,16 @@ export function LlegadaRecintoScreen({ onLlegadaRegistrada }: Props) {
           <Text style={styles.logoutLinkText}>Cerrar sesión</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Se ve desde ya con candado: se habilita al registrar la llegada al recinto. */}
+      <NoCdaPanel
+        noCdas={asignacion.noCdas}
+        bloqueo={bloqueoNoCda(asignacion)}
+        onMarcado={() => {
+          // Recarga silenciosa: `cargar` pondría la pantalla en spinner y reiniciaría los pasos.
+          getMiAsignacion().then(setAsignacion).catch(() => {});
+        }}
+      />
 
       <Modal visible={mostrarCamaraFoto} animationType="slide" presentationStyle="fullScreen">
         <CameraFoto onCapture={onFotoCapturada} onCancel={() => setMostrarCamaraFoto(false)} />
