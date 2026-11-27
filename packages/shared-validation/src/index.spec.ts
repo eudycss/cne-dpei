@@ -790,3 +790,25 @@ describe('grado del militar (acta de custodia)', () => {
     expect(createMilitarSchema.safeParse({ ...base, grado: 'A'.repeat(21) }).success).toBe(false);
   });
 });
+
+describe('opciones del acta militar', () => {
+  it('por defecto Word, sin responsable ni fecha (como antes)', async () => {
+    const { opcionesActaMilitarSchema } = await import('./index');
+    expect(opcionesActaMilitarSchema.parse({})).toEqual({ formato: 'docx' });
+  });
+
+  it('acepta PDF, un responsable y una fecha real; rechaza lo inválido', async () => {
+    const { opcionesActaMilitarSchema, actasMilitaresSeleccionSchema, FECHA_ACTA_MILITAR_POR_DEFECTO } = await import('./index');
+    const id = '11111111-2222-4333-8444-555555555555';
+    expect(opcionesActaMilitarSchema.parse({ formato: 'pdf', responsableId: id, fecha: FECHA_ACTA_MILITAR_POR_DEFECTO })).toEqual({
+      formato: 'pdf',
+      responsableId: id,
+      fecha: '2026-11-28',
+    });
+    expect(opcionesActaMilitarSchema.safeParse({ formato: 'xlsx' }).success).toBe(false);
+    expect(opcionesActaMilitarSchema.safeParse({ responsableId: 'abc' }).success).toBe(false);
+    expect(opcionesActaMilitarSchema.safeParse({ fecha: '2026-02-30' }).success).toBe(false);
+    expect(actasMilitaresSeleccionSchema.parse({ kitIds: [id], formato: 'pdf' })).toEqual({ kitIds: [id], formato: 'pdf' });
+    expect(actasMilitaresSeleccionSchema.safeParse({ kitIds: [id], otro: 1 }).success).toBe(false);
+  });
+});

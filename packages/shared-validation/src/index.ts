@@ -700,9 +700,28 @@ const motivoCorreccionSchema = z
 /** Máximo de actas militares (Word) por .zip: cuesta CPU en la API. */
 export const MAX_ACTAS_MILITARES = 200;
 
-/** Actas militares de los kits elegidos en la tabla (lo que el usuario filtró). */
-export const actasMilitaresSeleccionSchema = z
-  .object({
+/** Fecha con la que salen las actas militares si no se elige otra (día de la entrega en la DPEI). */
+export const FECHA_ACTA_MILITAR_POR_DEFECTO = '2026-11-28';
+
+/**
+ * Cómo sale el acta militar: formato (Word o PDF), el Asistente Transversal
+ * responsable y la fecha impresa. Sin responsable ni fecha: quien entregó (o
+ * quien descarga) y la fecha de la entrega (o hoy), como antes.
+ */
+export const opcionesActaMilitarSchema = z.object({
+  formato: z.enum(['docx', 'pdf'], { errorMap: () => ({ message: 'Formato inválido (docx o pdf)' }) }).default('docx'),
+  responsableId: z.string().uuid('Responsable inválido').optional(),
+  fecha: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
+    .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)')
+    .optional(),
+});
+export type OpcionesActaMilitar = z.infer<typeof opcionesActaMilitarSchema>;
+
+/** Actas militares de los kits elegidos en la tabla (lo que el usuario marcó o filtró). */
+export const actasMilitaresSeleccionSchema = opcionesActaMilitarSchema
+  .extend({
     kitIds: z
       .array(z.string().uuid('Kit inválido'))
       .min(1, 'Elige al menos un kit')

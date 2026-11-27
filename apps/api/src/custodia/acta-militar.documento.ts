@@ -10,7 +10,7 @@ import PizZip from 'pizzip';
  * se cambiaron los datos de ejemplo por campos {…}: letra, colores, espacios y
  * tabla quedan idénticos. Nada se guarda: se genera al momento.
  */
-const RUTA_PLANTILLA = join(__dirname, '..', 'assets', 'plantilla-acta-custodia-militar.docx');
+export const RUTA_PLANTILLA = join(__dirname, '..', 'assets', 'plantilla-acta-custodia-militar.docx');
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MESES = [
@@ -106,8 +106,8 @@ export async function zipActasMilitares(actas: { archivo: string; datos: DatosAc
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-/** Nombre de archivo seguro: "acta_militar_17_1359.docx". */
-export function nombreArchivoActaMilitar(kitNumero: string, codigoRecinto: string | null): string {
+/** Nombre de archivo seguro: "acta_militar_17_1359.docx" (o .pdf). */
+export function nombreArchivoActaMilitar(kitNumero: string, codigoRecinto: string | null, extension: 'docx' | 'pdf' = 'docx'): string {
   const limpio = (s: string) => s.replace(/[^A-Za-z0-9-]/g, '').slice(0, 20);
-  return `acta_militar_${limpio(kitNumero) || 'kit'}${codigoRecinto ? `_${limpio(codigoRecinto)}` : ''}.docx`;
+  return `acta_militar_${limpio(kitNumero) || 'kit'}${codigoRecinto ? `_${limpio(codigoRecinto)}` : ''}.${extension}`;
 }

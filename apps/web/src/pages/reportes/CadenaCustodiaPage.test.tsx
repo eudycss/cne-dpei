@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FilaInformeCustodia } from '@cne/shared-types';
 
 vi.mock('../../lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('sileo', () => ({ sileo: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: { id: 'yo', roles: ['ASISTENTE_TRANSVERSAL'] } }) }));
 vi.mock('xlsx', () => ({
   utils: { aoa_to_sheet: vi.fn(() => ({})), book_new: vi.fn(() => ({})), book_append_sheet: vi.fn() },
   writeFile: vi.fn(),
@@ -73,6 +74,11 @@ const filas = [
   }),
 ];
 
+const RESPONSABLES = [
+  { id: 'yo', nombre: 'Sebastian Cabascango', cedula: '1' },
+  { id: 'jl', nombre: 'Jairo Leal Aviles', cedula: '2' },
+];
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -86,7 +92,11 @@ describe('CadenaCustodiaPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getMock.mockImplementation((url: string) =>
-      url === '/custodia/informe' ? Promise.resolve({ data: filas }) : Promise.resolve({ data: new Blob(['%PDF']) }),
+      url === '/custodia/informe'
+        ? Promise.resolve({ data: filas })
+        : url === '/custodia/responsables-acta'
+          ? Promise.resolve({ data: RESPONSABLES })
+          : Promise.resolve({ data: new Blob(['%PDF']) }),
     );
     postMock.mockResolvedValue({ data: new Blob(['PK']) });
   });
@@ -143,21 +153,75 @@ describe('CadenaCustodiaPage', () => {
     );
   });
 
-  it('descarga el acta del militar (Word) de un kit y las del cantón en .zip', async () => {
+  it('acta militar de un kit: por defecto PDF, Ing. Jairo Leal y 28/11/2026, todo editable', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('ABCD2345');
 
-    await user.click(screen.getByRole('button', { name: 'Descargar acta del militar (Word) del kit ABCD2345' }));
-    await waitFor(() => expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), 'acta_militar_ABCD2345.docx'));
-    expect(getMock).toHaveBeenCalledWith('/custodia/kits/k1/acta-militar', { responseType: 'blob' });
+    await user.click(screen.getByRole('button', { name: 'Acta del militar (PDF o Word) del kit ABCD2345' }));
+    const dialogo = screen.getByRole('dialog', { name: 'Acta militar del kit ABCD2345' });
+    const responsable = await within(dialogo).findByRole('combobox', { name: 'Responsable (Asistente Transversal)' });
+    await waitFor(() => expect(responsable).toHaveValue('jl'));
+    expect(within(dialogo).getByRole('option', { name: 'Ing. Jairo Leal Aviles' })).toBeInTheDocument();
+    expect(within(dialogo).getByLabelText('Fecha del acta')).toHaveValue('2026-11-28');
+    expect(within(dialogo).getByRole('radio', { name: 'PDF' })).toBeChecked();
 
-    await user.selectOptions(screen.getByLabelText('Cantón'), '30');
-    await user.click(screen.getByRole('button', { name: 'Actas militares (Word)' }));
+    await user.click(within(dialogo).getByRole('button', { name: 'Descargar PDF' }));
+    await waitFor(() => expect(guardarArchivo).toHaveBeenCalledWith(expect.any(Blob), 'acta_militar_ABCD2345.pdf'));
+    expect(getMock).toHaveBeenCalledWith('/custodia/kits/k1/acta-militar', {
+      params: { formato: 'pdf', responsableId: 'jl', fecha: '2026-11-28' },
+      responseType: 'blob',
+    });
+
+    // Otro Asistente Transversal, otra fecha y en Word.
+    await user.selectOptions(responsable, 'yo');
+    fireEvent.change(within(dialogo).getByLabelText('Fecha del acta'), { target: { value: '2026-11-29' } });
+    await user.click(within(dialogo).getByRole('radio', { name: 'Word' }));
+    await user.click(within(dialogo).getByRole('button', { name: 'Descargar Word' }));
+    await waitFor(() => expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'acta_militar_ABCD2345.docx'));
+    expect(getMock).toHaveBeenLastCalledWith('/custodia/kits/k1/acta-militar', {
+      params: { formato: 'docx', responsableId: 'yo', fecha: '2026-11-29' },
+      responseType: 'blob',
+    });
+  });
+
+  it('actas militares de los kits marcados en un solo PDF; sin marcar, las de la tabla', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('ABCD2345');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Elegir el kit WXYZ6789 para las actas militares' }));
+    await user.click(screen.getByRole('button', { name: 'Actas militares (1 elegidas)' }));
+    let dialogo = screen.getByRole('dialog', { name: 'Acta militar del kit WXYZ6789' });
+    await user.click(within(dialogo).getAllByRole('button', { name: 'Cerrar' })[0]);
+
+    // "Elegir todos" marca los de la tabla; vuelto a pulsar, los desmarca.
+    const todos = screen.getByRole('checkbox', { name: 'Elegir todos los kits de la tabla para las actas militares' });
+    await user.click(todos);
+    expect(screen.getByRole('checkbox', { name: 'Elegir el kit ABCD2345 para las actas militares' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Actas militares (2 elegidas)' }));
+    dialogo = screen.getByRole('dialog', { name: 'Actas militares (2 kits)' });
+    await waitFor(() => expect(within(dialogo).getByRole('combobox', { name: /Responsable/ })).toHaveValue('jl'));
+    await user.click(within(dialogo).getByRole('button', { name: 'Descargar PDF' }));
     await waitFor(() =>
-      expect(postMock).toHaveBeenCalledWith('/custodia/actas-militares/seleccion', { kitIds: ['k1'] }, { responseType: 'blob' }),
+      expect(postMock).toHaveBeenCalledWith(
+        '/custodia/actas-militares/seleccion',
+        { kitIds: ['k1', 'k2'], formato: 'pdf', responsableId: 'jl', fecha: '2026-11-28' },
+        { responseType: 'blob' },
+      ),
     );
-    expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'actas_militares.zip');
+    expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'actas_militares.pdf');
+    await user.click(within(dialogo).getAllByRole('button', { name: 'Cerrar' })[0]);
+
+    await user.click(todos);
+    await user.selectOptions(screen.getByLabelText('Cantón'), '30');
+    await user.selectOptions(screen.getByLabelText('Recinto'), '');
+    await user.click(screen.getByRole('button', { name: 'Actas militares' }));
+    dialogo = screen.getByRole('dialog', { name: 'Acta militar del kit ABCD2345' });
+    await waitFor(() => expect(within(dialogo).getByRole('combobox', { name: /Responsable/ })).toHaveValue('jl'));
+    await user.click(within(dialogo).getByRole('radio', { name: 'Word' }));
+    await user.click(within(dialogo).getByRole('button', { name: 'Descargar Word' }));
+    await waitFor(() => expect(guardarArchivo).toHaveBeenLastCalledWith(expect.any(Blob), 'acta_militar_ABCD2345.docx'));
   });
 
   it('busca por código o nombre del recinto, operador CDA o militar (sin tildes) y descarga solo esas actas', async () => {
@@ -179,15 +243,19 @@ describe('CadenaCustodiaPage', () => {
     expect(screen.getByText('ABCD2345')).toBeInTheDocument();
     expect(screen.queryByText('WXYZ6789')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Actas militares (Word)' }));
+    await user.click(screen.getByRole('button', { name: 'Actas militares' }));
+    const dialogo = screen.getByRole('dialog', { name: 'Acta militar del kit ABCD2345' });
+    await waitFor(() => expect(within(dialogo).getByRole('combobox', { name: /Responsable/ })).toHaveValue('jl'));
+    await user.click(within(dialogo).getByRole('button', { name: 'Descargar PDF' }));
     await waitFor(() =>
-      expect(postMock).toHaveBeenCalledWith('/custodia/actas-militares/seleccion', { kitIds: ['k1'] }, { responseType: 'blob' }),
+      expect(getMock).toHaveBeenCalledWith('/custodia/kits/k1/acta-militar', expect.objectContaining({ responseType: 'blob' })),
     );
+    await user.click(within(dialogo).getAllByRole('button', { name: 'Cerrar' })[0]);
 
     // Sin resultados: no hay actas que descargar.
     await user.type(buscar, 'zzz');
     expect(screen.getByText('No hay kits para los filtros elegidos.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Actas militares (Word)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Actas militares' })).toBeDisabled();
   });
 
   it('con más de 200 kits en la tabla pide filtrar antes de descargar las actas militares', async () => {
@@ -197,8 +265,8 @@ describe('CadenaCustodiaPage', () => {
     );
     renderPage();
     await screen.findByText('K0');
-    expect(screen.getByRole('button', { name: 'Actas militares (Word)' })).toBeDisabled();
-    expect(screen.getByText('Son 201 kits: filtre a 200 o menos para descargar las actas militares.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actas militares' })).toBeDisabled();
+    expect(screen.getByText('Son 201 kits: marque o filtre 200 o menos para descargar las actas militares.')).toBeInTheDocument();
   });
 
   it('exporta a Excel solo las filas visibles', async () => {

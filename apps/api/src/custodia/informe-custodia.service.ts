@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { FilaInformeCustodia, ItemChecklist } from '@cne/shared-types';
-import { MAX_ACTAS_MILITARES } from '@cne/shared-validation';
+import { MAX_ACTAS_MILITARES, type OpcionesActaMilitar } from '@cne/shared-validation';
 import { PrismaService } from '../db/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DatosActa, generarActasPdf, Persona } from './acta-custodia.pdf';
@@ -10,6 +10,7 @@ import {
   nombreArchivoActaMilitar,
   zipActasMilitares,
 } from './acta-militar.documento';
+import { generarPdfActasMilitares } from './acta-militar.pdf';
 import { cargoDeQuienEntrega } from '../operadores-cda/actas-cda.service';
 
 export interface FiltrosInforme {
@@ -20,6 +21,21 @@ export interface FiltrosInforme {
 // Cada acta lleva una foto: en el plan gratuito de Render (512 MB) un PDF
 // enorme puede agotar la memoria. Por encima del tope se pide filtrar.
 export const MAX_ACTAS_POR_PDF = 100;
+
+/** Archivo listo para enviar (Word, PDF o .zip de Words). */
+export interface ArchivoActa {
+  nombre: string;
+  tipo: string;
+  contenido: Buffer;
+}
+
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const OPCIONES_POR_DEFECTO: OpcionesActaMilitar = { formato: 'docx' };
+
+/** "2026-11-28" → mediodía de ese día en Ecuador (la fecha impresa no se corre de día). */
+function fechaDeActa(dia: string): Date {
+  return new Date(`${dia}T12:00:00-05:00`);
+}
 // Las actas militares no llevan foto: caben las 137 de la provincia (+ kits
 // extra). El tope (MAX_ACTAS_MILITARES) está en shared-validation: lo usa la web.
 const NO_DISPONIBLE: Persona = { nombre: '(usuario no disponible)', cedula: '—' };
@@ -137,19 +153,24 @@ export class InformeCustodiaService {
   }
 
   /** Acta de Constancia y Custodia (militar) de un kit, en Word. */
-  async actaMilitarKit(kitId: string, usuarioId: string): Promise<{ nombre: string; contenido: Buffer }> {
+  async actaMilitarKit(kitId: string, usuarioId: string, opciones: OpcionesActaMilitar = OPCIONES_POR_DEFECTO): Promise<ArchivoActa> {
     const evento = await this.eventoActivo();
     const kit = await this.prisma.kitElectoral.findFirst({
       where: { id: kitId, eventoId: evento.id },
       select: { id: true },
     });
     if (!kit) throw new NotFoundException('Kit no encontrado en el evento activo');
-    const [acta] = await this.armarActasMilitares(await this.cargar({}, [kitId]), usuarioId);
-    return { nombre: acta.archivo, contenido: generarWordActaMilitar(acta.datos) };
+    const cargados = await this.cargar({}, [kitId]);
+    if (cargados.kits.some((k) => k.esPrueba)) throw new NotFoundException('Kit no encontrado en el evento activo');
+    const [acta] = await this.armarActasMilitares(cargados, usuarioId, opciones);
+    if (opciones.formato === 'pdf') {
+      return { nombre: acta.archivo.replace(/\.docx$/, '.pdf'), tipo: 'application/pdf', contenido: await generarPdfActasMilitares([acta.datos]) };
+    }
+    return { nombre: acta.archivo, tipo: DOCX, contenido: generarWordActaMilitar(acta.datos) };
   }
 
   /** Actas militares de los filtros: un Word por kit dentro de un .zip. */
-  async actasMilitares(filtros: FiltrosInforme, usuarioId: string): Promise<Buffer> {
+  async actasMilitares(filtros: FiltrosInforme, usuarioId: string, opciones: OpcionesActaMilitar = OPCIONES_POR_DEFECTO): Promise<ArchivoActa> {
     // Se cuenta antes de cargar todo: un pedido enorme no llega a la memoria.
     const evento = await this.eventoActivo();
     const total = await this.prisma.kitElectoral.count({
@@ -167,7 +188,7 @@ export class InformeCustodiaService {
       );
     }
     const datos = await this.cargar(filtros);
-    return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
+    return this.archivoActasMilitares(await this.armarActasMilitares(datos, usuarioId, opciones), opciones);
   }
 
   /**
@@ -175,12 +196,38 @@ export class InformeCustodiaService {
    * recinto, operador, militar…). Solo kits del evento activo; el tope lo
    * valida el esquema (máx. MAX_ACTAS_MILITARES).
    */
-  async actasMilitaresSeleccion(kitIds: string[], usuarioId: string): Promise<Buffer> {
+  async actasMilitaresSeleccion(
+    kitIds: string[],
+    usuarioId: string,
+    opciones: OpcionesActaMilitar = OPCIONES_POR_DEFECTO,
+  ): Promise<ArchivoActa> {
     const cargados = await this.cargar({}, [...new Set(kitIds)]);
     // Como en la tabla: los kits de prueba no tienen acta aunque se pida su id.
     const datos = { ...cargados, kits: cargados.kits.filter((k) => !k.esPrueba) };
     if (!datos.kits.length) throw new NotFoundException('No hay kits del evento activo en la selección');
-    return zipActasMilitares(await this.armarActasMilitares(datos, usuarioId));
+    return this.archivoActasMilitares(await this.armarActasMilitares(datos, usuarioId, opciones), opciones);
+  }
+
+  /** Asistentes Transversales activos: los que pueden firmar como responsable del acta militar. */
+  async responsablesActa(): Promise<{ id: string; nombre: string }[]> {
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { activo: true, roles: { some: { rol: { nombre: 'ASISTENTE_TRANSVERSAL' } } } },
+      select: { id: true, nombres: true, apellidos: true },
+      orderBy: [{ nombres: 'asc' }, { apellidos: 'asc' }],
+    });
+    // Sin cédula: la lista solo sirve para elegir (minimización de datos personales).
+    return usuarios.map((u) => ({ id: u.id, nombre: nombreDirecto(u) }));
+  }
+
+  /** Varias actas: un solo PDF (una página por kit) o un .zip con un Word por kit. */
+  private async archivoActasMilitares(
+    actas: { archivo: string; datos: DatosActaMilitar }[],
+    opciones: OpcionesActaMilitar,
+  ): Promise<ArchivoActa> {
+    if (opciones.formato === 'pdf') {
+      return { nombre: 'actas_militares.pdf', tipo: 'application/pdf', contenido: await generarPdfActasMilitares(actas.map((a) => a.datos)) };
+    }
+    return { nombre: 'actas_militares.zip', tipo: 'application/zip', contenido: await zipActasMilitares(actas) };
   }
 
   // ─── internos ─────────────────────────────────────────────────────────────
@@ -207,8 +254,19 @@ export class InformeCustodiaService {
   private async armarActasMilitares(
     datos: Awaited<ReturnType<InformeCustodiaService['cargar']>>,
     usuarioId: string,
+    opciones: OpcionesActaMilitar = OPCIONES_POR_DEFECTO,
   ): Promise<{ archivo: string; datos: DatosActaMilitar }[]> {
-    const idsResponsable = new Set<string>([usuarioId, ...[...datos.entregas.values()].map((e) => e.entregadoPorId)]);
+    // Responsable elegido: tiene que ser un Asistente Transversal activo y firma todas las actas.
+    if (opciones.responsableId) {
+      const elegido = await this.prisma.usuario.findFirst({
+        where: { id: opciones.responsableId, activo: true, roles: { some: { rol: { nombre: 'ASISTENTE_TRANSVERSAL' } } } },
+        select: { id: true },
+      });
+      if (!elegido) throw new BadRequestException('El responsable debe ser un Asistente Transversal activo');
+    }
+    const idsResponsable = new Set<string>(
+      opciones.responsableId ? [opciones.responsableId] : [usuarioId, ...[...datos.entregas.values()].map((e) => e.entregadoPorId)],
+    );
     const [mochilas, militaresPorRecinto, responsables] = await Promise.all([
       this.prisma.mochilaKit.findMany({
         where: { codigoUnico: { in: datos.kits.map((k) => k.codigoUnico) } },
@@ -224,15 +282,17 @@ export class InformeCustodiaService {
     const responsablePorId = new Map<string, (typeof responsables)[number]>(responsables.map((u) => [u.id, u]));
 
     const hoy = new Date();
+    const fechaElegida = opciones.fecha ? fechaDeActa(opciones.fecha) : null;
     return datos.kits.map((k) => {
       const entrega = datos.entregas.get(k.id);
       const militar = entrega?.militar ?? militarDelRecinto(militaresPorRecinto.get(k.recintoId ?? '') ?? []);
-      const resp = responsablePorId.get(entrega?.entregadoPorId ?? usuarioId);
+      const resp = responsablePorId.get(opciones.responsableId ?? entrega?.entregadoPorId ?? usuarioId);
       const kitNumero = String(numeroPorCodigo.get(k.codigoUnico) ?? k.codigoUnico);
       return {
         archivo: nombreArchivoActaMilitar(kitNumero, k.recinto?.codigoRecinto ?? null),
         datos: {
-          fecha: entrega?.entregadoEn ?? hoy,
+          // La fecha elegida vale para todas, aunque el kit ya tenga su entrega registrada.
+          fecha: fechaElegida ?? entrega?.entregadoEn ?? hoy,
           responsable: resp
             ? { nombre: nombreDirecto(resp), cedula: resp.cedula, cargo: cargoDeQuienEntrega(resp.roles.map((r) => r.rol.nombre)) }
             : null,

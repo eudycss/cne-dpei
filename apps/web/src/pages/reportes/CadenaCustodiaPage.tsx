@@ -5,16 +5,14 @@ import type { FilaInformeCustodia } from '@cne/shared-types';
 import { coincideBusqueda, MAX_ACTAS_MILITARES } from '@cne/shared-validation';
 import { Logo } from '../../components/Logo';
 import { Cargando } from '../../components/Cargando';
-import {
-  descargarActaKit,
-  descargarActaMilitarKit,
-  descargarActas,
-  descargarActasMilitares,
-  getInformeCustodia,
-} from '../../lib/queries/custodia';
+import { descargarActaKit, descargarActas, getInformeCustodia } from '../../lib/queries/custodia';
 import { useDescargaPdf } from '../../lib/useDescargaPdf';
+import { ActaMilitarModal } from './ActaMilitarModal';
 
 type FiltroEtapa = 'TODOS' | 'PENDIENTES' | 'COMPLETOS';
+
+/** Casillas de 24 px como mínimo (WCAG 2.5.8). */
+const CASILLA = { inlineSize: 24, blockSize: 24, margin: 0, cursor: 'pointer' } as const;
 
 function fechaHora(iso: string, conAnio = false): string {
   return new Date(iso).toLocaleString('es-EC', {
@@ -77,6 +75,9 @@ export function CadenaCustodiaPage() {
   const [etapa, setEtapa] = useState<FiltroEtapa>('TODOS');
   const [buscar, setBuscar] = useState('');
   const { descargando, descargar } = useDescargaPdf('No se pudo descargar el acta');
+  /** Kits marcados para las actas militares (los que no están a la vista no cuentan). */
+  const [elegidos, setElegidos] = useState<Set<string>>(new Set());
+  const [actasPara, setActasPara] = useState<{ kitId: string; codigoUnico: string }[] | null>(null);
 
   const filas = data ?? [];
   const cantones = useMemo(() => {
@@ -101,7 +102,31 @@ export function CadenaCustodiaPage() {
       (etapa === 'TODOS' || (etapa === 'COMPLETOS' ? completo(f) : !completo(f))) &&
       coincideBusqueda(textosBusqueda(f), buscar),
   );
-  const demasiadasActas = visibles.length > MAX_ACTAS_MILITARES;
+  const marcadas = visibles.filter((f) => elegidos.has(f.kitId));
+  // Sin ninguna marcada, las actas militares son de todo lo filtrado.
+  const paraActas = marcadas.length ? marcadas : visibles;
+  const demasiadasActas = paraActas.length > MAX_ACTAS_MILITARES;
+  const todasMarcadas = visibles.length > 0 && marcadas.length === visibles.length;
+
+  function alternar(kitId: string) {
+    setElegidos((prev) => {
+      const s = new Set(prev);
+      if (s.has(kitId)) s.delete(kitId);
+      else s.add(kitId);
+      return s;
+    });
+  }
+
+  function alternarTodas() {
+    setElegidos((prev) => {
+      const s = new Set(prev);
+      for (const f of visibles) {
+        if (todasMarcadas) s.delete(f.kitId);
+        else s.add(f.kitId);
+      }
+      return s;
+    });
+  }
   const totales = {
     kits: visibles.length,
     entregados: visibles.filter((f) => f.entrega).length,
@@ -208,22 +233,13 @@ export function CadenaCustodiaPage() {
             </button>
             <button
               className="btn secondary"
-              disabled={!visibles.length || demasiadasActas || descargando !== null}
-              aria-busy={descargando === 'militares'}
+              disabled={!paraActas.length || demasiadasActas}
               aria-describedby="ayuda-actas-militares"
-              onClick={() =>
-                descargar(
-                  'militares',
-                  () => descargarActasMilitares(visibles.map((f) => f.kitId)),
-                  'actas_militares.zip',
-                )
-              }
+              aria-haspopup="dialog"
+              onClick={() => setActasPara(paraActas.map((f) => ({ kitId: f.kitId, codigoUnico: f.codigoUnico })))}
             >
-              {descargando === 'militares' ? 'Generando…' : (
-                <>
-                  <span aria-hidden="true">↓ </span>Actas militares (Word)
-                </>
-              )}
+              <span aria-hidden="true">↓ </span>
+              {marcadas.length ? `Actas militares (${marcadas.length} elegidas)` : 'Actas militares'}
             </button>
           </div>
         </div>
@@ -279,8 +295,10 @@ export function CadenaCustodiaPage() {
 
         <p id="ayuda-actas-militares" className="muted no-print" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }} aria-live="polite">
           {demasiadasActas
-            ? `Son ${visibles.length} kits: filtre a ${MAX_ACTAS_MILITARES} o menos para descargar las actas militares.`
-            : `"Actas militares (Word)" descarga un acta por cada kit de la tabla (${visibles.length}).`}
+            ? `Son ${paraActas.length} kits: marque o filtre ${MAX_ACTAS_MILITARES} o menos para descargar las actas militares.`
+            : marcadas.length
+              ? `"Actas militares" descarga las ${marcadas.length} marcadas, en PDF o Word.`
+              : `"Actas militares" descarga un acta por cada kit de la tabla (${visibles.length}), en PDF o Word. Marque kits para elegir solo algunos.`}
         </p>
 
         <div className="sr-only" role="status">
@@ -308,6 +326,19 @@ export function CadenaCustodiaPage() {
             <caption className="sr-only">Cadena de custodia de los kits del evento activo</caption>
             <thead>
               <tr>
+                <th scope="col" className="no-print">
+                  <input
+                    type="checkbox"
+                    ref={(el) => {
+                      if (el) el.indeterminate = marcadas.length > 0 && !todasMarcadas;
+                    }}
+                    style={CASILLA}
+                    checked={todasMarcadas}
+                    disabled={!visibles.length}
+                    onChange={alternarTodas}
+                    aria-label="Elegir todos los kits de la tabla para las actas militares"
+                  />
+                </th>
                 <th scope="col">Kit</th>
                 <th scope="col">Recinto / operador CDA</th>
                 <th scope="col">1. Entrega al militar</th>
@@ -319,11 +350,20 @@ export function CadenaCustodiaPage() {
             <tbody>
               {visibles.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted">No hay kits para los filtros elegidos.</td>
+                  <td colSpan={7} className="muted">No hay kits para los filtros elegidos.</td>
                 </tr>
               ) : (
                 visibles.map((f) => (
                   <tr key={f.kitId}>
+                    <td className="no-print">
+                      <input
+                        type="checkbox"
+                        style={CASILLA}
+                        checked={elegidos.has(f.kitId)}
+                        onChange={() => alternar(f.kitId)}
+                        aria-label={`Elegir el kit ${f.codigoUnico} para las actas militares`}
+                      />
+                    </td>
                     <th scope="row" style={{ fontFamily: 'monospace' }}>
                       {f.codigoUnico}
                       {f.correcciones > 0 ? (
@@ -375,14 +415,11 @@ export function CadenaCustodiaPage() {
                       <button
                         className="btn secondary"
                         style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
-                        disabled={descargando !== null}
-                        aria-busy={descargando === `m-${f.kitId}`}
-                        aria-label={`Descargar acta del militar (Word) del kit ${f.codigoUnico}`}
-                        onClick={() =>
-                          descargar(`m-${f.kitId}`, () => descargarActaMilitarKit(f.kitId), `acta_militar_${f.codigoUnico}.docx`)
-                        }
+                        aria-label={`Acta del militar (PDF o Word) del kit ${f.codigoUnico}`}
+                        aria-haspopup="dialog"
+                        onClick={() => setActasPara([{ kitId: f.kitId, codigoUnico: f.codigoUnico }])}
                       >
-                        {descargando === `m-${f.kitId}` ? 'Generando…' : 'Militar'}
+                        Militar
                       </button>
                     </td>
                   </tr>
@@ -392,6 +429,7 @@ export function CadenaCustodiaPage() {
           </table>
         </div>
       )}
+      {actasPara && <ActaMilitarModal kits={actasPara} onClose={() => setActasPara(null)} />}
     </>
   );
 }
