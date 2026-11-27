@@ -1,7 +1,14 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
-import { checklistDesdeBd, MOTIVO_KIT_EN_DPEI, NO_CDA_ANTES_DE_LLEGAR, NO_CDA_TRAS_SALIDA, TrackingService } from './tracking.service';
+import {
+  checklistDesdeBd,
+  MOTIVO_KIT_EN_DPEI,
+  MOTIVO_LLEGADA_POR_KIT,
+  NO_CDA_ANTES_DE_LLEGAR,
+  NO_CDA_TRAS_SALIDA,
+  TrackingService,
+} from './tracking.service';
 import { PrismaService } from '../db/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
@@ -23,8 +30,8 @@ describe('TrackingService', () => {
     configAlerta: { findUnique: jest.fn() },
     militar: { findFirst: jest.fn() },
     parejaCda: { findMany: jest.fn() },
-    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    recepcionKit: { findFirst: jest.fn(), findMany: jest.fn() },
+    eventoTracking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn(), delete: jest.fn(), update: jest.fn(), count: jest.fn() },
+    recepcionKit: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     recepcionDpiKit: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     entregaCustodioKit: { findFirst: jest.fn() },
     usuario: { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
@@ -1431,6 +1438,95 @@ describe('TrackingService', () => {
       await service.confirmarRecepcionKit(operadorId, input as any);
 
       expect(alertas.generarEntregaMilitarNoRegistrada).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('escanear el kit en el recinto registra la llegada', () => {
+    const input = { kitId, fotoMilitarUrl: 'militares/foto.enc', latitud: 0.35, longitud: -78.11 };
+    let espia: jest.SpyInstance;
+    beforeEach(() => {
+      espia = jest.spyOn(service as any, 'alertarSiFaltaEntregaMilitar').mockResolvedValue(undefined);
+    });
+    afterEach(() => espia.mockRestore());
+    /** `distancia`: solo si el flujo llega a medir la geocerca (si no, el mock quedaría para otra prueba). */
+    const preparar = (tipos: string[], { metros = 20, activo = true, distancia = true } = {}) => {
+      prisma.kitElectoral.findUnique.mockResolvedValueOnce({ id: kitId, operadorId, eventoId, recintoId, codigoUnico: 'K01' });
+      storage.exists.mockResolvedValueOnce(true);
+      prisma.recepcionKit.findFirst.mockResolvedValueOnce(null);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'rk1', confirmado_en: new Date(ocurridoEn) }]); // recepción
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(activo ? { id: eventoId } : null);
+      if (!activo) return;
+      prisma.eventoTracking.findMany.mockResolvedValueOnce(tipos.map((tipo) => ({ tipo })));
+      if (!distancia) return;
+      prisma.$queryRaw.mockResolvedValueOnce([{ metros }]); // distancia al recinto
+      prisma.configAlerta.findUnique.mockResolvedValueOnce({ margenLlegadaMetros: 150 });
+    };
+    const llegadaInsertada = () =>
+      prisma.$queryRaw.mock.calls.some(([sql]: any[]) => Array.isArray(sql) && sql.join('').includes("'LLEGADA_RECINTO'"));
+
+    it('dentro de la geocerca y ya salió de la DPEI: registra la llegada con el motivo y avisa', async () => {
+      preparar(['SALIDA_DPI']);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'llegada-kit' }]); // insert llegada
+      prisma.eventoTracking.count.mockResolvedValueOnce(1);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
+      prisma.recepcionKit.count.mockResolvedValueOnce(1);
+
+      await service.confirmarRecepcionKit(operadorId, input as any);
+
+      expect(llegadaInsertada()).toBe(true);
+      expect(prisma.eventoTracking.update).toHaveBeenCalledWith({
+        where: { id: 'llegada-kit' },
+        data: { motivoManual: MOTIVO_LLEGADA_POR_KIT },
+      });
+      expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ kitsRecibidos: 1 }) }),
+      );
+    });
+
+    it('fuera de la geocerca, sin salida de la DPEI, sin señal o con el evento inactivo: no la registra', async () => {
+      preparar(['SALIDA_DPI'], { metros: 900 });
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      preparar([], { distancia: false });
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      preparar(['SALIDA_DPI'], { distancia: false });
+      await service.confirmarRecepcionKit(operadorId, { ...input, desdeOffline: true } as any);
+      preparar(['SALIDA_DPI'], { activo: false });
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      expect(llegadaInsertada()).toBe(false);
+      expect(notifications.encolarLlegadaRecinto).not.toHaveBeenCalled();
+    });
+
+    it('con la llegada ya registrada, el kit recién escaneado pasa a EN_RECINTO', async () => {
+      preparar(['SALIDA_DPI', 'LLEGADA_RECINTO'], { distancia: false });
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+        where: { id: kitId, estado: 'ENTREGADO' },
+        data: { estado: 'EN_RECINTO' },
+      });
+      expect(llegadaInsertada()).toBe(false);
+    });
+
+    it('si el operador la registró en el mismo instante, se queda la suya y no se avisa dos veces', async () => {
+      preparar(['SALIDA_DPI']);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'llegada-kit' }]);
+      prisma.eventoTracking.count.mockResolvedValueOnce(2);
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      expect(prisma.eventoTracking.delete).toHaveBeenCalledWith({ where: { id: 'llegada-kit' } });
+      expect(notifications.encolarLlegadaRecinto).not.toHaveBeenCalled();
+    });
+
+    it('el "Confirmar" final reconoce la llegada registrada por el escaneo en vez de dar 409', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({
+        id: 'llegada-kit',
+        ocurridoEn: new Date(ocurridoEn),
+        motivoManual: MOTIVO_LLEGADA_POR_KIT,
+      });
+      await expect(service.registrarLlegadaRecinto(operadorId, { ...geo, ocurridoEn } as any)).resolves.toEqual({
+        id: 'llegada-kit',
+        ocurridoEn: new Date(ocurridoEn).toISOString(),
+      });
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 
