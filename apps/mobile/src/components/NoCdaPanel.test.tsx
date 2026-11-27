@@ -81,6 +81,14 @@ describe('NoCdaPanel', () => {
     expect(textos(r)).toContain('Marcar llegada');
   });
 
+  it('la flecha hacia abajo cierra el listado y el botón "Cerrar" sigue ahí', async () => {
+    const r = await montar({ bloqueo: BLOQUEO_ANTES_DE_LLEGAR });
+    await act(async () => barra(r).props.onPress());
+    expect(textos(r)).toContain('Cerrar');
+    await act(async () => r.root.findByProps({ accessibilityLabel: 'Cerrar la lista de recintos NO CDA' }).props.onPress());
+    expect(modal(r).props.visible).toBe(false);
+  });
+
   it('en tránsito: la barra se ve con candado y el listado sale bloqueado', async () => {
     const r = await montar({ bloqueo: BLOQUEO_ANTES_DE_LLEGAR });
     expect(barra(r).props.accessibilityLabel).toBe('2 NO CDA a su cargo. Se habilitan al llegar al recinto');
