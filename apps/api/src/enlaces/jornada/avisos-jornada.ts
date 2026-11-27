@@ -1,5 +1,5 @@
 import { escapeHtml } from '../../auth/notifier';
-import { hora, lineaPersonas, type Jornada, type MomentoJornada, type RegistroJornada, type UnidadJornada } from './jornada';
+import { hora, lineaPersonas, llegadaDpeiDe, type Jornada, type MomentoJornada, type RegistroJornada, type UnidadJornada } from './jornada';
 
 /**
  * Avisos con sonido del grupo Jornada (lógica pura, sin base ni Telegram):
@@ -80,7 +80,8 @@ function cabecera(u: UnidadJornada): string {
 function avisosDeTramo(u: UnidadJornada, t: Tramo, ahora: Date, enviados: ReadonlySet<string>): AvisoJornada[] {
   const salida = u.registros[t.sale];
   if (!salida) return [];
-  const llegada = u.registros[t.llega];
+  // De vuelta, el kit entregado en la DPEI también es llegada: sin retraso ni "sin GPS" después.
+  const llegada = t.id === 'VUELTA' ? (llegadaDpeiDe(u)?.registro ?? undefined) : u.registros[t.llega];
   const avisos: AvisoJornada[] = [];
   const claveRetraso = `RETRASO_${t.id}:${u.operadorId}`;
 
@@ -137,22 +138,25 @@ function avisoAlerta(a: AlertaParaAviso, u: UnidadJornada | undefined): AvisoJor
   };
 }
 
+const NOTA_KIT = '\n   📦 Kit entregado al Asistente Transversal · falta marcar la llegada en la app';
+
 /**
  * Cada pareja que llega a la Delegación, con el conteo de recintos CDA: un
  * recinto con varias parejas cuenta cuando llegaron todas. El conteo es el del
  * momento del aviso (registros sin señal que sincronizan tarde no lo atrasan).
  * Cuando llega el último recinto, un cierre "llegaron todos" (una vez).
+ * Que el Asistente Transversal reciba el kit cuenta como llegada aunque el
+ * operador no la haya marcado en la app (el kit no llega solo a la DPEI).
  */
 function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string>): AvisoJornada[] {
   const porRecinto = new Map<string, UnidadJornada[]>();
   for (const u of j.unidades) porRecinto.set(u.codigoRecinto, [...(porRecinto.get(u.codigoRecinto) ?? []), u]);
   const total = porRecinto.size;
   // Hora en que llegó la última pareja de cada recinto (null = aún falta alguna).
-  const completoEn = [...porRecinto.values()].map((us) =>
-    us.every((u) => u.registros.LLEGADA_DPI)
-      ? new Date(Math.max(...us.map((u) => u.registros.LLEGADA_DPI!.en.getTime())))
-      : null,
-  );
+  const completoEn = [...porRecinto.values()].map((us) => {
+    const horas = us.map((u) => llegadaDpeiDe(u)?.registro.en.getTime());
+    return horas.every((h) => h !== undefined) ? new Date(Math.max(...(horas as number[]))) : null;
+  });
   // Conteo con el estado actual: un registro que sincroniza tarde no repite ni baja un "faltan" ya dicho.
   const llegaron = completoEn.filter(Boolean).length;
   const desde = ahora.getTime() - VENTANA_LLEGADA_DPEI_MIN * MINUTO;
@@ -161,21 +165,23 @@ function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string
 
   const avisos = j.unidades
     .filter((u) => {
-      const llegada = u.registros.LLEGADA_DPI;
+      const llegada = llegadaDpeiDe(u)?.registro;
       return llegada && enVentana(u, llegada) && !enviados.has(`LLEGADA_DPEI:${u.operadorId}`);
     })
-    .sort((a, b) => a.registros.LLEGADA_DPI!.en.getTime() - b.registros.LLEGADA_DPI!.en.getTime())
+    .sort((a, b) => llegadaDpeiDe(a)!.registro.en.getTime() - llegadaDpeiDe(b)!.registro.en.getTime())
     .map((u): AvisoJornada => {
-      const llegada = u.registros.LLEGADA_DPI!;
+      const { registro: llegada, porKit } = llegadaDpeiDe(u)!;
       const salida = u.registros.SALIDA_RECINTO;
+      // Con la hora del kit no se calcula retraso: el kit se recibe después de llegar.
       const tarde =
-        salida && u.tiempoViajeMin !== null ? minutosEntre(new Date(salida.en.getTime() + u.tiempoViajeMin * MINUTO), llegada.en) : 0;
+        !porKit && salida && u.tiempoViajeMin !== null ? minutosEntre(new Date(salida.en.getTime() + u.tiempoViajeMin * MINUTO), llegada.en) : 0;
       return {
         clave: `LLEGADA_DPEI:${u.operadorId}`,
         texto:
           `🏁 <b>Llegó a la Delegación</b> · ${hora(llegada.en)}${tarde > 0 ? ` · +${tarde} min` : ''}\n${cabecera(u)}\n` +
           lineaPersonas(u.personas) +
           (llegada.sinSenal ? '\n   📴 marcado sin señal' : '') +
+          (porKit ? NOTA_KIT : '') +
           `\nRecintos CDA: llegaron <b>${llegaron} de ${total}</b>` +
           (llegaron < total ? ` · faltan ${total - llegaron}` : ''),
       };

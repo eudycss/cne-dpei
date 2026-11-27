@@ -152,6 +152,52 @@ describe('avisosJornada: llegada a la Delegación', () => {
     expect(llegadas(j, ['LLEGADA_DPEI:op-1', 'LLEGADA_DPEI:op-2', 'LLEGARON_TODOS_DPEI:ev'])).toEqual([]);
   });
 
+  it('el kit entregado al Asistente Transversal cuenta como llegada aunque no la hayan marcado', () => {
+    const conKit = unidad({ operadorId: 'op-1', codigoRecinto: '100', registros: recorrido, kitRecibido: min(-4) });
+    const j = jornada([conKit, pareja('op-2', '200')]);
+    const [aviso] = llegadas(j);
+    expect(aviso.clave).toBe('LLEGADA_DPEI:op-1');
+    expect(aviso.texto).toContain('Llegó a la Delegación</b> · 09:56');
+    expect(aviso.texto).toContain('Kit entregado al Asistente Transversal · falta marcar la llegada en la app');
+    expect(aviso.texto).toContain('llegaron <b>1 de 2</b> · faltan 1');
+  });
+
+  it('si marcó la llegada y luego entregó el kit: un solo aviso, a la hora de la llegada y sin la nota del kit', () => {
+    const u = unidad({ registros: { ...recorrido, LLEGADA_DPI: r(min(-6)) }, kitRecibido: min(-3) });
+    const avisos = llegadas(jornada([u]));
+    expect(avisos.map((a) => a.clave)).toEqual(['LLEGADA_DPEI:op-1', 'LLEGARON_TODOS_DPEI:ev']);
+    expect(avisos[0].texto).toContain('· 09:54');
+    expect(avisos[0].texto).not.toContain('Kit entregado');
+    // Ya avisada: marcar la llegada después del kit no repite.
+    expect(llegadas(jornada([u]), ['LLEGADA_DPEI:op-1', 'LLEGARON_TODOS_DPEI:ev'])).toEqual([]);
+  });
+
+  it('el cierre "llegaron todos" también cuenta los recintos con el kit entregado', () => {
+    const conKit = unidad({ operadorId: 'op-2', codigoRecinto: '200', registros: recorrido, kitRecibido: min(-1) });
+    const avisos = llegadas(jornada([pareja('op-1', '100', min(-10)), conKit]), ['LLEGADA_DPEI:op-1']);
+    expect(avisos.map((a) => a.clave)).toEqual(['LLEGADA_DPEI:op-2', 'LLEGARON_TODOS_DPEI:ev']);
+  });
+
+  it('un kit recibido antes de la salida del recinto (de madrugada, jornada anterior) no cuenta como llegada', () => {
+    const madrugada = unidad({ registros: { SALIDA_DPI: r(min(-600)) }, kitRecibido: min(-30) });
+    expect(llegadas(jornada([madrugada]))).toEqual([]);
+  });
+
+  it('con la llegada por kit no hay retraso ni "sin GPS" de vuelta, ni "+X min" en el aviso', () => {
+    // Salió del recinto hace 50 min con 30 de viaje y sin GPS: sin el kit habría retraso y sin GPS.
+    const u = unidad({ tiempoViajeMin: 30, ultimoGps: null, registros: recorrido, kitRecibido: min(-2) });
+    const avisos = avisosJornada(jornada([u]), AHORA, new Set());
+    expect(avisos.map((a) => a.clave)).toEqual(['LLEGADA_DPEI:op-1', 'LLEGARON_TODOS_DPEI:ev']);
+    expect(avisos[0].texto).not.toContain(' min');
+  });
+
+  it('si marcó la llegada después de entregar el kit: vale la hora del kit, sin la nota de "falta marcar"', () => {
+    const u = unidad({ registros: { ...recorrido, LLEGADA_DPI: r(min(-1), true) }, kitRecibido: min(-5) });
+    const [aviso] = llegadas(jornada([u]));
+    expect(aviso.texto).toContain('· 09:55');
+    expect(aviso.texto).not.toContain('falta marcar');
+  });
+
   it('sin unidades no hay cierre', () => {
     expect(llegadas(jornada([]))).toEqual([]);
   });
