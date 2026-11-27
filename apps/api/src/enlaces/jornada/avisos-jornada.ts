@@ -1,12 +1,20 @@
 import { escapeHtml } from '../../auth/notifier';
-import { hora, lineaPersonas, type Jornada, type MomentoJornada, type UnidadJornada } from './jornada';
+import { hora, lineaPersonas, type Jornada, type MomentoJornada, type RegistroJornada, type UnidadJornada } from './jornada';
 
 /**
  * Avisos con sonido del grupo Jornada (lógica pura, sin base ni Telegram):
  * retraso de ida o de vuelta según el tiempo de viaje del recinto (y luego
  * "✅ llegó"), sin GPS en el camino y las alertas del sistema reenviadas una
  * vez. Cada aviso tiene una clave: el servicio guarda las enviadas y no repite.
+ * Además, cada llegada a la Delegación con el conteo de recintos CDA que faltan.
  */
+
+/**
+ * Llegadas a la DPEI marcadas con señal: solo se anuncian las de esta ventana
+ * (al desplegar no llueven las viejas). Las marcadas sin señal o con retraso
+ * avisado se anuncian siempre: llegan tarde al servidor y el grupo las espera.
+ */
+export const VENTANA_LLEGADA_DPEI_MIN = 120;
 
 /** Sin GPS en el camino desde hace al menos esto: se avisa (una vez por tramo). */
 export const SIN_GPS_MIN = 20;
@@ -87,9 +95,10 @@ function avisosDeTramo(u: UnidadJornada, t: Tramo, ahora: Date, enviados: Readon
           lineaPersonas(u.personas),
       });
     }
-    // "Llegó" solo cerrando un retraso avisado.
+    // "Llegó" solo cerrando un retraso avisado. La vuelta no: su llegada ya se
+    // anuncia siempre (avisosLlegadaDpei), con los minutos tarde.
     const claveLlego = `LLEGO_${t.id}:${u.operadorId}`;
-    if (llegada && enviados.has(claveRetraso) && !enviados.has(claveLlego)) {
+    if (t.id === 'IDA' && llegada && enviados.has(claveRetraso) && !enviados.has(claveLlego)) {
       const tarde = minutosEntre(limite, llegada.en);
       avisos.push({
         clave: claveLlego,
@@ -128,7 +137,61 @@ function avisoAlerta(a: AlertaParaAviso, u: UnidadJornada | undefined): AvisoJor
   };
 }
 
-/** Los avisos que todavía no se mandaron: primero las alertas del sistema (por hora), luego retrasos y GPS. */
+/**
+ * Cada pareja que llega a la Delegación, con el conteo de recintos CDA: un
+ * recinto con varias parejas cuenta cuando llegaron todas. El conteo es el del
+ * momento del aviso (registros sin señal que sincronizan tarde no lo atrasan).
+ * Cuando llega el último recinto, un cierre "llegaron todos" (una vez).
+ */
+function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string>): AvisoJornada[] {
+  const porRecinto = new Map<string, UnidadJornada[]>();
+  for (const u of j.unidades) porRecinto.set(u.codigoRecinto, [...(porRecinto.get(u.codigoRecinto) ?? []), u]);
+  const total = porRecinto.size;
+  // Hora en que llegó la última pareja de cada recinto (null = aún falta alguna).
+  const completoEn = [...porRecinto.values()].map((us) =>
+    us.every((u) => u.registros.LLEGADA_DPI)
+      ? new Date(Math.max(...us.map((u) => u.registros.LLEGADA_DPI!.en.getTime())))
+      : null,
+  );
+  // Conteo con el estado actual: un registro que sincroniza tarde no repite ni baja un "faltan" ya dicho.
+  const llegaron = completoEn.filter(Boolean).length;
+  const desde = ahora.getTime() - VENTANA_LLEGADA_DPEI_MIN * MINUTO;
+  const enVentana = (u: UnidadJornada, llegada: RegistroJornada) =>
+    llegada.en.getTime() >= desde || llegada.sinSenal || enviados.has(`RETRASO_VUELTA:${u.operadorId}`);
+
+  const avisos = j.unidades
+    .filter((u) => {
+      const llegada = u.registros.LLEGADA_DPI;
+      return llegada && enVentana(u, llegada) && !enviados.has(`LLEGADA_DPEI:${u.operadorId}`);
+    })
+    .sort((a, b) => a.registros.LLEGADA_DPI!.en.getTime() - b.registros.LLEGADA_DPI!.en.getTime())
+    .map((u): AvisoJornada => {
+      const llegada = u.registros.LLEGADA_DPI!;
+      const salida = u.registros.SALIDA_RECINTO;
+      const tarde =
+        salida && u.tiempoViajeMin !== null ? minutosEntre(new Date(salida.en.getTime() + u.tiempoViajeMin * MINUTO), llegada.en) : 0;
+      return {
+        clave: `LLEGADA_DPEI:${u.operadorId}`,
+        texto:
+          `🏁 <b>Llegó a la Delegación</b> · ${hora(llegada.en)}${tarde > 0 ? ` · +${tarde} min` : ''}\n${cabecera(u)}\n` +
+          lineaPersonas(u.personas) +
+          (llegada.sinSenal ? '\n   📴 marcado sin señal' : '') +
+          `\nRecintos CDA: llegaron <b>${llegaron} de ${total}</b>` +
+          (llegaron < total ? ` · faltan ${total - llegaron}` : ''),
+      };
+    });
+
+  const claveTodos = `LLEGARON_TODOS_DPEI:${j.eventoId}`;
+  // El cierre acompaña a una llegada (de esta vuelta o reciente), nunca horas después de un despliegue.
+  const ultimoCompleto = Math.max(0, ...completoEn.map((c) => c?.getTime() ?? 0));
+  const reciente = avisos.length > 0 || ultimoCompleto >= desde;
+  if (total > 0 && completoEn.every(Boolean) && reciente && !enviados.has(claveTodos)) {
+    avisos.push({ clave: claveTodos, texto: `🎉 <b>Llegaron los ${total} recintos CDA a la Delegación</b>` });
+  }
+  return avisos;
+}
+
+/** Los avisos que todavía no se mandaron: primero las alertas del sistema (por hora), luego las llegadas a la DPEI y al final retrasos y GPS. */
 export function avisosJornada(
   j: Jornada,
   ahora: Date,
@@ -141,7 +204,8 @@ export function avisosJornada(
     .sort((a, b) => a.generadaEn.getTime() - b.generadaEn.getTime())
     .filter((a) => !enviados.has(`ALERTA:${a.id}`))
     .map((a) => avisoAlerta(a, a.operadorId ? porOperador.get(a.operadorId) : undefined));
-  return [...deAlertas, ...deTramos];
+  // Las llegadas van antes que retrasos y GPS: con muchos avisos en cola no se postergan.
+  return [...deAlertas, ...avisosLlegadaDpei(j, ahora, enviados), ...deTramos];
 }
 
 /**
