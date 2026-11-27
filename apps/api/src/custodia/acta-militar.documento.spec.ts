@@ -157,6 +157,10 @@ describe('InformeCustodiaService — actas militares', () => {
         findMany: jest.fn().mockImplementation((args: any) =>
           Promise.resolve(args?.select?.roles ? [asistente, admin].filter((u) => args.where.id.in.includes(u.id)) : []),
         ),
+        // Responsable elegido: solo Asistentes Transversales activos.
+        findFirst: jest.fn().mockImplementation((args: any) =>
+          Promise.resolve(args.where.id === asistente.id ? { id: asistente.id } : null),
+        ),
       },
       militar: { findMany: jest.fn().mockResolvedValue([militarCrono]) },
     };
@@ -219,6 +223,11 @@ describe('InformeCustodiaService — actas militares', () => {
     await expect(service.actaMilitarKit(kitId, asistente.id)).rejects.toThrow('Kit no encontrado');
   });
 
+  it('un kit de prueba no tiene acta individual (404), igual que en la selección', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValue([kit({ esPrueba: true })]);
+    await expect(service.actaMilitarKit(kitId, asistente.id, { formato: 'pdf' })).rejects.toThrow('Kit no encontrado');
+  });
+
   it('el .zip de actas pide filtrar si no hay kits o si pasan el tope, sin cargarlos', async () => {
     prisma.kitElectoral.count.mockResolvedValueOnce(0);
     await expect(service.actasMilitares({}, asistente.id)).rejects.toThrow('No hay kits');
@@ -237,7 +246,7 @@ describe('InformeCustodiaService — actas militares', () => {
   });
 
   it('la selección de la tabla: solo kits del evento activo, sin repetidos, un Word por kit', async () => {
-    const zip = new PizZip(await service.actasMilitaresSeleccion([kitId, kitId], asistente.id));
+    const zip = new PizZip((await service.actasMilitaresSeleccion([kitId, kitId], asistente.id)).contenido);
     expect(Object.keys(zip.files)).toEqual(['acta_militar_17_1359.docx']);
     expect(prisma.kitElectoral.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ eventoId, id: { in: [kitId] } }) }),
@@ -250,8 +259,51 @@ describe('InformeCustodiaService — actas militares', () => {
     await expect(service.actasMilitaresSeleccion([kitId], asistente.id)).rejects.toThrow('No hay kits del evento activo');
   });
 
+  it('responsable y fecha elegidos valen para todas, aunque el kit ya tenga su entrega', async () => {
+    prisma.kitElectoral.findMany.mockResolvedValue([
+      kit({
+        entregaCustodio: {
+          entregadoPorId: admin.id,
+          entregadoEn: new Date('2026-11-20T13:00:00Z'),
+          militarDeOtroRecinto: false,
+          militar: { nombres: 'Pedro', apellidos: 'Mora Vega', cedula: '1005006007', grado: 'SGOS', activo: true },
+        },
+      }),
+    ]);
+    const acta = await service.actaMilitarKit(kitId, admin.id, { formato: 'docx', responsableId: asistente.id, fecha: '2026-11-28' });
+    const texto = textoWord(acta.contenido);
+
+    expect(texto).toContain('día sábado 28 de noviembre de 2026');
+    expect(texto).not.toContain('20 de noviembre');
+    expect(texto).toContain('el Ing. Jairo Leal');
+    expect(texto).not.toContain('Edison Mafla');
+    expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: asistente.id, activo: true, roles: { some: { rol: { nombre: 'ASISTENTE_TRANSVERSAL' } } } },
+      }),
+    );
+  });
+
+  it('un responsable que no es Asistente Transversal activo: 400', async () => {
+    await expect(service.actaMilitarKit(kitId, asistente.id, { formato: 'pdf', responsableId: admin.id })).rejects.toThrow(
+      'El responsable debe ser un Asistente Transversal activo',
+    );
+  });
+
+  it('en PDF: una acta suelta y la selección en un solo PDF (una página por kit)', async () => {
+    const una = await service.actaMilitarKit(kitId, asistente.id, { formato: 'pdf' });
+    expect(una).toMatchObject({ nombre: 'acta_militar_17_1359.pdf', tipo: 'application/pdf' });
+    expect(una.contenido.subarray(0, 4).toString()).toBe('%PDF');
+
+    const otro = '55555555-5555-5555-5555-555555555555';
+    prisma.kitElectoral.findMany.mockResolvedValue([kit(), kit({ id: otro, codigoUnico: 'WXYZ6789' })]);
+    const varias = await service.actasMilitaresSeleccion([kitId, otro], asistente.id, { formato: 'pdf', fecha: '2026-11-28' });
+    expect(varias).toMatchObject({ nombre: 'actas_militares.pdf', tipo: 'application/pdf' });
+    expect(varias.contenido.toString('latin1').match(/\/Type \/Page[^s]/g)).toHaveLength(2);
+  });
+
   it('el .zip trae un Word por kit', async () => {
-    const zip = new PizZip(await service.actasMilitares({ cantonId: 30 }, asistente.id));
+    const zip = new PizZip((await service.actasMilitares({ cantonId: 30 }, asistente.id)).contenido);
     expect(Object.keys(zip.files)).toEqual(['acta_militar_17_1359.docx']);
   });
 });

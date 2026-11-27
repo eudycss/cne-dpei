@@ -60,6 +60,14 @@ function resumenDescargaReporte(req: Request): Record<string, unknown> {
   return { grupo: grupoCda(req), desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
 }
 
+/** Acta militar: formato, id del responsable, fecha impresa y cantidad de kits; nada personal. */
+function resumenActaMilitar(fuente: unknown, kits: number): Record<string, unknown> {
+  const o = (fuente ?? {}) as Record<string, unknown>;
+  const uuid = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+  const dia = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  return { formato: o.formato === 'pdf' ? 'pdf' : 'docx', responsableId: uuid(o.responsableId), fecha: dia(o.fecha), kits };
+}
+
 /** Reporte del personal CDA/CPE: claves de cargo (acotadas), modo y formato; nada personal. */
 function resumenReportePersonal(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
@@ -365,6 +373,31 @@ const AUDIT_TABLE: Array<{
     accion: 'ASISTENCIA_CDA_EXPORTAR',
     entidad: 'asistencia_cda',
     resumen: (_res, req) => resumenDescargaReporte(req),
+  },
+  // Actas militares (llevan cédulas): formato, responsable elegido, fecha impresa y cuántos kits.
+  {
+    method: 'GET',
+    pathRegex: /^\/custodia\/kits\/[^/]+\/acta-militar$/,
+    accion: 'ACTA_MILITAR_DESCARGAR',
+    entidad: 'kit_electoral',
+    resumen: (_res, req) => resumenActaMilitar(req.query, 1),
+  },
+  {
+    method: 'GET',
+    pathRegex: /^\/custodia\/actas-militares$/,
+    accion: 'ACTA_MILITAR_DESCARGAR',
+    entidad: 'kit_electoral',
+    resumen: (_res, req) => ({ ...resumenActaMilitar({}, 0), cantonId: req.query?.cantonId ?? null, recintoId: req.query?.recintoId ?? null }),
+  },
+  {
+    method: 'POST',
+    pathRegex: /^\/custodia\/actas-militares\/seleccion$/,
+    accion: 'ACTA_MILITAR_DESCARGAR',
+    entidad: 'kit_electoral',
+    resumen: (_res, req) => {
+      const kitIds = (req.body as { kitIds?: unknown } | undefined)?.kitIds;
+      return resumenActaMilitar(req.body, Array.isArray(kitIds) ? kitIds.length : 0);
+    },
   },
   // Reporte del personal CDA/CPE (lleva cédulas): los cargos, el modo y el formato pedidos.
   {

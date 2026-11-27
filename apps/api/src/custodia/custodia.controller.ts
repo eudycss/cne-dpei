@@ -17,6 +17,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
   actasMilitaresSeleccionSchema,
+  opcionesActaMilitarSchema,
+  type OpcionesActaMilitar,
   cambiarOperadorSchema,
   corregirMilitarSchema,
   registrarEntregaSchema,
@@ -157,14 +159,24 @@ export class CustodiaController {
   @RequiereModulo('cadena-custodia')
   @UseGuards(ModuloGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Acta de constancia y custodia del militar de un kit (Word)' })
+  @ApiOperation({ summary: 'Acta de constancia y custodia del militar de un kit (?formato=docx|pdf, ?responsableId=, ?fecha=AAAA-MM-DD)' })
   async actaMilitarKit(
     @Res() res: Response,
     @Param('kitId', ParseUUIDPipe) kitId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(opcionesActaMilitarSchema)) opciones: OpcionesActaMilitar,
   ) {
-    const acta = await this.informes.actaMilitarKit(kitId, user.sub);
-    enviarArchivo(res, acta.contenido, acta.nombre, DOCX);
+    const acta = await this.informes.actaMilitarKit(kitId, user.sub, opciones);
+    enviarArchivo(res, acta.contenido, acta.nombre, acta.tipo);
+  }
+
+  @Get('responsables-acta')
+  @Roles('ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR', 'LECTOR', 'TECNICO_SUPERVISOR')
+  @RequiereModulo('cadena-custodia')
+  @UseGuards(ModuloGuard)
+  @ApiOperation({ summary: 'Asistentes Transversales activos que pueden firmar como responsables del acta militar' })
+  responsablesActa() {
+    return this.informes.responsablesActa();
   }
 
   @Get('actas-militares')
@@ -180,8 +192,8 @@ export class CustodiaController {
     @Query('cantonId') cantonId?: unknown,
     @Query('recintoId') recintoId?: unknown,
   ) {
-    const zip = await this.informes.actasMilitares(filtrosInforme(cantonId, recintoId), user.sub);
-    enviarArchivo(res, zip, 'actas_militares.zip', 'application/zip');
+    const archivo = await this.informes.actasMilitares(filtrosInforme(cantonId, recintoId), user.sub);
+    enviarArchivo(res, archivo.contenido, archivo.nombre, archivo.tipo);
   }
 
   // Las actas de lo que quedó en la tabla (buscador por recinto, operador,
@@ -192,18 +204,18 @@ export class CustodiaController {
   @RequiereModulo('cadena-custodia')
   @UseGuards(ModuloGuard)
   @Throttle({ default: { limit: 4, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Actas de constancia y custodia de los kits elegidos (un Word por kit, en .zip)' })
+  @ApiOperation({ summary: 'Actas de constancia y custodia de los kits elegidos: un solo PDF (formato=pdf) o un Word por kit en .zip' })
   async actasMilitaresSeleccion(
     @Res() res: Response,
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(actasMilitaresSeleccionSchema)) body: z.infer<typeof actasMilitaresSeleccionSchema>,
   ) {
-    const zip = await this.informes.actasMilitaresSeleccion(body.kitIds, user.sub);
-    enviarArchivo(res, zip, 'actas_militares.zip', 'application/zip');
+    const { kitIds, ...opciones } = body;
+    const archivo = await this.informes.actasMilitaresSeleccion(kitIds, user.sub, opciones);
+    enviarArchivo(res, archivo.contenido, archivo.nombre, archivo.tipo);
   }
 }
 
-const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function enviarArchivo(res: Response, contenido: Buffer, nombre: string, tipo: string): void {
   res.setHeader('Content-Type', tipo);

@@ -9,6 +9,7 @@ import type {
   RegistrarEntregaRequest,
   ResumenCustodia,
 } from '@cne/shared-types';
+import type { OpcionesActaMilitar } from '@cne/shared-validation';
 import { api } from '../api';
 
 export interface FiltrosCustodia {
@@ -55,13 +56,27 @@ export const descargarActaKit = (kitId: string) =>
 export const descargarActas = (filtros: FiltrosCustodia) =>
   api.get<Blob>('/custodia/actas', { params: params(filtros), responseType: 'blob' });
 
-/** Acta de Constancia y Custodia que firma el militar (Word, formato oficial). */
-export const descargarActaMilitarKit = (kitId: string) =>
-  api.get<Blob>(`/custodia/kits/${kitId}/acta-militar`, { responseType: 'blob' });
+/** Formato, responsable (Asistente Transversal) y fecha impresa del acta militar. */
+export type { OpcionesActaMilitar };
 
-/** Actas militares de los kits que quedaron en la tabla: un Word por kit en un .zip. */
-export const descargarActasMilitares = (kitIds: string[]) =>
-  api.post<Blob>('/custodia/actas-militares/seleccion', { kitIds }, { responseType: 'blob' });
+/** Acta de Constancia y Custodia que firma el militar (PDF o Word, formato oficial). */
+export const descargarActaMilitarKit = (kitId: string, opciones: OpcionesActaMilitar = { formato: 'docx' }) =>
+  api.get<Blob>(`/custodia/kits/${kitId}/acta-militar`, { params: opciones, responseType: 'blob' });
+
+/** Actas militares de los kits elegidos: un solo PDF (una página por kit) o un .zip con un Word por kit. */
+export const descargarActasMilitares = (kitIds: string[], opciones: OpcionesActaMilitar = { formato: 'docx' }) =>
+  api.post<Blob>('/custodia/actas-militares/seleccion', { kitIds, ...opciones }, { responseType: 'blob' });
+
+export interface ResponsableActa {
+  id: string;
+  nombre: string;
+}
+
+/** Asistentes Transversales activos que pueden firmar como responsables del acta militar. */
+export async function getResponsablesActa(): Promise<ResponsableActa[]> {
+  const { data } = await api.get<ResponsableActa[]>('/custodia/responsables-acta');
+  return data;
+}
 
 /** Guarda un blob como archivo (mismo patrón que la descarga de QR de kits). */
 export function guardarArchivo(blob: Blob, nombre: string): void {

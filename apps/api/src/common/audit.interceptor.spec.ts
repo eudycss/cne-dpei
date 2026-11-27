@@ -584,6 +584,30 @@ describe('AuditInterceptor', () => {
     expect(pdf.data.datosDespues).toEqual({ fecha: null, formato: 'pdf', tecnicos: ['Ing. Jairo Leal'] });
   });
 
+  it('actas militares: quedan formato, responsable, fecha y cuántos kits (sin cédulas)', async () => {
+    const resp = '11111111-2222-4333-8444-555555555555';
+    const una = await auditar({
+      method: 'GET',
+      originalUrl: `/custodia/kits/k1/acta-militar?formato=pdf&responsableId=${resp}&fecha=2026-11-28`,
+      query: { formato: 'pdf', responsableId: resp, fecha: '2026-11-28' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(una.data).toMatchObject({
+      accion: 'ACTA_MILITAR_DESCARGAR',
+      datosDespues: { formato: 'pdf', responsableId: resp, fecha: '2026-11-28', kits: 1 },
+    });
+
+    const varias = await auditar({
+      method: 'POST',
+      originalUrl: '/custodia/actas-militares/seleccion',
+      query: {},
+      body: { kitIds: ['a', 'b', 'c'] },
+      user: ADMIN,
+    });
+    expect(varias.data.datosDespues).toEqual({ formato: 'docx', responsableId: null, fecha: null, kits: 3 });
+  });
+
   it('reporte del personal CDA/CPE: quedan los cargos, el modo y el formato', async () => {
     const xlsx = await auditar({
       method: 'GET',
