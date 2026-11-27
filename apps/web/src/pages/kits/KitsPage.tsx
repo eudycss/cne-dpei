@@ -26,7 +26,7 @@ const ESTADO_LABELS: Record<string, string> = {
   ENTREGADO: 'Entregado',
   EN_RECINTO: 'En recinto',
   EN_RETORNO: 'En retorno',
-  RETORNADO: 'Llegó al DPEI',
+  RETORNADO: 'Llegó a la DPEI',
 };
 
 const ESTADO_COLORS: Record<string, React.CSSProperties> = {

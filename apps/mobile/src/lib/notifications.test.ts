@@ -10,7 +10,7 @@ function item(tipoEvento: string, payload: Record<string, unknown> = {}): Notifi
 describe('describirNotificacion', () => {
   it('SALIDA_DPI', () => {
     expect(describirNotificacion(item('SALIDA_DPI', { operadorNombre: 'Juan', recintoNombre: 'Recinto A' })))
-      .toBe('Juan salió del DPI hacia Recinto A');
+      .toBe('Juan salió de la DPEI hacia Recinto A');
   });
 
   it('LLEGADA_RECINTO sin kits', () => {
@@ -30,12 +30,12 @@ describe('describirNotificacion', () => {
 
   it('SALIDA_RECINTO', () => {
     expect(describirNotificacion(item('SALIDA_RECINTO', { operadorNombre: 'Juan', recintoNombre: 'Recinto A' })))
-      .toBe('Juan salió de Recinto A e inició el retorno al DPI');
+      .toBe('Juan salió de Recinto A e inició el retorno a la DPEI');
   });
 
   it('LLEGADA_DPI', () => {
     expect(describirNotificacion(item('LLEGADA_DPI', { operadorNombre: 'Juan' })))
-      .toBe('Juan llegó al DPI y completó su jornada');
+      .toBe('Juan llegó a la DPEI y completó su jornada');
   });
 
   it('tipoEvento desconocido devuelve el tipo tal cual', () => {
@@ -43,7 +43,7 @@ describe('describirNotificacion', () => {
   });
 
   it('usa valores por defecto si falta operadorNombre/recintoNombre', () => {
-    expect(describirNotificacion(item('SALIDA_DPI'))).toBe('Un operador salió del DPI hacia su recinto');
+    expect(describirNotificacion(item('SALIDA_DPI'))).toBe('Un operador salió de la DPEI hacia su recinto');
   });
 
   it('describe ENLACE_CAIDO con codigo y nombre del recinto', () => {

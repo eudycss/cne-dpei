@@ -142,7 +142,7 @@ export function MonitoreoPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const isAdmin = actuaComoAdmin(user?.roles);
-  // Operador en retorno que olvidó marcar la llegada al DPEI (lo registra el admin).
+  // Operador en retorno que olvidó marcar la llegada a la DPEI (lo registra el admin).
   const [llegadaDe, setLlegadaDe] = useState<{ id: string; nombre: string } | null>(null);
 
   // Reloj propio: si nadie envía posiciones nuevas, React Query devuelve los
@@ -227,7 +227,7 @@ export function MonitoreoPage() {
       </p>
       <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
         Ubicación en tiempo real de tus operadores de CDA, tanto en su trayecto hacia el recinto
-        como en su regreso al DPI. Se actualiza automáticamente cada {SEGUNDOS_REFRESCO} segundos.
+        como en su regreso a la DPEI. Se actualiza automáticamente cada {SEGUNDOS_REFRESCO} segundos.
       </p>
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
@@ -291,7 +291,7 @@ export function MonitoreoPage() {
             <p
               style={{ fontSize: 12, margin: '0 0 0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.75rem' }}
             >
-              <span style={{ opacity: 0.7 }}>En retorno, distancia al DPEI:</span>
+              <span style={{ opacity: 0.7 }}>En retorno, distancia a la DPEI:</span>
               {ORDEN_CERCANIA.map((c) => (
                 <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                   <span
@@ -357,10 +357,10 @@ export function MonitoreoPage() {
                         className="btn secondary"
                         style={{ padding: '0.4rem 0.7rem', fontSize: '0.8rem', marginTop: '0.35rem', minHeight: 32 }}
                         onClick={() => setLlegadaDe({ id: o.operadorId, nombre: o.operadorNombre })}
-                        aria-label={`Registrar llegada al DPEI de ${o.operadorNombre}`}
+                        aria-label={`Registrar llegada a la DPEI de ${o.operadorNombre}`}
                         title="Olvidó marcar la llegada en la app"
                       >
-                        Registrar llegada al DPEI
+                        Registrar llegada a la DPEI
                       </button>
                     )}
                   </li>

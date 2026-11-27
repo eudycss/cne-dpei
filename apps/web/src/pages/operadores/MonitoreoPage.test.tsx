@@ -152,17 +152,17 @@ describe('MonitoreoPage', () => {
     rolesSesion = ['ADMINISTRADOR'];
   });
 
-  describe('llegada al DPEI olvidada', () => {
+  describe('llegada a la DPEI olvidada', () => {
     it('el administrador puede registrarla para quien va en retorno (no para quien va de ida)', async () => {
       getOperadoresMock.mockResolvedValue([operadorRetorno, operadorTransito]);
       getEstadoCdasMock.mockResolvedValue([]);
       renderPage();
 
-      const boton = await screen.findByRole('button', { name: 'Registrar llegada al DPEI de Juan Pérez' });
-      expect(screen.queryByRole('button', { name: /Registrar llegada al DPEI de Carla Suárez/ })).not.toBeInTheDocument();
+      const boton = await screen.findByRole('button', { name: 'Registrar llegada a la DPEI de Juan Pérez' });
+      expect(screen.queryByRole('button', { name: /Registrar llegada a la DPEI de Carla Suárez/ })).not.toBeInTheDocument();
 
       await userEvent.setup().click(boton);
-      expect(screen.getByRole('dialog', { name: 'Registrar llegada al DPEI' })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'Registrar llegada a la DPEI' })).toBeInTheDocument();
     });
 
     it('el técnico supervisor no ve el botón', async () => {
@@ -172,7 +172,7 @@ describe('MonitoreoPage', () => {
       renderPage();
 
       await screen.findAllByText('Juan Pérez');
-      expect(screen.queryByRole('button', { name: /Registrar llegada al DPEI/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Registrar llegada a la DPEI/ })).not.toBeInTheDocument();
     });
   });
 
@@ -249,7 +249,7 @@ describe('MonitoreoPage', () => {
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
   });
 
-  it('en retorno pinta y nombra qué tan cerca va del DPEI, con leyenda', async () => {
+  it('en retorno pinta y nombra qué tan cerca va de la DPEI, con leyenda', async () => {
     // Posición reciente: con una vieja saldrían en gris por 'sin señal'.
     const enVivo = { ...operadorRetorno, capturadoEn: new Date().toISOString() };
     const lejos: OperadorEnRetorno = { ...enVivo, operadorId: 'l', operadorNombre: 'Luis Lejos', cercania: 'LEJOS', faltaMetros: 30_000 };
@@ -265,8 +265,8 @@ describe('MonitoreoPage', () => {
 
     const filaLejos = await fila('Luis Lejos');
     const filaMuyCerca = await fila('Mara Cerca');
-    expect(within(filaLejos).getByText(/En retorno · Lejos \(30 km del DPEI\)/)).toBeInTheDocument();
-    expect(within(filaMuyCerca).getByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/)).toBeInTheDocument();
+    expect(within(filaLejos).getByText(/En retorno · Lejos \(30 km de la DPEI\)/)).toBeInTheDocument();
+    expect(within(filaMuyCerca).getByText(/En retorno · Muy cerca \(1,3 km de la DPEI\)/)).toBeInTheDocument();
     expect(punto(filaLejos).style.background).toBe('rgb(30, 64, 175)');
     expect(punto(filaMuyCerca).style.background).toBe('rgb(101, 163, 13)');
     // La ida conserva su color y su texto.
@@ -274,7 +274,7 @@ describe('MonitoreoPage', () => {
     expect(within(filaTransito).getByText(/En tránsito/)).toBeInTheDocument();
     expect(punto(filaTransito).style.background).toBe('rgb(124, 58, 237)');
 
-    expect(screen.getByText('En retorno, distancia al DPEI:')).toBeInTheDocument();
+    expect(screen.getByText('En retorno, distancia a la DPEI:')).toBeInTheDocument();
     expect(screen.getByText('Lejos (más de 10 km)')).toBeInTheDocument();
     expect(screen.getByText('Cerca (3 a 10 km)')).toBeInTheDocument();
     expect(screen.getByText('Muy cerca (3 km o menos)')).toBeInTheDocument();
@@ -293,11 +293,11 @@ describe('MonitoreoPage', () => {
     const punto = (td: HTMLElement) => td.querySelector('[data-testid="punto-estado"]') as HTMLElement;
 
     const enRetorno = await celda('Escuela Manuela Cañizares');
-    expect(within(enRetorno).getAllByText(/En retorno · Muy cerca \(1,3 km del DPEI\)/).length).toBeGreaterThan(0);
+    expect(within(enRetorno).getAllByText(/En retorno · Muy cerca \(1,3 km de la DPEI\)/).length).toBeGreaterThan(0);
     expect(punto(enRetorno).style.background).toBe('rgb(101, 163, 13)');
     // Quien ya llegó conserva el verde del estado.
     const llego = await celda('Colegio Otavalo');
-    expect(within(llego).getAllByText('Llegó al DPEI').length).toBeGreaterThan(0);
+    expect(within(llego).getAllByText('Llegó a la DPEI').length).toBeGreaterThan(0);
     expect(punto(llego).style.background).toBe('rgb(22, 163, 74)');
   });
 
@@ -330,7 +330,7 @@ describe('MonitoreoPage', () => {
     renderPage();
 
     await screen.findAllByText('Carla Suárez');
-    expect(screen.queryByText('En retorno, distancia al DPEI:')).not.toBeInTheDocument();
+    expect(screen.queryByText('En retorno, distancia a la DPEI:')).not.toBeInTheDocument();
   });
 
   it('enlaza a la pantalla de estadísticas', async () => {
@@ -541,12 +541,12 @@ describe('MonitoreoPage', () => {
     renderPage();
     await screen.findByText('Escuela Manuela Cañizares');
 
-    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron a la DPEI/ })).toHaveAttribute(
       'aria-valuenow',
       '50',
     );
 
-    await user.click(screen.getByRole('radio', { name: /Llegó al DPEI/ }));
+    await user.click(screen.getByRole('radio', { name: /Llegó a la DPEI/ }));
     expect(screen.queryByText('Escuela Manuela Cañizares')).not.toBeInTheDocument();
     expect(screen.getByText('Colegio Otavalo')).toBeInTheDocument();
 
@@ -556,7 +556,7 @@ describe('MonitoreoPage', () => {
     // Con el cantón Ibarra (solo el CDA en retorno), nadie llegó todavía.
     await user.click(screen.getByRole('radio', { name: /Todos/ }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'Filtrar CDAs por cantón' }), '1');
-    expect(screen.getByRole('meter', { name: /^CDAs que llegaron al DPEI/ })).toHaveAttribute(
+    expect(screen.getByRole('meter', { name: /^CDAs que llegaron a la DPEI/ })).toHaveAttribute(
       'aria-valuenow',
       '0',
     );

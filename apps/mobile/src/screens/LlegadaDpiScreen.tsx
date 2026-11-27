@@ -76,7 +76,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
   function confirmar() {
     Alert.alert(
       'Registrar llegada a Delegación',
-      'Se registrará tu llegada al DPI y finalizará el rastreo de tu ubicación. ¿Deseas continuar?',
+      'Se registrará tu llegada a la DPEI y finalizará el rastreo de tu ubicación. ¿Deseas continuar?',
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Registrar Llegada', style: 'default', onPress: ejecutarLlegada },
@@ -95,7 +95,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
         precisionMetros: ubicacion.precisionMetros,
       });
       if (result === null) {
-        Alert.alert('Sin señal', 'Llegada al DPI guardada localmente. Se sincronizará automáticamente.');
+        Alert.alert('Sin señal', 'Llegada a la DPEI guardada localmente. Se sincronizará automáticamente.');
       }
       // HU5-CA3: finaliza el rastreo en tiempo real.
       await detenerRastreo();
@@ -104,12 +104,12 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
       if (e instanceof LocationServicesDisabledError) {
         Alert.alert(
           'Activa la ubicación',
-          'Activa los servicios de ubicación del dispositivo para registrar tu llegada al DPI.',
+          'Activa los servicios de ubicación del dispositivo para registrar tu llegada a la DPEI.',
         );
       } else if (e instanceof LocationPermissionDeniedError) {
         Alert.alert(
           'Permiso de ubicación requerido',
-          'Concede el permiso de ubicación para registrar tu llegada al DPI.',
+          'Concede el permiso de ubicación para registrar tu llegada a la DPEI.',
         );
       } else {
         Alert.alert(
@@ -125,7 +125,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <AppBar subtitle="Llegada al DPI" />
+        <AppBar subtitle="Llegada a la DPEI" />
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -136,7 +136,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
   if (error) {
     return (
       <View style={styles.container}>
-        <AppBar subtitle="Llegada al DPI" onRefresh={cargar} />
+        <AppBar subtitle="Llegada a la DPEI" onRefresh={cargar} />
         <View style={styles.center}>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable style={styles.btnSecondary} onPress={cargar}>
@@ -149,7 +149,7 @@ export function LlegadaDpiScreen({ onLlegadaRegistrada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="Llegada al DPI" onRefresh={cargar} refreshing={loading} />
+      <AppBar subtitle="Llegada a la DPEI" onRefresh={cargar} refreshing={loading} />
       <ScrollView
         contentContainerStyle={styles.body}
         refreshControl={

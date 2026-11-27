@@ -55,7 +55,7 @@ export class TiemposViajeService {
 
   /**
    * Viajes medidos en todos los eventos: Salida DPEI → la Llegada al recinto
-   * que le sigue (ida) y Salida del recinto → la Llegada al DPEI que le sigue
+   * que le sigue (ida) y Salida del recinto → la Llegada a la DPEI que le sigue
    * (vuelta), por operador y evento. Las llegadas registradas a mano desde la
    * web no cuentan (su hora es aproximada).
    */

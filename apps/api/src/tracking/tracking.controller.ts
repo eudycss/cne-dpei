@@ -95,7 +95,7 @@ export class TrackingController {
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'HU2-CA2/CA3: registra la salida del DPI con ubicación GPS puntual',
+    summary: 'HU2-CA2/CA3: registra la salida de la DPEI con ubicación GPS puntual',
   })
   registrarSalidaDpi(
     @CurrentUser() user: AuthenticatedUser,
@@ -228,7 +228,7 @@ export class TrackingController {
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'HU4-CA2/CA3: registra la salida del recinto e inicia el retorno al DPI',
+    summary: 'HU4-CA2/CA3: registra la salida del recinto e inicia el retorno a la DPEI',
   })
   salidaRecinto(
     @CurrentUser() user: AuthenticatedUser,
@@ -459,7 +459,7 @@ export class TrackingController {
   @Roles('OPERADOR_CDA')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'HU5-CA2/CA3: registra la llegada al DPI y finaliza el monitoreo',
+    summary: 'HU5-CA2/CA3: registra la llegada a la DPEI y finaliza el monitoreo',
   })
   llegadaDpi(
     @CurrentUser() user: AuthenticatedUser,
@@ -519,7 +519,7 @@ export class TrackingController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'operadorId', description: 'Usuario del operador que olvidó marcar la llegada' })
   @ApiOperation({
-    summary: 'El operador olvidó marcar la llegada al DPEI: el administrador la registra con un motivo (no borra nada)',
+    summary: 'El operador olvidó marcar la llegada a la DPEI: el administrador la registra con un motivo (no borra nada)',
   })
   llegadaDpiManual(
     @Param('operadorId', ParseUUIDPipe) operadorId: string,

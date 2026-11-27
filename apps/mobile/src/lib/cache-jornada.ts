@@ -77,7 +77,7 @@ export function actualizarCopia(cambio: (a: MiAsignacionResponse) => MiAsignacio
 
 /**
  * Olvida que ya se avisó (pitido a 200 m) en este evento: la jornada volvió a
- * "Salida del DPI" (p. ej. "Resetear estado" del administrador) y el próximo
+ * "Salida de la DPEI" (p. ej. "Resetear estado" del administrador) y el próximo
  * recorrido debe avisar de nuevo.
  */
 export async function reiniciarAvisos(eventoId: string): Promise<void> {

@@ -21,7 +21,7 @@ describe('RegistrarLlegadaDpiModal', () => {
   it('es un diálogo con título, explica que no borra el historial y enfoca el motivo', () => {
     abrir();
 
-    expect(screen.getByRole('dialog', { name: 'Registrar llegada al DPEI' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Registrar llegada a la DPEI' })).toBeInTheDocument();
     expect(screen.getByText(/Ana López/)).toBeInTheDocument();
     expect(screen.getByText(/no se borra su recorrido/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Motivo (requerido)')).toHaveFocus();

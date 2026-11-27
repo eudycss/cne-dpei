@@ -290,7 +290,7 @@ export function ReporteNoCdaPage() {
           <>
             <h2 style={{ marginTop: 0 }}>Flujo de CDAs</h2>
             <div className="muted" style={{ marginBottom: '0.75rem' }}>
-              Salida DPI → Llegada al recinto → Prueba de conexión → Salida del recinto → Llegada al DPI
+              Salida DPI → Llegada al recinto → Prueba de conexión → Salida del recinto → Llegada a la DPEI
             </div>
 
             {isAdmin && (

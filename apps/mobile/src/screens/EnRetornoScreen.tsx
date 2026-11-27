@@ -82,7 +82,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
 
   return (
     <View style={styles.container}>
-      <AppBar subtitle="En retorno al DPI" />
+      <AppBar subtitle="En retorno a la DPEI" />
       <View style={styles.body}>
         <View style={styles.iconCircle}>
           <Text style={styles.icon}>📍</Text>
@@ -93,7 +93,7 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
         <Text style={styles.subtitle}>
           Hola {user?.nombres}, tu salida del recinto está registrada
           {rastreoActivo
-            ? ' y tu ubicación se está compartiendo en tiempo real durante el retorno al DPI.'
+            ? ' y tu ubicación se está compartiendo en tiempo real durante el retorno a la DPEI.'
             : '.'}
         </Text>
         <Text style={styles.message}>
@@ -125,13 +125,13 @@ export function EnRetornoScreen({ onMarcarLlegada }: Props) {
           style={[styles.btnPrimary, !puedeContinuar && styles.btnDisabled]}
           onPress={onMarcarLlegada}
           disabled={!puedeContinuar}
-          accessibilityLabel="Ya llegué al DPI"
+          accessibilityLabel="Ya llegué a la DPEI"
           accessibilityState={{ disabled: !puedeContinuar, busy: verificando }}
         >
           {verificando ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnPrimaryText}>Ya llegué al DPI</Text>
+            <Text style={styles.btnPrimaryText}>Ya llegué a la DPEI</Text>
           )}
         </Pressable>
         <Pressable style={styles.btnSecondary} onPress={cerrarSesion}>

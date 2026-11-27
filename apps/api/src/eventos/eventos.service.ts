@@ -79,7 +79,7 @@ export class EventosService {
     });
     if (heredadas === 0) {
       this.logger.warn(
-        `Evento ${evento.id} creado sin coordenada de la Delegación: la llegada al DPI no se validará por distancia`,
+        `Evento ${evento.id} creado sin coordenada de la Delegación: la llegada a la DPEI no se validará por distancia`,
       );
     }
     return this.get(evento.id);
@@ -139,7 +139,7 @@ export class EventosService {
 
   /**
    * HU20-CA6/CA7: cierre con confirmación. Valida que todos los operadores
-   * asignados hayan registrado llegada al DPI; si hay pendientes exige
+   * asignados hayan registrado llegada a la DPEI; si hay pendientes exige
    * justificación.
    */
   async close(
@@ -161,7 +161,7 @@ export class EventosService {
     if (pendientes.length > 0 && !justificacion?.trim()) {
       throw new BadRequestException({
         message:
-          'Hay operadores que no registraron su llegada al DPI. Proporciona una justificación para cerrar el evento.',
+          'Hay operadores que no registraron su llegada a la DPEI. Proporciona una justificación para cerrar el evento.',
         pendientes,
       });
     }

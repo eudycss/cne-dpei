@@ -29,7 +29,7 @@
       "bundleIdentifier": "ec.gob.cne.imbabura",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para registrar las salidas y llegadas durante la jornada electoral.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesitamos tu ubicación en segundo plano para rastrear tu retorno al DPI durante la jornada electoral.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesitamos tu ubicación en segundo plano para rastrear tu retorno a la DPEI durante la jornada electoral.",
         "NSCameraUsageDescription": "Necesitamos la cámara para tomar la foto del militar y escanear los códigos QR de los kits electorales.",
         "UIBackgroundModes": [
           "location"

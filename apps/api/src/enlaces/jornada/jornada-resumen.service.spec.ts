@@ -75,7 +75,7 @@ describe('JornadaResumenService', () => {
     );
     await service.enviarSiCambio(minutos(30));
     expect(telegram.enviarHtml).toHaveBeenCalledTimes(2);
-    expect(enviados()[1].texto).toContain('Desde las 10:00: 🚐 +1 salieron del DPEI');
+    expect(enviados()[1].texto).toContain('Desde las 10:00: 🚐 +1 salieron de la DPEI');
   });
 
   it('respeta la frecuencia elegida: con 30 min, un cambio a los 15 espera hasta los 30', async () => {
@@ -126,7 +126,7 @@ describe('JornadaResumenService', () => {
     expect(enviados()[1].texto).toContain('✅ Jornada cerrada');
   });
 
-  it('sin evento activo o antes de la primera salida del DPEI no manda nada', async () => {
+  it('sin evento activo o antes de la primera salida de la DPEI no manda nada', async () => {
     cargar.mockResolvedValue(null);
     await service.enviarSiCambio(AHORA);
     cargar.mockResolvedValue(jornada([unidad('971')]));

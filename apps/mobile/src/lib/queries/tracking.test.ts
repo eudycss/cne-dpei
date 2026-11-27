@@ -63,7 +63,7 @@ describe('registros que actualizan la copia local', () => {
     } as unknown as MiAsignacionResponse);
   });
 
-  it('la salida del DPI encolada sin señal queda marcada en la copia', async () => {
+  it('la salida de la DPEI encolada sin señal queda marcada en la copia', async () => {
     (api.post as jest.Mock).mockRejectedValue(sinRed);
 
     await expect(postSalidaDpi({ latitud: 0.35, longitud: -78.11 } as never)).resolves.toBeNull();

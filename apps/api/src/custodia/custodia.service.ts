@@ -45,7 +45,7 @@ function esViolacionDeUnicidad(e: unknown): boolean {
 }
 
 /**
- * Cadena de custodia del kit en el DPEI (rol ASISTENTE_TRANSVERSAL):
+ * Cadena de custodia del kit en la DPEI (rol ASISTENTE_TRANSVERSAL):
  * entrega del kit a un militar y correcciones de último minuto (militar de la
  * entrega u operador CDA del kit). Todo cambio queda en el historial con
  * motivo, y solo se permite hasta que el CDA recibe el kit (estado ASIGNADO);

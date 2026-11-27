@@ -16,7 +16,7 @@ export function porcentajeLlegada(conteo: ConteoEstados, total: number): number 
   return Math.round(((conteo.RETORNADO ?? 0) / total) * 100);
 }
 
-/** Tarjetas con el número de CDAs por estado y el avance de llegada al DPEI. */
+/** Tarjetas con el número de CDAs por estado y el avance de llegada a la DPEI. */
 export function KpiEstados({ conteo, total }: Props) {
   const porcentaje = porcentajeLlegada(conteo, total);
   const llegados = conteo.RETORNADO ?? 0;
@@ -32,7 +32,7 @@ export function KpiEstados({ conteo, total }: Props) {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={porcentaje}
-          aria-label={`CDAs que llegaron al DPEI: ${porcentaje} % (${llegados} de ${total})`}
+          aria-label={`CDAs que llegaron a la DPEI: ${porcentaje} % (${llegados} de ${total})`}
         >
           <svg viewBox="0 0 72 72" aria-hidden="true" focusable="false">
             <circle className="kpi-dona-fondo" cx="36" cy="36" r={RADIO_DONA} />
@@ -53,7 +53,7 @@ export function KpiEstados({ conteo, total }: Props) {
           </span>
         </div>
         <div>
-          <div className="kpi-label">Llegaron al DPEI</div>
+          <div className="kpi-label">Llegaron a la DPEI</div>
           <div className="kpi-detalle">
             {llegados} de {total} CDAs
           </div>

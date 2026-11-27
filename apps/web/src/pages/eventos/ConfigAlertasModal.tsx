@@ -14,7 +14,7 @@ const MARGEN_AVISO_METROS = 5_000;
 
 const ETIQUETA_CONFIG: Record<keyof ConfigAlertas, string> = {
   umbralLlegadaRecintoMin: 'Umbral llegada al recinto (1 a 1440 min)',
-  umbralLlegadaDpiMin: 'Umbral llegada al DPI (1 a 1440 min)',
+  umbralLlegadaDpiMin: 'Umbral llegada a la DPEI (1 a 1440 min)',
   umbralSinSyncMin: 'Umbral sin sincronización (1 a 1440 min)',
   margenLlegadaMetros: `Margen de llegada (10 a ${MARGEN_LLEGADA_MAX_METROS.toLocaleString('es-EC')} m, número entero)`,
 };
@@ -144,7 +144,7 @@ export function ConfigAlertasModal({
         </div>
 
         <div className="field">
-          <label htmlFor="cfg-umbral-dpi">Umbral llegada al DPI (min)</label>
+          <label htmlFor="cfg-umbral-dpi">Umbral llegada a la DPEI (min)</label>
           <input
             id="cfg-umbral-dpi"
             type="number"
@@ -159,7 +159,7 @@ export function ConfigAlertasModal({
             required
           />
           <span id="cfg-umbral-dpi-ayuda" className="muted">
-            Alerta si el operador no registra llegada al DPI en X minutos.
+            Alerta si el operador no registra llegada a la DPEI en X minutos.
           </span>
         </div>
 

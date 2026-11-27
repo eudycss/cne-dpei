@@ -133,7 +133,7 @@ describe('EnRetornoScreen', () => {
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it('deshabilita "Ya llegué al DPI" cuando la ubicación está lejos de la Delegación', async () => {
+  it('deshabilita "Ya llegué a la DPEI" cuando la ubicación está lejos de la Delegación', async () => {
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
     // Punto lejos de la delegación fixture — fuera del margen de 150m.
     (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.40, longitud: -78.20, precisionMetros: 5 });
@@ -144,11 +144,11 @@ describe('EnRetornoScreen', () => {
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton.props.disabled).toBe(true);
   });
 
-  it('habilita "Ya llegué al DPI" y lo dispara al confirmar cercanía', async () => {
+  it('habilita "Ya llegué a la DPEI" y lo dispara al confirmar cercanía', async () => {
     (iniciarRastreoPrimerPlano as jest.Mock).mockResolvedValue({ remove: jest.fn() });
     // Mismo punto que la delegación fixture — dentro del margen.
     (obtenerUbicacionPuntual as jest.Mock).mockResolvedValue({ latitud: 0.35849, longitud: -78.11886, precisionMetros: 5 });
@@ -160,7 +160,7 @@ describe('EnRetornoScreen', () => {
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton.props.disabled).toBe(false);
 
     await act(async () => {
@@ -182,7 +182,7 @@ describe('EnRetornoScreen', () => {
       await flushPromises();
     });
 
-    const boton = () => pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = () => pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton().props.disabled).toBe(true);
     expect(obtenerUbicacionPuntual).toHaveBeenCalledTimes(1);
 
@@ -207,7 +207,7 @@ describe('EnRetornoScreen', () => {
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton.props.disabled).toBe(false);
     expect(obtenerUbicacionPuntual).not.toHaveBeenCalled();
   });
@@ -222,7 +222,7 @@ describe('EnRetornoScreen', () => {
       await flushPromises();
     });
 
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton.props.disabled).toBe(false);
   });
 
@@ -237,7 +237,7 @@ describe('EnRetornoScreen', () => {
     });
 
     expect(renderer.root.findByProps({ children: 'Sin conexión, reintentando…' })).toBeTruthy();
-    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué al DPI' }));
+    const boton = pressableAncestor(renderer.root.findByProps({ children: 'Ya llegué a la DPEI' }));
     expect(boton.props.disabled).toBe(false);
   });
 

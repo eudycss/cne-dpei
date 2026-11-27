@@ -20,6 +20,7 @@ import { Colors } from '../theme/colors';
 import { AppBar } from '../components/AppBar';
 import { CameraFoto } from '../components/CameraFoto';
 import { getMiAsignacion } from '../lib/queries/tracking';
+import { useLlegadaEnCola } from '../lib/useLlegadaEnCola';
 import { postSalidaRecinto } from '../lib/queries/retorno';
 import { NoCdaPendientesCard } from '../components/NoCdaPendientesCard';
 import { JustificacionNoCdaModal } from '../components/JustificacionNoCdaModal';
@@ -141,6 +142,9 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
   // NO CDA sin marcar: tarjeta, número rojo, recordatorio cada 30 min y
   // justificación al salir. Recarga sin el spinner de pantalla completa.
   const pendientesNoCda = useMemo(() => noCdasPendientes(asignacion), [asignacion]);
+  // La llegada al recinto puede estar aún en la cola sin señal: igual que en "Mi recinto", cuenta como hecha.
+  const llegadaEnCola = useLlegadaEnCola(asignacion);
+  const bloqueoNoCdaActual = asignacion ? bloqueoNoCda(asignacion, llegadaEnCola) : null;
   const [pedirMotivo, setPedirMotivo] = useState(false);
   const refrescarNoCdas = useCallback(async () => {
     try {
@@ -395,7 +399,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
     }
     Alert.alert(
       'Registrar salida del recinto',
-      'Se registrará la salida del recinto y se iniciará el rastreo de tu retorno al DPI. ¿Deseas continuar?',
+      'Se registrará la salida del recinto y se iniciará el rastreo de tu retorno a la DPEI. ¿Deseas continuar?',
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Registrar Salida', style: 'default', onPress: () => ejecutarSalida() },
@@ -520,7 +524,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       >
         <Text style={styles.title}>Salida del recinto electoral</Text>
 
-        <NoCdaPendientesCard noCdas={asignacion?.noCdas ?? []} onMarcado={refrescarNoCdas} />
+        <NoCdaPendientesCard noCdas={asignacion?.noCdas ?? []} onMarcado={refrescarNoCdas} bloqueo={bloqueoNoCdaActual} />
 
         <View style={styles.stepper}>
           <StepBadge n={1} label="Prueba de conexión" active={paso === 1} done={paso > 1} styles={styles} />
@@ -643,7 +647,7 @@ export function SalidaRecintoScreen({ onSalidaRegistrada }: Props) {
       {/* Fija al pie: siempre a la vista mientras está en el recinto; al llegar se abre sola una vez. */}
       <NoCdaPanel
         noCdas={asignacion?.noCdas ?? []}
-        bloqueo={asignacion ? bloqueoNoCda(asignacion) : null}
+        bloqueo={bloqueoNoCdaActual}
         onMarcado={refrescarNoCdas}
         bienvenidaClave={asignacion ? `${asignacion.eventoId}_${asignacion.recinto.id}` : undefined}
       />

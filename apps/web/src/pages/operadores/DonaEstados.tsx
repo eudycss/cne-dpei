@@ -3,7 +3,7 @@ import { ESTADO_INFO } from './estado-info';
 import { DonaAnillo } from '../../components/DonaAnillo';
 
 /**
- * Reparto de las parejas por estado (en el DPEI, en tránsito, en el recinto, en
+ * Reparto de las parejas por estado (en la DPEI, en tránsito, en el recinto, en
  * retorno, llegaron). Se redibuja con cada actualización de la pantalla.
  */
 export function DonaEstados({ reparto }: { reparto: TramoReparto[] }) {

@@ -5,7 +5,7 @@ import { Modal } from '../../components/Modal';
 import { registrarLlegadaDpiManual } from '../../lib/queries/monitoreo';
 
 /**
- * El operador olvidó marcar "Llegada al DPEI" y sigue en el mapa: el
+ * El operador olvidó marcar "Llegada a la DPEI" y sigue en el mapa: el
  * administrador la registra con un motivo. A diferencia de "Resetear estado",
  * no borra el recorrido; la llegada queda marcada como registrada por él.
  */
@@ -46,14 +46,14 @@ export function RegistrarLlegadaDpiModal({
   return (
     <Modal labelledBy="llegada-dpi-titulo" onClose={onClose}>
       <form className="login-card" style={{ width: '100%' }} onSubmit={onSubmit} noValidate>
-        <h1 id="llegada-dpi-titulo">Registrar llegada al DPEI</h1>
+        <h1 id="llegada-dpi-titulo">Registrar llegada a la DPEI</h1>
         <p>
           <strong>{operador.nombre}</strong> no marcó su llegada en la app. Se registrará con la hora actual y
           saldrá del mapa.
         </p>
         <div id="llegada-dpi-aviso" className="banner" role="note">
           No se borra su recorrido: la llegada queda en el historial y en el informe como registrada por el
-          administrador, y sus kits pasan a "Llegó al DPEI".
+          administrador, y sus kits pasan a "Llegó a la DPEI".
         </div>
 
         <div className="field">

@@ -808,7 +808,7 @@ const AUDIT_TABLE: Array<{
   { method: 'POST', pathRegex: /^\/tracking\/recepcion-kit$/, accion: 'RECEPCION_KIT', entidad: 'recepciones_kit' },
   { method: 'POST', pathRegex: /^\/tracking\/llegada-recinto$/, accion: 'REGISTRO_LLEGADA_RECINTO', entidad: 'eventos_tracking' },
   // HU13 Parte B — registro manual de llegada por supervisor (recintos esDificilAcceso)
-  // Llegada al DPEI que el operador olvidó marcar: la registra el administrador con un motivo.
+  // Llegada a la DPEI que el operador olvidó marcar: la registra el administrador con un motivo.
   {
     method: 'POST',
     pathRegex: /^\/tracking\/operadores\/[^/]+\/llegada-dpi-manual$/,

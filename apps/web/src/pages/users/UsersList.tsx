@@ -30,7 +30,7 @@ export function UsersList() {
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  // Operador que olvidó marcar la llegada al DPEI (se registra sin borrar su recorrido).
+  // Operador que olvidó marcar la llegada a la DPEI (se registra sin borrar su recorrido).
   const [llegadaDe, setLlegadaDe] = useState<{ id: string; nombre: string } | null>(null);
   const qc = useQueryClient();
 
@@ -309,10 +309,10 @@ export function UsersList() {
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                               disabled={togglingId === u.id}
                               onClick={() => setLlegadaDe({ id: u.id, nombre: `${u.nombres} ${u.apellidos}` })}
-                              aria-label={`Registrar llegada al DPEI de ${u.nombres} ${u.apellidos}`}
+                              aria-label={`Registrar llegada a la DPEI de ${u.nombres} ${u.apellidos}`}
                               title="Olvidó marcar la llegada en la app (no borra su recorrido)"
                             >
-                              Registrar llegada al DPEI
+                              Registrar llegada a la DPEI
                             </button>
                           )}
                           {u.roles.includes('OPERADOR_CDA') && (
@@ -423,7 +423,7 @@ export function UsersList() {
           operador={llegadaDe}
           onClose={() => setLlegadaDe(null)}
           onDone={() => {
-            sileo.success({ title: `Llegada al DPEI registrada para ${llegadaDe.nombre}.` });
+            sileo.success({ title: `Llegada a la DPEI registrada para ${llegadaDe.nombre}.` });
             setLlegadaDe(null);
             qc.invalidateQueries({ queryKey: ['operadores-en-retorno'] });
             qc.invalidateQueries({ queryKey: ['estado-cdas'] });

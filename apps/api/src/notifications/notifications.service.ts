@@ -8,7 +8,7 @@ export class NotificationsService {
 
   /**
    * HU2-CA3: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
-   * y todos los administradores cuando el operador registra su salida del DPI.
+   * y todos los administradores cuando el operador registra su salida de la DPEI.
    * El envío real (push/email) se implementa en HU19; aquí solo se persiste la
    * cola y se usa el canal PUSH como representación de la notificación in-app.
    */
@@ -45,7 +45,7 @@ export class NotificationsService {
   /**
    * HU4-CA4: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
    * y los administradores cuando el operador registra su salida del recinto e
-   * inicia el retorno al DPI.
+   * inicia el retorno a la DPEI.
    */
   async encolarSalidaRecinto(opts: {
     operadorId: string;
@@ -62,7 +62,7 @@ export class NotificationsService {
 
   /**
    * HU5-CA3: encola notificaciones (PUSH + EMAIL) para el supervisor asignado
-   * y los administradores cuando el operador registra su llegada al DPI y
+   * y los administradores cuando el operador registra su llegada a la DPEI y
    * completa la jornada; con este evento finaliza el monitoreo en tiempo real.
    */
   async encolarLlegadaDpi(opts: {

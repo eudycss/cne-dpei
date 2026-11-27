@@ -72,7 +72,7 @@ export function esChatJornada(chatId: number | string | undefined): boolean {
   return !otros.includes(jornada);
 }
 
-/** La jornada cambia de día a las 04:00 de Ecuador: quien vuelve al DPEI pasada la medianoche sigue en el mismo día. */
+/** La jornada cambia de día a las 04:00 de Ecuador: quien vuelve a la DPEI pasada la medianoche sigue en el mismo día. */
 const CAMBIO_DE_DIA_H = 4;
 const ECUADOR_UTC_H = -5;
 const ETAPAS_DE_IDA: MomentoJornada[] = ['SALIDA_DPI', 'LLEGADA_RECINTO'];
@@ -80,7 +80,7 @@ const ETAPAS_DE_REGRESO: MomentoJornada[] = ['SALIDA_RECINTO', 'LLEGADA_DPI'];
 
 /**
  * Inicio del día de jornada (04:00 de Ecuador) y su fecha "YYYY-MM-DD". `desdeMedianoche` es
- * la 00:00 de esa fecha: las etapas de ida (salida del DPEI, llegada al recinto) cuentan desde ahí,
+ * la 00:00 de esa fecha: las etapas de ida (salida de la DPEI, llegada al recinto) cuentan desde ahí,
  * porque una salida de madrugada es de la jornada que empieza; las de regreso, solo desde `desde`.
  */
 export function diaDeJornada(ahora: Date): { desde: Date; desdeMedianoche: Date; fecha: string } {

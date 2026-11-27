@@ -29,6 +29,16 @@ describe('etapaDesdeAsignacion', () => {
   });
 });
 
+describe('etapaDesdeAsignacion con la llegada registrada por el escaneo del kit', () => {
+  const llego = { ...sinRegistros, yaRegistroSalida: true, yaRegistroLlegada: true };
+  it('con algún kit sin escanear sigue en LLEGADA (no salta a Salida del recinto)', () => {
+    expect(etapaDesdeAsignacion({ ...llego, kits: [{ recibido: true }, { recibido: false }] })).toBe('LLEGADA');
+  });
+  it('con todos los kits escaneados pasa a EN_RECINTO', () => {
+    expect(etapaDesdeAsignacion({ ...llego, kits: [{ recibido: true }] })).toBe('EN_RECINTO');
+  });
+});
+
 describe('etapaMasAvanzada', () => {
   it('avanza a lo que dice el servidor si va adelante (hallazgo 3: En tránsito desfasado)', () => {
     expect(etapaMasAvanzada('EN_TRANSITO', 'EN_RETORNO')).toBe('EN_RETORNO');

@@ -233,7 +233,7 @@ describe('EventosService', () => {
       await expect(service.close(eventoId, true)).rejects.toThrow(BadRequestException);
     });
 
-    it('exige justificación si hay operadores sin llegada al DPI', async () => {
+    it('exige justificación si hay operadores sin llegada a la DPEI', async () => {
       prisma.eventoElectoral.findUnique.mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO' }));
       prisma.asignacionSupervisor.findMany.mockResolvedValueOnce([{ operadorId: 'op1' }]);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([]); // ninguno llegó
@@ -245,7 +245,7 @@ describe('EventosService', () => {
       expect(prisma.eventoElectoral.update).not.toHaveBeenCalled();
     });
 
-    it('cierra el evento cuando todos llegaron al DPI (sin pendientes)', async () => {
+    it('cierra el evento cuando todos llegaron a la DPEI (sin pendientes)', async () => {
       prisma.eventoElectoral.findUnique
         .mockResolvedValueOnce(eventoRow({ estado: 'ACTIVO' })) // verificación
         .mockResolvedValueOnce(eventoRow({ estado: 'CERRADO', cerradoEn: new Date() })); // get()

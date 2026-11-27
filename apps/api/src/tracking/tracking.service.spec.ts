@@ -552,7 +552,7 @@ describe('TrackingService', () => {
       expect(fila.llegadaDpiManual).toBe(false);
     });
 
-    it('marca la llegada al DPEI registrada desde la web por un administrador', async () => {
+    it('marca la llegada a la DPEI registrada desde la web por un administrador', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.kitElectoral.findMany.mockResolvedValueOnce([{ recintoId, operadorId, codigoUnico: 'K001' }]);
       prisma.recinto.findMany.mockResolvedValueOnce([
@@ -832,7 +832,7 @@ describe('TrackingService', () => {
       );
     });
 
-    it('lanza ConflictException si ya registró la salida del DPI', async () => {
+    it('lanza ConflictException si ya registró la salida de la DPEI', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'tk1' });
       await expect(service.registrarSalidaDpi(operadorId, geo as any)).rejects.toThrow(
@@ -1580,7 +1580,7 @@ describe('TrackingService', () => {
       );
     });
 
-    it('lanza BadRequestException si no registró la salida del DPI antes', async () => {
+    it('lanza BadRequestException si no registró la salida de la DPEI antes', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst
         .mockResolvedValueOnce(null) // sin llegada previa
@@ -1866,7 +1866,7 @@ describe('TrackingService', () => {
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'ya' });
 
       await expect(service.registrarLlegadaDpiManual(operadorId, motivo, adminId)).rejects.toThrow(
-        'Este operador ya tiene registrada la llegada al DPEI',
+        'Este operador ya tiene registrada la llegada a la DPEI',
       );
       expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
     });
@@ -1919,12 +1919,12 @@ describe('TrackingService', () => {
         .mockResolvedValueOnce([])
         .mockRejectedValueOnce(Object.assign(new Error('raw'), { code: 'P2010', meta: { code: '23505' } }));
 
-      await expect(service.registrarLlegadaDpi(operadorId, geo as any)).rejects.toThrow('Ya registraste tu llegada al DPI');
+      await expect(service.registrarLlegadaDpi(operadorId, geo as any)).rejects.toThrow('Ya registraste tu llegada a la DPEI');
       expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalled();
       expect(notifications.encolarLlegadaDpi).not.toHaveBeenCalled();
     });
 
-    it('lanza ConflictException si ya registró la llegada al DPI', async () => {
+    it('lanza ConflictException si ya registró la llegada a la DPEI', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst.mockResolvedValueOnce({ id: 'tk1' });
       await expect(service.registrarLlegadaDpi(operadorId, geo as any)).rejects.toThrow(
@@ -2034,7 +2034,7 @@ describe('TrackingService', () => {
       posiciones: [{ latitud: 0.35, longitud: -78.11, capturadoEn: ocurridoEn }],
     };
 
-    it('lanza BadRequestException si aún no ha salido del DPI (EN_DPI)', async () => {
+    it('lanza BadRequestException si aún no ha salido de la DPEI (EN_DPI)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([]);
       await expect(service.ingestarPosiciones(operadorId, input as any)).rejects.toThrow(
@@ -2053,7 +2053,7 @@ describe('TrackingService', () => {
       );
     });
 
-    it('lanza BadRequestException si ya registró la llegada al DPI (rastreo terminó)', async () => {
+    it('lanza BadRequestException si ya registró la llegada a la DPEI (rastreo terminó)', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
         { tipo: 'SALIDA_DPI' },
@@ -2131,7 +2131,7 @@ describe('TrackingService', () => {
       ]);
     });
 
-    it('en retorno indica qué tan cerca va del DPEI por los km que le faltan', async () => {
+    it('en retorno indica qué tan cerca va de la DPEI por los km que le faltan', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
         { operadorId: operadorIdA, tipo: 'SALIDA_DPI' },
@@ -2165,7 +2165,7 @@ describe('TrackingService', () => {
     it.each([
       [2_500, 'MUY_CERCA'],
       [25_000, 'LEJOS'],
-    ])('en retorno a %i m del DPEI queda %s', async (metros, esperado) => {
+    ])('en retorno a %i m de la DPEI queda %s', async (metros, esperado) => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findMany.mockResolvedValueOnce([
         { operadorId: operadorIdB, tipo: 'SALIDA_DPI' },
@@ -3023,13 +3023,13 @@ describe('TrackingService', () => {
       prisma.recinto.findUnique.mockResolvedValueOnce({ nombre: 'CDA 1' });
     }
 
-    it('salida del DPI: guarda desde_offline=true si llega desde la cola', async () => {
+    it('salida de la DPEI: guarda desde_offline=true si llega desde la cola', async () => {
       mockSalidaDpiOk();
       await service.registrarSalidaDpi(operadorId, { ...geo, ...offline } as any);
       expect(valoresInsert('eventos_tracking')).toContain(true);
     });
 
-    it('salida del DPI: guarda desde_offline=false si no viene el campo (registro en línea)', async () => {
+    it('salida de la DPEI: guarda desde_offline=false si no viene el campo (registro en línea)', async () => {
       mockSalidaDpiOk();
       await service.registrarSalidaDpi(operadorId, geo as any);
       const valores = valoresInsert('eventos_tracking');
@@ -3158,7 +3158,7 @@ describe('TrackingService', () => {
       expect(valoresInsert('eventos_tracking')).toContain(true);
     });
 
-    it('llegada al DPI: guarda desde_offline=true si llega desde la cola', async () => {
+    it('llegada a la DPEI: guarda desde_offline=true si llega desde la cola', async () => {
       prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
       prisma.eventoTracking.findFirst
         .mockResolvedValueOnce(null)

@@ -490,7 +490,7 @@ describe('AuditInterceptor', () => {
     expect(JSON.stringify(corregir.data.datosDespues)).not.toContain('1710034065');
   });
 
-  it('llegada al DPEI registrada por el administrador: a quién y el motivo', async () => {
+  it('llegada a la DPEI registrada por el administrador: a quién y el motivo', async () => {
     const { data } = await auditar(
       {
         method: 'POST',

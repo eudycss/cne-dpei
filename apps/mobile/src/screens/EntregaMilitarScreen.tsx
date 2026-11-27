@@ -50,7 +50,7 @@ function hora(iso: string): string {
 }
 
 /**
- * Asistente Electoral Transversal: entrega cada kit a un militar en el DPEI.
+ * Asistente Electoral Transversal: entrega cada kit a un militar en la DPEI.
  * La app propone los militares del recinto del kit; si llega otro, se busca
  * entre todos. Hasta que el CDA recibe el kit se puede corregir el militar o
  * cambiar el operador CDA, siempre con motivo (queda en el historial).

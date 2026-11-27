@@ -17,7 +17,7 @@ function notif(overrides: Partial<NotificacionItem> = {}): NotificacionItem {
 describe('describirNotificacion', () => {
   it('describe SALIDA_DPI con operador y recinto', () => {
     expect(describirNotificacion(notif({ tipoEvento: 'SALIDA_DPI' }))).toBe(
-      'Ana López salió del DPI hacia Recinto Central',
+      'Ana López salió de la DPEI hacia Recinto Central',
     );
   });
 
@@ -48,16 +48,16 @@ describe('describirNotificacion', () => {
 
   it('describe SALIDA_RECINTO y LLEGADA_DPI', () => {
     expect(describirNotificacion(notif({ tipoEvento: 'SALIDA_RECINTO' }))).toBe(
-      'Ana López salió de Recinto Central e inició el retorno al DPI',
+      'Ana López salió de Recinto Central e inició el retorno a la DPEI',
     );
     expect(describirNotificacion(notif({ tipoEvento: 'LLEGADA_DPI' }))).toBe(
-      'Ana López llegó al DPI y completó su jornada',
+      'Ana López llegó a la DPEI y completó su jornada',
     );
   });
 
   it('usa textos por defecto cuando faltan operador y recinto', () => {
     const n = notif({ tipoEvento: 'SALIDA_DPI', payload: {} });
-    expect(describirNotificacion(n)).toBe('Un operador salió del DPI hacia su recinto');
+    expect(describirNotificacion(n)).toBe('Un operador salió de la DPEI hacia su recinto');
   });
 
   it('cae al tipoEvento crudo para tipos desconocidos', () => {

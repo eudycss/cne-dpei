@@ -189,7 +189,7 @@ describe('useEtapaOperador', () => {
 
     it('sin señal retoma la etapa guardada del mismo evento en vez de volver a SALIDA', async () => {
       await guardarEtapa('ev1', 'EN_RECINTO');
-      // Copia local desactualizada: se guardó antes de registrar la salida del DPI.
+      // Copia local desactualizada: se guardó antes de registrar la salida de la DPEI.
       (getMiAsignacionConOrigen as jest.Mock).mockResolvedValueOnce({ data: conEvento(0), desdeCache: true });
 
       await montar();

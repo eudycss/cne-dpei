@@ -68,15 +68,15 @@ describe('EstadisticasMonitoreoPage', () => {
     renderPage();
 
     expect(await screen.findByText(/Simulacro · 3 parejas/)).toBeInTheDocument();
-    for (const titulo of ['Ya salieron del DPEI', 'Ya llegaron al recinto', 'Ya salieron del recinto', 'Ya regresaron al DPEI']) {
+    for (const titulo of ['Ya salieron de la DPEI', 'Ya llegaron al recinto', 'Ya salieron del recinto', 'Ya regresaron a la DPEI']) {
       expect(screen.getByRole('region', { name: new RegExp(`^${titulo} \\(parejas\\)`) })).toBeInTheDocument();
     }
     // Llegada al recinto: Isidro 1 de 2, sin medalla (no llegó al 100 %).
     const llegada = screen.getByRole('region', { name: /^Ya llegaron al recinto/ });
     expect(within(llegada).getByRole('img', { name: 'Isidro: 1 de 2 parejas (50 %)' })).toBeInTheDocument();
     expect(within(llegada).queryByText('🥇')).not.toBeInTheDocument();
-    // Salida del DPEI: Jairo 1 de 1 → 🥇, con la hora en que cerró (la de su última pareja).
-    const salida = screen.getByRole('region', { name: /^Ya salieron del DPEI/ });
+    // Salida de la DPEI: Jairo 1 de 1 → 🥇, con la hora en que cerró (la de su última pareja).
+    const salida = screen.getByRole('region', { name: /^Ya salieron de la DPEI/ });
     expect(within(salida).getByRole('img', { name: /^Jairo: 1 de 1 parejas \(100 %\)\. Primer lugar en completarlo a las / })).toBeInTheDocument();
     expect(within(salida).getByText('🥇')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Isidro: 1 de 1 NO CDA visitados (100 %)' })).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('EstadisticasMonitoreoPage', () => {
     await screen.findByText(/Simulacro/);
 
     await user.click(screen.getByRole('button', { name: /Por cantón/ }));
-    const salida = screen.getByRole('region', { name: /^Ya salieron del DPEI/ });
+    const salida = screen.getByRole('region', { name: /^Ya salieron de la DPEI/ });
     expect(within(salida).getByRole('img', { name: 'IBARRA: 2 de 2 parejas (100 %)' })).toBeInTheDocument();
     expect(within(salida).queryByText('🥇')).not.toBeInTheDocument();
   });
@@ -98,7 +98,7 @@ describe('EstadisticasMonitoreoPage', () => {
     getMock.mockResolvedValue(datos);
     renderPage();
     const tabla = await screen.findByRole('region', { name: 'Horas de cada etapa por pareja' });
-    expect(within(tabla).getByRole('columnheader', { name: 'Llegada al DPEI' })).toBeInTheDocument();
+    expect(within(tabla).getByRole('columnheader', { name: 'Llegada a la DPEI' })).toBeInTheDocument();
     expect(within(tabla).getByText('Op C2')).toBeInTheDocument();
     expect(within(tabla).getAllByText('—').length).toBeGreaterThan(0);
   });
@@ -115,14 +115,14 @@ describe('EstadisticasMonitoreoPage', () => {
     expect(within(tabla).getByText('Op C1')).toBeInTheDocument();
     expect(screen.getByText(/1 registro\. 2 parejas aún sin registrar esta etapa\./)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Salida del DPEI/ }));
-    const salida = screen.getByRole('region', { name: 'Orden de llegada: Salida del DPEI' });
+    await user.click(screen.getByRole('button', { name: /Salida de la DPEI/ }));
+    const salida = screen.getByRole('region', { name: 'Orden de llegada: Salida de la DPEI' });
     const filas = within(salida).getAllByRole('row').slice(1);
     expect(filas[0]).toHaveTextContent('1C1');
     expect(filas[1]).toHaveTextContent('2C2');
 
     await user.selectOptions(screen.getByLabelText(/Técnico/), 'Jairo');
-    expect(within(screen.getByRole('region', { name: 'Orden de llegada: Salida del DPEI' })).queryByText('Op C1')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Orden de llegada: Salida de la DPEI' })).queryByText('Op C1')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Llegada a NO CDA/ }));
     expect(screen.getByText(/0 registros\. 0 NO CDA aún sin visita\./)).toBeInTheDocument();

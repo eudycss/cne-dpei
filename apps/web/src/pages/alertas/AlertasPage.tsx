@@ -8,12 +8,12 @@ import { api } from '../../lib/api';
 
 const TIPO_LABELS: Record<TipoAlerta, string> = {
   NO_LLEGO_RECINTO: 'No llegó al recinto',
-  NO_LLEGO_DPI: 'No llegó al DPI',
+  NO_LLEGO_DPI: 'No llegó a la DPEI',
   SIN_SINCRONIZAR: 'Sin sincronización',
   KIT_NO_CORRESPONDE: 'Kit no corresponde',
   ENTREGA_MILITAR_NO_REGISTRADA: 'Entrega al militar no registrada',
   LLEGADA_RECINTO_FUERA_DE_RANGO: 'Llegada al recinto fuera de rango (sin señal)',
-  LLEGADA_DPI_FUERA_DE_RANGO: 'Llegada al DPI fuera de rango (sin señal)',
+  LLEGADA_DPI_FUERA_DE_RANGO: 'Llegada a la DPEI fuera de rango (sin señal)',
 };
 
 const ESTADO_INFO: Record<EstadoAlerta, { label: string; color: string }> = {

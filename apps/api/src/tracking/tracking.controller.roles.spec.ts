@@ -35,7 +35,7 @@ describe('TrackingController — roles de la verificación de kits al retorno', 
   });
 });
 
-describe('TrackingController — llegada al DPEI registrada desde la web', () => {
+describe('TrackingController — llegada a la DPEI registrada desde la web', () => {
   it('solo el administrador la registra', () => {
     expect(rolesDe('llegadaDpiManual')).toEqual(['ADMINISTRADOR']);
   });

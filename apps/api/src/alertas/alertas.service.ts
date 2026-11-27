@@ -142,7 +142,7 @@ export class AlertasService {
       operadorId: opts.operadorId,
       kitId: opts.kitId,
       tipo: 'ENTREGA_MILITAR_NO_REGISTRADA',
-      mensaje: `El kit ${opts.codigoKit} fue recibido por el CDA sin que se registrara su entrega al militar en el DPEI.`,
+      mensaje: `El kit ${opts.codigoKit} fue recibido por el CDA sin que se registrara su entrega al militar en la DPEI.`,
     });
   }
 
@@ -212,7 +212,7 @@ export class AlertasService {
         eventoId,
         operadorId: salida.operadorId,
         tipo: 'NO_LLEGO_RECINTO',
-        mensaje: `Operador salió del DPI hace ${mins} min y no registró llegada al recinto (umbral: ${umbralMin} min).`,
+        mensaje: `Operador salió de la DPEI hace ${mins} min y no registró llegada al recinto (umbral: ${umbralMin} min).`,
       });
     }
   }
@@ -234,7 +234,7 @@ export class AlertasService {
         eventoId,
         operadorId: salida.operadorId,
         tipo: 'NO_LLEGO_DPI',
-        mensaje: `Operador salió del recinto hace ${mins} min y no registró llegada al DPI (umbral: ${umbralMin} min).`,
+        mensaje: `Operador salió del recinto hace ${mins} min y no registró llegada a la DPEI (umbral: ${umbralMin} min).`,
       });
     }
   }
@@ -243,7 +243,7 @@ export class AlertasService {
   private async evaluarCA3(eventoId: string, umbralMin: number): Promise<void> {
     const corte = new Date(Date.now() - umbralMin * 60_000);
 
-    // Operadores que salieron del DPI pero aún no registran LLEGADA_RECINTO
+    // Operadores que salieron de la DPEI pero aún no registran LLEGADA_RECINTO
     const enTransitoIda = await this.prisma.$queryRaw<{ operador_id: string }[]>`
       SELECT DISTINCT t.operador_id
       FROM eventos_tracking t

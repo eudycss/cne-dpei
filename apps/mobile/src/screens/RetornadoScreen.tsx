@@ -20,7 +20,7 @@ export function RetornadoScreen() {
         <View style={styles.iconCircle}>
           <Text style={styles.icon}>✓</Text>
         </View>
-        <Text style={styles.title}>Llegada al DPI registrada</Text>
+        <Text style={styles.title}>Llegada a la DPEI registrada</Text>
         <Text style={styles.subtitle}>
           Hola {user?.nombres}, tu llegada a la Delegación Provincial de Imbabura está
           registrada y el rastreo de tu ubicación ha finalizado.

@@ -32,7 +32,7 @@ interface UltimoResumen {
 /**
  * Resumen automático del grupo Jornada: a lo más uno cada N minutos (15 por
  * defecto; se cambia desde la web o con "⏱ Frecuencia" en el bot), sin sonido y
- * solo si algo cambió; al cerrar la jornada (todos en el DPEI, sin kits pendientes)
+ * solo si algo cambió; al cerrar la jornada (todos en la DPEI, sin kits pendientes)
  * manda el cierre una vez, con sonido, y deja de mandar ese día. Con la
  * frecuencia en "Detener" no manda nada (ni el cierre) hasta que se elija otra.
  */

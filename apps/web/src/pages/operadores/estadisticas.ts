@@ -3,12 +3,12 @@ import { ORDEN_ESTADOS } from './estado-info';
 
 export type EtapaClave = 'salidaDpiEn' | 'llegadaRecintoEn' | 'salidaRecintoEn' | 'llegadaDpiEn';
 
-/** Las etapas del recorrido, en orden: de la salida del DPEI al regreso. */
+/** Las etapas del recorrido, en orden: de la salida de la DPEI al regreso. */
 export const ETAPAS: { clave: EtapaClave; etiqueta: string; hecho: string }[] = [
-  { clave: 'salidaDpiEn', etiqueta: 'Salida del DPEI', hecho: 'Ya salieron del DPEI' },
+  { clave: 'salidaDpiEn', etiqueta: 'Salida de la DPEI', hecho: 'Ya salieron de la DPEI' },
   { clave: 'llegadaRecintoEn', etiqueta: 'Llegada al recinto', hecho: 'Ya llegaron al recinto' },
   { clave: 'salidaRecintoEn', etiqueta: 'Salida del recinto', hecho: 'Ya salieron del recinto' },
-  { clave: 'llegadaDpiEn', etiqueta: 'Llegada al DPEI', hecho: 'Ya regresaron al DPEI' },
+  { clave: 'llegadaDpiEn', etiqueta: 'Llegada a la DPEI', hecho: 'Ya regresaron a la DPEI' },
 ];
 
 export type Medalla = 1 | 2 | 3;

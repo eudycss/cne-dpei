@@ -11,6 +11,8 @@ import { Colors } from '../theme/colors';
 interface Props {
   noCdas: MiAsignacionRecinto[];
   onMarcado: () => void;
+  /** Mismo bloqueo que la barra fija (p. ej. llegada aún en la cola): las dos listas dicen lo mismo. */
+  bloqueo?: string | null;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * cuántos faltan. Ámbar y con la lista abierta mientras falte alguno; verde y
  * plegada cuando ya llegaron todos. No se muestra si el CDA no tiene NO CDA.
  */
-export function NoCdaPendientesCard({ noCdas, onMarcado }: Props) {
+export function NoCdaPendientesCard({ noCdas, onMarcado, bloqueo = null }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const llegaron = noCdas.filter((nc) => !!nc.llegadaRegistradaEn).length;
@@ -64,7 +66,7 @@ export function NoCdaPendientesCard({ noCdas, onMarcado }: Props) {
 
       {listaAbierta ? (
         <View style={styles.lista}>
-          <NoCdaChecklist noCdas={noCdas} onMarcado={onMarcado} />
+          <NoCdaChecklist noCdas={noCdas} onMarcado={onMarcado} bloqueo={bloqueo} />
         </View>
       ) : null}
 

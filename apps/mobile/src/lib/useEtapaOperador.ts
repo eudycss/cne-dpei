@@ -8,10 +8,10 @@ import { etapaDesdeAsignacion, etapaMasAvanzada, type OperadorEtapa } from './et
 // Redacción neutra a propósito: el avance puede venir del supervisor, de otro dispositivo
 // o del propio operador (p. ej. volvió de Ajustes justo tras registrar la salida).
 const AVISO_POR_ETAPA: Partial<Record<OperadorEtapa, string>> = {
-  EN_TRANSITO: 'La salida del DPI ya está registrada.',
+  EN_TRANSITO: 'La salida de la DPEI ya está registrada.',
   EN_RECINTO: 'La llegada al recinto ya está registrada.',
   EN_RETORNO: 'La salida del recinto ya está registrada.',
-  RETORNADO: 'La llegada a la Delegación ya está registrada.',
+  RETORNADO: 'La llegada a la DPEI ya está registrada.',
 };
 
 /**
@@ -21,7 +21,7 @@ const AVISO_POR_ETAPA: Partial<Record<OperadorEtapa, string>> = {
  * en la cola offline) ni por un callback local tardío.
  *
  * La etapa se guarda en el celular: si el operador cierra la app en un recinto sin señal y
- * la vuelve a abrir, no regresa a "Salida del DPI" (caso Apuela, 2026-10-16). Al abrir, la
+ * la vuelve a abrir, no regresa a "Salida de la DPEI" (caso Apuela, 2026-10-16). Al abrir, la
  * etapa guardada solo se usa si es del mismo evento y el servidor aún no la conoce (sin
  * señal o con acciones pendientes de enviar); con señal y nada pendiente manda el
  * servidor, para que "Resetear estado" del administrador siga funcionando.
@@ -38,7 +38,7 @@ export function useEtapaOperador() {
 
   useEffect(() => {
     if (etapa && eventoRef.current) guardarEtapa(eventoRef.current, etapa).catch(() => {});
-    // Jornada en "Salida del DPI" (inicio o "Resetear estado"): el próximo recorrido vuelve a pitar.
+    // Jornada en "Salida de la DPEI" (inicio o "Resetear estado"): el próximo recorrido vuelve a pitar.
     if (etapa === 'SALIDA' && eventoRef.current) reiniciarAvisos(eventoRef.current).catch(() => {});
   }, [etapa]);
 

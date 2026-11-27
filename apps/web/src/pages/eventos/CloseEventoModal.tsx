@@ -54,7 +54,7 @@ export function CloseEventoModal({
 
         {pendientes.length > 0 && (
           <div className="banner error">
-            <strong>{pendientes.length} operador(es) sin llegada al DPI:</strong>
+            <strong>{pendientes.length} operador(es) sin llegada a la DPEI:</strong>
             <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
               {pendientes.map((p) => (
                 <li key={p.id}>{p.nombre}</li>

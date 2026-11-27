@@ -97,7 +97,7 @@ describe('NoCdaChecklist', () => {
     const [pendiente, marcado] = filas(r);
     expect(pendiente.props.disabled).toBe(true);
     expect(pendiente.props.accessibilityState).toEqual({ checked: false, disabled: true });
-    expect(pendiente.props.accessibilityLabel).toBe('Escuela 1, 1, bloqueado hasta llegar al CDA');
+    expect(pendiente.props.accessibilityLabel).toBe(`Escuela 1, 1, bloqueado: ${BLOQUEO_ANTES_DE_LLEGAR}`);
     expect(pendiente.props.accessibilityHint).toBeUndefined();
     expect(textos(r)).toContain('Bloqueado');
     // Lo ya marcado se sigue viendo como llegado.
