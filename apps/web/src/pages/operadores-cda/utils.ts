@@ -59,6 +59,15 @@ export function numeroWhatsApp(telefono: string | null): string | null {
 }
 
 /** El mensaje que manda la API (400/404/409) o uno genérico. */
+/** Quien lleva (o llevará) el kit de la pareja: el de Android (lo decide la API); sin dato, el operador. */
+export function portadorDe<P extends { dispositivo?: string | null }>(p: {
+  portador?: P | null;
+  operador: P;
+  asistente?: P | null;
+}): P {
+  return p.portador ?? [p.operador, p.asistente].find((x): x is P => x?.dispositivo === 'ANDROID') ?? p.operador;
+}
+
 export function mensajeError(e: unknown, porDefecto: string): string {
   return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? porDefecto;
 }

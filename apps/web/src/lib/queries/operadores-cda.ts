@@ -460,6 +460,15 @@ export async function asignarKitParejaCda(id: string, justificacion?: string): P
   return data;
 }
 
+/** "Asignar kit" a varias parejas del día (todas las sin kit o las elegidas). */
+export async function asignarKitsParejasCda(fecha: string, ids: string[], justificacion?: string): Promise<AplicarParejasCdaResult> {
+  const { data } = await api.post<AplicarParejasCdaResult>(`/parejas-cda/asignar-kits?fecha=${fecha}`, {
+    ids,
+    ...(justificacion ? { justificacion } : {}),
+  });
+  return data;
+}
+
 /** Celular de una persona CDA (ANDROID, IPHONE o null). */
 export async function cambiarDispositivoOperadorCda(id: string, dispositivo: DispositivoCda | null): Promise<void> {
   await api.patch(`/operadores-cda/${id}/dispositivo`, { dispositivo });

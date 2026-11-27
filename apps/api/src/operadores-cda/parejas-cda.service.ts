@@ -316,6 +316,31 @@ export class ParejasCdaService {
   }
 
   /**
+   * "Asignar kit" en lote: lo mismo que el botón de cada fila, para varias
+   * parejas del mismo día. Todas deben ser de ese día y tener recinto (una
+   * reserva no lleva kit); lo que falle en una pareja vuelve en `errores` sin
+   * frenar a las demás.
+   */
+  async asignarKits(fecha: string, ids: string[], justificacion?: string): Promise<AplicarParejasCdaResult> {
+    const encontradas = await this.prisma.parejaCda.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, fecha: true, recintoId: true },
+    });
+    if (encontradas.length !== ids.length || encontradas.some((p) => diaDeFechaDb(p.fecha) !== fecha)) {
+      throw new BadRequestException(`Alguna de las parejas elegidas no es del ${fecha}: recargue la lista`);
+    }
+    if (encontradas.some((p) => !p.recintoId)) throw new BadRequestException(MENSAJE_RESERVA_SIN_KIT);
+    const r = await this.aplicarDia(fecha, { ids }, justificacion);
+    if (!r) throw new BadRequestException(`No hay un evento ACTIVO con jornada el ${fecha}: active ese evento para asignar el kit`);
+    // Una pareja que cambió mientras tanto (pasó a reserva, se borró) no se procesa: que no pase en silencio.
+    const faltan = ids.length - r.enApp - r.errores.length;
+    if (faltan > 0) {
+      r.errores.push({ pareja: `${faltan} pareja(s)`, error: 'Cambiaron mientras se asignaban (reserva o borradas): recargue la lista' });
+    }
+    return r;
+  }
+
+  /**
    * Copia la lista de `desde` a `hacia` (mismo operador, asistente, recinto y
    * artículos), con sus parejas de reserva. Solo la registra: el kit y la app quedan para "Aplicar a la
    * app", así se puede revisar antes. Omite a quien ya tiene pareja ese día
