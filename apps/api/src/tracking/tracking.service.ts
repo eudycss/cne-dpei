@@ -762,7 +762,21 @@ export class TrackingService {
           })
         ).map((t) => t.tipo),
       );
-      if (!tipos.has('SALIDA_DPI') || tipos.has('LLEGADA_DPI')) return;
+      if (!tipos.has('SALIDA_DPI')) return;
+      // Este kit está en la mano: queda RETORNADO ("llegó a la DPEI") aunque nunca
+      // haya pasado por EN_RECINTO y aunque la llegada ya estuviera registrada.
+      const kitEnMano = () =>
+        this.prisma.kitElectoral.updateMany({
+          where: { id: kit.id, estado: { in: ['ENTREGADO', 'EN_RECINTO', 'EN_RETORNO'] } },
+          data: { estado: 'RETORNADO' },
+        });
+      if (tipos.has('LLEGADA_DPI')) {
+        await kitEnMano();
+        if (tipos.has('SALIDA_RECINTO')) {
+          await this.prisma.recepcionDpiKit.update({ where: { id: recepcionId }, data: { salidaPendiente: false } });
+        }
+        return;
+      }
 
       const marca = { eventoId, operadorId, recintoId, ocurridoEn, registradoPorId, motivoManual: MOTIVO_KIT_EN_DPEI };
       let salidaCreada = false;
@@ -778,11 +792,7 @@ export class TrackingService {
         }
       }
       const llegadaCreada = await this.crearMarcaTracking({ ...marca, tipo: 'LLEGADA_DPI' });
-      // Este kit está en la mano: queda RETORNADO aunque nunca haya pasado por EN_RECINTO.
-      await this.prisma.kitElectoral.updateMany({
-        where: { id: kit.id, estado: { in: ['ENTREGADO', 'EN_RECINTO', 'EN_RETORNO'] } },
-        data: { estado: 'RETORNADO' },
-      });
+      await kitEnMano();
       if (salidaCreada) await this.notificarSalidaRecinto(eventoId, operadorId, recintoId, ocurridoEn);
       if (llegadaCreada) await this.cerrarLlegadaDpi(eventoId, operadorId, recintoId, ocurridoEn);
     } catch (e) {
@@ -1048,6 +1058,15 @@ export class TrackingService {
           where: { id: kit.id, estado: 'ENTREGADO' },
           data: { estado: 'EN_RECINTO' },
         });
+        // Llegada registrada por un escaneo anterior: si este kit completa los del
+        // operador, recién ahora sale el aviso (con todos los kits).
+        const llegada = await this.prisma.eventoTracking.findFirst({
+          where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
+          select: { ocurridoEn: true, motivoManual: true },
+        });
+        if (llegada?.motivoManual === MOTIVO_LLEGADA_POR_KIT) {
+          await this.avisarLlegadaSiKitsCompletos(evento.id, operadorId, kit.recintoId, llegada.ocurridoEn);
+        }
         return;
       }
       if (!tipos.has('SALIDA_DPI') || escaneo.desdeOffline || !kit.recintoId) return;
@@ -1068,26 +1087,43 @@ export class TrackingService {
       });
       if (metros > (config?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT)) return;
 
-      // Con el motivo desde el INSERT: nunca queda visible sin marcar. Si el operador
-      // la registró en el mismo instante, el índice único deja la suya. El aviso a
-      // supervisores sale en el "Confirmar" final, con todos los kits.
+      // Escanear el kit (un kit por operador) es la llegada: se avisa ya a los
+      // supervisores. Con el motivo desde el INSERT nunca queda visible sin marcar;
+      // si el operador la registró en el mismo instante, el índice único deja la suya.
+      const ocurridoEn = new Date();
       try {
         await this.insertarLlegadaRecinto(
           evento.id,
           operadorId,
           kit.recintoId,
           { latitud: escaneo.latitud, longitud: escaneo.longitud },
-          new Date(),
+          ocurridoEn,
           'ENTREGADO',
           false,
           MOTIVO_LLEGADA_POR_KIT,
         );
       } catch (e) {
-        if (!esUnicoRepetido(e)) throw e;
+        if (esUnicoRepetido(e)) return;
+        throw e;
       }
+      await this.avisarLlegadaSiKitsCompletos(evento.id, operadorId, kit.recintoId, ocurridoEn);
     } catch (e) {
       this.logger.warn(`No se registró la llegada al recinto por kit de ${operadorId}: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * Aviso de llegada a supervisores cuando el operador ya escaneó todos sus kits
+   * (normalmente uno: un kit por operador). Con kits pendientes no avisa: lo hará
+   * el escaneo que los complete, así el aviso nunca sale con un conteo parcial.
+   */
+  private async avisarLlegadaSiKitsCompletos(eventoId: string, operadorId: string, recintoId: string | null, ocurridoEn: Date) {
+    const kits = await this.prisma.kitElectoral.findMany({ where: { eventoId, operadorId }, select: { id: true } });
+    const recibidos = await this.prisma.recepcionKit.count({
+      where: { operadorId, kitId: { in: kits.map((k) => k.id) } },
+    });
+    if (recibidos < kits.length) return;
+    await this.notificarLlegadaRecinto(eventoId, operadorId, recintoId, recibidos, ocurridoEn);
   }
 
   /**
@@ -1171,8 +1207,8 @@ export class TrackingService {
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
       select: { id: true, ocurridoEn: true, motivoManual: true },
     });
-    // Registrada sola al escanear el kit: el "Confirmar" final la reconoce (tras
-    // revisar que estén todos los kits) y recién ahí avisa a los supervisores.
+    // Registrada sola al escanear el kit (ya avisada): el "Confirmar" final la
+    // reconoce tras revisar que estén todos los kits, sin repetir el aviso.
     const porKit = existente?.motivoManual === MOTIVO_LLEGADA_POR_KIT ? existente : null;
     if (existente && !porKit) throw new ConflictException('Ya registraste tu llegada al recinto');
 
@@ -1199,10 +1235,7 @@ export class TrackingService {
         `Faltan ${pendientes.length} kit(s) por confirmar antes de registrar la llegada`,
       );
     }
-    if (porKit) {
-      await this.notificarLlegadaRecinto(evento.id, operadorId, kits[0]?.recintoId ?? null, kits.length, porKit.ocurridoEn);
-      return { id: porKit.id, ocurridoEn: porKit.ocurridoEn.toISOString() };
-    }
+    if (porKit) return { id: porKit.id, ocurridoEn: porKit.ocurridoEn.toISOString() };
 
     const recintoId = kits[0]?.recintoId ?? null;
     const ocurridoEn = new Date(parsed.ocurridoEn);
@@ -1602,9 +1635,11 @@ export class TrackingService {
     const recintoId = kit?.recintoId ?? null;
     const ocurridoEn = new Date(parsed.ocurridoEn);
 
-    if (reemplazaAutomatica) await this.prisma.eventoTracking.delete({ where: { id: existente!.id } });
-
-    const id: string = (await this.prisma.$queryRaw<{ id: string }[]>`
+    // Reemplazar la automática e insertar la real van juntos: si el INSERT falla
+    // no se pierde la salida (deleteMany: un reintento simultáneo no da 500).
+    const id: string = await this.prisma.$transaction(async (tx) => {
+      if (reemplazaAutomatica) await tx.eventoTracking.deleteMany({ where: { id: existente!.id } });
+      return (await tx.$queryRaw<{ id: string }[]>`
       INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, acta_instalacion_url, acta_escrutinio_url, justificacion_no_cda)
       VALUES (
         uuid_generate_v4(),
@@ -1621,15 +1656,22 @@ export class TrackingService {
         ${parsed.justificacionNoCda ?? null}
       )
       RETURNING id;
-    `.catch((e: unknown) => {
+    `)[0].id;
+    }).catch((e: unknown) => {
       // La registró el escaneo del kit en la DPEI en el mismo instante (uq_tracking_salida_recinto).
       if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu salida del recinto');
       throw e;
-    }))[0].id;
+    });
 
+    // Si el kit ya se entregó en la DPEI (llegada registrada por el escaneo), la
+    // salida que llega tarde de la cola deja sus kits directamente "llegó a la DPEI".
+    const yaLlego = await this.prisma.eventoTracking.findFirst({
+      where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_DPI' },
+      select: { id: true },
+    });
     await this.prisma.kitElectoral.updateMany({
-      where: { eventoId: evento.id, operadorId, estado: 'EN_RECINTO' },
-      data: { estado: 'EN_RETORNO' },
+      where: { eventoId: evento.id, operadorId, estado: yaLlego ? { in: ['EN_RECINTO', 'EN_RETORNO'] } : 'EN_RECINTO' },
+      data: { estado: yaLlego ? 'RETORNADO' : 'EN_RETORNO' },
     });
 
     // Si reemplaza a la automática, el aviso de salida ya se mandó.

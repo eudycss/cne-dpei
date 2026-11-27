@@ -1285,9 +1285,18 @@ describe('TrackingService', () => {
         expect(marcas().map((m: any) => m.tipo)).toEqual(['LLEGADA_DPI']);
       });
 
-      it('si ya llegó a la DPEI, nunca salió de ella o el evento no está activo: no registra nada', async () => {
+      it('si ya llegó a la DPEI (marcó o se escaneó otro kit), solo deja este kit como "llegó a la DPEI"', async () => {
         preparar(['SALIDA_DPI', 'SALIDA_RECINTO', 'LLEGADA_DPI']);
         await verificar();
+        expect(prisma.eventoTracking.create).not.toHaveBeenCalled();
+        expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+          where: { id: kitId, estado: { in: ['ENTREGADO', 'EN_RECINTO', 'EN_RETORNO'] } },
+          data: { estado: 'RETORNADO' },
+        });
+        expect(notifications.encolarLlegadaDpi).not.toHaveBeenCalled();
+      });
+
+      it('si nunca salió de la DPEI o el evento no está activo: no registra nada', async () => {
         preparar([]);
         await verificar();
         prisma.kitElectoral.findUnique.mockResolvedValueOnce(kitEnRecinto);
@@ -1462,16 +1471,20 @@ describe('TrackingService', () => {
     const llegadaInsertada = () =>
       prisma.$queryRaw.mock.calls.some(([sql]: any[]) => Array.isArray(sql) && sql.join('').includes("'LLEGADA_RECINTO'"));
 
-    it('dentro de la geocerca y ya salió de la DPEI: registra la llegada con el motivo desde el INSERT, sin avisar aún', async () => {
+    it('dentro de la geocerca y ya salió de la DPEI: registra la llegada con el motivo y avisa ya a los supervisores', async () => {
       preparar(['SALIDA_DPI']);
       prisma.$queryRaw.mockResolvedValueOnce([{ id: 'llegada-kit' }]); // insert llegada
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: kitId }]);
+      prisma.recepcionKit.count.mockResolvedValueOnce(1);
 
       await service.confirmarRecepcionKit(operadorId, input as any);
 
       const insert = prisma.$queryRaw.mock.calls.find(([sql]: any[]) => Array.isArray(sql) && sql.join('').includes("'LLEGADA_RECINTO'"));
       expect(insert).toBeDefined();
       expect(insert!.slice(1)).toContain(MOTIVO_LLEGADA_POR_KIT);
-      expect(notifications.encolarLlegadaRecinto).not.toHaveBeenCalled(); // avisa el "Confirmar" final, con todos los kits
+      expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ kitsRecibidos: 1 }) }),
+      );
     });
 
     it('fuera de la geocerca, sin salida de la DPEI, sin señal o con el evento inactivo: no la registra', async () => {
@@ -1491,6 +1504,24 @@ describe('TrackingService', () => {
       preparar(['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO'], { distancia: false });
       await service.confirmarRecepcionKit(operadorId, input as any);
       expect(prisma.kitElectoral.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { estado: 'EN_RECINTO' } }));
+    });
+
+    it('con 2 kits: el primer escaneo registra la llegada sin avisar; el que completa los kits avisa con los 2', async () => {
+      preparar(['SALIDA_DPI']);
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'llegada-kit' }]);
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1' }, { id: 'k2' }]);
+      prisma.recepcionKit.count.mockResolvedValueOnce(1);
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      expect(notifications.encolarLlegadaRecinto).not.toHaveBeenCalled();
+
+      preparar(['SALIDA_DPI', 'LLEGADA_RECINTO'], { distancia: false });
+      prisma.eventoTracking.findFirst.mockResolvedValueOnce({ ocurridoEn: new Date(ocurridoEn), motivoManual: MOTIVO_LLEGADA_POR_KIT });
+      prisma.kitElectoral.findMany.mockResolvedValueOnce([{ id: 'k1' }, { id: 'k2' }]);
+      prisma.recepcionKit.count.mockResolvedValueOnce(2);
+      await service.confirmarRecepcionKit(operadorId, input as any);
+      expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ kitsRecibidos: 2 }) }),
+      );
     });
 
     it('con la llegada ya registrada, el kit recién escaneado pasa a EN_RECINTO', async () => {
@@ -1521,16 +1552,14 @@ describe('TrackingService', () => {
       prisma.recepcionKit.findMany.mockResolvedValueOnce(recibidos.map((kitId) => ({ kitId })));
     };
 
-    it('el "Confirmar" final reconoce la llegada del escaneo y avisa con todos los kits, en vez de dar 409', async () => {
+    it('el "Confirmar" final reconoce la llegada del escaneo (ya avisada) sin repetir el aviso ni dar 409', async () => {
       confirmarFinal(['k1', 'k2']);
       await expect(service.registrarLlegadaRecinto(operadorId, { ...geo, ocurridoEn } as any)).resolves.toEqual({
         id: 'llegada-kit',
         ocurridoEn: new Date(ocurridoEn).toISOString(),
       });
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
-      expect(notifications.encolarLlegadaRecinto).toHaveBeenCalledWith(
-        expect.objectContaining({ payload: expect.objectContaining({ kitsRecibidos: 2 }) }),
-      );
+      expect(notifications.encolarLlegadaRecinto).not.toHaveBeenCalled();
     });
 
     it('el "Confirmar" final sigue exigiendo todos los kits aunque la llegada ya esté registrada por el escaneo', async () => {
@@ -1679,8 +1708,26 @@ describe('TrackingService', () => {
       prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-real' }]);
 
       await expect(service.registrarSalidaRecinto(operadorId, conActas as any)).resolves.toMatchObject({ id: 'salida-real' });
-      expect(prisma.eventoTracking.delete).toHaveBeenCalledWith({ where: { id: 'auto' } });
+      expect(prisma.eventoTracking.deleteMany).toHaveBeenCalledWith({ where: { id: 'auto' } });
       expect(notifications.encolarSalidaRecinto).not.toHaveBeenCalled();
+    });
+
+    it('la salida que llega tarde con la llegada a la DPEI ya registrada deja sus kits como "llegó a la DPEI"', async () => {
+      prisma.eventoElectoral.findFirst.mockResolvedValueOnce(evento);
+      prisma.eventoTracking.findFirst
+        .mockResolvedValueOnce(null) // sin salida previa
+        .mockResolvedValueOnce({ id: 'tk-llegada' }) // llegada al recinto
+        .mockResolvedValueOnce({ id: 'llegada-dpi' }); // ya llegó a la DPEI (por el escaneo)
+      storage.exists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      prisma.kitElectoral.findFirst.mockResolvedValueOnce({ recintoId });
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'salida-real' }]);
+
+      await service.registrarSalidaRecinto(operadorId, conActas as any);
+
+      expect(prisma.kitElectoral.updateMany).toHaveBeenCalledWith({
+        where: { eventoId, operadorId, estado: { in: ['EN_RECINTO', 'EN_RETORNO'] } },
+        data: { estado: 'RETORNADO' },
+      });
     });
 
     it('lanza BadRequestException si no registró la llegada al recinto antes', async () => {

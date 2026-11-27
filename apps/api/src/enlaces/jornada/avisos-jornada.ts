@@ -138,7 +138,8 @@ function avisoAlerta(a: AlertaParaAviso, u: UnidadJornada | undefined): AvisoJor
   };
 }
 
-const NOTA_KIT = '\n   📦 Kit entregado al Asistente Transversal · falta marcar la llegada en la app';
+const NOTA_KIT = '\n   📦 Registrada al entregar el kit al Asistente Transversal';
+const NOTA_KIT_SIN_MARCA = '\n   📦 Kit entregado al Asistente Transversal · falta marcar la llegada en la app';
 
 /**
  * Cada pareja que llega a la Delegación, con el conteo de recintos CDA: un
@@ -170,7 +171,7 @@ function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string
     })
     .sort((a, b) => llegadaDpeiDe(a)!.registro.en.getTime() - llegadaDpeiDe(b)!.registro.en.getTime())
     .map((u): AvisoJornada => {
-      const { registro: llegada, porKit } = llegadaDpeiDe(u)!;
+      const { registro: llegada, porKit, registrada } = llegadaDpeiDe(u)!;
       const salida = u.registros.SALIDA_RECINTO;
       // Con la hora del kit no se calcula retraso: el kit se recibe después de llegar.
       const tarde =
@@ -181,7 +182,7 @@ function avisosLlegadaDpei(j: Jornada, ahora: Date, enviados: ReadonlySet<string
           `🏁 <b>Llegó a la Delegación</b> · ${hora(llegada.en)}${tarde > 0 ? ` · +${tarde} min` : ''}\n${cabecera(u)}\n` +
           lineaPersonas(u.personas) +
           (llegada.sinSenal ? '\n   📴 marcado sin señal' : '') +
-          (porKit ? NOTA_KIT : '') +
+          (porKit ? (registrada ? NOTA_KIT : NOTA_KIT_SIN_MARCA) : '') +
           `\nRecintos CDA: llegaron <b>${llegaron} de ${total}</b>` +
           (llegaron < total ? ` · faltan ${total - llegaron}` : ''),
       };

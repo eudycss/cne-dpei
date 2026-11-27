@@ -5,6 +5,7 @@ import { DistributivoTecnicosClient, type AsignacionTecnico } from '../distribut
 import { escapeHtml } from '../../auth/notifier';
 import { buscarRecintosDetalle } from '../asistente/buscar-recintos';
 import { TelegramNotifier } from '../telegram-notifier';
+import { MOTIVO_KIT_EN_DPEI } from '../../tracking/motivos-marcas';
 import {
   BOTON_CONSULTAR_CDA,
   MOMENTOS_JORNADA,
@@ -487,6 +488,7 @@ export class JornadaService {
           tipo: true,
           ocurridoEn: true,
           desdeOffline: true,
+          motivoManual: true,
           // Solo vienen llenos en la SALIDA_RECINTO (Cumplimiento).
           actaInstalacionUrl: true,
           actaEscrutinioUrl: true,
@@ -557,7 +559,12 @@ export class JornadaService {
       }
       const registros = registrosPorOperador.get(t.operadorId) ?? {};
       const momento = t.tipo as MomentoJornada;
-      registros[momento] ??= { en: t.ocurridoEn, sinSenal: t.desdeOffline };
+      registros[momento] ??= {
+        en: t.ocurridoEn,
+        sinSenal: t.desdeOffline,
+        // Solo la llegada a la DPEI registrada por el escaneo del kit (no la de la app).
+        ...(t.tipo === 'LLEGADA_DPI' && t.motivoManual === MOTIVO_KIT_EN_DPEI ? { porKit: true } : {}),
+      };
       registrosPorOperador.set(t.operadorId, registros);
       // Reportes de sus salidas del recinto del día: vale cualquiera que los traiga.
       if (momento === 'SALIDA_RECINTO') {
