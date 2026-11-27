@@ -19,8 +19,9 @@ export const FALLOS_PARA_DESCARTAR = 3;
 
 /**
  * Avisos con sonido del grupo Jornada: retrasos (ida y vuelta) según el tiempo
- * de viaje de cada recinto, "✅ llegó", sin GPS en el camino y las alertas del
- * sistema reenviadas una vez. Lo enviado queda en avisos_jornada: tras un
+ * de viaje de cada recinto, "✅ llegó" al recinto tras un retraso, cada llegada
+ * a la Delegación con los recintos CDA que faltan (y el cierre "llegaron
+ * todos"), sin GPS en el camino y las alertas del sistema reenviadas una vez. Lo enviado queda en avisos_jornada: tras un
  * reinicio no se repite. Mismo interruptor que los demás crons del bot.
  */
 @Injectable()
