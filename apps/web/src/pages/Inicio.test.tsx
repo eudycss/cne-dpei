@@ -5,7 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router';
 import type { RoleName } from '@cne/shared-types';
 
 import { AuthProvider } from '../auth/AuthContext';
-import { Inicio } from './Inicio';
+import { CONSULTA_CELULAR, Inicio } from './Inicio';
 import { api } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
@@ -38,6 +38,7 @@ function renderInicio(roles: RoleName[]) {
             <Route path="/" element={<Inicio />} />
             <Route path="/reportes/cadena-custodia" element={<div>informe de custodia</div>} />
             <Route path="/kits" element={<div>página de kits</div>} />
+            <Route path="/custodia/entrega" element={<div>entrega a militares</div>} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>
@@ -61,6 +62,17 @@ describe('Inicio', () => {
     renderInicio(['ASISTENTE_TRANSVERSAL']);
     expect(screen.getByText('informe de custodia')).toBeInTheDocument();
     expect(screen.queryByText('panel de preparación')).not.toBeInTheDocument();
+  });
+
+  it('en el celular, el asistente transversal va directo a entregar kits a militares', () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q === CONSULTA_CELULAR }) as MediaQueryList) as typeof window.matchMedia;
+    try {
+      renderInicio(['ASISTENTE_TRANSVERSAL']);
+      expect(screen.getByText('entrega a militares')).toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('si el administrador le ocultó la preparación, va al primer módulo que sí puede ver', async () => {

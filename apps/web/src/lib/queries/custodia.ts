@@ -1,4 +1,14 @@
-import type { FilaInformeCustodia } from '@cne/shared-types';
+import type {
+  CambiarOperadorRequest,
+  CorregirMilitarRequest,
+  EntregaCustodio,
+  FilaInformeCustodia,
+  KitCustodiaResponse,
+  MilitarResumen,
+  OperadorResumen,
+  RegistrarEntregaRequest,
+  ResumenCustodia,
+} from '@cne/shared-types';
 import { api } from '../api';
 
 export interface FiltrosCustodia {
@@ -12,6 +22,30 @@ function params(f: FiltrosCustodia): Record<string, string> {
   if (f.recintoId) p.recintoId = f.recintoId;
   return p;
 }
+
+// Entrega de kits a militares desde el navegador (Asistente Transversal con iPhone):
+// los mismos endpoints que usa la app móvil.
+
+/** Kits entregados a militares del evento activo, de cuántos hay que entregar. */
+export const getResumenCustodia = () => api.get<ResumenCustodia>('/custodia/resumen').then((r) => r.data);
+
+export const validarKitCustodia = (codigo: string) =>
+  api.post<KitCustodiaResponse>('/custodia/validar-kit', { codigo }).then((r) => r.data);
+
+export const registrarEntrega = (body: RegistrarEntregaRequest) =>
+  api.post<EntregaCustodio>('/custodia/entregas', body).then((r) => r.data);
+
+export const corregirMilitar = (kitId: string, body: CorregirMilitarRequest) =>
+  api.patch<EntregaCustodio>(`/custodia/entregas/${kitId}/militar`, body).then((r) => r.data);
+
+export const cambiarOperador = (kitId: string, body: CambiarOperadorRequest) =>
+  api.patch<OperadorResumen>(`/custodia/kits/${kitId}/operador`, body).then((r) => r.data);
+
+export const buscarMilitares = (buscar: string) =>
+  api.get<MilitarResumen[]>('/custodia/militares', { params: { buscar } }).then((r) => r.data);
+
+export const buscarOperadores = (buscar: string) =>
+  api.get<OperadorResumen[]>('/custodia/operadores', { params: { buscar } }).then((r) => r.data);
 
 export const getInformeCustodia = () => api.get<FilaInformeCustodia[]>('/custodia/informe');
 

@@ -8,6 +8,7 @@ import { Layout } from './pages/Layout';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { CargaDePagina } from './components/CargaDePagina';
 import { lazyPage } from './lib/lazy-page';
+import { ROLES_ENTREGA_MILITAR } from './lib/roles';
 
 // Cada página va en su propio archivo .js y se descarga al entrar a ella: el
 // login y el armazón (Layout) no cargan MapLibre, Excel ni PDF de golpe.
@@ -36,6 +37,7 @@ const SimuladorPage = lazyPage(() => import('./pages/simulador/SimuladorPage'), 
 const SimuladorPublicoPage = lazyPage(() => import('./pages/simulador-publico/SimuladorPublicoPage'), 'SimuladorPublicoPage');
 const EvaticsPublicoPage = lazyPage(() => import('./pages/evatics-publico/EvaticsPublicoPage'), 'EvaticsPublicoPage');
 const InformeCdaPage = lazyPage(() => import('./pages/informe-cda/InformeCdaPage'), 'InformeCdaPage');
+const EntregaMilitarPage = lazyPage(() => import('./pages/custodia/EntregaMilitarPage'), 'EntregaMilitarPage');
 
 export default function App() {
   return (
@@ -53,6 +55,15 @@ export default function App() {
         <Route path="/evatics" element={<EvaticsPublicoPage />} />
         {/* Pública: el personal CDA/CPE sube 6 fotos y descarga su informe de productos. */}
         <Route path="/informe-cda" element={<InformeCdaPage />} />
+        {/* Entrega de kits a militares desde el celular (Asistente con iPhone): sin menú lateral, cabe en el teléfono. */}
+        <Route
+          path="/custodia/entrega"
+          element={
+            <ProtectedRoute roles={ROLES_ENTREGA_MILITAR}>
+              <EntregaMilitarPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/change-password"
           element={
