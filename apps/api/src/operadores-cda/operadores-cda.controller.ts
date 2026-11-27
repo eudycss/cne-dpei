@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -20,10 +21,15 @@ import {
   cambiarDispositivoOperadorCdaSchema,
   crearOperadorCdaSchema,
   editarOperadorCdaSchema,
+  reportePersonalCdaSchema,
+  type ReportePersonalCdaInput,
 } from '@cne/shared-validation';
 import type { CambiarCargoOperadorCdaRequest, CrearOperadorCdaRequest, DispositivoCda, EditarOperadorCdaRequest } from '@cne/shared-types';
+import { Throttle } from '@nestjs/throttler';
+import type { Response } from 'express';
 
 import { OperadoresCdaService } from './operadores-cda.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from './reporte-cda';
 import { parsearGrupo } from './grupo-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -31,6 +37,7 @@ import { LecturaConfigurable, Roles } from '../common/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-body.pipe';
 import { CurrentUser, type AuthenticatedUser } from '../common/current-user.decorator';
 import { ModuloGuard, RequiereModulo } from '../permisos-modulos/modulo.guard';
+import { PermisoGuard, RequierePermiso } from '../permisos-modulos/permiso.guard';
 
 @ApiTags('operadores-cda')
 @ApiBearerAuth()
@@ -88,6 +95,26 @@ export class OperadoresCdaController {
   @ApiOperation({ summary: 'Hombres, mujeres y sin registrar por cargo CDA/CPE (solo personal activo)' })
   resumenSexo() {
     return this.operadores.resumenSexo();
+  }
+
+  @Get('reporte-personal.xlsx')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @RequierePermiso('cda.personal.exportar')
+  @UseGuards(PermisoGuard)
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel del personal activo de los cargos elegidos (?cargos= uno o repetido, ?modo=GENERAL|POR_CARGO)' })
+  async reportePersonalXlsx(@Query(new ZodValidationPipe(reportePersonalCdaSchema)) q: ReportePersonalCdaInput, @Res() res: Response) {
+    enviarReporte(res, await this.operadores.reportePersonal(q, 'xlsx'));
+  }
+
+  @Get('reporte-personal.pdf')
+  @Roles('ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL')
+  @RequierePermiso('cda.personal.exportar')
+  @UseGuards(PermisoGuard)
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF del personal activo de los cargos elegidos (?cargos= uno o repetido, ?modo=GENERAL|POR_CARGO)' })
+  async reportePersonalPdf(@Query(new ZodValidationPipe(reportePersonalCdaSchema)) q: ReportePersonalCdaInput, @Res() res: Response) {
+    enviarReporte(res, await this.operadores.reportePersonal(q, 'pdf'));
   }
 
   @Post()

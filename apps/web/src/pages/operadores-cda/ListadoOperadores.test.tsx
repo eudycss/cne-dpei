@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { PERMISO_IDS } from '@cne/shared-validation';
@@ -177,6 +177,31 @@ describe('ListadoOperadores', () => {
     renderPagina();
     await screen.findByRole('list', { name: 'Operadores CDA' });
     expect(screen.queryByRole('button', { name: 'Importar Excel' })).not.toBeInTheDocument();
+  });
+
+  it.each<RoleName>(['ADMINISTRADOR', 'TECNICO_SUPERVISOR', 'ASISTENTE_TRANSVERSAL'])(
+    '%s con la acción ve "Descargar reporte" aunque no tenga otras y abre la ventana',
+    async (rol) => {
+      roles = [rol];
+      permisos.actuales = new Set(['cda.personal.exportar']);
+      onTestFinished(() => getMock.mockReset());
+      getMock.mockImplementation((url: string) =>
+        Promise.resolve({ data: url === '/cargos-cda' ? [] : [operador({})] }),
+      );
+      renderPagina();
+      await screen.findByRole('list', { name: 'Operadores CDA' });
+      await userEvent.click(screen.getByRole('button', { name: 'Descargar reporte' }));
+      expect(screen.getByRole('dialog', { name: 'Reporte del personal' })).toBeInTheDocument();
+    },
+  );
+
+  it('sin la acción de descargar el reporte del personal no ve el botón', async () => {
+    roles = ['ASISTENTE_TRANSVERSAL'];
+    permisos.actuales = new Set(['cda.asistencia.marcar']);
+    getMock.mockResolvedValueOnce({ data: [operador({})] });
+    renderPagina();
+    await screen.findByRole('list', { name: 'Operadores CDA' });
+    expect(screen.queryByRole('button', { name: 'Descargar reporte' })).not.toBeInTheDocument();
   });
 
   it('un asistente con la acción de emitir ve "Carnets QR" pero no importar ni agregar', async () => {

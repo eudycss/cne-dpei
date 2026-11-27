@@ -35,6 +35,7 @@ describe('OperadoresCdaService', () => {
       upsert: jest.fn((args: unknown) => args),
       groupBy: jest.fn(),
     },
+    cargoCda: { findMany: jest.fn() },
     $transaction: jest.fn((ops: unknown) =>
       typeof ops === 'function' ? (ops as (tx: unknown) => unknown)(prisma) : Promise.resolve(ops),
     ),
@@ -444,6 +445,43 @@ describe('OperadoresCdaService', () => {
         { grupo: 'DIGITADOR', hombres: 0, mujeres: 0, sinRegistrar: 4 },
         { grupo: 'OPERADOR', hombres: 27, mujeres: 36, sinRegistrar: 0 },
       ]);
+    });
+
+    it('reportePersonal: solo cargos activos pedidos y su personal activo', async () => {
+      prisma.cargoCda.findMany.mockResolvedValueOnce([{ clave: 'DIGITADOR', nombre: 'Digitadores', centro: 'CPE', orden: 3 }]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ apellidosNombres: 'VEGA ANA', cedula: '1000000002', grupo: 'DIGITADOR' }]);
+
+      const r = await service.reportePersonal({ cargos: ['DIGITADOR', 'SUPERVISOR'], modo: 'GENERAL' }, 'xlsx');
+
+      expect(prisma.cargoCda.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { clave: { in: ['DIGITADOR', 'SUPERVISOR'] }, activo: true } }),
+      );
+      expect(prisma.operadorCda.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { activo: true, grupo: { in: ['DIGITADOR'] } } }),
+      );
+      expect(r.nombre).toMatch(/^personal_cpe_\d{4}-\d{2}-\d{2}\.xlsx$/);
+    });
+
+    it('reportePersonal: por cargo en PDF, también con un cargo activo sin personal', async () => {
+      prisma.cargoCda.findMany.mockResolvedValueOnce([
+        { clave: 'OPERADOR', nombre: 'Operadores CDA', centro: 'CDA', orden: 1 },
+        { clave: 'ASISTENTE', nombre: 'Asistentes CDA', centro: 'CDA', orden: 2 },
+      ]);
+      prisma.operadorCda.findMany.mockResolvedValueOnce([{ apellidosNombres: 'PÉREZ JOSÉ', cedula: '1000000001', grupo: 'OPERADOR' }]);
+
+      const r = await service.reportePersonal({ cargos: ['OPERADOR', 'ASISTENTE'], modo: 'POR_CARGO' }, 'pdf');
+
+      expect(r.tipo).toBe('application/pdf');
+      expect(r.nombre).toMatch(/^personal_cda_por_cargo_\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(r.contenido.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    it('reportePersonal: si ningún cargo pedido está activo, 400 sin leer el personal', async () => {
+      prisma.cargoCda.findMany.mockResolvedValueOnce([]);
+      await expect(service.reportePersonal({ cargos: ['SUPERVISOR'], modo: 'GENERAL' }, 'pdf')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.operadorCda.findMany).not.toHaveBeenCalled();
     });
 
     it('dispositivo: guarda Android, iPhone o ninguno y devuelve solo eso; un id inexistente da 404', async () => {

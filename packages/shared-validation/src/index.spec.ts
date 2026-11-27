@@ -23,6 +23,8 @@ import {
   corregirAsistenciaCdaSchema,
   rangoAsistenciaSchema,
   modoReporteCdaSchema,
+  reportePersonalCdaSchema,
+  MAX_CARGOS_REPORTE_PERSONAL,
   diasDelRango,
   tokenCredencialQrCdaSchema,
   marcarQrCdaSchema,
@@ -465,6 +467,25 @@ describe('asistencia CDA', () => {
     expect(modoReporteCdaSchema.parse('POR_DIA')).toBe('POR_DIA');
     expect(modoReporteCdaSchema.safeParse('por_dia').success).toBe(false);
     expect(modoReporteCdaSchema.safeParse(['GENERAL']).success).toBe(false);
+  });
+});
+
+describe('reportePersonalCdaSchema', () => {
+  it('acepta un cargo suelto o repetido, quita duplicados y por defecto es GENERAL', () => {
+    expect(reportePersonalCdaSchema.parse({ cargos: 'OPERADOR' })).toEqual({ cargos: ['OPERADOR'], modo: 'GENERAL' });
+    expect(reportePersonalCdaSchema.parse({ cargos: ['OPERADOR', 'DIGITADOR', 'OPERADOR'], modo: 'POR_CARGO' })).toEqual({
+      cargos: ['OPERADOR', 'DIGITADOR'],
+      modo: 'POR_CARGO',
+    });
+  });
+
+  it('rechaza sin cargos, claves inválidas, demasiados cargos y modo desconocido', () => {
+    expect(reportePersonalCdaSchema.safeParse({}).success).toBe(false);
+    expect(reportePersonalCdaSchema.safeParse({ cargos: [] }).success).toBe(false);
+    expect(reportePersonalCdaSchema.safeParse({ cargos: ['operador'] }).success).toBe(false);
+    const muchos = Array.from({ length: MAX_CARGOS_REPORTE_PERSONAL + 1 }, (_, i) => `C_${i}`);
+    expect(reportePersonalCdaSchema.safeParse({ cargos: muchos }).success).toBe(false);
+    expect(reportePersonalCdaSchema.safeParse({ cargos: 'OPERADOR', modo: 'POR_DIA' }).success).toBe(false);
   });
 });
 

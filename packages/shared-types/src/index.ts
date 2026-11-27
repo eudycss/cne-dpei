@@ -1911,6 +1911,8 @@ export interface ReporteAtrasosCda {
 /** Reportes de asistencia y atrasos: todo en una tabla o una hoja/sección por día. */
 export type ModoReporteCda = 'GENERAL' | 'POR_DIA';
 export type FormatoReporteCda = 'xlsx' | 'pdf';
+/** Reporte del personal CDA/CPE: todo en una tabla o una hoja/sección por cargo. */
+export type ModoReportePersonalCda = 'GENERAL' | 'POR_CARGO';
 
 export interface MarcarAsistenciaCdaRequest {
   tipo: TipoMarcaAsistenciaCda;

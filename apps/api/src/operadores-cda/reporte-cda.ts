@@ -78,6 +78,8 @@ export interface ReporteCda {
   modo: ModoReporteCda;
   /** false: el PDF no se limita por días (su tamaño no depende del rango, p. ej. el historial de fechas sueltas). */
   limitarDiasPdf?: boolean;
+  /** true: el nombre del archivo lleva una sola fecha (reportes sin rango, p. ej. el del personal). */
+  unaFecha?: boolean;
   tablas: TablaReporte[];
 }
 
@@ -146,7 +148,8 @@ export async function generarReporte(r: ReporteCda, formato: FormatoReporteCda):
   }
   const contenido = formato === 'pdf' ? await pdfReporte(r) : await excelReporte(r);
   const sufijo = r.modo === 'POR_DIA' ? '_por_dia' : '';
-  return { nombre: `${r.archivo}_${r.desde}_${r.hasta}${sufijo}.${formato}`, tipo: TIPO[formato], contenido };
+  const fechas = r.unaFecha ? r.desde : `${r.desde}_${r.hasta}`;
+  return { nombre: `${r.archivo}_${fechas}${sufijo}.${formato}`, tipo: TIPO[formato], contenido };
 }
 
 export function enviarReporte(res: Response, a: ArchivoReporte): void {

@@ -1,9 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import { operadorCdaFilaSchema } from '@cne/shared-validation';
+import { operadorCdaFilaSchema, type ReportePersonalCdaInput } from '@cne/shared-validation';
 import type {
   BulkUploadRow,
   CambiarCargoOperadorCdaResult,
+  CentroCda,
+  FormatoReporteCda,
   CrearOperadorCdaRequest,
   DispositivoCda,
   EditarOperadorCdaRequest,
@@ -24,6 +26,8 @@ import { asegurarCargoActivo, textosGrupo } from './grupo-cda';
 import { diaDeFechaDb, diaEcuador, fechaDb } from './dia-ecuador';
 import { Prisma } from '@prisma/client';
 import { idsPorBusqueda } from '../common/busqueda-sql';
+import { type ArchivoReporte, generarReporte } from './reporte-cda';
+import { reportePersonal } from './reporte-personal-cda';
 
 // Un .xlsx es un ZIP: empieza con "PK\x03\x04".
 const FIRMA_ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -132,6 +136,29 @@ export class OperadoresCdaService {
       porGrupo.set(f.grupo, r);
     }
     return [...porGrupo.values()].sort((a, b) => a.grupo.localeCompare(b.grupo));
+  }
+
+  /**
+   * Excel o PDF del personal activo de los cargos elegidos (general o por cargo).
+   * Un cargo desactivado o que no existe se ignora; si no queda ninguno, 400.
+   */
+  async reportePersonal(opciones: ReportePersonalCdaInput, formato: FormatoReporteCda): Promise<ArchivoReporte> {
+    const cargos = await this.prisma.cargoCda.findMany({
+      where: { clave: { in: opciones.cargos }, activo: true },
+      select: { clave: true, nombre: true, centro: true, orden: true },
+    });
+    if (cargos.length === 0) throw new BadRequestException('Elija al menos un cargo activo');
+    const personas = await this.prisma.operadorCda.findMany({
+      where: { activo: true, grupo: { in: cargos.map((c) => c.clave) } },
+      select: { apellidosNombres: true, cedula: true, grupo: true },
+    });
+    const reporte = reportePersonal(
+      cargos.map((c) => ({ ...c, centro: c.centro as CentroCda })),
+      personas,
+      opciones.modo,
+      diaEcuador(),
+    );
+    return generarReporte(reporte, formato);
   }
 
   /** Celular de la persona (ANDROID/IPHONE, o null si no se sabe). */

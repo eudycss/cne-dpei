@@ -60,6 +60,16 @@ function resumenDescargaReporte(req: Request): Record<string, unknown> {
   return { grupo: grupoCda(req), desde: dia(q.desde), hasta: dia(q.hasta), modo, formato };
 }
 
+/** Reporte del personal CDA/CPE: claves de cargo (acotadas), modo y formato; nada personal. */
+function resumenReportePersonal(req: Request): Record<string, unknown> {
+  const q = (req.query ?? {}) as Record<string, unknown>;
+  const lista = Array.isArray(q.cargos) ? q.cargos : [q.cargos];
+  const cargos = lista.filter((c): c is string => typeof c === 'string').slice(0, 50).map((c) => c.slice(0, 40));
+  const modo = q.modo === 'POR_CARGO' ? 'POR_CARGO' : 'GENERAL';
+  const formato = (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx';
+  return { cargos, modo, formato };
+}
+
 /** Reporte por técnico: día, formato y técnicos pedidos (nombres del distributivo, acotados). */
 function resumenReporteTecnicos(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
@@ -355,6 +365,14 @@ const AUDIT_TABLE: Array<{
     accion: 'ASISTENCIA_CDA_EXPORTAR',
     entidad: 'asistencia_cda',
     resumen: (_res, req) => resumenDescargaReporte(req),
+  },
+  // Reporte del personal CDA/CPE (lleva cédulas): los cargos, el modo y el formato pedidos.
+  {
+    method: 'GET',
+    pathRegex: /^\/operadores-cda\/reporte-personal\.(xlsx|pdf)$/,
+    accion: 'PERSONAL_CDA_EXPORTAR',
+    entidad: 'operador_cda',
+    resumen: (_res, req) => resumenReportePersonal(req),
   },
   // Reporte por técnico de Parejas CDA (Excel, PDF o .vcf con celulares): el día, el formato y los técnicos pedidos.
   {
