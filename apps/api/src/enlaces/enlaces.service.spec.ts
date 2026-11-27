@@ -494,7 +494,7 @@ describe('EnlacesService', () => {
       });
     });
 
-    it('el aviso cuenta los caídos según la hoja, aunque un recinto aún no confirme su vuelta', async () => {
+    it('el aviso cuenta los caídos según la hoja; un caído confirmado que se lee ACTIVO ya se recupera', async () => {
       sheetsClient.leerEnlacesImbabura.mockResolvedValue([
         { codigoRecinto: '1476', nombreRecinto: 'UE Víctor Mideros', estado: 'ACTIVO' },
         { codigoRecinto: '100', nombreRecinto: 'Parpadea', estado: 'ACTIVO' },
@@ -502,14 +502,14 @@ describe('EnlacesService', () => {
       ]);
       prisma.enlaceRecinto.findUnique
         .mockResolvedValueOnce(antes('FALLO', 'ACTIVO')) // 2.ª lectura ACTIVO: recuperación confirmada
-        .mockResolvedValueOnce(antes('FALLO', 'FALLO')) // 1.ª lectura ACTIVO: sigue confirmado en FALLO
+        .mockResolvedValueOnce(antes('FALLO', 'FALLO')) // 1.ª lectura ACTIVO: se recupera sin esperar otro ciclo
         .mockResolvedValueOnce(antes('FALLO', 'FALLO'));
       prisma.configEnlaces.findUnique.mockResolvedValue({ correos: [] });
 
       await service.revisarEnlaces();
 
       const aviso = telegram.enviarAvisoCiclo.mock.calls[0][0];
-      expect(aviso.recuperados.map((e: { codigoRecinto: string }) => e.codigoRecinto)).toEqual(['1476']);
+      expect(aviso.recuperados.map((e: { codigoRecinto: string }) => e.codigoRecinto)).toEqual(['1476', '100']);
       expect(aviso.caidos.map((e: { codigoRecinto: string }) => e.codigoRecinto)).toEqual(['5939']);
       expect(aviso.activos).toHaveLength(2);
     });
@@ -557,7 +557,7 @@ describe('EnlacesService', () => {
         expect(notifications.encolarEnlaceCaido).not.toHaveBeenCalled();
       });
 
-      it('caída y recuperación se avisan una vez cada una, al leerse igual dos ciclos seguidos', async () => {
+      it('la caída se avisa al leerse dos ciclos seguidos; la recuperación, en el primer ACTIVO', async () => {
         await ciclos('ACTIVO', 'ACTIVO', 'FALLO');
         expect(telegram.enviarAvisoCiclo).not.toHaveBeenCalled();
 
@@ -565,12 +565,15 @@ describe('EnlacesService', () => {
         expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
         expect(telegram.enviarAvisoCiclo.mock.calls[0][0].nuevos).toEqual(new Set(['978']));
 
-        await ciclos('FALLO', 'ACTIVO');
+        await ciclos('FALLO');
         expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(1);
 
-        await ciclos('ACTIVO'); // 10 min en ACTIVO → recuperado
+        await ciclos('ACTIVO'); // primer ACTIVO → recuperado (sin esperar otros 5 min)
         expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(2);
         expect(telegram.enviarAvisoCiclo.mock.calls[1][0].recuperados).toEqual([{ ...recinto, canton: null }]);
+
+        await ciclos('ACTIVO', 'FALLO', 'ACTIVO'); // un parpadeo suelto no avisa nada
+        expect(telegram.enviarAvisoCiclo).toHaveBeenCalledTimes(2);
       });
 
       it('vuelve a avisar una caída tras una recuperación confirmada (null→FALLO→ACTIVO→FALLO)', async () => {
@@ -904,10 +907,10 @@ describe('EnlacesService', () => {
       });
 
       it('un parpadeo no abre ni cierra caídas: el historial sigue lo confirmado', async () => {
-        leer(fila('978', 'ACTIVO'));
-        // Confirmado en FALLO; esta lectura en ACTIVO todavía no se confirma.
-        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('FALLO', 'FALLO'));
-        prisma.enlaceCaida.findMany.mockResolvedValue([{ codigoRecinto: '978', inicio: new Date() }]);
+        leer(fila('978', 'FALLO'));
+        // Confirmado en ACTIVO; este primer FALLO todavía no se confirma.
+        prisma.enlaceRecinto.findUnique.mockResolvedValue(antes('ACTIVO', 'ACTIVO'));
+        prisma.enlaceCaida.findMany.mockResolvedValue([]);
 
         await service.revisarEnlaces();
 

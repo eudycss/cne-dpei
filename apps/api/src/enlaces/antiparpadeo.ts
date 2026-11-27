@@ -1,9 +1,11 @@
 /**
  * Anti-parpadeo de enlaces: la hoja de monitoreo a veces marca un recinto en
  * FALLO un ciclo y ACTIVO el siguiente (y así por horas). Avisar cada cambio
- * llenó el grupo de Telegram con dos mensajes cada 5 min (11-nov-2026). Un
- * cambio solo cuenta cuando se lee igual dos ciclos seguidos (10 min con el
- * cron de 5 min) y es distinto del último estado que ya se confirmó.
+ * llenó el grupo de Telegram con dos mensajes cada 5 min (11-nov-2026). Una
+ * caída solo cuenta cuando se lee igual dos ciclos seguidos (10 min con el
+ * cron de 5 min). La recuperación de un enlace caído confirmado se avisa en
+ * el primer ciclo que lo lee ACTIVO (27-nov-2026: esperar otros 5 min retrasaba
+ * el "recuperado" sin evitar avisos, porque la caída siguiente igual espera).
  */
 export type EstadoLectura = 'ACTIVO' | 'FALLO';
 export type CambioConfirmado = 'CAIDA' | 'RECUPERACION' | null;
@@ -19,7 +21,8 @@ export interface EstadoGuardado {
  * Qué queda confirmado tras la lectura de este ciclo y si eso es una caída o una
  * recuperación que hay que avisar.
  * - Recinto nunca visto: se espera a la siguiente lectura.
- * - Lectura distinta de la anterior: no se confirma nada (puede ser un parpadeo).
+ * - Caído confirmado que se lee ACTIVO: recuperación en ese mismo ciclo.
+ * - Otra lectura distinta de la anterior: no se confirma nada (puede ser un parpadeo).
  * - Dos lecturas iguales y distintas de lo confirmado: cambio confirmado. Un
  *   recinto que se confirma en FALLO por primera vez cuenta como caída (si no, un
  *   enlace ya caído antes de arrancar el monitoreo quedaría mudo para siempre); uno
@@ -31,6 +34,7 @@ export function evaluarLectura(
 ): { confirmado: EstadoLectura | null; cambio: CambioConfirmado } {
   if (!anterior) return { confirmado: null, cambio: null };
   const previo = anterior.estadoConfirmado ?? null;
+  if (lectura === 'ACTIVO' && previo === 'FALLO') return { confirmado: 'ACTIVO', cambio: 'RECUPERACION' };
   if (lectura !== anterior.estado || lectura === previo) return { confirmado: previo, cambio: null };
   if (lectura === 'FALLO') return { confirmado: 'FALLO', cambio: 'CAIDA' };
   return { confirmado: 'ACTIVO', cambio: previo === 'FALLO' ? 'RECUPERACION' : null };
