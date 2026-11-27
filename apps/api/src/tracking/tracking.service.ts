@@ -159,6 +159,11 @@ function esRolTransversalKits(roles: RoleName[]): boolean {
   return roles.some((r) => r === 'ADMINISTRADOR' || r === 'ANALISTA_PROVINCIAL' || r === 'LECTOR' || r === 'ASISTENTE_TRANSVERSAL');
 }
 
+/** Llegada de un NO CDA antes de que el operador registre su llegada al CDA. */
+export const NO_CDA_ANTES_DE_LLEGAR = 'Primero registre su llegada al CDA; después podrá marcar los NO CDA que lleguen.';
+/** Llegada de un NO CDA cuando el operador ya salió del CDA. */
+export const NO_CDA_TRAS_SALIDA = 'Ya registró la salida del CDA: los NO CDA ya no se marcan desde la app.';
+
 @Injectable()
 export class TrackingService {
   private readonly logger = new Logger(TrackingService.name);
@@ -1214,6 +1219,7 @@ export class TrackingService {
       throw new NotFoundException('Ese NO-CDA no está a tu cargo');
     }
 
+
     const existente = await this.prisma.eventoTracking.findFirst({
       where: {
         eventoId: evento.id,
@@ -1224,6 +1230,16 @@ export class TrackingService {
       select: { id: true },
     });
     if (existente) throw new ConflictException('Ya registraste la llegada a este NO-CDA');
+
+    // Después del duplicado (un reintento de la cola sigue siendo "ya registrado").
+    // Un NO CDA llega al CDA mientras el operador está ahí: solo entre su
+    // llegada al CDA y su salida (antes la casilla se podía tocar desde la DPEI).
+    const etapas = await this.prisma.eventoTracking.findMany({
+      where: { eventoId: evento.id, operadorId, tipo: { in: ['LLEGADA_RECINTO', 'SALIDA_RECINTO'] } },
+      select: { tipo: true },
+    });
+    if (!etapas.some((e) => e.tipo === 'LLEGADA_RECINTO')) throw new BadRequestException(NO_CDA_ANTES_DE_LLEGAR);
+    if (etapas.some((e) => e.tipo === 'SALIDA_RECINTO')) throw new ConflictException(NO_CDA_TRAS_SALIDA);
 
     const ocurridoEn = new Date();
 
