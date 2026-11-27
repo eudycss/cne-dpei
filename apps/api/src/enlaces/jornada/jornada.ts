@@ -340,12 +340,36 @@ export function estadoVista(j: Jornada, vista: VistaJornada): EstadoVista {
   };
 }
 
+/**
+ * Recepción del kit en la DPEI que vale como llegada de la pareja: solo si es
+ * posterior a su salida del recinto de esta jornada (los kits se cargan desde
+ * medianoche y una recepción de madrugada es de la jornada anterior).
+ */
+export function kitRecibidoDeRetorno(u: UnidadJornada): Date | null {
+  const salida = u.registros.SALIDA_RECINTO;
+  return u.kitRecibido && salida && u.kitRecibido >= salida.en ? u.kitRecibido : null;
+}
+
+/**
+ * Llegada de la pareja a la DPEI: la marcada en la app o, si no la marcó (o la
+ * marcó después), la recepción de su kit por el Asistente Transversal.
+ * `porKit` = no la marcó: la hora es la del kit.
+ */
+export function llegadaDpeiDe(u: UnidadJornada): { registro: RegistroJornada; porKit: boolean } | null {
+  const marcada = u.registros.LLEGADA_DPI;
+  const kit = kitRecibidoDeRetorno(u);
+  if (marcada && (!kit || marcada.en <= kit)) return { registro: marcada, porKit: false };
+  if (kit) return { registro: { en: kit, sinSenal: false }, porKit: !marcada };
+  return null;
+}
+
 /** Llegó al DPEI sin que se reciba el kit, o se recibió el kit sin marcar la llegada; null si está en regla. */
 function kitPendiente(u: UnidadJornada): { registro: RegistroJornada; nota: string } | null {
   const llegada = u.registros.LLEGADA_DPI ?? null;
   if (llegada && !u.kitRecibido) return { registro: llegada, nota: 'llegó al DPEI · el kit no se ha recibido' };
+  const porKit = llegadaDpeiDe(u);
   if (!llegada && u.kitRecibido) {
-    return { registro: { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
+    return { registro: porKit?.registro ?? { en: u.kitRecibido, sinSenal: false }, nota: 'kit recibido · falta marcar la llegada al DPEI' };
   }
   return null;
 }

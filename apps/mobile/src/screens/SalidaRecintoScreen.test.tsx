@@ -6,6 +6,9 @@ import type { MiAsignacionResponse } from '@cne/shared-types';
 // react-test-renderer directamente (mismo patrón que LlegadaRecintoScreen.test.tsx).
 jest.setTimeout(30000);
 
+// La barra/ventana de NO CDA tiene sus pruebas (NoCdaPanel.test.tsx). Aquí se reemplaza: su
+// temporizador de bienvenida seguía vivo al terminar el archivo y rompía otra suite del mismo worker.
+jest.mock('../components/NoCdaPanel', () => ({ NoCdaPanel: () => null }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('../lib/queries/tracking', () => ({
   getMiAsignacion: jest.fn(),
