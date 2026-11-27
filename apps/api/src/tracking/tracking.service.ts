@@ -60,6 +60,7 @@ import {
 } from '@cne/shared-validation';
 
 import { PrismaService } from '../db/prisma.service';
+import { MOTIVO_KIT_EN_DPEI, MOTIVO_LLEGADA_POR_KIT } from './motivos-marcas';
 import { AlertasService } from '../alertas/alertas.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
@@ -107,6 +108,7 @@ export function parejasDelRecinto(
   );
 }
 const MAX_HOLGURA_GPS_METROS = 100;
+
 
 // HU5: margen para registrar la llegada a la Delegación (config_alertas.
 // margenLlegadaDpiMetros), mismo patrón que MARGEN_LLEGADA_METROS_DEFAULT.
@@ -164,8 +166,8 @@ export const NO_CDA_ANTES_DE_LLEGAR = 'Primero registre su llegada al CDA; despu
 /** Llegada de un NO CDA cuando el operador ya salió del CDA. */
 export const NO_CDA_TRAS_SALIDA = 'Ya registró la salida del CDA: los NO CDA ya no se marcan desde la app.';
 
-/** Motivo de la salida del recinto / llegada a la DPEI que se registran solas al escanear el kit en la DPEI. */
-export const MOTIVO_KIT_EN_DPEI = 'Registrada al recibir el kit en la DPEI';
+
+export { MOTIVO_KIT_EN_DPEI, MOTIVO_LLEGADA_POR_KIT };
 
 @Injectable()
 export class TrackingService {
@@ -600,6 +602,7 @@ export class TrackingService {
     });
 
     await this.alertarSiFaltaEntregaMilitar(kit, operadorId);
+    await this.llegadaRecintoPorKit(kit, operadorId, parsed);
 
     return {
       id: row.id,
@@ -764,18 +767,8 @@ export class TrackingService {
       const marca = { eventoId, operadorId, recintoId, ocurridoEn, registradoPorId, motivoManual: MOTIVO_KIT_EN_DPEI };
       let salidaCreada = false;
       if (!tipos.has('SALIDA_RECINTO') && tipos.has('LLEGADA_RECINTO')) {
+        // Si el operador la marcó en el mismo instante, el índice único deja la suya.
         salidaCreada = await this.crearMarcaTracking({ ...marca, tipo: 'SALIDA_RECINTO' });
-        // SALIDA_RECINTO no tiene índice único: si el operador la marcó en el mismo
-        // instante, se deja la suya y se quita la automática.
-        if (salidaCreada) {
-          const salidas = await this.prisma.eventoTracking.count({ where: { eventoId, operadorId, tipo: 'SALIDA_RECINTO' } });
-          if (salidas > 1) {
-            await this.prisma.eventoTracking.deleteMany({
-              where: { eventoId, operadorId, tipo: 'SALIDA_RECINTO', motivoManual: MOTIVO_KIT_EN_DPEI },
-            });
-            salidaCreada = false;
-          }
-        }
         if (salidaCreada) {
           await this.prisma.kitElectoral.updateMany({
             where: { eventoId, operadorId, estado: 'EN_RECINTO' },
@@ -1016,6 +1009,88 @@ export class TrackingService {
   }
 
   /**
+   * Escanear el kit en el recinto prueba que el operador llegó: si aún no tiene
+   * la llegada al recinto, se registra sola con la hora y la ubicación del
+   * escaneo (motivo MOTIVO_LLEGADA_POR_KIT), así se habilitan los NO CDA y
+   * Monitoreo lo ve "En recinto" sin esperar al "Confirmar" final. Exige la
+   * salida de la DPEI y estar dentro de la geocerca; un escaneo sin señal (hora
+   * dudosa) o fuera de la geocerca no la registra: queda el flujo normal. Con
+   * la llegada ya registrada, el kit recién escaneado pasa a EN_RECINTO. Un
+   * fallo aquí no anula la recepción del kit.
+   */
+  private async llegadaRecintoPorKit(
+    kit: { id: string; eventoId: string; recintoId: string | null },
+    operadorId: string,
+    escaneo: { latitud: number; longitud: number; desdeOffline?: boolean },
+  ): Promise<void> {
+    try {
+      const evento = await this.prisma.eventoElectoral.findFirst({
+        where: { id: kit.eventoId, estado: 'ACTIVO' },
+        select: { id: true },
+      });
+      if (!evento) return;
+      const tipos = new Set(
+        (
+          await this.prisma.eventoTracking.findMany({
+            where: {
+              eventoId: evento.id,
+              operadorId,
+              tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO', 'SALIDA_RECINTO', 'LLEGADA_DPI'] },
+            },
+            select: { tipo: true },
+          })
+        ).map((t) => t.tipo),
+      );
+      // Ya salió del recinto: un kit escaneado tarde no vuelve a EN_RECINTO.
+      if (tipos.has('SALIDA_RECINTO') || tipos.has('LLEGADA_DPI')) return;
+      if (tipos.has('LLEGADA_RECINTO')) {
+        await this.prisma.kitElectoral.updateMany({
+          where: { id: kit.id, estado: 'ENTREGADO' },
+          data: { estado: 'EN_RECINTO' },
+        });
+        return;
+      }
+      if (!tipos.has('SALIDA_DPI') || escaneo.desdeOffline || !kit.recintoId) return;
+
+      const filas = await this.prisma.$queryRaw<{ metros: number | null }[]>`
+        SELECT ST_Distance(
+          r.ubicacion,
+          ST_SetSRID(ST_MakePoint(${escaneo.longitud}, ${escaneo.latitud}), 4326)::geography
+        ) AS metros
+        FROM recintos r
+        WHERE r.id = ${kit.recintoId}::uuid AND r.ubicacion IS NOT NULL;
+      `;
+      const metros = filas[0]?.metros;
+      if (metros == null) return; // sin coordenada del recinto no hay cómo comprobar que llegó
+      const config = await this.prisma.configAlerta.findUnique({
+        where: { eventoId: evento.id },
+        select: { margenLlegadaMetros: true },
+      });
+      if (metros > (config?.margenLlegadaMetros ?? MARGEN_LLEGADA_METROS_DEFAULT)) return;
+
+      // Con el motivo desde el INSERT: nunca queda visible sin marcar. Si el operador
+      // la registró en el mismo instante, el índice único deja la suya. El aviso a
+      // supervisores sale en el "Confirmar" final, con todos los kits.
+      try {
+        await this.insertarLlegadaRecinto(
+          evento.id,
+          operadorId,
+          kit.recintoId,
+          { latitud: escaneo.latitud, longitud: escaneo.longitud },
+          new Date(),
+          'ENTREGADO',
+          false,
+          MOTIVO_LLEGADA_POR_KIT,
+        );
+      } catch (e) {
+        if (!esUnicoRepetido(e)) throw e;
+      }
+    } catch (e) {
+      this.logger.warn(`No se registró la llegada al recinto por kit de ${operadorId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * INSERT común de EventoTracking LLEGADA_RECINTO (con o sin GPS) + transición
    * de kits a EN_RECINTO. Compartido por el registro automático del operador
    * (con geocerca) y el manual del supervisor (sin GPS, para recintos sin señal).
@@ -1030,10 +1105,11 @@ export class TrackingService {
     ocurridoEn: Date,
     estadoKitsFiltro: any,
     desdeOffline: boolean,
+    motivoManual: string | null = null,
   ): Promise<string> {
     const rows = ubicacion
       ? await this.prisma.$queryRaw<{ id: string }[]>`
-          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, motivo_manual)
           VALUES (
             uuid_generate_v4(),
             ${eventoId}::uuid,
@@ -1043,12 +1119,13 @@ export class TrackingService {
             ST_SetSRID(ST_MakePoint(${ubicacion.longitud}, ${ubicacion.latitud}), 4326)::geography,
             ${ocurridoEn}::timestamptz,
             ${desdeOffline},
-            now()
+            now(),
+            ${motivoManual}
           )
           RETURNING id;
         `
       : await this.prisma.$queryRaw<{ id: string }[]>`
-          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en)
+          INSERT INTO eventos_tracking (id, evento_id, operador_id, tipo, recinto_id, ubicacion, ocurrido_en, desde_offline, registrado_en, motivo_manual)
           VALUES (
             uuid_generate_v4(),
             ${eventoId}::uuid,
@@ -1058,7 +1135,8 @@ export class TrackingService {
             NULL,
             ${ocurridoEn}::timestamptz,
             ${desdeOffline},
-            now()
+            now(),
+            ${motivoManual}
           )
           RETURNING id;
         `;
@@ -1091,9 +1169,12 @@ export class TrackingService {
 
     const existente = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'LLEGADA_RECINTO' },
-      select: { id: true },
+      select: { id: true, ocurridoEn: true, motivoManual: true },
     });
-    if (existente) throw new ConflictException('Ya registraste tu llegada al recinto');
+    // Registrada sola al escanear el kit: el "Confirmar" final la reconoce (tras
+    // revisar que estén todos los kits) y recién ahí avisa a los supervisores.
+    const porKit = existente?.motivoManual === MOTIVO_LLEGADA_POR_KIT ? existente : null;
+    if (existente && !porKit) throw new ConflictException('Ya registraste tu llegada al recinto');
 
     const salidaPrevia = await this.prisma.eventoTracking.findFirst({
       where: { eventoId: evento.id, operadorId, tipo: 'SALIDA_DPI' },
@@ -1117,6 +1198,10 @@ export class TrackingService {
       throw new BadRequestException(
         `Faltan ${pendientes.length} kit(s) por confirmar antes de registrar la llegada`,
       );
+    }
+    if (porKit) {
+      await this.notificarLlegadaRecinto(evento.id, operadorId, kits[0]?.recintoId ?? null, kits.length, porKit.ocurridoEn);
+      return { id: porKit.id, ocurridoEn: porKit.ocurridoEn.toISOString() };
     }
 
     const recintoId = kits[0]?.recintoId ?? null;
@@ -1184,24 +1269,13 @@ export class TrackingService {
       ocurridoEn,
       'ENTREGADO',
       parsed.desdeOffline ?? false,
-    );
-
-    const operador = await this.prisma.usuario.findUnique({
-      where: { id: operadorId },
-      select: { nombres: true, apellidos: true },
+    ).catch((e: unknown) => {
+      // La registró el escaneo del kit en el mismo instante (uq_tracking_llegada_recinto).
+      if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu llegada al recinto');
+      throw e;
     });
 
-    await this.notifications.encolarLlegadaRecinto({
-      operadorId,
-      eventoId: evento.id,
-      payload: {
-        operadorId,
-        operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
-        recintoNombre,
-        kitsRecibidos: kits.length,
-        ocurridoEn: ocurridoEn.toISOString(),
-      },
-    });
+    await this.notificarLlegadaRecinto(evento.id, operadorId, recintoId, kits.length, ocurridoEn, recintoNombre);
 
     return { id, ocurridoEn: ocurridoEn.toISOString() };
   }
@@ -1547,7 +1621,11 @@ export class TrackingService {
         ${parsed.justificacionNoCda ?? null}
       )
       RETURNING id;
-    `)[0].id;
+    `.catch((e: unknown) => {
+      // La registró el escaneo del kit en la DPEI en el mismo instante (uq_tracking_salida_recinto).
+      if (esUnicoRepetido(e)) throw new ConflictException('Ya registraste tu salida del recinto');
+      throw e;
+    }))[0].id;
 
     await this.prisma.kitElectoral.updateMany({
       where: { eventoId: evento.id, operadorId, estado: 'EN_RECINTO' },
@@ -1558,6 +1636,38 @@ export class TrackingService {
     if (!reemplazaAutomatica) await this.notificarSalidaRecinto(evento.id, operadorId, recintoId, ocurridoEn);
 
     return { id, ocurridoEn: ocurridoEn.toISOString() };
+  }
+
+  /** Aviso de llegada al recinto a supervisor y administradores. */
+  private async notificarLlegadaRecinto(
+    eventoId: string,
+    operadorId: string,
+    recintoId: string | null,
+    kitsRecibidos: number,
+    ocurridoEn: Date,
+    recintoNombre?: string | null,
+  ) {
+    const operador = await this.prisma.usuario.findUnique({
+      where: { id: operadorId },
+      select: { nombres: true, apellidos: true },
+    });
+    const nombre =
+      recintoNombre !== undefined
+        ? recintoNombre
+        : recintoId
+          ? (await this.prisma.recinto.findUnique({ where: { id: recintoId }, select: { nombre: true } }))?.nombre ?? null
+          : null;
+    await this.notifications.encolarLlegadaRecinto({
+      operadorId,
+      eventoId,
+      payload: {
+        operadorId,
+        operadorNombre: operador ? `${operador.nombres} ${operador.apellidos}` : null,
+        recintoNombre: nombre,
+        kitsRecibidos,
+        ocurridoEn: ocurridoEn.toISOString(),
+      },
+    });
   }
 
   /** Aviso de salida del recinto a supervisor y administradores. */

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { CoordenadasRecintos } from '@cne/shared-types';
 import { PrismaService } from '../db/prisma.service';
+import { MOTIVO_LLEGADA_POR_KIT } from '../tracking/motivos-marcas';
 import {
   MIN_MARCAS_COORDENADA,
   UMBRAL_COORDENADA_METROS,
@@ -27,14 +28,15 @@ export class CoordenadasRecintosService {
         FROM recintos r JOIN cantones c ON c.id = r.canton_id
         WHERE r.activo AND r.ubicacion IS NOT NULL;
       `,
-      // Registros manuales (motivo_manual) llevan la ubicación de quien los capturó en la web, no la del recinto.
+      // Registros manuales (motivo_manual) llevan la ubicación de quien los capturó en la web, no la del recinto;
+      // la llegada registrada al escanear el kit sí lleva el GPS real del operador en el recinto.
       this.prisma.$queryRaw<{ recintoId: string; lat: number; lng: number; metros: number }[]>`
         SELECT et.recinto_id::text AS "recintoId",
                ST_Y(et.ubicacion::geometry) AS lat, ST_X(et.ubicacion::geometry) AS lng,
                ST_Distance(r.ubicacion, et.ubicacion::geography) AS metros
         FROM eventos_tracking et JOIN recintos r ON r.id = et.recinto_id
         WHERE et.tipo IN ('LLEGADA_RECINTO', 'SALIDA_RECINTO')
-          AND et.motivo_manual IS NULL
+          AND (et.motivo_manual IS NULL OR et.motivo_manual = ${MOTIVO_LLEGADA_POR_KIT})
           AND et.ubicacion IS NOT NULL AND r.ubicacion IS NOT NULL;
       `,
     ]);
