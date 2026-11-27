@@ -76,6 +76,8 @@ const ENDPOINTS: [controlador: any, metodo: string, permiso: PermisoId][] = [
   [AsistenciaCdaController, 'exportarPdf', 'cda.asistencia.exportar'],
   [AtrasosCdaController, 'exportar', 'cda.asistencia.exportar'],
   [AtrasosCdaController, 'exportarPdf', 'cda.asistencia.exportar'],
+  [OperadoresCdaController, 'reportePersonalXlsx', 'cda.personal.exportar'],
+  [OperadoresCdaController, 'reportePersonalPdf', 'cda.personal.exportar'],
   [CredencialQrCdaController, 'consultar', 'cda.asistencia.qr'],
   [CredencialQrCdaController, 'marcar', 'cda.asistencia.qr'],
   [CredencialQrCdaController, 'reimprimir', 'cda.carnets.reimprimir'],

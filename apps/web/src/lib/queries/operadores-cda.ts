@@ -46,6 +46,8 @@ import type {
   FormatoReporteCda,
   GrupoCda,
   ModoReporteCda,
+  ModoReportePersonalCda,
+  CentroCda,
   ImportOperadoresCdaResult,
   MarcarAsistenciaCdaMasivaResult,
   OperadorCda,
@@ -631,6 +633,25 @@ export async function descargarQrParejasCda(fecha: string, parejaIds?: string[])
 export async function getResumenSexoCda(): Promise<ResumenSexoCargoCda[]> {
   const { data } = await api.get<ResumenSexoCargoCda[]>('/operadores-cda/resumen-sexo');
   return data;
+}
+
+export interface OpcionesReportePersonalCda {
+  cargos: GrupoCda[];
+  modo: ModoReportePersonalCda;
+  formato: FormatoReporteCda;
+}
+
+/** Personal activo de los cargos elegidos (Excel o PDF, general o una hoja por cargo). */
+export function pedirReportePersonalCda(o: OpcionesReportePersonalCda) {
+  const q = new URLSearchParams(o.cargos.map((c) => ['cargos', c]));
+  q.set('modo', o.modo);
+  return api.get<Blob>(`/operadores-cda/reporte-personal.${o.formato}?${q}`, { responseType: 'blob' });
+}
+
+/** "personal_cda_cpe_por_cargo_2026-11-27.xlsx". */
+export function nombreReportePersonalCda(centros: CentroCda[], o: OpcionesReportePersonalCda, hoy: string): string {
+  const centro = [...centros].sort().join('_').toLowerCase() || 'cda';
+  return `personal_${centro}${o.modo === 'POR_CARGO' ? '_por_cargo' : ''}_${hoy}.${o.formato}`;
 }
 
 export async function getCargosCda(): Promise<CargoCda[]> {

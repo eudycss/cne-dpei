@@ -996,6 +996,27 @@ export const modoReporteCdaSchema = z
   .enum(['GENERAL', 'POR_DIA'], { errorMap: () => ({ message: 'Modo de reporte inválido (GENERAL o POR_DIA)' }) })
   .default('GENERAL');
 
+/**
+ * Reporte del personal CDA/CPE (?cargos= uno o repetido, ?modo=). El centro se
+ * deduce de cada cargo, así que basta con las claves.
+ */
+export const MAX_CARGOS_REPORTE_PERSONAL = 50;
+
+export const reportePersonalCdaSchema = z.object({
+  cargos: z.preprocess(
+    (v) => (typeof v === 'string' ? [v] : v),
+    z
+      .array(grupoCdaSchema, { required_error: 'Elija al menos un cargo', invalid_type_error: 'Elija al menos un cargo' })
+      .min(1, 'Elija al menos un cargo')
+      .max(MAX_CARGOS_REPORTE_PERSONAL, `Elija como máximo ${MAX_CARGOS_REPORTE_PERSONAL} cargos`)
+      .transform((c) => [...new Set(c)]),
+  ),
+  modo: z
+    .enum(['GENERAL', 'POR_CARGO'], { errorMap: () => ({ message: 'Modo de reporte inválido (GENERAL o POR_CARGO)' }) })
+    .default('GENERAL'),
+});
+export type ReportePersonalCdaInput = z.infer<typeof reportePersonalCdaSchema>;
+
 // Enlace de foto de operador CDA (página pública).
 
 /** Versión del aviso de consentimiento LOPDP que acepta el operador. Cambiarla si cambia el texto. */

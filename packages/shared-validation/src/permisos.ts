@@ -7,6 +7,7 @@ export const PERMISO_IDS = [
   'cda.asistencia.marcar',
   'cda.asistencia.qr',
   'cda.asistencia.exportar',
+  'cda.personal.exportar',
   'cda.asistencia.corregir',
   'cda.actas.gestionar',
   'cda.fotos.enlace',
@@ -36,6 +37,8 @@ const PERMISOS_BASE: readonly Omit<PermisoAccion, 'rolesPermitidos'>[] = [
   { id: 'cda.asistencia.marcar', modulo: 'operadores-cda', etiqueta: 'Marcar o quitar asistencia a mano', rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.qr', modulo: 'operadores-cda', etiqueta: 'Marcar asistencia escaneando el carnet', rolesPorDefecto: TEC_AET },
   { id: 'cda.asistencia.exportar', modulo: 'operadores-cda', etiqueta: 'Exportar asistencia y atrasos', rolesPorDefecto: TEC_AET },
+  // Lleva nombres y cédulas de todo el personal activo de los cargos elegidos.
+  { id: 'cda.personal.exportar', modulo: 'operadores-cda', etiqueta: 'Descargar el reporte del personal CDA/CPE', rolesPorDefecto: TEC_AET },
   // Cambia la historia: de fábrica solo el administrador, y al Asistente Transversal no se le puede dar.
   { id: 'cda.asistencia.corregir', modulo: 'operadores-cda', etiqueta: 'Corregir la asistencia de días pasados (con motivo)', rolesPorDefecto: [] },
   { id: 'cda.actas.gestionar', modulo: 'operadores-cda', etiqueta: 'Generar, descargar y marcar firmadas las actas', rolesPorDefecto: TEC_AET },

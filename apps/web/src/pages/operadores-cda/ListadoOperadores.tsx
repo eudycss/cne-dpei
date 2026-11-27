@@ -18,6 +18,7 @@ import { AvatarPersona } from './AvatarPersona';
 import { EnlaceFotoModal } from './EnlaceFotoModal';
 import { RevisarFotoModal } from './RevisarFotoModal';
 import { CarnetsQrModal } from './CarnetsQrModal';
+import { ReportePersonalModal } from './ReportePersonalModal';
 import { useGrupoCda } from './grupo';
 import { EnOtroCargo } from './BuscadorGeneral';
 import { ImportarOperadoresModal } from './ImportarOperadoresModal';
@@ -64,6 +65,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   const { puede } = useModulos();
   const puedeCarnets = puede('cda.carnets.emitir') || puede('cda.carnets.reimprimir');
   const puedeEnlaceFoto = puede('cda.fotos.enlace');
+  const puedeReportePersonal = puede('cda.personal.exportar');
   const { grupo, titulo, plural, singular, Singular } = useGrupoCda();
   // Solo operadores y asistentes entran a la app de campo.
   const conCuentaApp = grupo === 'OPERADOR' || grupo === 'ASISTENTE';
@@ -106,6 +108,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
   };
   const [importando, setImportando] = useState(false);
   const [carnets, setCarnets] = useState(false);
+  const [reportePersonal, setReportePersonal] = useState(false);
   const [cuentasApp, setCuentasApp] = useState(false);
   const [enlacePara, setEnlacePara] = useState<OperadorCda | null>(null);
   const [revisarPara, setRevisarPara] = useState<OperadorCda | null>(null);
@@ -223,45 +226,48 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
 
   return (
     <>
-      {(isAdmin || puedeCarnets || puedeEnlaceFoto) && (
-        <AccionesEncabezado destino={acciones}>
-          {puedeEnlaceFoto && (
-            <button type="button" className="btn secondary" onClick={copiarEnlaceFotos}>
-              Copiar enlace de fotos
-            </button>
-          )}
-          {puedeEnlaceFoto && (
-            <button type="button" className="btn secondary" onClick={copiarEnlaceInforme}>
-              Copiar enlace del informe
-            </button>
-          )}
-          {isAdmin && (
-            <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
-              Importar Excel
-            </button>
-          )}
-          {puedeCarnets && (
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={!data?.some((o) => o.activo)}
-              onClick={() => setCarnets(true)}
-            >
-              Carnets QR
-            </button>
-          )}
-          {isAdmin && conCuentaApp && (
-            <button type="button" className="btn secondary" onClick={() => setCuentasApp(true)}>
-              Cuentas de la app
-            </button>
-          )}
-          {isAdmin && (
-            <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
-              Agregar {singular}
-            </button>
-          )}
-        </AccionesEncabezado>
-      )}
+      <AccionesEncabezado destino={acciones}>
+        {puedeReportePersonal && (
+          <button type="button" className="btn secondary" onClick={() => setReportePersonal(true)}>
+            Descargar reporte
+          </button>
+        )}
+        {puedeEnlaceFoto && (
+          <button type="button" className="btn secondary" onClick={copiarEnlaceFotos}>
+            Copiar enlace de fotos
+          </button>
+        )}
+        {puedeEnlaceFoto && (
+          <button type="button" className="btn secondary" onClick={copiarEnlaceInforme}>
+            Copiar enlace del informe
+          </button>
+        )}
+        {isAdmin && (
+          <button type="button" className="btn secondary" onClick={() => setImportando(true)}>
+            Importar Excel
+          </button>
+        )}
+        {puedeCarnets && (
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={!data?.some((o) => o.activo)}
+            onClick={() => setCarnets(true)}
+          >
+            Carnets QR
+          </button>
+        )}
+        {isAdmin && conCuentaApp && (
+          <button type="button" className="btn secondary" onClick={() => setCuentasApp(true)}>
+            Cuentas de la app
+          </button>
+        )}
+        {isAdmin && (
+          <button ref={agregarRef} type="button" className="btn" onClick={() => setFormulario('nuevo')}>
+            Agregar {singular}
+          </button>
+        )}
+      </AccionesEncabezado>
 
       {isLoading && <Cargando />}
       {error && (
@@ -455,6 +461,7 @@ export function ListadoOperadores({ acciones = null }: { acciones?: HTMLElement 
       {carnets && data && (
         <CarnetsQrModal operadores={data.filter((o) => o.activo)} onClose={() => setCarnets(false)} />
       )}
+      {reportePersonal && <ReportePersonalModal grupoInicial={grupo} onClose={() => setReportePersonal(false)} />}
       {enlacePara && <EnlaceFotoModal operador={enlacePara} onClose={() => setEnlacePara(null)} />}
       {revisarPara && (
         <RevisarFotoModal operador={revisarPara} onClose={() => setRevisarPara(null)} onRevisada={refrescar} />

@@ -584,6 +584,30 @@ describe('AuditInterceptor', () => {
     expect(pdf.data.datosDespues).toEqual({ fecha: null, formato: 'pdf', tecnicos: ['Ing. Jairo Leal'] });
   });
 
+  it('reporte del personal CDA/CPE: quedan los cargos, el modo y el formato', async () => {
+    const xlsx = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/reporte-personal.xlsx?cargos=OPERADOR&cargos=DIGITADOR&modo=POR_CARGO',
+      query: { cargos: ['OPERADOR', 'DIGITADOR'], modo: 'POR_CARGO' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(xlsx.data).toMatchObject({
+      accion: 'PERSONAL_CDA_EXPORTAR',
+      entidad: 'operador_cda',
+      datosDespues: { cargos: ['OPERADOR', 'DIGITADOR'], modo: 'POR_CARGO', formato: 'xlsx' },
+    });
+
+    const pdf = await auditar({
+      method: 'GET',
+      originalUrl: '/operadores-cda/reporte-personal.pdf?cargos=SUPERVISOR&modo=raro',
+      query: { cargos: 'SUPERVISOR', modo: 'raro' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(pdf.data.datosDespues).toEqual({ cargos: ['SUPERVISOR'], modo: 'GENERAL', formato: 'pdf' });
+  });
+
   it('cambio de cargo: queda de qué cargo a cuál, sin datos personales', async () => {
     const { data } = await auditar(
       {
