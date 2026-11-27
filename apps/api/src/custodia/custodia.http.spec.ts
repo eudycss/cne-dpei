@@ -15,9 +15,10 @@ import { CustodiaService } from './custodia.service';
 import { InformeCustodiaService } from './informe-custodia.service';
 
 /** Sesión simulada: los guards reales se prueban en sus propios specs. */
+let rolesSesion = ['ADMINISTRADOR'];
 const conSesion: CanActivate = {
   canActivate: (ctx: ExecutionContext) => {
-    ctx.switchToHttp().getRequest().user = { sub: 'u1', roles: ['ADMINISTRADOR'] };
+    ctx.switchToHttp().getRequest().user = { sub: 'u1', roles: rolesSesion };
     return true;
   },
 };
@@ -45,7 +46,41 @@ describe('HTTP POST /custodia/actas-militares/seleccion', () => {
     );
   });
   afterAll(() => app.close());
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    rolesSesion = ['ADMINISTRADOR'];
+  });
+
+  it('elegir el responsable: solo Administrador y Asistente Transversal; Lector o Supervisor → 403', async () => {
+    const resp = '11111111-2222-4333-8444-555555555555';
+    informes.actaMilitarKit.mockResolvedValue({ nombre: 'a.pdf', tipo: 'application/pdf', contenido: Buffer.from('%PDF') });
+    informes.actasMilitaresSeleccion.mockResolvedValue(ZIP);
+
+    for (const roles of [['LECTOR'], ['TECNICO_SUPERVISOR']]) {
+      rolesSesion = roles;
+      const una = await request(app.getHttpServer()).get(`/custodia/kits/${kit(1)}/acta-militar?formato=pdf&responsableId=${resp}`);
+      expect(una.status).toBe(403);
+      const varias = await request(app.getHttpServer())
+        .post('/custodia/actas-militares/seleccion')
+        .send({ kitIds: [kit(1)], responsableId: resp });
+      expect(varias.status).toBe(403);
+      // Sin elegir responsable sí descargan (sale quien registró la entrega).
+      const sinElegir = await request(app.getHttpServer()).get(`/custodia/kits/${kit(1)}/acta-militar?formato=pdf&fecha=2026-11-28`);
+      expect(sinElegir.status).toBe(200);
+    }
+    expect(informes.actasMilitaresSeleccion).not.toHaveBeenCalled();
+
+    for (const roles of [['ASISTENTE_TRANSVERSAL'], ['ANALISTA_PROVINCIAL']]) {
+      rolesSesion = roles;
+      const r = await request(app.getHttpServer()).get(`/custodia/kits/${kit(1)}/acta-militar?formato=pdf&responsableId=${resp}`);
+      expect(r.status).toBe(200);
+    }
+  });
+
+  it('la lista de responsables es solo para quien puede elegir', () => {
+    const roles = new Reflector().get(ROLES_KEY, CustodiaController.prototype.responsablesActa);
+    expect(roles).toEqual(['ASISTENTE_TRANSVERSAL', 'ADMINISTRADOR']);
+  });
 
   it('los kits elegidos llegan al servicio y vuelve un .zip sin caché', async () => {
     informes.actasMilitaresSeleccion.mockResolvedValue(ZIP);

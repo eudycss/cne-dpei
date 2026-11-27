@@ -75,8 +75,8 @@ const filas = [
 ];
 
 const RESPONSABLES = [
-  { id: 'yo', nombre: 'Sebastian Cabascango', cedula: '1' },
-  { id: 'jl', nombre: 'Jairo Leal Aviles', cedula: '2' },
+  { id: 'yo', nombre: 'Sebastian Cabascango' },
+  { id: 'jl', nombre: 'Jairo Leal Aviles' },
 ];
 
 function renderPage() {
