@@ -1071,11 +1071,12 @@ describe('Parejas Operador + Asistente CDA por día', () => {
       expect(await screen.findByRole('button', { name: 'Asignar kit a las mostradas (1)' })).toBeInTheDocument();
     });
 
-    it('sin parejas sin kit, o para quien no es administrador, no aparece el filtro', async () => {
+    it('sin parejas sin kit el filtro se ve desactivado y dice por qué; para quien no es administrador no aparece', async () => {
       mockApi({ parejas: [CON_KIT] });
       const { unmount } = renderPagina();
-      await screen.findByRole('region', { name: `Parejas del ${DIA}` });
-      expect(screen.queryByRole('checkbox', { name: /Solo sin kit/ })).not.toBeInTheDocument();
+      const filtro = await screen.findByRole('checkbox', { name: 'Solo sin kit (0) · todas tienen kit' });
+      expect(filtro).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /Asignar kit a/ })).not.toBeInTheDocument();
       unmount();
       auth.roles = ['TECNICO_SUPERVISOR'];
       conLote();

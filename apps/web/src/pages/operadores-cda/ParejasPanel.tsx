@@ -519,10 +519,19 @@ export function ParejasPanel() {
                       Solo recintos con +1 pareja
                     </label>
                   )}
-                  {isAdmin && sinKit.length > 0 && (
-                    <label className="ocda-check-linea" style={{ margin: 0 }}>
-                      <input type="checkbox" checked={soloSinKit} onChange={(e) => soloFiltro(e.target.checked ? 'SIN_KIT' : null)} />
-                      Solo sin kit ({sinKit.length})
+                  {/* Siempre a la vista para el administrador: con 0 queda desactivado y dice por qué. */}
+                  {isAdmin && (
+                    <label
+                      className="ocda-check-linea"
+                      style={{ margin: 0, ...(sinKit.length === 0 && { opacity: 0.7, cursor: 'not-allowed' }) }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filtroSinKit}
+                        disabled={sinKit.length === 0}
+                        onChange={(e) => soloFiltro(e.target.checked ? 'SIN_KIT' : null)}
+                      />
+                      Solo sin kit ({sinKit.length}){sinKit.length === 0 && ' · todas tienen kit'}
                     </label>
                   )}
                   {filtroSinKit && (
