@@ -16,6 +16,7 @@ import {
   Keyboard,
   Fence,
   ScanLine,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -141,6 +142,12 @@ export function Layout() {
                   <NavLink to="/reportes/no-cda" className={({ isActive }) => (isActive ? 'active' : '')}>
                     <FileChartColumn size={16} aria-hidden="true" />
                     <span>Reportes</span>
+                  </NavLink>
+                )}
+                {puedeVer('reportes') && (
+                  <NavLink to="/reportes/llegada-dpei" className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <Building2 size={16} aria-hidden="true" />
+                    <span>Llegada a la DPEI</span>
                   </NavLink>
                 )}
                 {puedeVer('powerbi-cdas') && (

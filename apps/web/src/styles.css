@@ -272,6 +272,8 @@ th { background: var(--border-subtle); font-weight: 600; color: var(--text); }
 .table-sticky-first th:first-child { background: var(--border-subtle); z-index: 2; }
 .table-sticky-first th, .table-sticky-first td { white-space: nowrap; }
 .table-report { min-width: 1000px; }
+/* Reportes › Llegada a la DPEI: CDA que aún no llega (además del texto "✗ Falta"). */
+.fila-falta { background: color-mix(in srgb, var(--error) 8%, transparent); }
 
 .badge { display: inline-block; padding: 0.15rem 0.5rem; background: var(--badge-bg); color: var(--badge-text); border-radius: 999px; font-size: 0.75rem; margin-right: 4px; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-text); }
