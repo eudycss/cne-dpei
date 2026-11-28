@@ -46,6 +46,8 @@ export interface RegistroJornada {
   sinSenal: boolean;
   /** La registró sola el escaneo del kit (motivo de motivos-marcas), no el operador. */
   porKit?: boolean;
+  /** Solo llegada a la DPEI: la registró un administrador desde la web (el operador olvidó marcarla). */
+  manual?: boolean;
 }
 
 /** El operador escaneó su kit en la llegada al recinto (con la foto del militar que se lo entregó). */
@@ -72,6 +74,8 @@ export interface UnidadJornada {
   registros: Partial<Record<MomentoJornada, RegistroJornada>>;
   /** El Asistente Transversal registró la recepción del kit en la Delegación. */
   kitRecibido: Date | null;
+  /** Códigos de los kits que lleva (ausente en datos de prueba viejos). */
+  kits?: string[];
   /** null = todavía no escanea su kit. */
   kitEscaneado: KitEscaneadoJornada | null;
   /** null = todavía no marca la salida del recinto (los reportes recién ahí quedan ligados a él). */

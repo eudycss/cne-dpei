@@ -632,6 +632,24 @@ describe('AuditInterceptor', () => {
     expect(pdf.data.datosDespues).toEqual({ cargos: ['SUPERVISOR'], modo: 'GENERAL', formato: 'pdf' });
   });
 
+  it('descarga del reporte de llegadas a la DPEI: queda el día y el formato', async () => {
+    const xlsx = await auditar({
+      method: 'GET',
+      originalUrl: '/tracking/reporte-llegada-dpei.xlsx?fecha=2026-11-29',
+      query: { fecha: '2026-11-29' },
+      body: {},
+      user: ADMIN,
+    });
+    expect(xlsx.data).toMatchObject({
+      accion: 'LLEGADA_DPEI_EXPORTAR',
+      entidad: 'eventos_tracking',
+      datosDespues: { fecha: '2026-11-29', formato: 'xlsx' },
+    });
+
+    const pdf = await auditar({ method: 'GET', originalUrl: '/tracking/reporte-llegada-dpei.pdf', query: {}, body: {}, user: ADMIN });
+    expect(pdf.data.datosDespues).toEqual({ fecha: 'hoy', formato: 'pdf' });
+  });
+
   it('cambio de cargo: queda de qué cargo a cuál, sin datos personales', async () => {
     const { data } = await auditar(
       {

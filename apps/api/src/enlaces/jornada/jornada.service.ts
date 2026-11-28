@@ -419,6 +419,16 @@ export class JornadaService {
     return false;
   }
 
+  /**
+   * Jornada de una fecha "YYYY-MM-DD" (reportes de un día ya pasado: desde las 04:00 de
+   * esa fecha hasta las 04:00 del día siguiente). La de hoy sale de la caché.
+   */
+  cargarDia(fecha: string, ahora = Date.now()): Promise<Jornada | null> {
+    if (fecha === diaDeJornada(new Date(ahora)).fecha) return this.cargar(ahora);
+    // Mediodía de Ecuador de esa fecha: cae dentro de su día de jornada.
+    return this.consultar(new Date(`${fecha}T17:00:00Z`));
+  }
+
   /** Estado del evento activo (reutilizado unos segundos); null si no hay ninguno. */
   cargar(ahora = Date.now()): Promise<Jornada | null> {
     if (this.cache && ahora - this.cache.en < CACHE_CARGA_MS) return this.cache.carga;
@@ -433,18 +443,21 @@ export class JornadaService {
 
   private async consultar(ahora: Date): Promise<Jornada | null> {
     const dia = diaDeJornada(ahora);
+    // Fin del día de jornada (04:00 del día siguiente): una fecha pasada no se mezcla con las siguientes.
+    const hasta = new Date(dia.desde.getTime() + 24 * 3_600_000);
     const evento = await this.prisma.eventoElectoral.findFirst({
       where: { estado: 'ACTIVO' },
       select: { id: true, nombre: true },
     });
     if (!evento) return null;
 
-    const [kits, cdas, asignaciones] = await Promise.all([
+    const [kitsActuales, cdas, asignaciones] = await Promise.all([
       this.prisma.kitElectoral.findMany({
         where: { eventoId: evento.id, esPrueba: false, operadorId: { not: null }, recintoId: { not: null } },
         orderBy: [{ recinto: { codigoRecinto: 'asc' } }, { id: 'asc' }],
         select: {
           id: true,
+          codigoUnico: true,
           operadorId: true,
           recinto: {
             select: { id: true, codigoRecinto: true, nombre: true, tiempoDpiMin: true, canton: { select: { codigo: true, nombre: true } } },
@@ -458,28 +471,44 @@ export class JornadaService {
       }),
       this.leerDistributivo(),
     ]);
-    const kitIds = kits.map((k) => k.id);
+    const kitIds = kitsActuales.map((k) => k.id);
+
+    // La pareja más reciente que lleva cada kit (un kit puede repetirse en varios días).
+    const parejas = await this.prisma.parejaCda.findMany({
+      where: { kitId: { in: kitIds } },
+      orderBy: { fecha: 'desc' },
+      select: {
+        kitId: true,
+        fecha: true,
+        operador: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
+        asistente: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
+      },
+    });
+    // La pareja de hoy o la más reciente anterior; una de una prueba futura solo si no hay otra (la más próxima).
+    const parejaPorKit = new Map<string, (typeof parejas)[number]>();
+    const yaPaso = (p: (typeof parejas)[number]) => p.fecha.toISOString().slice(0, 10) <= dia.fecha;
+    for (const p of parejas) {
+      if (!p.kitId) continue;
+      const previa = parejaPorKit.get(p.kitId);
+      // Vienen de la fecha más nueva a la más vieja.
+      if (!previa || !yaPaso(previa)) parejaPorKit.set(p.kitId, p);
+    }
+    // Un día pasado (reportes): el kit pasa de pareja en pareja, así que lo llevó el operador de la
+    // pareja de ese día, no el que lo tiene hoy. El día actual sigue con el operador del kit.
+    const esPasado = dia.fecha < diaDeJornada(new Date()).fecha;
+    const kits = esPasado
+      ? kitsActuales.map((k) => ({ ...k, operadorId: parejaPorKit.get(k.id)?.operador?.usuarioId ?? k.operadorId }))
+      : kitsActuales;
     const operadorIds = [...new Set(kits.map((k) => k.operadorId!))];
 
-    const [parejas, tracking, recepciones, escaneos, noCdas] = await Promise.all([
-      // La pareja más reciente que lleva cada kit (un kit puede repetirse en varios días).
-      this.prisma.parejaCda.findMany({
-        where: { kitId: { in: kitIds } },
-        orderBy: { fecha: 'desc' },
-        select: {
-          kitId: true,
-          fecha: true,
-          operador: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
-          asistente: { select: { apellidosNombres: true, telefono: true, usuarioId: true } },
-        },
-      }),
+    const [tracking, recepciones, escaneos, noCdas] = await Promise.all([
       this.prisma.eventoTracking.findMany({
         where: {
           eventoId: evento.id,
           operadorId: { in: operadorIds },
           OR: [
-            { tipo: { in: ETAPAS_DE_IDA }, ocurridoEn: { gte: dia.desdeMedianoche } },
-            { tipo: { in: [...ETAPAS_DE_REGRESO, 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: dia.desde } },
+            { tipo: { in: ETAPAS_DE_IDA }, ocurridoEn: { gte: dia.desdeMedianoche, lt: hasta } },
+            { tipo: { in: [...ETAPAS_DE_REGRESO, 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: dia.desde, lt: hasta } },
           ],
         },
         orderBy: { ocurridoEn: 'asc' },
@@ -495,12 +524,12 @@ export class JornadaService {
         },
       }),
       this.prisma.recepcionDpiKit.findMany({
-        where: { kitId: { in: kitIds }, confirmadoEn: { gte: dia.desdeMedianoche } },
+        where: { kitId: { in: kitIds }, confirmadoEn: { gte: dia.desdeMedianoche, lt: hasta } },
         select: { kitId: true, confirmadoEn: true },
       }),
       // El operador escanea su kit (con la foto del militar) en la llegada al recinto.
       this.prisma.recepcionKit.findMany({
-        where: { kitId: { in: kitIds }, operadorId: { in: operadorIds }, confirmadoEn: { gte: dia.desdeMedianoche } },
+        where: { kitId: { in: kitIds }, operadorId: { in: operadorIds }, confirmadoEn: { gte: dia.desdeMedianoche, lt: hasta } },
         select: { kitId: true, operadorId: true, confirmadoEn: true, desdeOffline: true, fotoMilitarUrl: true },
       }),
       this.prisma.recinto.findMany({
@@ -517,13 +546,13 @@ export class JornadaService {
         },
       }),
     ]);
-    const gpsPorOperador = await this.ultimoGpsEnCamino(evento.id, tracking, dia.desdeMedianoche);
+    const gpsPorOperador = await this.ultimoGpsEnCamino(evento.id, tracking, dia.desdeMedianoche, hasta);
     const visitas = await this.prisma.eventoTracking.findMany({
       where: {
         eventoId: evento.id,
         tipo: 'LLEGADA_NO_CDA',
         recintoId: { in: noCdas.map((n) => n.id) },
-        ocurridoEn: { gte: dia.desde },
+        ocurridoEn: { gte: dia.desde, lt: hasta },
       },
       orderBy: { ocurridoEn: 'asc' },
       select: { recintoId: true, ocurridoEn: true, desdeOffline: true },
@@ -537,16 +566,6 @@ export class JornadaService {
       }
     }
     const tecnicoDe = (codigo: string) => tecnicoPorCodigo.get(codigo) ?? SIN_TECNICO;
-
-    // La pareja de hoy o la más reciente anterior; una de una prueba futura solo si no hay otra (la más próxima).
-    const parejaPorKit = new Map<string, (typeof parejas)[number]>();
-    const yaPaso = (p: (typeof parejas)[number]) => p.fecha.toISOString().slice(0, 10) <= dia.fecha;
-    for (const p of parejas) {
-      if (!p.kitId) continue;
-      const previa = parejaPorKit.get(p.kitId);
-      // Vienen de la fecha más nueva a la más vieja.
-      if (!previa || !yaPaso(previa)) parejaPorKit.set(p.kitId, p);
-    }
 
     // El primer registro de cada momento (por operador): repetir una marca no cambia la hora.
     const registrosPorOperador = new Map<string, Partial<Record<MomentoJornada, RegistroJornada>>>();
@@ -564,6 +583,8 @@ export class JornadaService {
         sinSenal: t.desdeOffline,
         // Solo la llegada a la DPEI registrada por el escaneo del kit (no la de la app).
         ...(t.tipo === 'LLEGADA_DPI' && t.motivoManual === MOTIVO_KIT_EN_DPEI ? { porKit: true } : {}),
+        // La registró un administrador desde la web (el operador olvidó marcarla).
+        ...(t.tipo === 'LLEGADA_DPI' && t.motivoManual && t.motivoManual !== MOTIVO_KIT_EN_DPEI ? { manual: true } : {}),
       };
       registrosPorOperador.set(t.operadorId, registros);
       // Reportes de sus salidas del recinto del día: vale cualquiera que los traiga.
@@ -628,6 +649,7 @@ export class JornadaService {
         personas,
         registros: registrosPorOperador.get(k.operadorId!) ?? {},
         kitRecibido: recibidoDelOperador(k.operadorId!),
+        kits: kits.filter((x) => x.operadorId === k.operadorId).map((x) => x.codigoUnico),
         kitEscaneado: escaneoDelOperador(k.operadorId!),
         actas: actasPorOperador.get(k.operadorId!) ?? null,
         tiempoViajeMin: k.recinto!.tiempoDpiMin ?? null,
@@ -706,6 +728,7 @@ export class JornadaService {
     eventoId: string,
     tracking: { operadorId: string; tipo: string }[],
     desde: Date,
+    hasta: Date,
   ): Promise<Map<string, Date | null>> {
     const momentos = new Map<string, Set<string>>();
     for (const t of tracking) momentos.set(t.operadorId, (momentos.get(t.operadorId) ?? new Set()).add(t.tipo));
@@ -715,7 +738,7 @@ export class JornadaService {
     if (enCamino.length === 0) return new Map();
     const gps = await this.prisma.posicionGps.groupBy({
       by: ['operadorId'],
-      where: { eventoId, operadorId: { in: enCamino }, capturadoEn: { gte: desde } },
+      where: { eventoId, operadorId: { in: enCamino }, capturadoEn: { gte: desde, lt: hasta } },
       _max: { capturadoEn: true },
     });
     return new Map<string, Date | null>(gps.map((g) => [g.operadorId, g._max.capturadoEn]));

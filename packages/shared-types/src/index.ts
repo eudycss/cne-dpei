@@ -900,6 +900,49 @@ export interface ReporteNoCdaItem {
   esDelegacion?: boolean;
 }
 
+/**
+ * Llegada de un CDA a la DPEI en el reporte de llegadas: salida = la primera
+ * salida del recinto de sus parejas; llegada = la de su última pareja (null
+ * mientras falte alguna). Sin noción de atraso: solo horas y duración.
+ */
+export interface LlegadaDpeiCda {
+  codigoRecinto: string;
+  nombreRecinto: string;
+  cantonNombre: string;
+  /** Operadores de sus parejas (quienes llevan el kit). */
+  operadores: string[];
+  kits: string[];
+  parejas: number;
+  parejasLlegadas: number;
+  salidaRecintoEn: string | null;
+  llegadaDpiEn: string | null;
+  /** Minutos de la primera salida a la última llegada; null si falta alguna de las dos. */
+  duracionMin: number | null;
+  /** Alguna llegada la registró un administrador desde la web. */
+  manual: boolean;
+  /** Alguna llegada vale por la recepción del kit en la DPEI (no se marcó en la app). */
+  porKit: boolean;
+}
+
+export interface ResumenLlegadaDpei {
+  total: number;
+  llegaron: number;
+  faltan: number;
+  primeraLlegadaEn: string | null;
+  ultimaLlegadaEn: string | null;
+  /** Promedio de duración de los CDA que llegaron (minutos enteros); null si ninguno tiene duración. */
+  duracionPromedioMin: number | null;
+}
+
+export interface ReporteLlegadaDpei {
+  evento: string;
+  /** Día de jornada "YYYY-MM-DD" (cambia a las 04:00: una llegada a las 02:00 es de la noche anterior). */
+  fecha: string;
+  resumen: ResumenLlegadaDpei;
+  /** Primero los que faltan (por hora de salida) y luego los que llegaron (por hora de llegada). */
+  cdas: LlegadaDpeiCda[];
+}
+
 export interface LlegadaNoCdaDelegacionResponse {
   recintoId: string;
   ocurridoEn: string;
