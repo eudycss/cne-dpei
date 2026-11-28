@@ -29,6 +29,7 @@ const IncidenciasPage = lazyPage(() => import('./pages/incidencias/IncidenciasPa
 const AlertasPage = lazyPage(() => import('./pages/alertas/AlertasPage'), 'AlertasPage');
 const PlanPerimetroPage = lazyPage(() => import('./pages/plan-perimetro/PlanPerimetroPage'), 'PlanPerimetroPage');
 const ReporteNoCdaPage = lazyPage(() => import('./pages/reportes/ReporteNoCdaPage'), 'ReporteNoCdaPage');
+const LlegadaDpeiPage = lazyPage(() => import('./pages/reportes/LlegadaDpeiPage'), 'LlegadaDpeiPage');
 const CadenaCustodiaPage = lazyPage(() => import('./pages/reportes/CadenaCustodiaPage'), 'CadenaCustodiaPage');
 const Inicio = lazyPage(() => import('./pages/Inicio'), 'Inicio');
 const PowerBiCdasPage = lazyPage(() => import('./pages/reportes/PowerBiCdasPage'), 'PowerBiCdasPage');
@@ -240,6 +241,16 @@ export default function App() {
             element={
               <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']} modulo="reportes">
                 <ReporteNoCdaPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Llegada de los CDA a la DPEI (los mismos roles que Reportes › Flujo) */}
+          <Route
+            path="/reportes/llegada-dpei"
+            element={
+              <ProtectedRoute roles={['ADMINISTRADOR', 'LECTOR']} modulo="reportes">
+                <LlegadaDpeiPage />
               </ProtectedRoute>
             }
           />
