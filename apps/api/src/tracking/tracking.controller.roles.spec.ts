@@ -42,7 +42,7 @@ describe('TrackingController — llegada a la DPEI registrada desde la web', () 
 
   it('pasa el motivo y quién la registra (el usuario de la sesión, no un dato del cuerpo)', () => {
     const registrarLlegadaDpiManual = jest.fn();
-    const ctrl = new TrackingController({ registrarLlegadaDpiManual } as never, {} as never, {} as never);
+    const ctrl = new TrackingController({ registrarLlegadaDpiManual } as never, {} as never, {} as never, {} as never);
     ctrl.llegadaDpiManual('op-1', { motivo: 'Olvidó marcarla' }, { sub: 'admin-1' } as never);
     expect(registrarLlegadaDpiManual).toHaveBeenCalledWith('op-1', 'Olvidó marcarla', 'admin-1');
   });
@@ -130,7 +130,7 @@ describe('TrackingController — llegada de un NO CDA sin CDA a la Delegación',
 
   it('quien la registra es el usuario de la sesión', () => {
     const registrarLlegadaNoCdaDelegacion = jest.fn();
-    const ctrl = new TrackingController({ registrarLlegadaNoCdaDelegacion } as never, {} as never, {} as never);
+    const ctrl = new TrackingController({ registrarLlegadaNoCdaDelegacion } as never, {} as never, {} as never, {} as never);
     ctrl.llegadaNoCdaDelegacion('nc-1', { sub: 'sup-1' } as never);
     expect(registrarLlegadaNoCdaDelegacion).toHaveBeenCalledWith('nc-1', 'sup-1');
   });

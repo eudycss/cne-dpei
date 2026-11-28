@@ -18,6 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import {
   ApiBearerAuth,
@@ -50,6 +51,8 @@ import {
   llegadaRecintoSchema,
   pruebaConexionSchema,
   recepcionKitSchema,
+  reporteLlegadaDpeiSchema,
+  type ReporteLlegadaDpeiInput,
   salidaDpiSchema,
   salidaRecintoSchema,
   validarKitSchema,
@@ -59,6 +62,8 @@ import {
 import { TrackingService } from './tracking.service';
 import { InformeOperadorService } from './informe-operador.service';
 import { EstadisticasJornadaService } from './estadisticas-jornada.service';
+import { ReporteLlegadaDpeiService } from './reporte-llegada-dpei.service';
+import { LIMITE_DESCARGA_REPORTE, enviarReporte } from '../operadores-cda/reporte-cda';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { enviarPdf } from '../common/pdf';
 import { RolesGuard } from '../common/roles.guard';
@@ -79,6 +84,7 @@ export class TrackingController {
     private readonly tracking: TrackingService,
     private readonly informes: InformeOperadorService,
     private readonly estadisticasJornada: EstadisticasJornadaService,
+    private readonly llegadaDpei: ReporteLlegadaDpeiService,
   ) {}
 
   @Get('mi-asignacion')
@@ -348,6 +354,41 @@ export class TrackingController {
   })
   reporteFlujo() {
     return this.tracking.reporteFlujoCdas();
+  }
+
+  // ─── Llegada de los CDA a la DPEI ──────────────────────────────────────────
+
+  @LecturaConfigurable()
+  @Get('reporte-llegada-dpei')
+  @Roles('ADMINISTRADOR', 'LECTOR')
+  @RequiereModulo('reportes')
+  // Una fecha pasada no usa la caché de la jornada: que no se pueda pedir en ráfaga.
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({
+    summary: 'Llegada de cada CDA a la DPEI en un día de jornada (?fecha=AAAA-MM-DD, por defecto hoy): primera salida y última llegada',
+  })
+  reporteLlegadaDpei(@Query(new ZodValidationPipe(reporteLlegadaDpeiSchema)) q: ReporteLlegadaDpeiInput) {
+    return this.llegadaDpei.reporte(q.fecha);
+  }
+
+  @LecturaConfigurable()
+  @Get('reporte-llegada-dpei.xlsx')
+  @Roles('ADMINISTRADOR', 'LECTOR')
+  @RequiereModulo('reportes')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'Excel del reporte de llegadas de los CDA a la DPEI (?fecha=AAAA-MM-DD)' })
+  async reporteLlegadaDpeiXlsx(@Query(new ZodValidationPipe(reporteLlegadaDpeiSchema)) q: ReporteLlegadaDpeiInput, @Res() res: Response) {
+    enviarReporte(res, await this.llegadaDpei.exportar(q.fecha, 'xlsx'));
+  }
+
+  @LecturaConfigurable()
+  @Get('reporte-llegada-dpei.pdf')
+  @Roles('ADMINISTRADOR', 'LECTOR')
+  @RequiereModulo('reportes')
+  @Throttle(LIMITE_DESCARGA_REPORTE)
+  @ApiOperation({ summary: 'PDF del reporte de llegadas de los CDA a la DPEI (?fecha=AAAA-MM-DD)' })
+  async reporteLlegadaDpeiPdf(@Query(new ZodValidationPipe(reporteLlegadaDpeiSchema)) q: ReporteLlegadaDpeiInput, @Res() res: Response) {
+    enviarReporte(res, await this.llegadaDpei.exportar(q.fecha, 'pdf'));
   }
 
   // ─── Informe del Operador CDA (PDF) ────────────────────────────────────────

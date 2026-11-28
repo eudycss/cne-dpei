@@ -78,6 +78,14 @@ function resumenReportePersonal(req: Request): Record<string, unknown> {
   return { cargos, modo, formato };
 }
 
+/** Reporte de llegadas a la DPEI: el día pedido (si es válido) y el formato. */
+function resumenReporteLlegadaDpei(req: Request): Record<string, unknown> {
+  const q = (req.query ?? {}) as Record<string, unknown>;
+  const fecha = typeof q.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.fecha) ? q.fecha : 'hoy';
+  const formato = (req.originalUrl ?? req.url ?? '').split('?')[0].endsWith('.pdf') ? 'pdf' : 'xlsx';
+  return { fecha, formato };
+}
+
 /** Reporte por técnico: día, formato y técnicos pedidos (nombres del distributivo, acotados). */
 function resumenReporteTecnicos(req: Request): Record<string, unknown> {
   const q = (req.query ?? {}) as Record<string, unknown>;
@@ -398,6 +406,14 @@ const AUDIT_TABLE: Array<{
       const kitIds = (req.body as { kitIds?: unknown } | undefined)?.kitIds;
       return resumenActaMilitar(req.body, Array.isArray(kitIds) ? kitIds.length : 0);
     },
+  },
+  // Reporte de llegadas de los CDA a la DPEI (Excel o PDF): lleva nombres de operadores.
+  {
+    method: 'GET',
+    pathRegex: /^\/tracking\/reporte-llegada-dpei\.(xlsx|pdf)$/,
+    accion: 'LLEGADA_DPEI_EXPORTAR',
+    entidad: 'eventos_tracking',
+    resumen: (_res, req) => resumenReporteLlegadaDpei(req),
   },
   // Reporte del personal CDA/CPE (lleva cédulas): los cargos, el modo y el formato pedidos.
   {

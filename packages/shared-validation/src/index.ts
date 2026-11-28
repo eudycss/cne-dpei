@@ -730,6 +730,18 @@ export const opcionesActaMilitarSchema = z.object({
 });
 export type OpcionesActaMilitar = z.infer<typeof opcionesActaMilitarSchema>;
 
+/** Reporte de llegadas de los CDA a la DPEI: el día de jornada (por defecto, el actual). */
+export const reporteLlegadaDpeiSchema = z
+  .object({
+    fecha: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (use AAAA-MM-DD)')
+      .refine(esFechaReal, 'Fecha inexistente o fuera de rango (2020-2100)')
+      .optional(),
+  })
+  .strict();
+export type ReporteLlegadaDpeiInput = z.infer<typeof reporteLlegadaDpeiSchema>;
+
 /** Actas militares de los kits elegidos en la tabla (lo que el usuario marcó o filtró). */
 export const actasMilitaresSeleccionSchema = opcionesActaMilitarSchema
   .extend({
@@ -1132,6 +1144,7 @@ export * from './permisos';
 export * from './busqueda';
 export * from './perimetro';
 export * from './llegada-no-cda';
+export * from './llegada-dpei';
 
 // --- Parejas Operador CDA + Asistente CDA por día ---
 

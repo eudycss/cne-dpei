@@ -37,12 +37,14 @@ describe('JornadaService', () => {
     prisma.kitElectoral.findMany.mockResolvedValue([
       {
         id: 'k1',
+        codigoUnico: 'KIT-k1',
         operadorId: 'u1',
         recinto: { id: 'r1', codigoRecinto: '971', nombre: 'UE Chaltura', tiempoDpiMin: 45, canton: { codigo: '45', nombre: 'ANTONIO ANTE' } },
         operador: { nombres: 'Ana', apellidos: 'Pérez', telefono: '0990000001' },
       },
       {
         id: 'k2',
+        codigoUnico: 'KIT-k2',
         operadorId: 'u2',
         recinto: { id: 'r2', codigoRecinto: '1487', nombre: 'UE Apuela', canton: { codigo: '30', nombre: 'IBARRA' } },
         operador: { nombres: 'Luis', apellidos: 'Mora', telefono: null },
@@ -188,6 +190,7 @@ describe('JornadaService', () => {
           ],
           registros: { SALIDA_DPI: { en: T('2026-11-29T13:12:00Z'), sinSenal: true } },
           kitRecibido: null,
+          kits: ['KIT-k1'],
           kitEscaneado: null,
           actas: null,
           // Tiempo de viaje del recinto y último GPS del día (para los avisos).
@@ -207,6 +210,7 @@ describe('JornadaService', () => {
           personas: [{ nombre: 'Mora Luis', telefono: null, rol: 'Op.' }],
           registros: {},
           kitRecibido: null,
+          kits: ['KIT-k2'],
           kitEscaneado: null,
           actas: null,
           tiempoViajeMin: null,
@@ -274,25 +278,70 @@ describe('JornadaService', () => {
       );
     });
 
+    it('la llegada a la DPEI registrada por el administrador queda "manual"; la del escaneo del kit, "por kit"', async () => {
+      prisma.eventoTracking.findMany.mockImplementation(({ where }: { where: { tipo: unknown } }) =>
+        Promise.resolve(
+          where.tipo === 'LLEGADA_NO_CDA'
+            ? []
+            : [
+                { operadorId: 'u1', tipo: 'LLEGADA_DPI', ocurridoEn: T('2026-11-30T03:00:00Z'), desdeOffline: false, motivoManual: 'Olvidó marcarla' },
+                {
+                  operadorId: 'u2',
+                  tipo: 'LLEGADA_DPI',
+                  ocurridoEn: T('2026-11-30T03:10:00Z'),
+                  desdeOffline: false,
+                  motivoManual: 'Registrada al recibir el kit en la DPEI',
+                },
+              ],
+        ),
+      );
+      const j = await service.cargar(T('2026-11-29T15:00:00Z').getTime());
+      const [u1, u2] = j!.unidades;
+      expect(u1.registros.LLEGADA_DPI).toEqual({ en: T('2026-11-30T03:00:00Z'), sinSenal: false, manual: true });
+      expect(u2.registros.LLEGADA_DPI).toEqual({ en: T('2026-11-30T03:10:00Z'), sinSenal: false, porKit: true });
+    });
+
+    it('un día pasado sigue al operador de la pareja de ese día (el kit pasó a otra pareja después)', async () => {
+      // El kit k1 hoy es de u1, pero el 01-nov lo llevó la pareja cuyo operador es la cuenta u-op.
+      await service.cargarDia('2026-11-15', T('2026-11-29T15:00:00Z').getTime());
+      const [tracking] = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where);
+      expect(tracking.operadorId).toEqual({ in: ['u-op', 'u2'] });
+    });
+
+    it('cargarDia de una fecha pasada consulta ese día (04:00 a 04:00) sin la caché; la de hoy usa la caché', async () => {
+      await service.cargarDia('2026-11-15', T('2026-11-29T15:00:00Z').getTime());
+      const [tracking] = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where);
+      expect(tracking.OR[1].ocurridoEn).toEqual({ gte: T('2026-11-15T09:00:00Z'), lt: T('2026-11-16T09:00:00Z') });
+
+      prisma.eventoTracking.findMany.mockClear();
+      const ahora = T('2026-11-29T15:00:00Z').getTime();
+      await service.cargar(ahora);
+      const llamadas = prisma.eventoTracking.findMany.mock.calls.length;
+      await service.cargarDia('2026-11-29', ahora + 1000);
+      expect(prisma.eventoTracking.findMany.mock.calls.length).toBe(llamadas);
+    });
+
     it('solo cuenta los registros del día de jornada (las pruebas de otros días no marcan a nadie)', async () => {
       await service.cargar(T('2026-11-29T15:00:00Z').getTime());
       const desde = T('2026-11-29T09:00:00Z');
+      // Hasta las 04:00 del día siguiente: un día pasado no se mezcla con los que siguen.
+      const lt = T('2026-11-30T09:00:00Z');
       const [tracking, visitas] = prisma.eventoTracking.findMany.mock.calls.map(([q]) => q.where);
       // Ida (salida de la DPEI, llegada al recinto): desde las 00:00; regreso y prueba: desde las 04:00.
       expect(tracking.OR).toEqual([
-        { tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO'] }, ocurridoEn: { gte: T('2026-11-29T05:00:00Z') } },
-        { tipo: { in: ['SALIDA_RECINTO', 'LLEGADA_DPI', 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: desde } },
+        { tipo: { in: ['SALIDA_DPI', 'LLEGADA_RECINTO'] }, ocurridoEn: { gte: T('2026-11-29T05:00:00Z'), lt } },
+        { tipo: { in: ['SALIDA_RECINTO', 'LLEGADA_DPI', 'PRUEBA_CONEXION'] }, ocurridoEn: { gte: desde, lt } },
       ]);
-      expect(visitas.ocurridoEn).toEqual({ gte: desde });
+      expect(visitas.ocurridoEn).toEqual({ gte: desde, lt });
       // El kit se recibe y se escanea en la ida: cuentan desde las 00:00, igual que la salida de la DPEI.
       const desdeMedianoche = T('2026-11-29T05:00:00Z');
-      expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desdeMedianoche });
+      expect(prisma.recepcionDpiKit.findMany.mock.calls[0][0].where.confirmadoEn).toEqual({ gte: desdeMedianoche, lt });
       expect(prisma.recepcionKit.findMany.mock.calls[0][0].where).toEqual({
         kitId: { in: ['k1', 'k2'] },
         operadorId: { in: ['u1', 'u2'] },
-        confirmadoEn: { gte: desdeMedianoche },
+        confirmadoEn: { gte: desdeMedianoche, lt },
       });
-      expect(prisma.posicionGps.groupBy.mock.calls[0][0].where.capturadoEn).toEqual({ gte: desdeMedianoche });
+      expect(prisma.posicionGps.groupBy.mock.calls[0][0].where.capturadoEn).toEqual({ gte: desdeMedianoche, lt });
     });
 
     it('cumplimiento: el escaneo del kit con la foto del militar y los reportes de la salida del recinto', async () => {

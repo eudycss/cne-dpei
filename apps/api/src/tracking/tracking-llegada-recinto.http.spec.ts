@@ -10,6 +10,7 @@ import { TrackingController } from './tracking.controller';
 import { TrackingService } from './tracking.service';
 import { InformeOperadorService } from './informe-operador.service';
 import { EstadisticasJornadaService } from './estadisticas-jornada.service';
+import { ReporteLlegadaDpeiService } from './reporte-llegada-dpei.service';
 
 /** POST /tracking/llegada-no-cda por HTTP real (Zod + filtros), servicio simulado y sesión de operador. */
 /** POST /tracking/llegada-recinto por HTTP real: la llegada registrada al escanear el kit se reconoce (201), no 409. */
@@ -31,6 +32,7 @@ describe('HTTP POST /tracking/llegada-recinto', () => {
         { provide: TrackingService, useValue: tracking },
         { provide: InformeOperadorService, useValue: {} },
         { provide: EstadisticasJornadaService, useValue: {} },
+        { provide: ReporteLlegadaDpeiService, useValue: {} },
       ],
       [
         [JwtAuthGuard, sesionOperador],
