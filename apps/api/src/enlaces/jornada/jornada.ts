@@ -988,6 +988,20 @@ export interface ConteosJornada {
   juntasNoCda?: AvanceVista;
   kitPendientes: number;
   cumplimiento: ConteosCumplimiento;
+  /** Recintos CDA con todas sus parejas en la DPEI (un resumen guardado antes de este campo no lo trae). */
+  cdasDpei?: AvanceVista;
+}
+
+/**
+ * Recintos CDA que llegaron completos a la DPEI: todas sus parejas llegaron
+ * (marcada en la app o con el kit recibido), igual que el aviso de cada llegada
+ * y el reporte web de llegadas.
+ */
+export function avanceCdasDpei(j: Jornada): AvanceVista {
+  const porRecinto = new Map<string, UnidadJornada[]>();
+  for (const u of j.unidades) porRecinto.set(u.codigoRecinto, [...(porRecinto.get(u.codigoRecinto) ?? []), u]);
+  const grupos = [...porRecinto.values()];
+  return { hechos: grupos.filter((us) => us.every((u) => llegadaDpeiDe(u))).length, total: grupos.length };
 }
 
 /** De `total` parejas: cuántas escanearon kit con militar, subieron reportes y cumplieron todo. */
@@ -1034,6 +1048,7 @@ export function conteosJornada(j: Jornada): ConteosJornada {
     juntasNoCda: juntasNoCda([...noCda.faltan, ...noCda.cumplidos]),
     kitPendientes: estadoVista(j, 'KIT').faltan.length,
     cumplimiento: conteosCumplimiento(j),
+    cdasDpei: avanceCdasDpei(j),
   };
 }
 
@@ -1082,6 +1097,17 @@ export function formatearResumenAutomatico(
   for (const v of ORDEN_RESUMEN) {
     const { hechos, total } = c.momentos[v];
     if (total === 0) continue;
+    // La llegada a la DPEI se cuenta por recinto CDA (completo = llegaron todas sus parejas).
+    if (v === 'LLEGADA_DPI' && c.cdasDpei && c.cdasDpei.total > 0) {
+      const cd = c.cdasDpei;
+      lineas.push(
+        `${BOTONES_JORNADA[v]}  <code>${barra(cd.hechos, cd.total, ANCHO_BARRA)}</code> ${cd.hechos}/${cd.total} CDA` +
+          (cd.hechos < cd.total ? ` · faltan ${cd.total - cd.hechos}` : ' ✅') +
+          // Parejas con la misma regla que los CDA (app o kit recibido), para que las dos cifras cuadren.
+          ` · parejas ${j.unidades.filter((u) => llegadaDpeiDe(u)).length}/${j.unidades.length}`,
+      );
+      continue;
+    }
     const faltan = total - hechos;
     const extra =
       v === 'NO_CDA'
@@ -1114,6 +1140,9 @@ export function formatearResumenAutomatico(
     const completaron = cu.todo - (anterior.conteos.cumplimiento?.todo ?? cu.todo);
     const antes = anterior.conteos.cumplimiento;
     if (completaron > 0) cambios.push(`✅ +${completaron} cumplieron todo`);
+    // Un CDA puede completarse solo con el kit recibido (sin marca nueva): también se dice.
+    const cdasNuevos = (c.cdasDpei?.hechos ?? 0) - (anterior.conteos.cdasDpei?.hechos ?? c.cdasDpei?.hechos ?? 0);
+    if (cdasNuevos > 0) cambios.push(`🏢 +${cdasNuevos} CDA completos en la DPEI`);
     // Si solo avanzó una parte, también se dice (si no, el resumen llegaría sin explicar el cambio).
     if (antes && cu.kitMilitar > antes.kitMilitar) cambios.push(`📷 +${cu.kitMilitar - antes.kitMilitar} kit y militar`);
     if (antes && cu.reportes > antes.reportes) cambios.push(`📄 +${cu.reportes - antes.reportes} con reportes`);
