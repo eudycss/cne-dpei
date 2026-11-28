@@ -6,6 +6,7 @@ import {
   consultablesDe,
   estadoVista,
   formatearFichaCda,
+  avanceCdasDpei,
   formatearResumenAutomatico,
   formatearResumenJornada,
   gruposDe,
@@ -491,6 +492,32 @@ describe('Jornada (Telegram)', () => {
       expect(texto).toContain(`${BOTONES_JORNADA.NO_CDA}  <code>▓▓▓▓▓▓▓░░░</code> 2/3 · faltan 1 · 1 de 2 CDA completos`);
       expect(texto).toContain(`${BOTONES_JORNADA.KIT}: ninguno`);
       expect(texto).not.toContain('Desde las');
+    });
+
+    it('la llegada a la DPEI va por recinto CDA: completo cuando llegaron todas sus parejas (o se recibió su kit)', () => {
+      const j = jornada({
+        unidades: [
+          unidad('971', JAIRO, { registros: { SALIDA_RECINTO: r('17:00'), LLEGADA_DPI: r('18:00') } }),
+          // Mismo CDA, segunda pareja: aún no llega.
+          unidad('971', JAIRO, { registros: { SALIDA_RECINTO: r('17:10') } }),
+          // Sin marcar la llegada, pero el Asistente Transversal recibió el kit: cuenta.
+          unidad('1290', JAIRO, { registros: { SALIDA_RECINTO: r('17:00') }, kitRecibido: A_LAS('18:30') }),
+          unidad('800', JAIRO, { registros: { SALIDA_RECINTO: r('17:00') } }),
+        ],
+      });
+      expect(avanceCdasDpei(j)).toEqual({ hechos: 1, total: 3 });
+      // Desde el resumen anterior (0 CDA completos) cuenta el CDA que se completó.
+      const anterior = { conteos: { ...conteosJornada(j), cdasDpei: { hechos: 0, total: 3 } }, en: A_LAS('08:30') };
+      expect(formatearResumenAutomatico(j, AHORA, anterior)).toContain('🏢 +1 CDA completos en la DPEI');
+      expect(formatearResumenAutomatico(j, AHORA)).toContain(
+        `${BOTONES_JORNADA.LLEGADA_DPI}  <code>▓▓▓░░░░░░░</code> 1/3 CDA · faltan 2 · parejas 2/4`,
+      );
+      // Un resumen anterior sin el campo (de antes del deploy) no inventa CDA nuevos.
+      const viejo = { conteos: { ...conteosJornada(j), cdasDpei: undefined }, en: A_LAS('08:30') };
+      expect(formatearResumenAutomatico(j, AHORA, viejo)).not.toContain('CDA completos en la DPEI');
+      // Todos completos: ✅ y sin "faltan".
+      const completa = jornada({ unidades: [unidad('971', JAIRO, { registros: { SALIDA_RECINTO: r('17:00'), LLEGADA_DPI: r('18:00') } })] });
+      expect(formatearResumenAutomatico(completa, AHORA)).toContain('1/1 CDA ✅ · parejas 1/1');
     });
 
     it('con un resumen anterior dice qué cambió desde esa hora', () => {
